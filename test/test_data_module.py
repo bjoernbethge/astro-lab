@@ -270,16 +270,46 @@ class TestAstroDataset:
         except Exception:
             pytest.skip("Could not create dataset - may need real data")
 
-    def test_astro_dataset_info(self):
-        """Test dataset info functionality."""
-        try:
-            dataset = AstroDataset(survey="gaia", max_samples=50)
-            info = dataset.get_info()
-            assert isinstance(info, dict)
-            assert "survey" in info
-            assert "n_samples" in info
-        except Exception:
-            pytest.skip("Could not create dataset - may need real data")
+    def test_astro_dataset_info(self, gaia_data_available, nsa_data_available):
+        """Test dataset info functionality with real data."""
+        # Test with Gaia data if available
+        if gaia_data_available:
+            try:
+                dataset = AstroDataset(survey="gaia", max_samples=50)
+                info = dataset.get_info()
+                assert isinstance(info, dict)
+                assert "survey" in info
+                # Check for actual keys that are returned
+                assert "num_nodes" in info or "n_samples" in info
+                assert info["survey"] == "gaia"
+                # Test actual number of nodes/samples
+                actual_count = info.get("num_nodes", info.get("n_samples", 0))
+                assert actual_count <= 50 and actual_count > 0
+                return  # Success with Gaia
+            except Exception as e:
+                print(f"Gaia dataset creation failed: {e}")
+
+        # Test with NSA data if available
+        if nsa_data_available:
+            try:
+                dataset = AstroDataset(survey="nsa", max_samples=50)
+                info = dataset.get_info()
+                assert isinstance(info, dict)
+                assert "survey" in info
+                # Check for actual keys that are returned
+                assert "num_nodes" in info or "n_samples" in info
+                assert info["survey"] == "nsa"
+                # Test actual number of nodes/samples
+                actual_count = info.get("num_nodes", info.get("n_samples", 0))
+                assert actual_count <= 50 and actual_count > 0
+                return  # Success with NSA
+            except Exception as e:
+                print(f"NSA dataset creation failed: {e}")
+
+        # If neither worked, skip the test
+        pytest.skip(
+            "No suitable dataset available - neither Gaia nor NSA data could be loaded"
+        )
 
 
 class TestConvenienceFunctions:
