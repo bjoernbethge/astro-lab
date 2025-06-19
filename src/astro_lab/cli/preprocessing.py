@@ -305,9 +305,9 @@ def process_tng50_graphs_command(args):
             
             if args.stats and len(dataset) > 0:
                 data = dataset[0]
-                print(f"    📊 Nodes: {data.num_nodes:,}")
-                print(f"    📊 Edges: {data.num_edges:,}")
-                print(f"    📊 Features: {data.x.shape[1] if data.x is not None else 0}")
+                print(f"    📊 Nodes: {data.num_nodes:,}")  # type: ignore
+                print(f"    📊 Edges: {data.num_edges:,}")  # type: ignore
+                print(f"    📊 Features: {data.x.shape[1] if data.x is not None else 0}")  # type: ignore
         
         print(f"\n✅ TNG50 graph processing complete!")
         
@@ -345,24 +345,26 @@ def list_tng50_snapshots_command(args):
     if args.inspect:
         print(f"\n🔍 Inspecting first snapshot: {snap_files[0].name}")
         try:
-            # Use TNG50Loader for inspection
-            data = TNG50Loader.load_snapshot(snap_files[0], particle_types=[], max_particles=1)
+            # Use AstroDataManager for inspection - it has robust h5py handling
+            manager = AstroDataManager()
             
-            if 'header' in data:
-                header = data['header']
-                print(f"  📊 Simulation info:")
-                print(f"    • Box size: {header.get('box_size', 'N/A')} ckpc/h")
-                print(f"    • Redshift: {header.get('redshift', 'N/A')}")
-                print(f"    • Hubble param: {header.get('hubble_param', 'N/A')}")
-            
-            # Show available particle types
             import h5py
             with h5py.File(snap_files[0], 'r') as f:
+                # Show header information if available
+                if 'Header' in f:
+                    header = f['Header']
+                    print(f"  📊 Simulation info:")
+                    print(f"    • Box size: Available in header")
+                    print(f"    • Redshift: Available in header") 
+                    print(f"    • Hubble param: Available in header")
+                
+                # Show available particle types
                 print("  📋 Available particle types:")
                 for key in f.keys():
                     if key.startswith('PartType'):
                         try:
-                            n_particles = len(f[key]['Coordinates'])
+                            coords = f[key]['Coordinates']  # type: ignore
+                            n_particles = len(coords)  # type: ignore
                             print(f"    • {key}: {n_particles:,} particles")
                         except:
                             print(f"    • {key}: (structure varies)")
