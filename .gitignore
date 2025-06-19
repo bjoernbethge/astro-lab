@@ -34,3 +34,5 @@ tree.txt
 *.jpg
 *.jpeg
 konzept/
+!src/data/
+!src/astro_lab/data/
