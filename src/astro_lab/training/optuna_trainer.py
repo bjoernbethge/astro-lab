@@ -10,18 +10,27 @@ import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-import mlflow
 import optuna
 from lightning import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
-from lightning.pytorch.loggers import MLFlowLogger
 from optuna.integration import PyTorchLightningPruningCallback
 
 from .lightning_module import AstroLightningModule
 
+# MLflow integration (optional)
+try:
+    import mlflow
+    from lightning.pytorch.loggers import MLFlowLogger
+
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    mlflow = None
+    MLFlowLogger = None
+    MLFLOW_AVAILABLE = False
+
 
 class OptunaTrainer:
-    """Optimized Optuna-based hyperparameter optimization with MLflow integration."""
+    """Optimized Optuna-based hyperparameter optimization with optional MLflow integration."""
 
     def __init__(
         self,
@@ -51,21 +60,25 @@ class OptunaTrainer:
         self.log_plots = log_plots
 
         # Create Optuna study with modern optimizations
-        self.study = optuna.create_study(
-            direction="minimize",
-            pruner=optuna.pruners.MedianPruner(n_startup_trials=5),
-            sampler=optuna.samplers.TPESampler(seed=42),
-        )
+        self.study = optuna.create_study()
+        # Set pruner and sampler separately
+        self.study.pruner = optuna.pruners.MedianPruner(n_startup_trials=5)
+        self.study.sampler = optuna.samplers.TPESampler()
 
-        # Set up MLflow experiment
-        mlflow.set_experiment(self.mlflow_experiment)
+        # Set up MLflow experiment if available
+        if MLFLOW_AVAILABLE and mlflow is not None:
+            mlflow.set_experiment(self.mlflow_experiment)
 
     def objective(self, trial: optuna.Trial) -> float:
         """Optuna objective function for hyperparameter optimization."""
-        with mlflow.start_run(nested=True):
+        run_context = None
+
+        if MLFLOW_AVAILABLE and mlflow is not None:
+            run_context = mlflow.start_run(nested=True)
             # Log trial number
             mlflow.log_param("trial_number", trial.number)
 
+        try:
             # Create model with trial suggestions
             model = self.model_factory(trial)
 
@@ -85,26 +98,31 @@ class OptunaTrainer:
             )
 
             # Train model
-            try:
-                trainer.fit(model, self.train_dataloader, self.val_dataloader)
+            trainer.fit(model, self.train_dataloader, self.val_dataloader)
 
-                # Get final validation loss
-                val_loss = trainer.callback_metrics.get("val_loss", float("inf"))
-                val_loss_float = float(val_loss) if hasattr(val_loss, 'item') else float(val_loss)
+            # Get final validation loss
+            val_loss = trainer.callback_metrics.get("val_loss", float("inf"))
+            val_loss_float = (
+                float(val_loss) if hasattr(val_loss, "item") else float(val_loss)
+            )
 
-                # Log metrics and parameters
+            # Log metrics and parameters if MLflow available
+            if MLFLOW_AVAILABLE and mlflow is not None:
                 mlflow.log_metric("val_loss", val_loss_float)
-
                 # Log hyperparameters
                 for key, value in trial.params.items():
                     mlflow.log_param(key, value)
 
-                return val_loss_float
+            return val_loss_float
 
-            except optuna.TrialPruned:
-                # Log pruned trial
+        except optuna.TrialPruned:
+            # Log pruned trial if MLflow available
+            if MLFLOW_AVAILABLE and mlflow is not None:
                 mlflow.log_param("pruned", True)
-                raise
+            raise
+        finally:
+            if run_context is not None:
+                mlflow.end_run()
 
     def optimize(
         self,
@@ -121,68 +139,87 @@ class OptunaTrainer:
         Returns:
             Completed Optuna study
         """
-        with mlflow.start_run(run_name=f"optuna_study_{self.study_name or 'default'}"):
+        run_context = None
+
+        if MLFLOW_AVAILABLE and mlflow is not None:
+            run_context = mlflow.start_run(
+                run_name=f"optuna_study_{self.study_name or 'default'}"
+            )
             # Log study configuration
             mlflow.log_param("n_trials", n_trials)
             mlflow.log_param("timeout", timeout)
             mlflow.log_param("study_name", self.study_name)
 
+        try:
             # Run optimization
             self.study.optimize(self.objective, n_trials=n_trials, timeout=timeout)
 
-            # Log best results
-            best_trial = self.study.best_trial
-            if best_trial.value is not None:
-                mlflow.log_metric("best_val_loss", best_trial.value)
+            # Log best results if MLflow available
+            if MLFLOW_AVAILABLE and mlflow is not None:
+                best_trial = self.study.best_trial
+                if best_trial.value is not None:
+                    mlflow.log_metric("best_val_loss", best_trial.value)
 
-            # Log best parameters
-            for key, value in best_trial.params.items():
-                mlflow.log_param(f"best_{key}", value)
+                # Log best parameters
+                for key, value in best_trial.params.items():
+                    mlflow.log_param(f"best_{key}", value)
 
-            # Log study summary
-            study_summary = {
-                "n_trials": len(self.study.trials),
-                "best_value": self.study.best_value,
-                "best_params": self.study.best_params,
-                "n_completed_trials": len(
-                    [
-                        t
-                        for t in self.study.trials
-                        if t.state == optuna.trial.TrialState.COMPLETE
-                    ]
-                ),
-                "n_pruned_trials": len(
-                    [
-                        t
-                        for t in self.study.trials
-                        if t.state == optuna.trial.TrialState.PRUNED
-                    ]
-                ),
-                "n_failed_trials": len(
-                    [
-                        t
-                        for t in self.study.trials
-                        if t.state == optuna.trial.TrialState.FAIL
-                    ]
-                ),
-            }
+                # Log study summary
+                self._log_study_summary()
 
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".json", delete=False
-            ) as f:
-                json.dump(study_summary, f, indent=2)
-                mlflow.log_artifact(f.name, "study_summary.json")
-                Path(f.name).unlink()  # Clean up
+                # Log Optuna plots
+                if self.log_plots:
+                    self._log_optuna_plots()
 
-            # Log Optuna plots using built-in functions
-            if self.log_plots:
-                self._log_optuna_plots()
+        finally:
+            if run_context is not None:
+                mlflow.end_run()
 
-            return self.study
+        return self.study
+
+    def _log_study_summary(self):
+        """Log study summary to MLflow."""
+        if not MLFLOW_AVAILABLE or mlflow is None:
+            return
+
+        study_summary = {
+            "n_trials": len(self.study.trials),
+            "best_value": self.study.best_value,
+            "best_params": self.study.best_params,
+            "n_completed_trials": len(
+                [
+                    t
+                    for t in self.study.trials
+                    if t.state == optuna.trial.TrialState.COMPLETE
+                ]
+            ),
+            "n_pruned_trials": len(
+                [
+                    t
+                    for t in self.study.trials
+                    if t.state == optuna.trial.TrialState.PRUNED
+                ]
+            ),
+            "n_failed_trials": len(
+                [
+                    t
+                    for t in self.study.trials
+                    if t.state == optuna.trial.TrialState.FAIL
+                ]
+            ),
+        }
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            json.dump(study_summary, f, indent=2)
+            mlflow.log_artifact(f.name, "study_summary.json")
+            Path(f.name).unlink()  # Clean up
 
     def _log_optuna_plots(self):
         """Log Optuna visualization plots using built-in functions."""
         if not self.log_plots or len(self.study.trials) < 2:
+            return
+
+        if not MLFLOW_AVAILABLE or mlflow is None:
             return
 
         try:
@@ -258,15 +295,17 @@ class OptunaTrainer:
         """Save the study to a file."""
         with open(filepath, "wb") as f:
             import pickle
+
             pickle.dump(self.study, f)
 
-        mlflow.log_artifact(filepath, "optuna_study.pkl")
+        if MLFLOW_AVAILABLE and mlflow is not None:
+            mlflow.log_artifact(filepath, "optuna_study.pkl")
 
-    @staticmethod
     def load_study(filepath: str) -> optuna.Study:
         """Load a study from a file."""
         with open(filepath, "rb") as f:
             import pickle
+
             return pickle.load(f)
 
 

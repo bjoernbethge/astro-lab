@@ -5,41 +5,55 @@ State-of-the-art training with Lightning + MLflow + Optuna integration.
 Optimized for astronomical ML workloads with modern Lightning DataModule support.
 """
 
-from typing import Any, Dict, List, Optional, Union, Literal
 from pathlib import Path
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import torch
 from lightning import Trainer
 from lightning.pytorch.callbacks import (
-    EarlyStopping, 
-    ModelCheckpoint, 
-    RichProgressBar,
-    GradientAccumulationScheduler,
-    StochasticWeightAveraging,
+    EarlyStopping,
     LearningRateMonitor,
+    ModelCheckpoint,
+    RichProgressBar,
+    StochasticWeightAveraging,
 )
-from lightning.pytorch.loggers import MLFlowLogger
 from torch.utils.data import DataLoader
 
 from .lightning_module import AstroLightningModule
-from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
-from .optuna_trainer import OptunaTrainer
+
+# Optional imports
+try:
+    from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
+
+    MLFLOW_AVAILABLE = True
+except ImportError:
+    AstroMLflowLogger = None
+    setup_mlflow_experiment = None
+    MLFLOW_AVAILABLE = False
+
+try:
+    from .optuna_trainer import OptunaTrainer
+
+    OPTUNA_AVAILABLE = True
+except ImportError:
+    OptunaTrainer = None
+    OPTUNA_AVAILABLE = False
 
 # Type aliases for clarity
 DeviceType = Union[int, List[int], Literal["auto"]]
 PrecisionType = Union[Literal["16-mixed", "bf16-mixed", "32", "64"], int]
 
 
-class AstroTrainer(Trainer):
+class AstroTrainer:
     """
     High-performance trainer for astronomical ML models.
-    
+
     Modern Lightning-based trainer with MLflow integration and astronomical optimizations.
-    Supports both DataModule and DataLoader interfaces for maximum flexibility.
     """
 
     def __init__(
         self,
+        lightning_module: AstroLightningModule,
         max_epochs: int = 100,
         accelerator: str = "auto",
         devices: Union[int, str] = "auto",
@@ -50,60 +64,49 @@ class AstroTrainer(Trainer):
         patience: int = 10,
         monitor: str = "val_loss",
         mode: str = "min",
-        log_every_n_steps: int = 1,  # Reduced for small datasets
+        log_every_n_steps: int = 1,
         val_check_interval: Union[int, float] = 1.0,
-        num_sanity_val_steps: int = 0,  # Disable for faster startup
-        **kwargs
+        num_sanity_val_steps: int = 0,
+        experiment_name: str = "astro_experiment",
+        **kwargs,
     ):
         """
         Initialize optimized Lightning Trainer.
-        
-        Parameters
-        ----------
-        log_every_n_steps : int, default 1
-            Reduced to 1 for small datasets with few batches
-        num_sanity_val_steps : int, default 0  
-            Disabled for faster startup with graph data
         """
-        
-        # Device-specific optimizations
-        device_optimizations = self._get_device_optimizations()
-        
-        # Merge with user kwargs
-        trainer_kwargs = {
-            "max_epochs": max_epochs,
-            "accelerator": accelerator,
-            "devices": devices,
-            "precision": precision,
-            "gradient_clip_val": gradient_clip_val,
-            "accumulate_grad_batches": accumulate_grad_batches,
-            "log_every_n_steps": log_every_n_steps,
-            "val_check_interval": val_check_interval,
-            "num_sanity_val_steps": num_sanity_val_steps,
-            "enable_progress_bar": True,
-            "enable_model_summary": True,
-            **device_optimizations,
-            **kwargs
-        }
-        
+        self.lightning_module = lightning_module
+        self.experiment_name = experiment_name
+
         # Setup callbacks
         callbacks = self._setup_callbacks(
-            enable_swa=enable_swa,
-            patience=patience,
-            monitor=monitor,
-            mode=mode
+            enable_swa=enable_swa, patience=patience, monitor=monitor, mode=mode
         )
-        trainer_kwargs["callbacks"] = callbacks
-        
-        # Setup logger
-        trainer_kwargs["logger"] = self._setup_logger()
-        
-        # Initialize trainer
-        super().__init__(**trainer_kwargs)
-        
-        print(f"🚀 AstroTrainer initialized with {self.accelerator} acceleration")
 
-    def _setup_callbacks(self, enable_swa: bool, patience: int, monitor: str, mode: str) -> List:
+        # Setup logger
+        logger = self._setup_logger()
+
+        # Create Lightning Trainer
+        self.trainer = Trainer(
+            max_epochs=max_epochs,
+            accelerator=accelerator,
+            devices=devices,
+            precision=precision,
+            gradient_clip_val=gradient_clip_val,
+            accumulate_grad_batches=accumulate_grad_batches,
+            log_every_n_steps=log_every_n_steps,
+            val_check_interval=val_check_interval,
+            num_sanity_val_steps=num_sanity_val_steps,
+            enable_progress_bar=True,
+            enable_model_summary=True,
+            callbacks=callbacks,
+            logger=logger,
+            **kwargs,
+        )
+
+        print(f"🚀 AstroTrainer initialized with {accelerator} acceleration")
+
+    def _setup_callbacks(
+        self, enable_swa: bool, patience: int, monitor: str, mode: str
+    ) -> List:
         """Setup training callbacks with astronomical ML optimizations."""
         callbacks = []
 
@@ -132,7 +135,7 @@ class AstroTrainer(Trainer):
 
         # Stochastic Weight Averaging (if enabled)
         if enable_swa:
-            swa_callback = StochasticWeightAveraging(swa_lrs=self.learning_rate * 0.1)
+            swa_callback = StochasticWeightAveraging(swa_lrs=1e-4)
             callbacks.append(swa_callback)
 
         # Rich progress bar for better UX
@@ -142,16 +145,11 @@ class AstroTrainer(Trainer):
         return callbacks
 
     def _setup_logger(self):
-        # This method is inherited from Trainer and should be implemented
-        # to return the appropriate logger based on the new initialization parameters
-        # For now, we'll use the default MLFlowLogger
-        return MLFlowLogger(experiment_name=self.experiment_name)
-
-    def _get_device_optimizations(self):
-        # This method is inherited from Trainer and should be implemented
-        # to return any device-specific optimizations based on the new initialization parameters
-        # For now, we'll return an empty dictionary
-        return {}
+        """Setup logger with MLflow if available."""
+        if MLFLOW_AVAILABLE and AstroMLflowLogger is not None:
+            return AstroMLflowLogger(experiment_name=self.experiment_name)
+        else:
+            return None
 
     def fit(
         self,
@@ -161,7 +159,7 @@ class AstroTrainer(Trainer):
     ) -> None:
         """
         Train the model with support for both DataLoaders and DataModules.
-        
+
         Args:
             train_dataloader: Training DataLoader (optional if datamodule provided)
             val_dataloader: Validation DataLoader (optional if datamodule provided)
@@ -169,10 +167,10 @@ class AstroTrainer(Trainer):
         """
         if datamodule is not None:
             # Modern Lightning way with DataModule
-            self.fit(self.lightning_module, datamodule=datamodule)
+            self.trainer.fit(self.lightning_module, datamodule=datamodule)
         elif train_dataloader is not None:
             # Traditional way with DataLoaders
-            self.fit(
+            self.trainer.fit(
                 self.lightning_module,
                 train_dataloaders=train_dataloader,
                 val_dataloaders=val_dataloader,
@@ -187,18 +185,18 @@ class AstroTrainer(Trainer):
     ) -> List[Dict[str, float]]:
         """
         Test the model.
-        
+
         Args:
             test_dataloader: Test DataLoader (optional if datamodule provided)
             datamodule: Lightning DataModule (alternative to DataLoader)
-            
+
         Returns:
             Test metrics
         """
         if datamodule is not None:
-            return self.test(self.lightning_module, datamodule=datamodule)
+            return self.trainer.test(self.lightning_module, datamodule=datamodule)
         elif test_dataloader is not None:
-            return self.test(self.lightning_module, dataloaders=test_dataloader)
+            return self.trainer.test(self.lightning_module, dataloaders=test_dataloader)
         else:
             raise ValueError("Either datamodule or test_dataloader must be provided")
 
@@ -209,40 +207,43 @@ class AstroTrainer(Trainer):
     ) -> List[Any]:
         """
         Run predictions.
-        
+
         Args:
             predict_dataloader: Prediction DataLoader (optional if datamodule provided)
             datamodule: Lightning DataModule (alternative to DataLoader)
-            
+
         Returns:
             Predictions
         """
         if datamodule is not None:
-            return self.predict(self.lightning_module, datamodule=datamodule)
+            return self.trainer.predict(self.lightning_module, datamodule=datamodule)
         elif predict_dataloader is not None:
-            return self.predict(self.lightning_module, dataloaders=predict_dataloader)
+            return self.trainer.predict(
+                self.lightning_module, dataloaders=predict_dataloader
+            )
         else:
             raise ValueError("Either datamodule or predict_dataloader must be provided")
 
-    def get_metrics(self) -> Dict[str, float]:
+    def get_metrics(self) -> Dict[str, Any]:
         """Get final training metrics."""
-        return self.logged_metrics
+        return {
+            k: float(v) if hasattr(v, "item") else v
+            for k, v in self.trainer.logged_metrics.items()
+        }
 
     @property
     def best_model_path(self) -> Optional[str]:
         """Path to the best saved model."""
-        for callback in self.callbacks:
+        for callback in self.trainer.callbacks:
             if isinstance(callback, ModelCheckpoint):
                 return callback.best_model_path
         return None
 
-    def load_best_model(self) -> torch.nn.Module:
+    def load_best_model(self) -> AstroLightningModule:
         """Load the best model from checkpoint."""
         if self.best_model_path:
             return AstroLightningModule.load_from_checkpoint(
                 self.best_model_path,
-                model=self.model,
-                task_type=self.task_type,
             )
         return self.lightning_module
 
@@ -256,6 +257,9 @@ class AstroTrainer(Trainer):
         **optuna_kwargs,
     ) -> Any:
         """Run hyperparameter optimization with modern Optuna integration."""
+        if not OPTUNA_AVAILABLE or OptunaTrainer is None:
+            raise ImportError("Optuna not available. Install with: pip install optuna")
+
         optuna_trainer = OptunaTrainer(
             model_factory=model_factory,
             train_dataloader=train_dataloader,
@@ -270,14 +274,13 @@ class AstroTrainer(Trainer):
     def load_from_checkpoint(self, checkpoint_path: str) -> AstroLightningModule:
         """Load model from checkpoint."""
         self.lightning_module = AstroLightningModule.load_from_checkpoint(
-            checkpoint_path,
-            model=self.model,
+            checkpoint_path
         )
         return self.lightning_module
 
     def save_model(self, path: str) -> None:
         """Save model to path."""
-        self.save_checkpoint(path)
+        self.trainer.save_checkpoint(path)
 
 
 __all__ = ["AstroTrainer"]
