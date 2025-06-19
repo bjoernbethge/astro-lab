@@ -1,0 +1,234 @@
+[project]
+name = "astro-lab"
+version = "0.2.0"
+description = "Astronomical Machine Learning Laboratory with MLflow tracking"
+readme = "README.md"
+authors = [
+    { name = "Björn Bethge", email = "bjoern.bethge@gmail.com" }
+]
+maintainers = [
+    { name = "Björn Bethge", email = "bjoern.bethge@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    # Core astronomical libraries
+    "astroml>=1.0.2.post1",
+    # "astrophot>=0.16.13",  # Temporarily disabled - not compatible with numpy 2.0 yet
+    "cosmograph>=0.0.47",
+    "h5py>=3.8.0", # For TNG50/IllustrisTNG HDF5 files
+    # 3D Visualization and data exchange
+    "pyvista>=0.45.2",
+    "vtk>=9.3.0",
+    # Machine Learning
+    "torch>=2.0.0",
+    "torch-geometric>=2.6.1",
+    "scipy>=1.10.0",
+    # MLflow and tracking
+    "mlflow>=2.15.0",
+    "marimo-flow>=0.1.1",
+    "torchinfo>=1.8.0",
+    "numba>=0.61.2",
+    "bpy>=4.4.0",
+    "bvh>=0.3",
+    "anywidget>=0.9.18",
+    "traitlets>=5.14.3",
+    "astro-torch",
+    "pydantic>=2.11.6",
+    "astropy>=7.1.0",
+    "astro-pack",
+    "pyyaml>=6.0.2",
+    "lightning>=2.5.1.post0",
+    "optuna>=4.4.0",
+    "optuna-integration[pytorch-lightning]>=4.4.0",
+ 
+]
+
+# Optional dependencies for different use cases
+[project.optional-dependencies]
+# Hyperparameter optimization
+optim = [
+    "optuna>=4.4.0",
+]
+
+# Jupyter and interactive development
+jupyter = [
+    "jupyter>=1.0.0",
+    "ipykernel>=6.0.0",
+    "marimo-flow>=0.1.1",
+]
+
+# Additional astronomical tools
+astro-extra = [
+    "astropy>=5.0.0",
+    "photutils>=1.8.0",
+]
+
+
+
+# All optional dependencies
+all = [
+    "astro-lab[optim,jupyter,astro-extra]",
+]
+extended = [
+    "sdss-access>=3.0.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+link-mode = "copy"
+
+# Development dependency groups (PEP 735)
+[dependency-groups]
+# Core development tools
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-forked>=1.4.0",  # Process isolation for memory leaks
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "fake-bpy-module-latest>=20250616",
+    "psutil>=6.1.0",  # For memory monitoring
+]
+
+# Testing specific
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-xdist>=3.0.0",  # Parallel testing
+    "pytest-forked>=1.4.0",  # Process isolation for memory leaks
+    "psutil>=6.1.0",  # For memory monitoring
+]
+
+# Linting and formatting
+lint = [
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+
+# Documentation
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.20.0",
+]
+optim = [
+    "optuna>=4.4.0",
+]
+viz = [
+    "marimo>=0.13.15",
+]
+
+# PyTorch with CUDA support
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cuda" }]
+astro-torch = { workspace = true }
+astro-pack = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "astro-torch",
+    "astro-pack",
+    "astro-viz",
+]
+
+[tool.ruff]
+# Ignore import errors for healpy specifically
+[tool.ruff.lint.per-file-ignores]
+"src/astro_lab/tensors/catalog.py" = ["F401"]
+
+[tool.ruff.lint]
+ignore = [
+    "F401",  # Unused imports (for optional dependencies like healpy)
+]
+
+# MyPy configuration for proper type checking with fake-bpy-module
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = false
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+# Allow imports of bpy and mathutils from fake-bpy-module
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "bpy",
+    "bpy.*",
+    "mathutils",
+    "mathutils.*",
+    "bmesh",
+    "bmesh.*",
+    "bgl",
+    "gpu",
+    "gpu.*",
+    "aud",
+    "blf",
+    "freestyle",
+    "freestyle.*",
+]
+ignore_missing_imports = true
+
+# Console scripts for CLI tools
+[project.scripts]
+astro-lab = "astro_lab.cli:main"
+astro-test = "scripts.run_tests:main"
+
+# Pytest configuration
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["test"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+addopts = [
+    "-ra",
+    "--strict-markers", 
+    "--strict-config",
+    "--tb=short",
+    "--disable-warnings",
+    "-v"
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests that take more than a few seconds",
+    "cuda: Tests that require CUDA",
+    "requires_data: Tests that require external data files",
+    "blender: Tests that require Blender",
+    "blender_compatibility: Tests for Blender compatibility and error handling"
+]
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning", 
+    "ignore::PendingDeprecationWarning",
+    "ignore::FutureWarning:torch.*",
+    "ignore::RuntimeWarning:torch.*",
+    "ignore:.*ast.Num.*:DeprecationWarning",
+    "ignore:.*ast.Str.*:DeprecationWarning", 
+    "ignore:.*imp.*:DeprecationWarning",
+    "ignore:.*NumPy 1.x.*:UserWarning",
+    "ignore:.*numpy.core.multiarray.*:UserWarning",
+    "ignore:.*Unable to initialise audio.*:UserWarning",
+    "ignore:.*Viewport capture module.*:UserWarning"
+]
