@@ -27,6 +27,34 @@ from .core import (
     load_sdss_data,  # Galaxy photometry & spectroscopy
 )
 
+# 🔧 LEGACY MANAGER SUPPORT (for CLI compatibility)
+from .manager import (
+    AstroDataManager,
+    data_manager,
+    download_bright_all_sky,
+    download_gaia,
+    import_fits,
+    import_tng50,
+    list_catalogs,
+    load_catalog,
+    load_gaia_bright_stars,
+    process_for_ml,
+)
+
+# 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
+from .utils import (
+    check_astroquery_available,
+    create_training_splits,
+    get_data_dir,
+    get_data_statistics,
+    get_fits_info,
+    load_fits_optimized,
+    load_fits_table_optimized,
+    load_splits_from_parquet,
+    preprocess_catalog,
+    save_splits_to_parquet,
+)
+
 # Clean exports - no legacy bloat
 __all__ = [
     # 🎯 CORE CLASSES
@@ -42,11 +70,33 @@ __all__ = [
     "load_lightcurve_data",  # One-liner for lightcurves
     # 🔧 CONFIGURATION
     "SURVEY_CONFIGS",  # Survey definitions (DRY)
+    # 🔧 LEGACY MANAGER SUPPORT (for CLI)
+    "AstroDataManager",
+    "data_manager",
+    "download_bright_all_sky",
+    "download_gaia",
+    "list_catalogs",
+    "load_catalog",
+    "load_gaia_bright_stars",
+    "import_fits",
+    "import_tng50",
+    "process_for_ml",
+    # 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
+    "create_training_splits",
+    "get_data_statistics",
+    "load_splits_from_parquet",
+    "preprocess_catalog",
+    "save_splits_to_parquet",
+    "get_data_dir",
+    "check_astroquery_available",
+    "load_fits_optimized",
+    "load_fits_table_optimized",
+    "get_fits_info",
 ]
 
 # Feature flags
 HAS_CLEAN_API = True
-HAS_LEGACY_API = False
+HAS_LEGACY_API = True  # Now supporting legacy manager for CLI
 
 # Supported surveys
 SUPPORTED_SURVEYS = list(SURVEY_CONFIGS.keys())
