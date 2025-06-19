@@ -1,0 +1,47 @@
+# AstroLab Default Configuration
+# =============================
+
+# Data Configuration
+data:
+  base_dir: data
+  num_workers: 4
+  pin_memory: true
+
+# Model Configuration
+model:
+  type: AstroSurveyGNN
+  hidden_dim: 128
+  num_layers: 3
+  dropout: 0.1
+
+# Training Configuration
+training:
+  max_epochs: 100
+  batch_size: 32
+  learning_rate: 0.001
+
+  # Lightning settings
+  accelerator: auto
+  devices: auto
+  precision: bf16-mixed
+
+  # Early stopping
+  patience: 10
+  monitor: val_loss
+
+# MLflow Configuration
+mlflow:
+  tracking_uri: http://localhost:5000
+  experiment_name: astro-lab-experiment
+
+  # Logging
+  log_model: true
+  log_every_n_steps: 10
+
+# Checkpoint Configuration
+checkpoints:
+  monitor: val_loss
+  save_top_k: 3
+  save_last: true
+# Survey Configuration
+# Survey-specific configs are in configs/surveys/ directory
