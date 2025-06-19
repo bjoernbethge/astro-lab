@@ -20,14 +20,38 @@ from astro_lab.data import (
     preprocess_catalog,
     save_splits_to_parquet,
     # Data management
-    AstroDataManager,
     data_manager,
     list_catalogs,
     load_catalog,
-    # TNG50 support
-    import_tng50,
 )
 # TNG50Loader removed - using data module functions instead
+
+
+def get_available_particle_types(hdf5_file: Path) -> List[str]:
+    """Get all available particle types from a TNG50 HDF5 file."""
+    try:
+        import h5py
+        
+        particle_types = []
+        with h5py.File(hdf5_file, 'r') as f:
+            for key in f.keys():
+                if key.startswith('PartType'):
+                    # Check if this particle type has data (same logic as in list command)
+                    try:
+                        coords = f[key]['Coordinates']  # type: ignore
+                        n_particles = len(coords)  # type: ignore
+                        if n_particles > 0:
+                            particle_types.append(key)
+                    except:
+                        pass  # Skip particle types without proper structure
+        
+        return sorted(particle_types)
+    except ImportError:
+        print("❌ h5py required to scan particle types")
+        return []
+    except Exception as e:
+        print(f"❌ Error scanning particle types: {e}")
+        return []
 
 
 def process_catalog_command(args):
@@ -90,6 +114,19 @@ def process_catalog_command(args):
             output_path.mkdir(parents=True, exist_ok=True)
             
             dataset_name = input_path.stem
+            
+            # Check if force mode and delete existing splits
+            if args.force:
+                split_files = [
+                    output_path / f"{dataset_name}_train.parquet",
+                    output_path / f"{dataset_name}_val.parquet", 
+                    output_path / f"{dataset_name}_test.parquet"
+                ]
+                for split_file in split_files:
+                    if split_file.exists():
+                        split_file.unlink()
+                        print(f"🗑️  Deleted existing: {split_file.name}")
+            
             save_splits_to_parquet(train, val, test, output_path, dataset_name)
             print(f"✅ Splits saved to: {output_path}")
         else:
@@ -102,6 +139,11 @@ def process_catalog_command(args):
             output_file = output_path / f"{input_path.stem}_processed.parquet"
         else:
             output_file = output_path
+        
+        # Check if force mode and delete existing file
+        if args.force and output_file.exists():
+            output_file.unlink()
+            print(f"🗑️  Deleted existing: {output_file.name}")
         
         df_clean.write_parquet(output_file)
         print(f"💾 Processed catalog saved to: {output_file}")
@@ -179,80 +221,6 @@ def load_splits_command(args):
 
 
 def process_tng50_command(args):
-    """Process TNG50 simulation data using data module functions."""
-    snap_file = Path(args.input)
-    if not snap_file.exists():
-        print(f"❌ TNG50 snapshot file not found: {snap_file}")
-        sys.exit(1)
-    
-    print(f"🌌 Processing TNG50 snapshot: {snap_file.name}")
-    
-    try:
-        # Use data module's import_tng50 function
-        particle_types = args.particle_types.split(',') if args.particle_types else ["PartType5"]
-        
-        # Process each particle type separately using data module
-        processed_files = []
-        for ptype in particle_types:
-            print(f"📊 Processing {ptype}...")
-            
-            # Import using data module function
-            parquet_file = import_tng50(snap_file, dataset_name=ptype)
-            processed_files.append(parquet_file)
-            
-            # Load the processed data
-            df = load_catalog(parquet_file)
-            
-            # Limit particles if requested
-            if len(df) > args.max_particles:
-                df = df.sample(args.max_particles, seed=args.random_state)
-                print(f"  • Limited to {args.max_particles:,} particles")
-            
-            print(f"  • {ptype}: {len(df):,} particles, {len(df.columns)} columns")
-            
-            # Show statistics if requested
-            if args.stats:
-                stats = get_data_statistics(df)
-                print(f"    Memory: {stats['memory_usage_mb']:.1f} MB")
-                print(f"    Numeric columns: {len(stats['numeric_columns'])}")
-            
-            # Save processed data or create splits
-            if args.create_splits:
-                print(f"  🔄 Creating training splits for {ptype}...")
-                train, val, test = create_training_splits(
-                    df,
-                    test_size=args.test_size,
-                    val_size=args.val_size,
-                    random_state=args.random_state,
-                    shuffle=args.shuffle
-                )
-                
-                if args.output:
-                    output_path = Path(args.output)
-                    output_path.mkdir(parents=True, exist_ok=True)
-                    
-                    dataset_name = f"tng50_{snap_file.stem}_{ptype.lower()}"
-                    save_splits_to_parquet(train, val, test, output_path, dataset_name)
-                    print(f"    ✅ Splits saved to: {output_path}")
-            
-            elif args.output:
-                output_path = Path(args.output)
-                if output_path.is_dir():
-                    output_file = output_path / f"tng50_{snap_file.stem}_{ptype.lower()}.parquet"
-                else:
-                    output_file = output_path.parent / f"{output_path.stem}_{ptype.lower()}.parquet"
-                
-                df.write_parquet(output_file)
-                print(f"    💾 Data saved to: {output_file}")
-        
-        print(f"\n✅ TNG50 processing complete! Processed {len(particle_types)} particle types.")
-        
-    except Exception as e:
-        print(f"❌ Error processing TNG50 data: {e}")
-        sys.exit(1)
-
-
-def process_tng50_graphs_command(args):
     """Process TNG50 data into graph format (.pt files)."""
     try:
         from astro_lab.data.datasets.astronomical import TNG50GraphDataset
@@ -264,8 +232,17 @@ def process_tng50_graphs_command(args):
         
         print(f"🌌 Processing TNG50 snapshot into graphs: {snap_file.name}")
         
-        # Parse particle types
-        particle_types = [p.strip() for p in args.particle_types.split(',')]
+        # Determine particle types to process
+        if args.all:
+            print("🔍 Scanning snapshot for all available particle types...")
+            all_particle_types = get_available_particle_types(snap_file)
+            if not all_particle_types:
+                print("❌ No particle types found in snapshot")
+                sys.exit(1)
+            particle_types = all_particle_types
+            print(f"📋 Found particle types: {', '.join(particle_types)}")
+        else:
+            particle_types = [p.strip() for p in args.particle_types.split(',')]
         
         # English particle type names
         particle_names = {
@@ -290,6 +267,14 @@ def process_tng50_graphs_command(args):
                 output_dir = Path("data/processed/tng50_graphs") / english_name
             
             output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # If force mode, delete existing processed files
+            if args.force:
+                processed_dir = output_dir / "processed"
+                if processed_dir.exists():
+                    for pt_file in processed_dir.glob("*.pt"):
+                        pt_file.unlink()
+                        print(f"🗑️  Deleted existing graph: {pt_file.name}")
             
             # Create TNG50 graph dataset
             dataset = TNG50GraphDataset(
@@ -346,6 +331,7 @@ def list_tng50_snapshots_command(args):
         print(f"\n🔍 Inspecting first snapshot: {snap_files[0].name}")
         try:
             # Use AstroDataManager for inspection - it has robust h5py handling
+            from astro_lab.data import AstroDataManager
             manager = AstroDataManager()
             
             import h5py
@@ -411,11 +397,20 @@ def main():
 # Process a catalog with statistics
 astro-lab preprocess process catalog.parquet --stats --create-splits --output processed/
 
+# Force reprocessing even if files exist
+astro-lab preprocess process catalog.parquet --force --output processed/
+
 # Show catalog statistics
 astro-lab preprocess stats catalog.parquet --verbose
 
-# Process TNG50 data
+# Process TNG50 data into optimized graphs
 astro-lab preprocess tng50 snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 1000
+
+# Process ALL particle types in TNG50 snapshot
+astro-lab preprocess tng50 snap_099.0.hdf5 --all --max-particles 5000 --radius 2.0
+
+# Force TNG50 reprocessing
+astro-lab preprocess tng50 snap_099.0.hdf5 --force --particle-types PartType4,PartType5
 
 # List available catalogs
 astro-lab preprocess list-catalogs
@@ -431,6 +426,8 @@ astro-lab preprocess tng50-list --inspect
     process_parser = subparsers.add_parser('process', help='Process and clean a catalog')
     process_parser.add_argument('input', help='Input catalog file (.parquet or .csv)')
     process_parser.add_argument('-o', '--output', help='Output directory or file')
+    process_parser.add_argument('--force', action='store_true',
+                               help='Force reprocessing even if output files exist')
     process_parser.add_argument('--clean-nulls', action='store_true', default=True,
                                help='Remove columns with >95%% null values')
     process_parser.add_argument('--min-observations', type=int,
@@ -452,39 +449,22 @@ astro-lab preprocess tng50-list --inspect
     process_parser.add_argument('--stats', action='store_true',
                                help='Show statistics before and after processing')
     
-    # TNG50 process command
-    tng50_parser = subparsers.add_parser('tng50', help='Process TNG50 simulation data')
+    # TNG50 processing command (optimized graph format)
+    tng50_parser = subparsers.add_parser('tng50', help='Process TNG50 simulation data into graph format')
     tng50_parser.add_argument('input', help='TNG50 snapshot file (.hdf5)')
-    tng50_parser.add_argument('-o', '--output', help='Output directory or file')
-    tng50_parser.add_argument('--particle-types', default='PartType5',
-                             help='Comma-separated particle types (default: PartType5)')
+    tng50_parser.add_argument('-o', '--output', help='Output directory (default: data/processed/tng50_graphs)')
+    tng50_parser.add_argument('--particle-types', default='PartType4,PartType5',
+                             help='Comma-separated particle types (default: PartType4,PartType5)')
+    tng50_parser.add_argument('--all', action='store_true',
+                             help='Process all available particle types in the snapshot')
     tng50_parser.add_argument('--max-particles', type=int, default=10000,
                              help='Maximum particles per type (default: 10000)')
-    tng50_parser.add_argument('--create-splits', action='store_true',
-                             help='Create train/val/test splits')
-    tng50_parser.add_argument('--test-size', type=float, default=0.2,
-                             help='Test set size (default: 0.2)')
-    tng50_parser.add_argument('--val-size', type=float, default=0.1,
-                             help='Validation set size (default: 0.1)')
-    tng50_parser.add_argument('--random-state', type=int, default=42,
-                             help='Random seed for splits (default: 42)')
-    tng50_parser.add_argument('--no-shuffle', dest='shuffle', action='store_false',
-                             help='Disable shuffling for splits')
+    tng50_parser.add_argument('--radius', type=float, default=1.0,
+                             help='Connection radius in Mpc (default: 1.0)')
+    tng50_parser.add_argument('--force', action='store_true',
+                             help='Force reprocessing even if graph files exist')
     tng50_parser.add_argument('--stats', action='store_true',
-                             help='Show statistics for processed data')
-    
-    # TNG50 graph processing command (pt format)
-    tng50_graph_parser = subparsers.add_parser('tng50-graphs', help='Process TNG50 into graph format (.pt files)')
-    tng50_graph_parser.add_argument('input', help='TNG50 snapshot file (.hdf5)')
-    tng50_graph_parser.add_argument('-o', '--output', help='Output directory (default: data/processed/tng50_graphs)')
-    tng50_graph_parser.add_argument('--particle-types', default='PartType4,PartType5',
-                                   help='Comma-separated particle types (default: PartType4,PartType5)')
-    tng50_graph_parser.add_argument('--max-particles', type=int, default=10000,
-                                   help='Maximum particles per type (default: 10000)')
-    tng50_graph_parser.add_argument('--radius', type=float, default=1.0,
-                                   help='Connection radius in Mpc (default: 1.0)')
-    tng50_graph_parser.add_argument('--stats', action='store_true',
-                                   help='Show graph statistics')
+                             help='Show graph statistics')
 
     # TNG50 list command
     tng50_list_parser = subparsers.add_parser('tng50-list', help='List TNG50 snapshot files')
@@ -517,8 +497,6 @@ astro-lab preprocess tng50-list --inspect
         process_catalog_command(args)
     elif args.command == 'tng50':
         process_tng50_command(args)
-    elif args.command == 'tng50-graphs':
-        process_tng50_graphs_command(args)
     elif args.command == 'tng50-list':
         list_tng50_snapshots_command(args)
     elif args.command == 'stats':
@@ -538,10 +516,10 @@ astro-lab preprocess tng50-list --inspect
         print("  • get_data_statistics(df)")
         print()
         print("🌌 TNG50 Simulation:")
-        print("  • import_tng50(hdf5_file, dataset_name)")
-        print("  • AstroDataManager.import_tng50_hdf5()")
-        print("  • TNG50GraphDataset")
+        print("  • TNG50GraphDataset (optimized graph processing)")
         print("  • create_tng50_dataloader()")
+        print("  • AstroDataManager.import_tng50_hdf5() (low-level)")
+        print("  • import_tng50() (legacy support)")
         print()
         print("📊 Data Management:")
         print("  • AstroDataManager()")
