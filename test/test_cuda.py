@@ -10,8 +10,9 @@ from typing import Dict
 
 import pytest
 import torch
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader
 
+from astro_lab.data import AstroDataset, create_astro_dataloader
 from astro_lab.models.astro import AstroSurveyGNN
 from astro_lab.models.utils import create_gaia_classifier
 
@@ -108,21 +109,62 @@ def test_astro_trainer_gpu():
 
     print("🧪 Real AstroTrainer GPU Training:")
 
-    # Create model and lightning module
-    model = AstroSurveyGNN(hidden_dim=32, output_dim=4, num_layers=2)
+    # Create model and lightning module for UNSUPERVISED learning
+    model = AstroSurveyGNN(
+        hidden_dim=32, output_dim=128, num_layers=2
+    )  # Embedding dimension
+
     lightning_module = AstroLightningModule(
-        model=model, task_type="classification", learning_rate=1e-3
+        model=model,
+        task_type="unsupervised",  # Contrastive learning - realistic for astronomy!
+        learning_rate=1e-3,
+        temperature=0.1,  # For contrastive loss
+        projection_dim=128,  # For projection head
     )
 
-    # Create simple dataset for training
-    n_samples = 100
-    x = torch.randn(n_samples, 8)
-    y = torch.randint(0, 4, (n_samples,))
+    # Manually initialize projection head since model has hidden_dim attribute
+    lightning_module.projection_head = lightning_module._auto_create_projection_head(
+        model.hidden_dim
+    )
 
-    # Create DataLoaders
-    dataset = TensorDataset(x, y)
-    train_loader = DataLoader(dataset, batch_size=16, shuffle=True)
-    val_loader = DataLoader(dataset, batch_size=16)
+    # Use existing AstroDataset infrastructure for realistic testing
+    print("  Creating AstroDataset for testing...")
+
+    # Create test data using AstroDataset (much cleaner than custom dataset!)
+    try:
+        # Create dataset using the existing infrastructure
+        dataset = AstroDataset(survey="gaia", max_samples=100, return_tensor=False)
+
+        if len(dataset) > 0:
+            # Get the graph data - no labels needed for unsupervised learning!
+            graph_data = dataset[0]
+
+            # Create train/val loaders using PyTorch Geometric
+            from torch_geometric.loader import DataLoader as PyGDataLoader
+
+            train_loader = PyGDataLoader([graph_data], batch_size=1, shuffle=True)
+            val_loader = PyGDataLoader([graph_data], batch_size=1, shuffle=False)
+        else:
+            raise ValueError("AstroDataset is empty")
+
+    except Exception as e:
+        print(f"  Warning: Could not create AstroDataset ({e}), using fallback...")
+
+        # Fallback: Create minimal dataset manually if AstroDataset fails
+        from torch_geometric.data import Data
+        from torch_geometric.loader import DataLoader as PyGDataLoader
+
+        # Create some sample graph data (no labels for unsupervised learning)
+        data_list = []
+        for i in range(50):
+            x = torch.randn(16, 8)  # 16 nodes, 8 features
+            edge_index = torch.randint(0, 16, (2, 48))  # Random edges
+            # No labels needed for unsupervised learning!
+            data = Data(x=x, edge_index=edge_index)
+            data_list.append(data)
+
+        train_loader = PyGDataLoader(data_list[:40], batch_size=16, shuffle=True)
+        val_loader = PyGDataLoader(data_list[40:], batch_size=16, shuffle=False)
 
     # Create AstroTrainer with correct parameters
     trainer = AstroTrainer(
@@ -130,7 +172,6 @@ def test_astro_trainer_gpu():
         max_epochs=2,
         accelerator="gpu" if torch.cuda.is_available() else "cpu",
         devices=1,
-        num_sanity_val_steps=0,  # Skip validation sanity check
         patience=5,
     )
     print("  ✓ AstroTrainer created with GPU accelerator")

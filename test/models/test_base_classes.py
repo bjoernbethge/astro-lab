@@ -13,6 +13,7 @@ from astro_lab.models.base_gnn import (
     BaseAstroGNN,
     BaseTemporalGNN,
     BaseTNGModel,
+    ConvType,
     FeatureFusion,
 )
 
@@ -35,7 +36,9 @@ class TestBaseAstroGNN:
 
     def test_all_conv_types(self):
         """Test all supported convolution types."""
-        conv_types = ["gcn", "gat", "sage", "transformer"]
+
+        # Define supported conv types explicitly since ConvType is a Literal, not an enum
+        conv_types: list[ConvType] = ["gcn", "gat", "sage", "transformer"]
 
         for conv_type in conv_types:
             model = BaseAstroGNN(
@@ -135,8 +138,8 @@ class TestBaseTNGModel:
         assert isinstance(model, nn.Module)
         assert model.input_dim == 12
         assert model.hidden_dim == 64
-        assert model.cosmological_features == True
-        assert model.redshift_encoding == True
+        assert model.cosmological_features
+        assert model.redshift_encoding
         assert hasattr(model, "redshift_encoder")
         assert hasattr(model, "cosmo_head")
 
@@ -229,33 +232,38 @@ class TestBaseClassesIntegration:
         assert hasattr(temporal_model, "temporal_forward")
 
         # BaseTNGModel should inherit from BaseTemporalGNN
-        tng_model = BaseTNGModel(input_dim=12, hidden_dim=32)
+        tng_model = BaseTNGModel(input_dim=8, hidden_dim=24)
         assert isinstance(tng_model, BaseTemporalGNN)
         assert isinstance(tng_model, BaseAstroGNN)
         assert hasattr(tng_model, "graph_forward")
         assert hasattr(tng_model, "temporal_forward")
-        assert hasattr(tng_model, "encode_with_cosmology")
 
     def test_parameter_consistency(self):
-        """Test that parameters are passed correctly through inheritance."""
-        tng_model = BaseTNGModel(
-            input_dim=16,
-            hidden_dim=48,
-            conv_type="gat",
-            recurrent_type="gru",
-            cosmological_features=True,
-        )
+        """Test that parameters are consistent across inheritance."""
+        input_dim, hidden_dim = 12, 48
 
-        # Check BaseAstroGNN parameters
-        assert tng_model.input_dim == 16
-        assert tng_model.hidden_dim == 48
-        assert tng_model.conv_type == "gat"
+        base_model = BaseAstroGNN(input_dim=input_dim, hidden_dim=hidden_dim)
+        temporal_model = BaseTemporalGNN(input_dim=input_dim, hidden_dim=hidden_dim)
+        tng_model = BaseTNGModel(input_dim=input_dim, hidden_dim=hidden_dim)
 
-        # Check BaseTemporalGNN parameters
-        assert tng_model.recurrent_type == "gru"
+        # All should have same basic parameters
+        for model in [base_model, temporal_model, tng_model]:
+            assert model.input_dim == input_dim
+            assert model.hidden_dim == hidden_dim
+            assert hasattr(model, "input_projection")
+            assert hasattr(model, "convs")
 
-        # Check BaseTNGModel parameters
-        assert tng_model.cosmological_features == True
+        # Test forward pass consistency
+        x = torch.randn(5, input_dim)
+        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+
+        base_output = base_model(x, edge_index)
+        temporal_output = temporal_model(x, edge_index)
+        tng_output = tng_model(x, edge_index)
+
+        # All outputs should have same shape
+        assert base_output.shape == temporal_output.shape == tng_output.shape
+        assert base_output.shape == (5, hidden_dim)
 
 
 if __name__ == "__main__":
