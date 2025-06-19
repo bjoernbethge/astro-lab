@@ -17,52 +17,33 @@ import numpy as np
 import polars as pl
 from astroquery.gaia import Gaia
 
+from .config import DataConfig, data_config
+
 
 class AstroDataManager:
     """Modern astronomical data management with structured storage."""
 
     def __init__(self, base_dir: Union[str, Path] = "data"):
-        self.base_dir = Path(base_dir)
+        self.config = DataConfig(base_dir)
+        self.base_dir = self.config.base_dir
         self.setup_directories()
 
     def setup_directories(self):
-        """Create standardized data directory structure."""
-        dirs = [
-            "raw/gaia",
-            "raw/fits",
-            "raw/tng50",
-            "raw/hdf5",
-            "processed/catalogs",
-            "processed/ml_ready",
-            "processed/features",
-            "cache",
-            "config",
-        ]
-
-        # Check if main structure exists (just check base_dir and one key subdirectory)
-        if (
-            not (self.base_dir / "raw").exists()
-            or not (self.base_dir / "processed").exists()
-        ):
-            for dir_path in dirs:
-                (self.base_dir / dir_path).mkdir(parents=True, exist_ok=True)
-            print(f"📁 Data structure created in: {self.base_dir}")
-        else:
-            # Ensure all directories exist without printing
-            for dir_path in dirs:
-                (self.base_dir / dir_path).mkdir(parents=True, exist_ok=True)
+        """Create standardized data directory structure using new config."""
+        # Use new clean structure from config
+        self.config.setup_directories()
 
     @property
     def raw_dir(self) -> Path:
-        return self.base_dir / "raw"
+        return self.config.raw_dir
 
     @property
     def processed_dir(self) -> Path:
-        return self.base_dir / "processed"
+        return self.config.processed_dir
 
     @property
     def cache_dir(self) -> Path:
-        return self.base_dir / "cache"
+        return self.config.cache_dir
 
     def download_gaia_catalog(
         self,

@@ -11,6 +11,15 @@ Quick Start:
 """
 
 # 🌟 PURE CLEAN API - Polars-First Only
+# 🔧 CONFIGURATION SYSTEM
+from .config import (
+    DataConfig,
+    data_config,
+    get_data_dir,
+    get_processed_dir,
+    get_raw_dir,
+    get_survey_paths,
+)
 from .core import (
     # Survey Configuration (for advanced users)
     SURVEY_CONFIGS,
@@ -78,6 +87,9 @@ __all__ = [
     "detect_survey_type",  # Auto-detect survey type
     # 🔧 CONFIGURATION
     "SURVEY_CONFIGS",  # Survey definitions (DRY)
+    "DataConfig",  # New centralized config system
+    "data_config",  # Global config instance
+    "get_survey_paths",  # Get all paths for a survey
     # 🔧 LEGACY MANAGER SUPPORT (for CLI)
     "AstroDataManager",
     "data_manager",

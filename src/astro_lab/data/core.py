@@ -249,10 +249,11 @@ class AstroDataset(InMemoryDataset):
         self.max_samples = max_samples
         self.return_tensor = return_tensor
 
-        # Set default root
+        # Set default root using new config system
         if root is None:
-            tensor_suffix = "_tensor" if return_tensor else ""
-            root = f"data/processed/{survey}_k{k_neighbors}{tensor_suffix}"
+            from .config import data_config
+
+            root = str(data_config.get_survey_processed_dir(survey))
 
         super().__init__(root, transform, force_reload=force_reload)
 
