@@ -5,18 +5,18 @@ A specialized Python library for astronomical data processing with PyTorch-based
 ## 🌟 Key Features
 
 ### 3D Spatial Coordinates
-- **Direct Distance Measurements**: Uses precise ZDIST values from NSA catalog (not just redshift)
+- **Direct Distance Measurements**: Support for precise distance values (e.g., NSA ZDIST)
 - **Spatial3DTensor**: Complete 3D coordinate processing (Spherical ↔ Cartesian)
 - **Neighbor Search**: Efficient algorithms for galaxy clustering
 - **Density Fields**: 3D grid-based structure analysis
 - **Volume Calculations**: Cosmological volumes and number densities
 
 ### Data Sources
-- **NSA (NASA Sloan Atlas)**: 145,155 galaxies with direct distance measurements
-- **Exoplanets**: 5,921 confirmed exoplanets from NASA Exoplanet Archive
+- **NSA (NASA Sloan Atlas)**: Galaxy catalog with distance measurements
+- **Exoplanets**: Confirmed exoplanets from NASA Exoplanet Archive
 - **AstroML Integration**: LINEAR light curves, SDSS spectra
 - **Satellite Data**: TLE-based orbital mechanics
-- **Simulation Bridge**: Connection to cosmological simulations
+- **Simulation Bridge**: Connection to cosmological simulations (TNG50)
 
 ### Tensor-based Processing
 - **PyTorch Integration**: Full GPU acceleration support
@@ -29,43 +29,86 @@ A specialized Python library for astronomical data processing with PyTorch-based
 ### Installation
 ```bash
 # Clone repository
-git clone https://github.com/user/astro-lab.git
+git clone https://github.com/bjoernbethge/astro-lab.git
 cd astro-lab
 
 # Install with uv (recommended)
-uv pip install -e .
+uv sync
 ```
 
-### Download Exoplanet Data
-```bash
-# Download all confirmed exoplanets (5,921 planets)
-python scripts/download_all_exoplanets.py
+## 🔧 AstroLab CLI
 
-# Analyze the data
-python examples/exoplanet_data_summary.py
+The `astro-lab` command provides powerful tools for data processing and machine learning:
+
+### 📥 Download Data
+```bash
+# Download Gaia DR3 bright stars (magnitude < 12.0)
+astro-lab download gaia --magnitude-limit 12.0
+
+# List all available datasets
+astro-lab download list
+```
+
+### 🔄 Data Preprocessing
+```bash
+# Show available preprocessing functions
+astro-lab preprocess --show-functions
+
+# Process a catalog with statistics and train/val/test splits
+astro-lab preprocess process catalog.parquet --stats --create-splits --output processed/
+
+# Process TNG50 simulation data
+astro-lab preprocess tng50 data/raw/snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 5000
+
+# List TNG50 snapshots with inspection
+astro-lab preprocess tng50-list --inspect
+```
+
+### 🎯 Machine Learning Training
+```bash
+# Create a default configuration file
+astro-lab train create-config --output my_config.yaml
+
+# Train with configuration file
+astro-lab train train --config my_config.yaml
+
+# Quick training without config
+astro-lab train train --dataset gaia --model gaia_classifier --epochs 50 --batch-size 64
+
+# Hyperparameter optimization
+astro-lab train optimize --config optimization_config.yaml
+```
+
+### Basic Data Loading
+```bash
+# Check available datasets
+python scripts/check_datasets.py
+
+# Process NSA catalog
+python examples/nsa_processing_example.py
 ```
 
 ### Basic 3D Coordinate Analysis
 ```python
-from astro_lab.data import load_nsa_data
+from astro_lab.data import load_catalog
 from astro_lab.tensors.spatial_3d import Spatial3DTensor
+import polars as pl
 
-# Load NSA data with direct distance measurements
-df = load_nsa_data(max_samples=1000)
+# Load NSA data
+df = pl.read_parquet("data/processed/nsa/nsa_catalog.parquet").head(1000)
 
-# Create 3D spatial tensor
+# Convert to spatial tensor
 catalog_data = {
-    "RA": df["RA"].to_pandas(),
-    "DEC": df["DEC"].to_pandas(), 
-    "ZDIST": df["ZDIST"].to_pandas(),  # Direct distances!
-    "Z": df["Z"].to_pandas()
+    "RA": df["RA"].to_pandas() if "RA" in df.columns else df["ra"].to_pandas(),
+    "DEC": df["DEC"].to_pandas() if "DEC" in df.columns else df["dec"].to_pandas(),
+    "DISTANCE": df.get_column("zdist").to_pandas() if "zdist" in df.columns else df.get_column("z").to_pandas() * 3000
 }
 
 spatial_tensor = Spatial3DTensor.from_catalog_data(
     catalog_data,
-    ra_col="RA",
+    ra_col="RA", 
     dec_col="DEC",
-    distance_col="ZDIST"  # Uses precise measurements
+    distance_col="DISTANCE"
 )
 
 # 3D analysis
@@ -73,19 +116,8 @@ ra, dec, distance = spatial_tensor.get_coordinates_spherical()
 x, y, z = spatial_tensor.get_coordinates_cartesian()
 
 # Neighbor search
-neighbors = spatial_tensor.find_neighbors(radius=0.01)  # 0.01 Mpc
-
-# Density field
-density_field = spatial_tensor.get_density_field(grid_size=20)
+neighbors = spatial_tensor.find_neighbors(radius=10.0)  # 10 Mpc radius
 ```
-
-## 📊 Data Quality
-
-### NSA Distance Measurements (ZDIST)
-- **Range**: 0.002 - 0.055 Mpc (local galaxies)
-- **Precision**: Direct measurements, not just Hubble relation
-- **Uncertainties**: ZDIST_ERR available
-- **Completeness**: 100% of NSA galaxies have ZDIST
 
 ## 🛠️ Development
 
@@ -93,22 +125,31 @@ density_field = spatial_tensor.get_density_field(grid_size=20)
 ```
 astro-lab/
 ├── src/astro_lab/
+│   ├── cli/            # Command Line Interface  
 │   ├── data/           # Data processing (Polars)
 │   ├── tensors/        # Tensor implementations
 │   ├── models/         # ML models
-│   └── simulation/     # Simulation bridge
+│   ├── training/       # Lightning training
+│   └── utils/          # Utilities & visualization
 ├── examples/           # Usage examples
-├── data/              # Data storage
-└── scripts/           # Utility scripts
+├── scripts/           # Utility scripts
+├── test/             # Test suite
+└── docs/             # Documentation
 ```
 
-### Tests & Demos
+### Available Examples
 ```bash
-# Quick check of 3D coordinates
-python check_3d_coords.py
+# NSA galaxy processing
+python examples/nsa_processing_example.py
 
-# Full 3D demo
-python examples/working_3d_demo.py
+# AstroQuery demonstrations  
+python examples/astroquery_demo.py
+
+# FITS optimization
+python examples/fits_optimization_demo.py
+
+# Dataset verification
+python scripts/check_datasets.py
 ```
 
 ## 📈 Performance
@@ -117,15 +158,29 @@ python examples/working_3d_demo.py
 - **PyTorch Integration**: GPU acceleration available
 - **Lazy Loading**: Memory-efficient processing
 - **Parquet Format**: Optimized data storage
+- **Graph Neural Networks**: Scalable spatial analysis
 
 ## 🎯 Scientific Applications
 
 - **Large-Scale Structure**: 3D galaxy distributions
 - **Exoplanet Analysis**: Classification, habitability, discovery methods
 - **Clustering Analysis**: Neighbor-based studies
-- **Machine Learning**: Tensor-based features
-- **Simulation Comparison**: Observation vs. theory
+- **Machine Learning**: Tensor-based features for GNNs
+- **Simulation Comparison**: Observation vs. theory (TNG50 integration)
 - **Multi-Survey Analysis**: Cross-matching different catalogs
+
+## 🧪 Testing
+
+```bash
+# Run test suite
+python scripts/run_tests.py
+
+# Check CUDA availability
+python test/test_cuda.py
+
+# Verify datasets
+python scripts/check_datasets.py
+```
 
 ## 🤝 Contributing
 
