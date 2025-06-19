@@ -1,24 +1,24 @@
 """
-AstroLab Training Module
+Training utilities for AstroLab
+===============================
 
-PyTorch Lightning + MLflow + Optuna integration for astronomical models.
-
-Features:
-- LightningModule wrapper for AstroLab models
-- MLflow experiment tracking
-- Optuna hyperparameter optimization
-- Multi-GPU training support
-- Automated checkpointing and logging
+PyTorch Lightning training components with state-of-the-art optimizations.
 """
 
 from .lightning_module import AstroLightningModule
-from .mlflow_logger import AstroMLflowLogger
-from .optuna_trainer import OptunaTrainer
 from .trainer import AstroTrainer
+from .optuna_trainer import OptunaTrainer
+
+# Import DataModule factory
+try:
+    from astro_lab.data.datamodules import create_astro_datamodule
+except ImportError:
+    # Fallback if datamodules not available
+    create_astro_datamodule = None
 
 __all__ = [
     "AstroLightningModule",
-    "AstroMLflowLogger",
+    "AstroTrainer", 
     "OptunaTrainer",
-    "AstroTrainer",
+    "create_astro_datamodule",
 ]

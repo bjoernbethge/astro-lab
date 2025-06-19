@@ -225,76 +225,54 @@ def process_tng50_command(args):
     try:
         from astro_lab.data.datasets.astronomical import TNG50GraphDataset
         
+        # Handle --all-snapshots mode
+        if args.all_snapshots:
+            if args.input:
+                base_dir = Path(args.input)
+            else:
+                base_dir = Path("data/raw/TNG50-4/output")
+            
+            if not base_dir.exists():
+                print(f"❌ Base directory not found: {base_dir}")
+                sys.exit(1)
+            
+            # Find all snapshots
+            snap_files = []
+            for snapdir in base_dir.glob("snapdir_*"):
+                if snapdir.is_dir():
+                    snap_files.extend(snapdir.glob("snap_*.hdf5"))
+            
+            if not snap_files:
+                print(f"❌ No snapshot files found in: {base_dir}")
+                sys.exit(1)
+            
+            snap_files.sort()
+            print(f"🌌 Processing {len(snap_files)} TNG50 snapshots into graphs")
+            
+            success_count = 0
+            for i, snap_file in enumerate(snap_files, 1):
+                print(f"\n📊 Snapshot {i}/{len(snap_files)}: {snap_file.name}")
+                try:
+                    process_single_tng50_snapshot(snap_file, args)
+                    success_count += 1
+                except Exception as e:
+                    print(f"❌ Error processing {snap_file.name}: {e}")
+            
+            print(f"\n✅ Batch processing complete: {success_count}/{len(snap_files)} snapshots processed")
+            return
+        
+        # Single snapshot mode
+        if not args.input:
+            print("❌ Input snapshot file required (or use --all-snapshots)")
+            sys.exit(1)
+            
         snap_file = Path(args.input)
         if not snap_file.exists():
             print(f"❌ Snapshot file not found: {snap_file}")
             sys.exit(1)
         
         print(f"🌌 Processing TNG50 snapshot into graphs: {snap_file.name}")
-        
-        # Determine particle types to process
-        if args.all:
-            print("🔍 Scanning snapshot for all available particle types...")
-            all_particle_types = get_available_particle_types(snap_file)
-            if not all_particle_types:
-                print("❌ No particle types found in snapshot")
-                sys.exit(1)
-            particle_types = all_particle_types
-            print(f"📋 Found particle types: {', '.join(particle_types)}")
-        else:
-            particle_types = [p.strip() for p in args.particle_types.split(',')]
-        
-        # English particle type names
-        particle_names = {
-            "PartType0": "gas",
-            "PartType1": "dark_matter", 
-            "PartType4": "stars",
-            "PartType5": "black_holes"
-        }
-        
-        for ptype in particle_types:
-            if ptype not in particle_names:
-                print(f"⚠️  Unknown particle type: {ptype}")
-                continue
-                
-            english_name = particle_names[ptype]
-            print(f"  🔄 {english_name.title()} ({ptype})")
-            
-            # Create output directory
-            if args.output:
-                output_dir = Path(args.output) / english_name
-            else:
-                output_dir = Path("data/processed/tng50_graphs") / english_name
-            
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # If force mode, delete existing processed files
-            if args.force:
-                processed_dir = output_dir / "processed"
-                if processed_dir.exists():
-                    for pt_file in processed_dir.glob("*.pt"):
-                        pt_file.unlink()
-                        print(f"🗑️  Deleted existing graph: {pt_file.name}")
-            
-            # Create TNG50 graph dataset
-            dataset = TNG50GraphDataset(
-                root=str(output_dir),
-                snapshot_file=str(snap_file),
-                particle_type=ptype,
-                radius=args.radius,
-                max_particles=args.max_particles
-            )
-            
-            # The dataset will automatically process and save as .pt file
-            print(f"    ✅ Graph saved to: {output_dir}")
-            
-            if args.stats and len(dataset) > 0:
-                data = dataset[0]
-                print(f"    📊 Nodes: {data.num_nodes:,}")  # type: ignore
-                print(f"    📊 Edges: {data.num_edges:,}")  # type: ignore
-                print(f"    📊 Features: {data.x.shape[1] if data.x is not None else 0}")  # type: ignore
-        
-        print(f"\n✅ TNG50 graph processing complete!")
+        process_single_tng50_snapshot(snap_file, args)
         
     except ImportError as e:
         print(f"❌ Missing dependencies: {e}")
@@ -305,9 +283,78 @@ def process_tng50_command(args):
         sys.exit(1)
 
 
+def process_single_tng50_snapshot(snap_file: Path, args):
+    """Process a single TNG50 snapshot."""
+    from astro_lab.data.datasets.astronomical import TNG50GraphDataset
+    
+    # Determine particle types to process
+    if args.all:
+        print("🔍 Scanning snapshot for all available particle types...")
+        all_particle_types = get_available_particle_types(snap_file)
+        if not all_particle_types:
+            print("❌ No particle types found in snapshot")
+            sys.exit(1)
+        particle_types = all_particle_types
+        print(f"📋 Found particle types: {', '.join(particle_types)}")
+    else:
+        particle_types = [p.strip() for p in args.particle_types.split(',')]
+    
+    # English particle type names
+    particle_names = {
+        "PartType0": "gas",
+        "PartType1": "dark_matter", 
+        "PartType4": "stars",
+        "PartType5": "black_holes"
+    }
+    
+    for ptype in particle_types:
+        if ptype not in particle_names:
+            print(f"⚠️  Unknown particle type: {ptype}")
+            continue
+            
+        english_name = particle_names[ptype]
+        print(f"  🔄 {english_name.title()} ({ptype})")
+        
+        # Create output directory
+        if args.output:
+            output_dir = Path(args.output) / english_name
+        else:
+            output_dir = Path("data/processed/tng50_graphs") / english_name
+        
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # If force mode, delete existing processed files
+        if args.force:
+            processed_dir = output_dir / "processed"
+            if processed_dir.exists():
+                for pt_file in processed_dir.glob("*.pt"):
+                    pt_file.unlink()
+                    print(f"🗑️  Deleted existing graph: {pt_file.name}")
+        
+        # Create TNG50 graph dataset
+        dataset = TNG50GraphDataset(
+            root=str(output_dir),
+            snapshot_file=str(snap_file),
+            particle_type=ptype,
+            radius=args.radius,
+            max_particles=args.max_particles
+        )
+        
+        # The dataset will automatically process and save as .pt file
+        print(f"    ✅ Graph saved to: {output_dir}")
+        
+        if args.stats and len(dataset) > 0:
+            data = dataset[0]
+            print(f"    📊 Nodes: {data.num_nodes:,}")  # type: ignore
+            print(f"    📊 Edges: {data.num_edges:,}")  # type: ignore
+            print(f"    📊 Features: {data.x.shape[1] if data.x is not None else 0}")  # type: ignore
+    
+    print(f"✅ TNG50 graph processing complete!")
+
+
 def list_tng50_snapshots_command(args):
     """List available TNG50 snapshot files."""
-    tng50_dir = Path(args.directory) if args.directory else Path("data/raw/TNG50-4/output/snapdir_099")
+    tng50_dir = Path(args.directory) if args.directory else Path("data/raw/TNG50-4/output")
     
     if not tng50_dir.exists():
         print(f"❌ TNG50 directory not found: {tng50_dir}")
@@ -315,9 +362,15 @@ def list_tng50_snapshots_command(args):
     
     print(f"📂 TNG50 snapshots in: {tng50_dir}")
     
-    snap_files = list(tng50_dir.glob("snap_*.hdf5"))
+    # Search recursively for snapshot files in snapdir_* subdirectories
+    snap_files = []
+    for snapdir in tng50_dir.glob("snapdir_*"):
+        if snapdir.is_dir():
+            snap_files.extend(snapdir.glob("snap_*.hdf5"))
+    
     if not snap_files:
         print("❌ No TNG50 snapshot files found")
+        print("💡 Tried searching in snapdir_* subdirectories")
         return
     
     snap_files.sort()
@@ -409,6 +462,9 @@ astro-lab preprocess tng50 snap_099.0.hdf5 --particle-types PartType4,PartType5 
 # Process ALL particle types in TNG50 snapshot
 astro-lab preprocess tng50 snap_099.0.hdf5 --all --max-particles 5000 --radius 2.0
 
+# Process ALL snapshots in directory
+astro-lab preprocess tng50 --all-snapshots --all --max-particles 2000
+
 # Force TNG50 reprocessing
 astro-lab preprocess tng50 snap_099.0.hdf5 --force --particle-types PartType4,PartType5
 
@@ -451,12 +507,14 @@ astro-lab preprocess tng50-list --inspect
     
     # TNG50 processing command (optimized graph format)
     tng50_parser = subparsers.add_parser('tng50', help='Process TNG50 simulation data into graph format')
-    tng50_parser.add_argument('input', help='TNG50 snapshot file (.hdf5)')
+    tng50_parser.add_argument('input', nargs='?', help='TNG50 snapshot file (.hdf5) or base directory for --all-snapshots')
     tng50_parser.add_argument('-o', '--output', help='Output directory (default: data/processed/tng50_graphs)')
     tng50_parser.add_argument('--particle-types', default='PartType4,PartType5',
                              help='Comma-separated particle types (default: PartType4,PartType5)')
     tng50_parser.add_argument('--all', action='store_true',
                              help='Process all available particle types in the snapshot')
+    tng50_parser.add_argument('--all-snapshots', action='store_true',
+                             help='Process all snapshots in directory (input becomes base directory)')
     tng50_parser.add_argument('--max-particles', type=int, default=10000,
                              help='Maximum particles per type (default: 10000)')
     tng50_parser.add_argument('--radius', type=float, default=1.0,
@@ -468,7 +526,7 @@ astro-lab preprocess tng50-list --inspect
 
     # TNG50 list command
     tng50_list_parser = subparsers.add_parser('tng50-list', help='List TNG50 snapshot files')
-    tng50_list_parser.add_argument('--directory', help='TNG50 directory (default: data/raw/TNG50-4/output/snapdir_099)')
+    tng50_list_parser.add_argument('--directory', help='TNG50 base directory (default: data/raw/TNG50-4/output)')
     tng50_list_parser.add_argument('--inspect', action='store_true',
                                   help='Inspect first snapshot file')
     

@@ -103,15 +103,16 @@ class ExoplanetGraphDataset(InMemoryDataset):
         # Load catalog
         df = pl.read_parquet(raw_path)
         print(f"   Loaded {len(df)} exoplanets")
+        print(f"   Available columns: {df.columns}")
 
         # Group by stellar system (same host star)
         systems = df.group_by("hostname").agg([
             pl.col("ra").first(),
             pl.col("dec").first(), 
             pl.col("sy_dist").first(),
-            pl.col("pl_orbper").mean().alias("avg_period"),
             pl.col("pl_rade").mean().alias("avg_radius"),
             pl.col("pl_masse").mean().alias("avg_mass"),
+            pl.col("disc_year").first().alias("discovery_year"),
             pl.count().alias("num_planets")
         ]).filter(pl.col("num_planets") >= 1)
 
@@ -123,26 +124,31 @@ class ExoplanetGraphDataset(InMemoryDataset):
         # Remove NaN coordinates
         valid_coords = ~np.isnan(coords).any(axis=1)
         coords = coords[valid_coords]
-        systems = systems.filter(pl.Series(valid_coords))
+        systems_filtered = systems.filter(pl.Series(valid_coords))
 
         # Get k-nearest neighbors based on sky position
         print(f"   Computing {self.k_neighbors}-NN graph...")
         distances, indices = gpu_knn_graph(coords, self.k_neighbors)
 
-        # Extract features (system properties)
-        feature_cols = ["sy_dist", "avg_period", "avg_radius", "avg_mass", "num_planets"]
-        features = systems.select(feature_cols).to_numpy().astype(np.float32)
+        # Extract features (system properties) - using available columns
+        feature_cols = ["sy_dist", "avg_radius", "avg_mass", "discovery_year", "num_planets"]
+        features = systems_filtered.select(feature_cols).to_numpy().astype(np.float32)
         features = np.nan_to_num(features, nan=0.0)
 
         # Create edge connections based on spatial proximity
         edge_index = []
+        system_data = systems_filtered.to_dicts()  # Convert to list of dicts for easier access
+        
         for i, neighbors in enumerate(indices):
             for j in neighbors[1:]:  # Skip self-connection
                 # Check distance constraint (convert angular to physical distance)
-                if systems[i]["sy_dist"] and systems[j]["sy_dist"]:
+                sys_i_dist = system_data[i].get("sy_dist")
+                sys_j_dist = system_data[j].get("sy_dist")
+                
+                if sys_i_dist is not None and sys_j_dist is not None and not np.isnan(sys_i_dist) and not np.isnan(sys_j_dist):
                     # Approximate physical separation
                     angular_sep = distances[i][np.where(neighbors == j)[0][0]]  # radians
-                    avg_distance = (systems[i]["sy_dist"] + systems[j]["sy_dist"]) / 2
+                    avg_distance = (sys_i_dist + sys_j_dist) / 2
                     physical_sep = angular_sep * avg_distance * 206265  # parsecs
                     
                     if physical_sep <= self.max_distance:
@@ -158,7 +164,7 @@ class ExoplanetGraphDataset(InMemoryDataset):
         pos = torch.tensor(coords, dtype=torch.float32)
         
         data = Data(x=x, edge_index=edge_index, pos=pos)
-        data.num_systems = len(systems)
+        data.num_systems = len(systems_filtered)
         data.k_neighbors = self.k_neighbors
         data.max_distance = self.max_distance
         
@@ -173,7 +179,7 @@ class ExoplanetGraphDataset(InMemoryDataset):
 
         # Save processed data
         self.save(data_list, self.processed_paths[0])
-        print(f"✅ Processed exoplanet graph with {len(systems)} systems and {edge_index.shape[1]} edges")
+        print(f"✅ Processed exoplanet graph with {len(systems_filtered)} systems and {edge_index.shape[1]} edges")
 
     def to_survey_tensor(self) -> Optional["SurveyTensor"]:
         """Convert dataset to SurveyTensor format."""

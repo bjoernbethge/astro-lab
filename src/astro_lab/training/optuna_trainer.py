@@ -2,7 +2,7 @@
 Optuna Hyperparameter Optimization for AstroLab Models
 
 Modern hyperparameter tuning with Optuna + Lightning integration.
-Uses Optuna's built-in visualization functions and MLflow for experiment tracking.
+Optimized for astronomical ML workloads.
 """
 
 import json
@@ -21,7 +21,7 @@ from .lightning_module import AstroLightningModule
 
 
 class OptunaTrainer:
-    """Modern Optuna-based hyperparameter optimization with MLflow integration."""
+    """Optimized Optuna-based hyperparameter optimization with MLflow integration."""
 
     def __init__(
         self,
@@ -50,8 +50,12 @@ class OptunaTrainer:
         self.study_name = study_name
         self.log_plots = log_plots
 
-        # Create Optuna study
-        self.study = optuna.create_study()
+        # Create Optuna study with modern optimizations
+        self.study = optuna.create_study(
+            direction="minimize",
+            pruner=optuna.pruners.MedianPruner(n_startup_trials=5),
+            sampler=optuna.samplers.TPESampler(seed=42),
+        )
 
         # Set up MLflow experiment
         mlflow.set_experiment(self.mlflow_experiment)
@@ -65,16 +69,19 @@ class OptunaTrainer:
             # Create model with trial suggestions
             model = self.model_factory(trial)
 
-            # Create trainer
+            # Create trainer with optimized settings
             trainer = Trainer(
-                max_epochs=100,
+                max_epochs=50,  # Reduced for faster optimization
                 enable_checkpointing=False,
                 logger=False,  # Use MLflow manually for better control
                 callbacks=[
-                    EarlyStopping(monitor="val_loss", patience=10),
+                    EarlyStopping(monitor="val_loss", patience=5, verbose=False),
                     PyTorchLightningPruningCallback(trial, monitor="val_loss"),
                 ],
                 enable_progress_bar=False,
+                accelerator="auto",
+                devices=1,  # Single device for optimization
+                precision="16-mixed",  # Fast mixed precision
             )
 
             # Train model
@@ -83,7 +90,7 @@ class OptunaTrainer:
 
                 # Get final validation loss
                 val_loss = trainer.callback_metrics.get("val_loss", float("inf"))
-                val_loss_float = float(val_loss)
+                val_loss_float = float(val_loss) if hasattr(val_loss, 'item') else float(val_loss)
 
                 # Log metrics and parameters
                 mlflow.log_metric("val_loss", val_loss_float)
@@ -251,17 +258,15 @@ class OptunaTrainer:
         """Save the study to a file."""
         with open(filepath, "wb") as f:
             import pickle
-
             pickle.dump(self.study, f)
 
         mlflow.log_artifact(filepath, "optuna_study.pkl")
 
-    @classmethod
-    def load_study(cls, filepath: str) -> optuna.Study:
+    @staticmethod
+    def load_study(filepath: str) -> optuna.Study:
         """Load a study from a file."""
         with open(filepath, "rb") as f:
             import pickle
-
             return pickle.load(f)
 
 

@@ -586,11 +586,46 @@ class TNG50GraphDataset(InMemoryDataset):
             
             # Load particle data
             coords = f[f'{self.particle_type}/Coordinates'][:]
-            masses = f[f'{self.particle_type}/Masses'][:]
             
-            # Load additional features if available
-            features = [masses.reshape(-1, 1)]
-            feature_names = ['mass']
+            # Load features - handle missing Masses field for dark matter
+            features = []
+            feature_names = []
+            
+            # Try to load masses - not all particle types have individual masses
+            if 'Masses' in f[self.particle_type]:
+                masses = f[f'{self.particle_type}/Masses'][:]
+                features.append(masses.reshape(-1, 1))
+                feature_names.append('mass')
+            else:
+                # For particle types without individual masses (like dark matter),
+                # use a constant mass from header or create dummy feature
+                if 'Header' in f:
+                    header = f['Header']
+                    # TNG50 stores particle masses in header
+                    if 'MassTable' in header.attrs:
+                        mass_table = header.attrs['MassTable']
+                        ptype_idx = int(self.particle_type.replace('PartType', ''))
+                        if ptype_idx < len(mass_table) and mass_table[ptype_idx] > 0:
+                            # Use mass from header for all particles
+                            constant_mass = mass_table[ptype_idx]
+                            masses = np.full(len(coords), constant_mass)
+                            features.append(masses.reshape(-1, 1))
+                            feature_names.append('mass_from_header')
+                        else:
+                            # Create dummy mass feature
+                            masses = np.ones(len(coords))
+                            features.append(masses.reshape(-1, 1))
+                            feature_names.append('mass_dummy')
+                    else:
+                        # Fallback: dummy mass
+                        masses = np.ones(len(coords))
+                        features.append(masses.reshape(-1, 1))
+                        feature_names.append('mass_dummy')
+                else:
+                    # No header available, use dummy mass
+                    masses = np.ones(len(coords))
+                    features.append(masses.reshape(-1, 1))
+                    feature_names.append('mass_dummy')
             
             # Try to load potential
             if 'Potential' in f[self.particle_type]:
