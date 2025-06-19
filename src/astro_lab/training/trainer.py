@@ -19,6 +19,8 @@ from lightning.pytorch.callbacks import (
 )
 from torch.utils.data import DataLoader
 
+from astro_lab.data.config import data_config
+
 from .lightning_module import AstroLightningModule
 
 # Optional imports
@@ -89,12 +91,12 @@ class AstroTrainer(Trainer):
         Initialize optimized Lightning Trainer with astronomical ML defaults.
 
         Args:
-            checkpoint_dir: Directory to save checkpoints. If None, uses 'checkpoints/{experiment_name}'
+            checkpoint_dir: Directory to save checkpoints. If None, uses data_config system
         """
         self.astro_module = lightning_module
         self.experiment_name = experiment_name
 
-        # Setup checkpoint directory
+        # Setup checkpoint directory using data_config
         self.checkpoint_dir = self._setup_checkpoint_dir(
             checkpoint_dir, experiment_name
         )
@@ -141,15 +143,15 @@ class AstroTrainer(Trainer):
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str
     ) -> Path:
-        """Setup checkpoint directory with sensible defaults."""
+        """Setup checkpoint directory using data_config system."""
         if checkpoint_dir is None:
-            # Default: checkpoints/{experiment_name}
-            checkpoint_path = Path("checkpoints") / experiment_name
+            # Use data_config system for organized checkpoint management
+            data_config.ensure_experiment_directories(experiment_name)
+            checkpoint_path = data_config.checkpoints_dir / experiment_name
         else:
             checkpoint_path = Path(checkpoint_dir)
-
-        # Create directory if it doesn't exist
-        checkpoint_path.mkdir(parents=True, exist_ok=True)
+            # Create directory if it doesn't exist
+            checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         return checkpoint_path
 
@@ -337,37 +339,40 @@ class AstroTrainer(Trainer):
 
     def optimize_hyperparameters(
         self,
-        model_factory: Any,
         train_dataloader: DataLoader,
         val_dataloader: DataLoader,
         n_trials: int = 50,
         timeout: Optional[int] = None,
         **optuna_kwargs,
     ) -> Any:
-        """Run hyperparameter optimization with modern Optuna integration."""
+        """Optimize hyperparameters using Optuna (if available)."""
         if not OPTUNA_AVAILABLE or OptunaTrainer is None:
-            raise ImportError("Optuna not available. Install with: uv add optuna")
+            raise ImportError("Optuna not available. Install with: pip install optuna")
 
+        # Create model factory for Optuna
+        def model_factory(trial):
+            # This is a simplified example - customize based on your model
+            return self.astro_module
+
+        # Create Optuna trainer
         optuna_trainer = OptunaTrainer(
             model_factory=model_factory,
             train_dataloader=train_dataloader,
             val_dataloader=val_dataloader,
-            study_name=f"{self.experiment_name}_optimization",
+            mlflow_experiment=f"{self.experiment_name}_optuna",
             **optuna_kwargs,
         )
 
-        study = optuna_trainer.optimize(n_trials=n_trials, timeout=timeout)
-        return study
+        # Run optimization
+        return optuna_trainer.optimize(n_trials=n_trials, timeout=timeout)
 
     def load_from_checkpoint(self, checkpoint_path: str) -> AstroLightningModule:
         """Load model from checkpoint."""
-        loaded_module = AstroLightningModule.load_from_checkpoint(checkpoint_path)
-        self.astro_module = loaded_module
-        return loaded_module
+        return AstroLightningModule.load_from_checkpoint(checkpoint_path)
 
     def save_model(self, path: str) -> None:
-        """Save model to path."""
-        self.save_checkpoint(path)
+        """Save model to specified path."""
+        self.astro_module.save_pretrained(path)
 
     def list_checkpoints(self) -> List[Path]:
         """List all available checkpoints in the checkpoint directory."""
@@ -375,8 +380,9 @@ class AstroTrainer(Trainer):
             return []
 
         checkpoints = []
-        for file in self.checkpoint_dir.glob("*.ckpt"):
-            checkpoints.append(file)
+        for file in self.checkpoint_dir.iterdir():
+            if file.suffix == ".ckpt":
+                checkpoints.append(file)
 
         return sorted(checkpoints, key=lambda x: x.stat().st_mtime, reverse=True)
 
@@ -387,18 +393,39 @@ class AstroTrainer(Trainer):
         # Keep best and last checkpoints
         protected_files = set()
         if self.best_model_path:
-            protected_files.add(Path(self.best_model_path).name)
+            protected_files.add(Path(self.best_model_path))
         if self.last_model_path:
-            protected_files.add(Path(self.last_model_path).name)
+            protected_files.add(Path(self.last_model_path))
 
         # Remove old checkpoints beyond keep_last_n
         for checkpoint in checkpoints[keep_last_n:]:
-            if checkpoint.name not in protected_files:
-                try:
-                    checkpoint.unlink()
-                    print(f"🗑️  Removed old checkpoint: {checkpoint.name}")
-                except OSError as e:
-                    print(f"⚠️  Could not remove {checkpoint.name}: {e}")
+            if checkpoint not in protected_files:
+                checkpoint.unlink()
+                print(f"🗑️  Removed old checkpoint: {checkpoint.name}")
+
+    @classmethod
+    def from_config(
+        cls, config: Dict[str, Any], lightning_module: AstroLightningModule
+    ) -> "AstroTrainer":
+        """Create AstroTrainer from configuration dictionary."""
+        training_config = config.get("training", {})
+
+        return cls(
+            lightning_module=lightning_module,
+            max_epochs=training_config.get("max_epochs", 100),
+            accelerator=training_config.get("accelerator", "auto"),
+            devices=training_config.get("devices", "auto"),
+            precision=training_config.get("precision", "bf16-mixed"),
+            gradient_clip_val=training_config.get("gradient_clip_val", 1.0),
+            accumulate_grad_batches=training_config.get("accumulate_grad_batches", 1),
+            enable_swa=training_config.get("enable_swa", False),
+            patience=training_config.get("patience", 10),
+            monitor=training_config.get("monitor", "val_loss"),
+            mode=training_config.get("mode", "min"),
+            experiment_name=config.get("mlflow", {}).get(
+                "experiment_name", "astro_experiment"
+            ),
+        )
 
 
 __all__ = ["AstroTrainer"]

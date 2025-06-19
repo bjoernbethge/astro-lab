@@ -33,9 +33,24 @@ class DataConfig:
         return self.base_dir / "cache"
 
     @property
-    def config_dir(self) -> Path:
-        """Configuration directory."""
-        return self.base_dir / "config"
+    def experiments_dir(self) -> Path:
+        """Experiments directory for MLflow and checkpoints."""
+        return self.base_dir / "experiments"
+
+    @property
+    def mlruns_dir(self) -> Path:
+        """MLflow tracking directory."""
+        return self.experiments_dir / "mlruns"
+
+    @property
+    def checkpoints_dir(self) -> Path:
+        """Lightning checkpoints directory."""
+        return self.experiments_dir / "checkpoints"
+
+    @property
+    def configs_dir(self) -> Path:
+        """Configuration files directory."""
+        return self.base_dir / "configs"
 
     def get_survey_raw_dir(self, survey: str) -> Path:
         """Get raw directory for specific survey."""
@@ -63,30 +78,51 @@ class DataConfig:
         return self.get_survey_processed_dir(survey) / "tensors.pt"
 
     def setup_directories(self):
-        """Create standardized data directory structure."""
-        # Core directories
-        dirs = [
+        """Create only core data directory structure (no survey templates)."""
+        # Only create core directories
+        core_dirs = [
             self.raw_dir,
             self.processed_dir,
             self.cache_dir,
-            self.config_dir,
+            self.experiments_dir,
+            self.configs_dir,
         ]
 
-        # Survey-specific directories
-        surveys = ["gaia", "sdss", "nsa", "tng50", "linear", "kepler"]
-        for survey in surveys:
-            dirs.extend(
-                [
-                    self.get_survey_raw_dir(survey),
-                    self.get_survey_processed_dir(survey),
-                ]
-            )
-
-        # Create all directories
-        for dir_path in dirs:
+        # Create only core directories
+        for dir_path in core_dirs:
             dir_path.mkdir(parents=True, exist_ok=True)
 
-        print(f"📁 Clean data structure created in: {self.base_dir}")
+        print(f"📁 Core data structure created in: {self.base_dir}")
+
+    def ensure_survey_directories(self, survey: str):
+        """Create directories for a specific survey only when needed."""
+        raw_dir = self.get_survey_raw_dir(survey)
+        processed_dir = self.get_survey_processed_dir(survey)
+
+        # Create only if they don't exist
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        processed_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"📁 Created directories for {survey} survey")
+
+    def ensure_experiment_directories(self, experiment_name: str):
+        """Create experiment directories only when needed."""
+        mlruns_dir = self.mlruns_dir
+        checkpoint_dir = self.checkpoints_dir / experiment_name
+
+        # Create only if they don't exist
+        mlruns_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+        print(f"🧪 Created experiment directories for {experiment_name}")
+
+    def get_experiment_paths(self, experiment_name: str) -> Dict[str, Path]:
+        """Get all paths for an experiment."""
+        return {
+            "mlruns": self.mlruns_dir,
+            "checkpoints": self.checkpoints_dir / experiment_name,
+            "config": self.configs_dir / f"{experiment_name}.yaml",
+        }
 
     def migrate_old_structure(self):
         """Migrate from old chaotic structure to new clean structure."""
@@ -145,3 +181,8 @@ def get_survey_paths(survey: str) -> Dict[str, Path]:
         "graphs": data_config.get_graph_path(survey),
         "tensors": data_config.get_tensor_path(survey),
     }
+
+
+def get_experiment_paths(experiment_name: str) -> Dict[str, Path]:
+    """Get all paths for an experiment."""
+    return data_config.get_experiment_paths(experiment_name)

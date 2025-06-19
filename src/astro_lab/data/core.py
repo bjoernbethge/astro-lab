@@ -253,6 +253,8 @@ class AstroDataset(InMemoryDataset):
         if root is None:
             from .config import data_config
 
+            # Ensure survey directories exist before using them
+            data_config.ensure_survey_directories(survey)
             root = str(data_config.get_survey_processed_dir(survey))
 
         super().__init__(root, transform, force_reload=force_reload)

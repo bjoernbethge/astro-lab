@@ -2,6 +2,7 @@
 MLflow Integration for AstroLab Training
 
 Optimized MLflow logging for astronomical models with modern best practices.
+Integrated with the new AstroLab configuration system.
 """
 
 import json
@@ -14,9 +15,11 @@ import mlflow.pytorch
 import torch
 from lightning.pytorch.loggers import MLFlowLogger as LightningMLFlowLogger
 
+from astro_lab.data.config import data_config
+
 
 class AstroMLflowLogger(LightningMLFlowLogger):
-    """Optimized MLflow logger for astronomical models."""
+    """Optimized MLflow logger for astronomical models with data config integration."""
 
     def __init__(
         self,
@@ -29,36 +32,47 @@ class AstroMLflowLogger(LightningMLFlowLogger):
     ):
         # Set default tracking URI
         if tracking_uri is None:
-            tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "./mlruns")
+            # Try environment variable first, then use local file-based tracking
+            tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
+            if tracking_uri is None:
+                # Fallback to file-based tracking using data_config
+                data_config.ensure_experiment_directories(experiment_name)
+                tracking_uri = f"file://{data_config.mlruns_dir.absolute()}"
 
-        super().__init__(
-            experiment_name=experiment_name,
-            tracking_uri=tracking_uri,
-            tags=tags,
-            artifact_location=artifact_location,
-            run_name=run_name,
-            **kwargs,
-        )
+        # Set environment variable for consistency
+        os.environ["MLFLOW_TRACKING_URI"] = tracking_uri
 
-        # Set astronomical tags
+        # Setup MLflow experiment first
+        setup_mlflow_experiment(experiment_name, tracking_uri, artifact_location)
+
+        # Combine user tags with astro tags
         astro_tags = {
-            "framework": "astrolab",
+            "framework": "astro-lab",
             "domain": "astronomy",
             "version": "0.3.0",
+            "data_config_version": "2.0",  # Track config system version
+            "tracking_uri": tracking_uri,
         }
         if tags:
             astro_tags.update(tags)
 
-        # Log tags
-        for key, value in astro_tags.items():
-            mlflow.set_tag(key, value)
+        super().__init__(
+            experiment_name=experiment_name,
+            tracking_uri=tracking_uri,
+            tags=astro_tags,  # Pass tags to parent
+            artifact_location=artifact_location,
+            run_name=run_name,
+            **kwargs,
+        )
 
     def log_model_architecture(self, model: torch.nn.Module) -> None:
         """Log model architecture with optimized metrics."""
         try:
             # Calculate model statistics
             total_params = sum(p.numel() for p in model.parameters())
-            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            trainable_params = sum(
+                p.numel() for p in model.parameters() if p.requires_grad
+            )
             model_size_mb = total_params * 4 / (1024 * 1024)  # Assuming float32
 
             architecture_info = {
@@ -80,7 +94,7 @@ class AstroMLflowLogger(LightningMLFlowLogger):
             arch_file = "model_architecture.json"
             with open(arch_file, "w") as f:
                 json.dump(architecture_info, f, indent=2)
-            
+
             mlflow.log_artifact(arch_file)
             Path(arch_file).unlink()  # Cleanup
 
@@ -93,8 +107,13 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         categories = {
             "model": ["hidden_dim", "num_layers", "dropout", "num_classes"],
             "training": ["learning_rate", "weight_decay", "scheduler", "batch_size"],
-            "optimization": ["precision", "gradient_clip_val", "accumulate_grad_batches"],
+            "optimization": [
+                "precision",
+                "gradient_clip_val",
+                "accumulate_grad_batches",
+            ],
             "hardware": ["accelerator", "devices", "enable_swa"],
+            "data": ["survey", "k_neighbors", "distance_threshold", "num_features"],
         }
 
         # Log categorized parameters
@@ -104,10 +123,47 @@ class AstroMLflowLogger(LightningMLFlowLogger):
                     mlflow.log_param(f"{category}_{param_name}", params[param_name])
 
         # Log remaining parameters
-        logged_params = {param for param_list in categories.values() for param in param_list}
+        logged_params = {
+            param for param_list in categories.values() for param in param_list
+        }
         for key, value in params.items():
             if key not in logged_params:
                 mlflow.log_param(key, value)
+
+    def log_config_info(self, config: Dict[str, Any]) -> None:
+        """Log configuration information from the new config system."""
+        try:
+            # Log data paths
+            mlflow.log_param("data_base_dir", str(data_config.base_dir))
+            mlflow.log_param("mlruns_dir", str(data_config.mlruns_dir))
+            mlflow.log_param("checkpoints_dir", str(data_config.checkpoints_dir))
+
+            # Log config sections
+            if "training" in config:
+                training_config = config["training"]
+                mlflow.log_param("max_epochs", training_config.get("max_epochs"))
+                mlflow.log_param("batch_size", training_config.get("batch_size"))
+                mlflow.log_param("learning_rate", training_config.get("learning_rate"))
+                mlflow.log_param("accelerator", training_config.get("accelerator"))
+                mlflow.log_param("precision", training_config.get("precision"))
+
+            if "model" in config:
+                model_config = config["model"]
+                mlflow.log_param("model_type", model_config.get("type"))
+                mlflow.log_param("hidden_dim", model_config.get("hidden_dim"))
+                mlflow.log_param("num_layers", model_config.get("num_layers"))
+                mlflow.log_param("dropout", model_config.get("dropout"))
+
+            # Save full config as artifact
+            config_file = "experiment_config.json"
+            with open(config_file, "w") as f:
+                json.dump(config, f, indent=2, default=str)
+
+            mlflow.log_artifact(config_file, "config")
+            Path(config_file).unlink()  # Cleanup
+
+        except Exception as e:
+            print(f"Warning: Could not log config info: {e}")
 
     def log_dataset_info(self, dataset_info: Dict[str, Any]) -> None:
         """Log dataset information efficiently."""
@@ -125,20 +181,29 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         # Log dataset metadata
         metadata_file = "dataset_info.json"
         with open(metadata_file, "w") as f:
-            json.dump(dataset_info, f, indent=2)
-        
-        mlflow.log_artifact(metadata_file)
+            json.dump(dataset_info, f, indent=2, default=str)
+
+        mlflow.log_artifact(metadata_file, "data")
         Path(metadata_file).unlink()
 
     def log_survey_info(self, survey: str, bands: Optional[list] = None) -> None:
-        """Log astronomical survey information."""
+        """Log astronomical survey information with data config integration."""
         mlflow.set_tag("survey", survey)
-        
+
+        # Log survey-specific paths
+        survey_raw_dir = data_config.get_survey_raw_dir(survey)
+        survey_processed_dir = data_config.get_survey_processed_dir(survey)
+
+        mlflow.log_param("survey_raw_dir", str(survey_raw_dir))
+        mlflow.log_param("survey_processed_dir", str(survey_processed_dir))
+
         if bands:
             mlflow.set_tag("bands", ",".join(map(str, bands)))
             mlflow.log_metric("num_bands", len(bands))
 
-    def log_final_model(self, model: torch.nn.Module, model_name: str = "astro_model") -> Optional[Any]:
+    def log_final_model(
+        self, model: torch.nn.Module, model_name: str = "astro_model"
+    ) -> Optional[Any]:
         """Log final trained model with metadata."""
         try:
             # Log model with PyTorch Lightning integration
@@ -175,6 +240,7 @@ class AstroMLflowLogger(LightningMLFlowLogger):
                 "torch-geometric",
                 "lightning",
                 "astropy",
+                "pyyaml",  # For config loading
                 {
                     "pip": [
                         "mlflow",
@@ -185,7 +251,9 @@ class AstroMLflowLogger(LightningMLFlowLogger):
             ],
         }
 
-    def log_predictions(self, predictions_file: str, description: str = "Model predictions") -> None:
+    def log_predictions(
+        self, predictions_file: str, description: str = "Model predictions"
+    ) -> None:
         """Log prediction results with description."""
         if Path(predictions_file).exists():
             mlflow.log_artifact(predictions_file, "predictions")
@@ -196,14 +264,66 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         if Path(plot_path).exists():
             mlflow.log_artifact(plot_path, f"plots/{plot_type}")
 
+    def log_checkpoint_info(self, checkpoint_dir: Path) -> None:
+        """Log checkpoint directory information."""
+        mlflow.log_param("checkpoint_dir", str(checkpoint_dir))
+
+        # Log checkpoint files if they exist
+        if checkpoint_dir.exists():
+            checkpoints = list(checkpoint_dir.glob("*.ckpt"))
+            mlflow.log_metric("num_checkpoints", len(checkpoints))
+
+            if checkpoints:
+                # Log latest checkpoint info
+                latest_checkpoint = max(checkpoints, key=lambda x: x.stat().st_mtime)
+                mlflow.log_param("latest_checkpoint", latest_checkpoint.name)
+                mlflow.log_metric(
+                    "checkpoint_size_mb",
+                    latest_checkpoint.stat().st_size / (1024 * 1024),
+                )
+
     def end_run(self) -> None:
         """End MLflow run with cleanup."""
         try:
             # Log final run status
             mlflow.set_tag("run_status", "completed")
+            mlflow.set_tag("data_config_base_dir", str(data_config.base_dir))
             mlflow.end_run()
         except Exception as e:
             print(f"Warning: Error ending MLflow run: {e}")
+
+
+def create_astro_mlflow_logger(
+    config: Dict[str, Any], experiment_name: Optional[str] = None
+) -> AstroMLflowLogger:
+    """Create AstroMLflowLogger from configuration dictionary."""
+    mlflow_config = config.get("mlflow", {})
+
+    # Use experiment name from config or parameter
+    exp_name = experiment_name or mlflow_config.get(
+        "experiment_name", "astro_experiment"
+    )
+
+    # Handle artifact location with data config integration
+    artifact_location = mlflow_config.get("artifact_location")
+    if artifact_location and "${data.base_dir}" in str(artifact_location):
+        # Replace placeholder with actual path
+        artifact_location = artifact_location.replace(
+            "${data.base_dir}", str(data_config.base_dir)
+        )
+
+    logger = AstroMLflowLogger(
+        experiment_name=exp_name,
+        tracking_uri=mlflow_config.get("tracking_uri"),
+        tags=mlflow_config.get("tags"),
+        artifact_location=artifact_location,
+        run_name=mlflow_config.get("run_name"),
+    )
+
+    # Log configuration info
+    logger.log_config_info(config)
+
+    return logger
 
 
 def setup_mlflow_experiment(
@@ -211,23 +331,33 @@ def setup_mlflow_experiment(
     tracking_uri: Optional[str] = None,
     artifact_location: Optional[str] = None,
 ) -> str:
-    """Setup MLflow experiment with error handling."""
-    if tracking_uri:
-        mlflow.set_tracking_uri(tracking_uri)
+    """Setup MLflow experiment with data config integration."""
+    # Use data_config system if no tracking URI provided
+    if tracking_uri is None:
+        data_config.ensure_experiment_directories(experiment_name)
+        tracking_uri = str(data_config.mlruns_dir)
+
+    mlflow.set_tracking_uri(tracking_uri)
 
     try:
         experiment_id = mlflow.create_experiment(
             name=experiment_name,
             artifact_location=artifact_location,
-            tags={"domain": "astronomy", "framework": "astrolab"},
+            tags={
+                "domain": "astronomy",
+                "framework": "astrolab",
+                "data_config_version": "2.0",
+                "tracking_uri": tracking_uri,
+            },
         )
-        print(f"Created new experiment: {experiment_name}")
+        print(f"🧪 Created new MLflow experiment: {experiment_name}")
+        print(f"   Tracking URI: {tracking_uri}")
     except Exception:
         # Experiment already exists
         experiment = mlflow.get_experiment_by_name(experiment_name)
         if experiment:
             experiment_id = experiment.experiment_id
-            print(f"Using existing experiment: {experiment_name}")
+            print(f"🧪 Using existing MLflow experiment: {experiment_name}")
         else:
             raise ValueError(f"Could not create or find experiment: {experiment_name}")
 
@@ -235,4 +365,20 @@ def setup_mlflow_experiment(
     return experiment_id
 
 
-__all__ = ["AstroMLflowLogger", "setup_mlflow_experiment"]
+def setup_mlflow_from_config(config: Dict[str, Any]) -> str:
+    """Setup MLflow experiment from configuration dictionary."""
+    mlflow_config = config.get("mlflow", {})
+
+    return setup_mlflow_experiment(
+        experiment_name=mlflow_config.get("experiment_name", "astro_experiment"),
+        tracking_uri=mlflow_config.get("tracking_uri"),
+        artifact_location=mlflow_config.get("artifact_location"),
+    )
+
+
+__all__ = [
+    "AstroMLflowLogger",
+    "setup_mlflow_experiment",
+    "setup_mlflow_from_config",
+    "create_astro_mlflow_logger",
+]

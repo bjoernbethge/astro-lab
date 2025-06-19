@@ -66,9 +66,11 @@ class AstroDataManager:
             if response.lower() != "yes":
                 raise ValueError("All-sky download cancelled by user")
 
+        # Ensure gaia directories exist
+        self.config.ensure_survey_directories("gaia")
+
         output_file = (
-            self.raw_dir
-            / "gaia"
+            self.config.get_survey_raw_dir("gaia")
             / f"gaia_dr3_{region}_mag{magnitude_limit:.1f}.parquet"
         )
 
@@ -194,8 +196,10 @@ class AstroDataManager:
         if not fits_file.exists():
             raise FileNotFoundError(f"FITS file not found: {fits_file}")
 
-        output_file = self.raw_dir / "fits" / f"{catalog_name}.parquet"
-        output_file.parent.mkdir(exist_ok=True)
+        # Ensure sdss directories exist (fits -> sdss)
+        self.config.ensure_survey_directories("sdss")
+
+        output_file = self.config.get_survey_raw_dir("sdss") / f"{catalog_name}.parquet"
 
         if output_file.exists():
             print(f"📂 FITS catalog exists: {output_file.name}")
