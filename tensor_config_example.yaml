@@ -1,0 +1,112 @@
+# 🌟 AstroLab Tensor-Enhanced Training Configuration
+# ==================================================
+# Demonstrates the full power of native SurveyTensor integration
+# for astronomical machine learning pipelines.
+
+# Model Configuration with Tensor Support
+model:
+  type: "survey_gnn" # Uses tensor-native AstroSurveyGNN
+  use_tensors: true # 🌟 Enable tensor integration (default: true)
+  params:
+    hidden_dim: 256
+    output_dim: 3 # Multi-class classification
+    conv_type: "gat" # Graph Attention Networks
+    num_layers: 4
+    dropout: 0.2
+    task: "node_classification"
+    # 🌟 Tensor-specific model features
+    use_photometry: true # Automatic PhotometricTensor extraction
+    use_astrometry: true # Automatic Spatial3DTensor extraction
+    use_spectroscopy: false # SpectralTensor (if available)
+    pooling: "attention" # Attention-based pooling
+
+# Enhanced Data Configuration with Tensor Pipeline
+data:
+  dataset: "gaia" # Will auto-convert to SurveyTensor
+  return_tensor: true # 🌟 Enable SurveyTensor output (default: true)
+  max_samples: 10000 # Reasonable size for demo
+  # 🌟 Tensor-specific data parameters
+  coordinate_system: "icrs" # Astronomical coordinate system
+  filter_system: "gaia" # Photometric filter system
+  data_release: "DR3" # Survey data release
+  # Data splitting
+  train_ratio: 0.7
+  val_ratio: 0.15
+  # DataLoader settings
+  batch_size: 32 # Tensor batching
+  num_workers: 4
+  force_reload: false
+
+# Training Configuration
+training:
+  max_epochs: 50
+  accelerator: "auto" # GPU if available
+  precision: "16-mixed" # Mixed precision for speed
+  gradient_clip_val: 1.0
+  accumulate_grad_batches: 2
+  # Learning rate and optimization
+  learning_rate: 0.001
+  weight_decay: 1e-5
+  scheduler: "cosine"
+  # Early stopping
+  patience: 10
+  monitor: "val_loss"
+  # Checkpointing
+  save_top_k: 3
+  save_last: true
+  # Logging
+  log_every_n_steps: 50
+  # Testing
+  run_test: true
+
+# Hyperparameter Optimization (Optional)
+optimization:
+  n_trials: 20
+  timeout: 3600 # 1 hour
+  # Parameter search spaces
+  search_space:
+    learning_rate:
+      type: "float"
+      low: 1e-5
+      high: 1e-2
+      log: true
+    hidden_dim:
+      type: "categorical"
+      choices: [64, 128, 256, 512]
+    num_layers:
+      type: "int"
+      low: 2
+      high: 6
+    dropout:
+      type: "float"
+      low: 0.1
+      high: 0.5
+
+# 🌟 Tensor-Specific Advanced Options
+tensor_options:
+  # Memory optimization
+  enable_zero_copy: true # Zero-copy tensor operations
+  pin_memory: true # Pin memory for faster GPU transfer
+  persistent_workers: true # Keep workers alive
+  # Tensor caching
+  cache_tensors: true # Cache converted tensors
+  cache_dir: "data/tensor_cache"
+  # Survey-specific optimizations
+  auto_coordinate_transform: true # Auto transform coordinates
+  auto_magnitude_conversion: true # Auto convert mag/flux
+  # Visualization exports (optional)
+  enable_pyvista_export: false # Export to PyVista meshes
+  enable_blender_export: false # Export to Blender objects
+
+# Experiment Tracking
+experiment:
+  name: "gaia_tensor_classification"
+  version: "v1.0"
+  tags: ["tensor", "gaia", "classification", "gnn"]
+  description: "Tensor-native Gaia stellar classification using SurveyTensor"
+  # MLFlow tracking (optional)
+  tracking_uri: "file:./mlruns"
+  experiment_id: null
+  # Weights & Biases (optional)
+  wandb_project: "astro-lab-tensors"
+  wandb_entity: null

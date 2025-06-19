@@ -261,6 +261,8 @@ class AstroTensorBase(BaseModel, ValidationMixin):
             "memory_mb": (self._data.numel() * self._data.element_size()) / 1024**2,
             "requires_grad": self._data.requires_grad,
             "is_contiguous": self._data.is_contiguous(),
+            "data_ptr": self._data.data_ptr(),
+            "storage_size": self._data.storage().size(),
         }
 
         if self._data.is_cuda:
@@ -323,19 +325,31 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         return self.__class__(data=self._data[mask], **self._metadata)
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert tensor to dictionary representation."""
+        """Convert tensor to dictionary representation for serialization."""
         return {
-            "data": self._data.detach().cpu().numpy(),
-            "metadata": {
-                k: v
-                for k, v in self._metadata.items()
-                if not isinstance(v, torch.Tensor)
-            },
             "tensor_type": self.__class__.__name__,
-            "shape": list(self.shape),
-            "dtype": str(self.dtype),
-            "device": str(self.device),
+            "data": self._data.cpu().numpy().tolist(),  # Convert to serializable format
+            "shape": list(self._data.shape),
+            "dtype": str(self._data.dtype),
+            "device": str(self._data.device),
+            "metadata": self._metadata,
         }
+
+    def model_dump(self) -> Dict[str, Any]:
+        """Pydantic-compatible model serialization."""
+        return self.to_dict()
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Support for pickle serialization."""
+        return {
+            "data": self._data,
+            "metadata": self._metadata,
+        }
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Support for pickle deserialization."""
+        self._data = state["data"]
+        self._metadata = state["metadata"]
 
     # =========================================================================
     # Standard methods

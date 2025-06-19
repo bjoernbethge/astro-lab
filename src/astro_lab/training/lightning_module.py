@@ -7,13 +7,24 @@ Optimized Lightning wrapper with modern training techniques and reduced code dup
 from typing import Any, Dict, Optional, Union
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from lightning import LightningModule
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau
-import torch.nn as nn
 
 from ..models import ALCDEFTemporalGNN, AstroPhotGNN, AstroSurveyGNN
+
+# 🌟 TENSOR INTEGRATION - Import SurveyTensor support
+try:
+    from astro_lab.models import AstroSurveyGNN
+    from astro_lab.tensors import SurveyTensor
+
+    TENSOR_INTEGRATION_AVAILABLE = True
+except ImportError:
+    TENSOR_INTEGRATION_AVAILABLE = False
+    SurveyTensor = None
+    AstroSurveyGNN = None
 
 
 class AstroLightningModule(LightningModule):
@@ -35,8 +46,8 @@ class AstroLightningModule(LightningModule):
         **kwargs,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=['model'])
-        
+        self.save_hyperparameters(ignore=["model"])
+
         # Store or create model
         if model is not None:
             self.model = model
@@ -45,18 +56,18 @@ class AstroLightningModule(LightningModule):
         else:
             # Create default model with automatic feature detection
             self.model = None  # Will be created in first forward pass
-            
+
         self.task_type = task_type
         self.projection_dim = projection_dim
         self.temperature = temperature
-        
+
         # Create projection head for contrastive learning
         if task_type == "unsupervised":
             self.projection_head = None  # Will be created dynamically
-            
+
         # Metrics
         self._setup_metrics()
-        
+
         # Performance tracking
         self._step_times = []
         self._memory_usage = []
@@ -64,10 +75,10 @@ class AstroLightningModule(LightningModule):
     def _create_model_from_config(self, config: Dict[str, Any]) -> nn.Module:
         """Create model from configuration."""
         from astro_lab.models.astro import AstroSurveyGNN
-        
+
         model_type = config.get("type", "gaia_classifier")
         model_params = config.get("params", {})
-        
+
         if model_type == "gaia_classifier":
             # Auto-detect input features during first forward pass
             return AstroSurveyGNN(
@@ -76,7 +87,7 @@ class AstroLightningModule(LightningModule):
                 num_layers=model_params.get("num_layers", 3),
                 dropout=model_params.get("dropout", 0.1),
                 conv_type=model_params.get("conv_type", "gat"),
-                **model_params
+                **model_params,
             )
         else:
             raise ValueError(f"Unknown model type: {model_type}")
@@ -84,9 +95,9 @@ class AstroLightningModule(LightningModule):
     def _auto_create_model(self, input_features: int) -> nn.Module:
         """Auto-create model based on input feature dimensions."""
         from astro_lab.models.astro import AstroSurveyGNN
-        
+
         print(f"🔧 Auto-creating model for {input_features} input features")
-        
+
         # Create model with proper input projection
         model = AstroSurveyGNN(
             hidden_dim=self.hparams.get("hidden_dim", 128),
@@ -95,10 +106,10 @@ class AstroLightningModule(LightningModule):
             dropout=0.1,
             conv_type="gat",
         )
-        
+
         # Add input projection layer
         model.input_proj = nn.Linear(input_features, model.hidden_dim)
-        
+
         return model
 
     def _auto_create_projection_head(self, hidden_dim: int) -> nn.Module:
@@ -107,30 +118,32 @@ class AstroLightningModule(LightningModule):
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, self.projection_dim),
-            nn.L2Norm(dim=1)  # Normalize for contrastive learning
+            nn.L2Norm(dim=1),  # Normalize for contrastive learning
         )
 
     def forward(self, batch):
         """Forward pass with automatic model creation."""
         # Extract data
-        if hasattr(batch, 'x'):
+        if hasattr(batch, "x"):
             x, edge_index = batch.x, batch.edge_index
-            batch_tensor = getattr(batch, 'batch', None)
+            batch_tensor = getattr(batch, "batch", None)
         else:
             x, edge_index = batch[0].x, batch[0].edge_index
-            batch_tensor = getattr(batch[0], 'batch', None)
-        
+            batch_tensor = getattr(batch[0], "batch", None)
+
         # Auto-create model if needed
         if self.model is None:
             input_features = x.shape[1]
             self.model = self._auto_create_model(input_features)
-            
+
         # Auto-create projection head if needed
         if self.task_type == "unsupervised" and self.projection_head is None:
-            self.projection_head = self._auto_create_projection_head(self.model.hidden_dim)
-        
+            self.projection_head = self._auto_create_projection_head(
+                self.model.hidden_dim
+            )
+
         # Forward pass through model
-        if hasattr(self.model, 'input_proj'):
+        if hasattr(self.model, "input_proj"):
             h = self.model.input_proj(x)
             # Manual forward through GNN layers
             for i, (conv, norm) in enumerate(zip(self.model.convs, self.model.norms)):
@@ -144,7 +157,7 @@ class AstroLightningModule(LightningModule):
             embeddings = h
         else:
             embeddings = self.model(x, edge_index, batch_tensor)
-            
+
         return embeddings
 
     def _setup_task_components(self) -> None:
@@ -152,8 +165,8 @@ class AstroLightningModule(LightningModule):
         if self.task_type == "unsupervised":
             # For unsupervised learning, we'll use contrastive learning
             self.contrastive_temperature = 0.1
-            self.embedding_dim = getattr(self.model, 'hidden_dim', 128)
-            
+            self.embedding_dim = getattr(self.model, "hidden_dim", 128)
+
             # Projection head for contrastive learning
             self.projection_head = torch.nn.Sequential(
                 torch.nn.Linear(self.embedding_dim, self.embedding_dim),
@@ -210,38 +223,44 @@ class AstroLightningModule(LightningModule):
             # Convert any other type to tensor
             return torch.tensor(output)
 
-    def _contrastive_loss(self, embeddings: torch.Tensor, batch_size: int) -> torch.Tensor:
+    def _contrastive_loss(
+        self, embeddings: torch.Tensor, batch_size: int
+    ) -> torch.Tensor:
         """Compute contrastive loss for unsupervised learning."""
         # Project embeddings
         projections = self.projection_head(embeddings)
         projections = F.normalize(projections, dim=1)
-        
+
         # Create positive pairs (augmented versions of same sample)
         # For now, use simple noise augmentation
         noise = torch.randn_like(projections) * 0.1
         aug_projections = F.normalize(projections + noise, dim=1)
-        
+
         # Compute similarity matrix
-        sim_matrix = torch.mm(projections, aug_projections.t()) / self.contrastive_temperature
-        
+        sim_matrix = (
+            torch.mm(projections, aug_projections.t()) / self.contrastive_temperature
+        )
+
         # Create labels (positive pairs are on diagonal)
         labels = torch.arange(batch_size, device=projections.device)
-        
+
         # Contrastive loss
         loss = F.cross_entropy(sim_matrix, labels)
         return loss
 
-    def _compute_step(self, batch: Dict[str, Any], stage: str) -> Dict[str, torch.Tensor]:
+    def _compute_step(
+        self, batch: Dict[str, Any], stage: str
+    ) -> Dict[str, torch.Tensor]:
         """Unified computation for all steps to reduce code duplication."""
         results = {}
-        
+
         if self.task_type == "unsupervised":
             # Unsupervised learning with contrastive loss
             embeddings = self._get_embeddings(batch)
             batch_size = embeddings.size(0)
             loss = self._contrastive_loss(embeddings, batch_size)
             results["loss"] = loss
-            
+
         else:
             # Supervised learning
             predictions = self(batch)
@@ -258,7 +277,7 @@ class AstroLightningModule(LightningModule):
                     pred_tensor = next(iter(predictions.values()))
                 else:
                     pred_tensor = predictions
-                
+
                 if self.task_type == "classification":
                     loss = F.cross_entropy(pred_tensor, targets)
                     acc = (pred_tensor.argmax(dim=1) == targets).float().mean()
@@ -280,7 +299,7 @@ class AstroLightningModule(LightningModule):
     ) -> torch.Tensor:
         """Multi-task loss with learned weighting."""
         total_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
-        
+
         for key in predictions:
             if key in targets:
                 if "classification" in key:
@@ -288,37 +307,37 @@ class AstroLightningModule(LightningModule):
                 else:
                     loss = F.mse_loss(predictions[key], targets[key])
                 total_loss = total_loss + loss
-                
+
         return total_loss
 
     def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
         """Optimized training step."""
         results = self._compute_step(batch, "train")
-        
+
         # Log metrics
         for key, value in results.items():
             self.log(f"train_{key}", value, on_step=True, on_epoch=True, prog_bar=True)
-            
+
         return results["loss"]
 
     def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
         """Optimized validation step."""
         results = self._compute_step(batch, "val")
-        
+
         # Log metrics
         for key, value in results.items():
             self.log(f"val_{key}", value, on_step=False, on_epoch=True, prog_bar=True)
-            
+
         return results["loss"]
 
     def test_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
         """Optimized test step."""
         results = self._compute_step(batch, "test")
-        
+
         # Log metrics
         for key, value in results.items():
             self.log(f"test_{key}", value, on_step=False, on_epoch=True)
-            
+
         return results["loss"]
 
     def configure_optimizers(self) -> Union[AdamW, Dict[str, Any]]:
@@ -334,9 +353,9 @@ class AstroLightningModule(LightningModule):
                 "weight_decay": 0.0,
             },
         ]
-        
+
         optimizer = AdamW(
-            param_groups, 
+            param_groups,
             lr=self.learning_rate,
             eps=1e-8,
             betas=(0.9, 0.999),
@@ -345,7 +364,7 @@ class AstroLightningModule(LightningModule):
         # Scheduler configuration
         if self.scheduler == "cosine":
             scheduler = CosineAnnealingLR(
-                optimizer, 
+                optimizer,
                 T_max=self.max_epochs,
                 eta_min=self.learning_rate * 0.01,
             )

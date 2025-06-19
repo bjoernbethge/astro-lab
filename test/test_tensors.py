@@ -606,7 +606,11 @@ class TestSurveyTensor:
 
         # Test metadata access
         assert survey.get_metadata("survey_name") == "test_survey"
-        assert "column_mapping" in survey.model_dump()
+
+        # Check that column_mapping is in metadata (not top-level)
+        dumped = survey.model_dump()
+        assert "metadata" in dumped
+        assert "column_mapping" in dumped["metadata"]
 
 
 class TestSurveyTensorDatasetIntegration:

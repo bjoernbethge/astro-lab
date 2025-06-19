@@ -14,14 +14,17 @@ A specialized Python library for astronomical data processing with PyTorch-based
 ### Data Sources
 - **NSA (NASA Sloan Atlas)**: Galaxy catalog with distance measurements
 - **Exoplanets**: Confirmed exoplanets from NASA Exoplanet Archive
+- **TNG50 Simulations**: Batch processing of all particle types (Gas, Dark Matter, Stars, Black Holes)
+- **Gaia DR3**: Stellar catalogs with proper motions and parallax
 - **AstroML Integration**: LINEAR light curves, SDSS spectra
 - **Satellite Data**: TLE-based orbital mechanics
-- **Simulation Bridge**: Connection to cosmological simulations (TNG50)
 
 ### Tensor-based Processing
-- **PyTorch Integration**: Full GPU acceleration support
-- **Polars Backend**: High-performance data processing
+- **PyTorch Integration**: Full GPU acceleration support with CUDA optimization
+- **Polars Backend**: High-performance data processing (10-100x faster than Pandas)
+- **Graph Neural Networks**: Spatial graphs from particle simulations
 - **Multiple Tensor Types**: Spatial, Photometric, Spectral, Temporal
+- **Batch Processing**: Automated processing of multiple datasets
 - **ML-Ready**: Direct usage for deep learning applications
 
 ## 🚀 Quick Start
@@ -57,10 +60,16 @@ astro-lab preprocess --show-functions
 # Process a catalog with statistics and train/val/test splits
 astro-lab preprocess process catalog.parquet --stats --create-splits --output processed/
 
-# Process TNG50 simulation data
+# Process single TNG50 snapshot
 astro-lab preprocess tng50 data/raw/snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 5000
 
-# List TNG50 snapshots with inspection
+# Process ALL TNG50 snapshots at once (NEW!)
+astro-lab preprocess tng50 --all-snapshots --all --max-particles 2000 --stats
+
+# Process specific particle types across all snapshots
+astro-lab preprocess tng50 --all-snapshots --particle-types PartType0,PartType1 --max-particles 5000
+
+# List all available TNG50 snapshots with inspection
 astro-lab preprocess tng50-list --inspect
 ```
 
@@ -119,6 +128,32 @@ x, y, z = spatial_tensor.get_coordinates_cartesian()
 neighbors = spatial_tensor.find_neighbors(radius=10.0)  # 10 Mpc radius
 ```
 
+### TNG50 Simulation Processing
+
+Process cosmological simulation data efficiently:
+
+```bash
+# Process all snapshots with all particle types
+astro-lab preprocess tng50 --all-snapshots --all --max-particles 10000 --stats
+
+# Focus on dark matter and gas
+astro-lab preprocess tng50 --all-snapshots --particle-types PartType0,PartType1 --max-particles 20000
+
+# Single snapshot processing
+astro-lab preprocess tng50 snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 5000
+
+# Check available snapshots
+astro-lab preprocess tng50-list --inspect
+```
+
+**Features:**
+- ✅ **Robust Mass Handling**: Automatically handles missing mass fields for dark matter
+- ✅ **All Particle Types**: Gas, Dark Matter, Stars, Black Holes
+- ✅ **Spatial Graphs**: Creates k-NN graphs for machine learning
+- ✅ **GPU Acceleration**: CUDA optimization when available
+- ✅ **Batch Processing**: Process 11 snapshots automatically
+- ✅ **Error Recovery**: Continues processing even if individual snapshots fail
+
 ## 🛠️ Development
 
 ### Project Structure
@@ -155,19 +190,22 @@ python scripts/check_datasets.py
 ## 📈 Performance
 
 - **Polars Backend**: 10-100x faster than Pandas
-- **PyTorch Integration**: GPU acceleration available
+- **PyTorch Integration**: GPU acceleration with CUDA support
+- **Batch Processing**: Process 11 TNG50 snapshots automatically
+- **Robust Error Handling**: Handles missing data fields gracefully
 - **Lazy Loading**: Memory-efficient processing
 - **Parquet Format**: Optimized data storage
-- **Graph Neural Networks**: Scalable spatial analysis
+- **Graph Neural Networks**: Scalable spatial analysis with k-NN fallback
 
 ## 🎯 Scientific Applications
 
-- **Large-Scale Structure**: 3D galaxy distributions
+- **Large-Scale Structure**: 3D galaxy distributions and cosmic web analysis
+- **Cosmological Simulations**: TNG50 particle analysis (Gas, Dark Matter, Stars, Black Holes)
 - **Exoplanet Analysis**: Classification, habitability, discovery methods
-- **Clustering Analysis**: Neighbor-based studies
-- **Machine Learning**: Tensor-based features for GNNs
+- **Clustering Analysis**: Neighbor-based studies with spatial graphs
+- **Machine Learning**: Graph Neural Networks for astronomical objects
 - **Simulation Comparison**: Observation vs. theory (TNG50 integration)
-- **Multi-Survey Analysis**: Cross-matching different catalogs
+- **Multi-Survey Analysis**: Cross-matching different catalogs (NSA, Gaia, etc.)
 
 ## 🧪 Testing
 

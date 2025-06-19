@@ -1,0 +1,31 @@
+model:
+  type: gaia_classifier # We'll use this as a placeholder for now
+  params:
+    hidden_dim: 128
+    num_classes: 4 # Gas, Dark Matter, Stars, Black Holes
+    dropout: 0.1
+
+data:
+  dataset: tng50
+  batch_size: 1 # Single large graph
+  num_workers: 2
+  particle_type: "PartType1" # Dark Matter
+  radius: 1.0
+  max_particles: 5000
+  shuffle: false # Single graph doesn't need shuffling
+
+training:
+  task_type: unsupervised
+  experiment_name: tng50_particle_representation
+  max_epochs: 50
+  patience: 10
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: cosine
+  accelerator: auto
+  devices: auto
+  precision: 16-mixed
+
+optimization:
+  n_trials: 20
+  timeout: 1800 # 30 minutes
