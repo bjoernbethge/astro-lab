@@ -1,0 +1,29 @@
+"""
+Astro Lab - Advanced astronomical tensor operations with PyTorch.
+"""
+
+import os
+import warnings
+from pathlib import Path
+
+# Suppress NumPy 2.x compatibility warnings while keeping NumPy 2.x
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", message=".*NumPy 1.x.*")
+    warnings.filterwarnings("ignore", message=".*compiled using NumPy 1.x.*")
+
+# Set astroML data directory to project root/data
+_project_root = Path(__file__).parent.parent.parent
+_data_dir = _project_root / "data"
+_data_dir.mkdir(exist_ok=True)
+
+# Set environment variable for astroML
+os.environ["ASTROML_DATA"] = str(_data_dir)
+
+# Import main modules
+from astro_lab import data
+from astro_lab.tensors import *
+from astro_lab.models import *
+from astro_lab.utils import *
+
+__version__ = "0.1.0"
+__all__ = ["tensors", "data", "models", "utils"]
