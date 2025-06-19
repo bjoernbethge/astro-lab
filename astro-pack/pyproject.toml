@@ -1,0 +1,23 @@
+[project]
+name = "astro-pack"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Björn Bethge", email = "bjoern.bethge@gmail.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "astroml>=1.0.2.post1",
+    # "astrophot>=0.16.13",  # Temporarily disabled - not compatible with numpy 2.0 yet
+    "astropy>=7.1.0",
+    "astroquery>=0.4.10",
+    "poliastro>=0.7.0",
+    "sdss-access>=3.0.8",
+    "sgp4>=2.24",
+    "numpy>=2.0.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

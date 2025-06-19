@@ -1,0 +1,29 @@
+data:
+  batch_size: 32
+  dataset: nsa
+  num_workers: 4
+  sample_size: 5000 # Mittlere Größe
+  shuffle: true
+
+model:
+  params:
+    dropout: 0.2
+    hidden_dim: 128 # Mittlere Größe
+    num_classes: 5
+  type: sdss_galaxy_classifier
+
+optimization:
+  n_trials: 5 # 5 trials
+  timeout: 300 # 5 Minuten
+
+training:
+  accelerator: auto
+  devices: auto
+  experiment_name: medium_model_test
+  learning_rate: 0.001
+  max_epochs: 5 # 5 Epochen
+  patience: 3
+  precision: 32
+  scheduler: cosine
+  task_type: classification
+  weight_decay: 0.0001

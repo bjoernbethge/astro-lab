@@ -9,3 +9,28 @@ mlruns/
 
 # Virtual environments
 .venv
+
+# Generated documentation
+docs/generated*/
+docs/auto/
+
+# IDE files
+.cursor/
+.vscode/
+.idea/
+
+# Data and results
+data/
+results/
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+tree.txt
+
+# Images (unless specifically needed)
+*.png
+*.jpg
+*.jpeg
+konzept/

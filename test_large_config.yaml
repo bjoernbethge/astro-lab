@@ -1,0 +1,29 @@
+data:
+  batch_size: 64
+  dataset: nsa
+  num_workers: 6
+  sample_size: 10000 # Große Größe
+  shuffle: true
+
+model:
+  params:
+    dropout: 0.3
+    hidden_dim: 256 # Große Größe
+    num_classes: 7
+  type: sdss_galaxy_classifier
+
+optimization:
+  n_trials: 10 # 10 trials für gründliche Optimierung
+  timeout: 600 # 10 Minuten
+
+training:
+  accelerator: auto
+  devices: auto
+  experiment_name: large_model_test
+  learning_rate: 0.001
+  max_epochs: 10 # 10 Epochen
+  patience: 5
+  precision: 32
+  scheduler: cosine
+  task_type: classification
+  weight_decay: 0.0001
