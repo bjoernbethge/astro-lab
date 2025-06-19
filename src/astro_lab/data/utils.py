@@ -237,7 +237,20 @@ def load_fits_table_optimized(
             if as_polars:
                 # Convert to Polars DataFrame with proper type handling
                 try:
-                    df_pandas = table.to_pandas()  # type: ignore
+                    # Filter out multidimensional columns as suggested by astropy
+                    # This handles the NSA catalog issue with NMGY, ABSMAG, etc.
+                    names = [
+                        name for name in table.colnames if len(table[name].shape) <= 1
+                    ]
+                    if len(names) < len(table.colnames):
+                        filtered_cols = set(table.colnames) - set(names)
+                        print(
+                            f"📋 Filtered out {len(filtered_cols)} multidimensional columns: {list(filtered_cols)[:5]}{'...' if len(filtered_cols) > 5 else ''}"
+                        )
+
+                    # Use only 1D columns for Polars conversion
+                    filtered_table = table[names]
+                    df_pandas = filtered_table.to_pandas()  # type: ignore
                     return pl.from_pandas(df_pandas)
                 except Exception as e:
                     print(f"Error converting to Polars: {e}")
@@ -326,11 +339,11 @@ def create_training_splits(
     val_size: float = 0.1,
     stratify_column: Optional[str] = None,
     random_state: Optional[int] = 42,
-    shuffle: bool = True
+    shuffle: bool = True,
 ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
     Create train/validation/test splits using native Polars operations.
-    
+
     Parameters
     ----------
     df : pl.DataFrame
@@ -345,12 +358,12 @@ def create_training_splits(
         Random seed for reproducibility
     shuffle : bool, default True
         Whether to shuffle before splitting
-        
+
     Returns
     -------
     Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
         Training, validation, and test DataFrames
-        
+
     Raises
     ------
     ValueError
@@ -362,37 +375,43 @@ def create_training_splits(
     if not 0 < val_size < 1:
         raise ValueError(f"val_size must be between 0 and 1, got {val_size}")
     if test_size + val_size >= 1:
-        raise ValueError(f"test_size + val_size must be < 1, got {test_size + val_size}")
-    
-    print(f"🔄 Creating splits: train={1-test_size-val_size:.1%}, val={val_size:.1%}, test={test_size:.1%}")
-    
+        raise ValueError(
+            f"test_size + val_size must be < 1, got {test_size + val_size}"
+        )
+
+    print(
+        f"🔄 Creating splits: train={1 - test_size - val_size:.1%}, val={val_size:.1%}, test={test_size:.1%}"
+    )
+
     # Set random seed if provided
     if random_state is not None:
         np.random.seed(random_state)
-    
+
     n_total = len(df)
     n_test = int(n_total * test_size)
     n_val = int(n_total * val_size)
     n_train = n_total - n_test - n_val
-    
+
     if shuffle:
         # Create random indices
         indices = np.random.permutation(n_total)
     else:
         indices = np.arange(n_total)
-    
+
     # Split indices
     train_indices = indices[:n_train]
-    val_indices = indices[n_train:n_train + n_val]
-    test_indices = indices[n_train + n_val:]
-    
+    val_indices = indices[n_train : n_train + n_val]
+    test_indices = indices[n_train + n_val :]
+
     # Create splits using the indices
     df_train = df[train_indices.tolist()]
     df_val = df[val_indices.tolist()]
     df_test = df[test_indices.tolist()]
-    
-    print(f"✅ Created splits - Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}")
-    
+
+    print(
+        f"✅ Created splits - Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}"
+    )
+
     return df_train, df_val, df_test
 
 
@@ -401,11 +420,11 @@ def save_splits_to_parquet(
     df_val: pl.DataFrame,
     df_test: pl.DataFrame,
     base_path: Union[str, Path],
-    dataset_name: str
+    dataset_name: str,
 ) -> Dict[str, Path]:
     """
     Save train/validation/test splits to Parquet files.
-    
+
     Parameters
     ----------
     df_train, df_val, df_test : pl.DataFrame
@@ -414,7 +433,7 @@ def save_splits_to_parquet(
         Base directory for saving
     dataset_name : str
         Name of the dataset for file naming
-        
+
     Returns
     -------
     Dict[str, Path]
@@ -422,46 +441,47 @@ def save_splits_to_parquet(
     """
     base_path = Path(base_path)
     base_path.mkdir(parents=True, exist_ok=True)
-    
+
     paths = {}
     for split_name, df in [("train", df_train), ("val", df_val), ("test", df_test)]:
         filename = f"{dataset_name}_{split_name}.parquet"
         filepath = base_path / filename
-        
+
         df.write_parquet(filepath)
         paths[split_name] = filepath
         print(f"💾 Saved {split_name} split to {filepath}")
-    
+
     return paths
 
 
 def load_splits_from_parquet(
-    base_path: Union[str, Path],
-    dataset_name: str
+    base_path: Union[str, Path], dataset_name: str
 ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
     Load train/validation/test splits from Parquet files.
-    
+
     Parameters
     ----------
     base_path : Union[str, Path]
         Base directory containing the split files
     dataset_name : str
         Name of the dataset for file naming
-        
+
     Returns
     -------
     Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
         Training, validation, and test DataFrames
     """
     base_path = Path(base_path)
-    
+
     df_train = pl.read_parquet(base_path / f"{dataset_name}_train.parquet")
     df_val = pl.read_parquet(base_path / f"{dataset_name}_val.parquet")
     df_test = pl.read_parquet(base_path / f"{dataset_name}_test.parquet")
-    
-    print(f"📂 Loaded splits - Train: {df_train.height}, Val: {df_val.height}, Test: {df_test.height}")
-    
+
+    print(
+        f"📂 Loaded splits - Train: {df_train.height}, Val: {df_val.height}, Test: {df_test.height}"
+    )
+
     return df_train, df_val, df_test
 
 
@@ -470,11 +490,11 @@ def preprocess_catalog(
     clean_null_columns: bool = True,
     min_observations: Optional[int] = None,
     magnitude_columns: Optional[List[str]] = None,
-    coordinate_columns: Optional[List[str]] = None
+    coordinate_columns: Optional[List[str]] = None,
 ) -> pl.DataFrame:
     """
     Preprocess astronomical catalog data with common cleaning operations.
-    
+
     Parameters
     ----------
     df : pl.DataFrame
@@ -487,7 +507,7 @@ def preprocess_catalog(
         Magnitude columns for cleaning
     coordinate_columns : List[str], optional
         Coordinate columns for validation
-        
+
     Returns
     -------
     pl.DataFrame
@@ -495,29 +515,40 @@ def preprocess_catalog(
     """
     print(f"🧹 Preprocessing catalog data: {df.shape}")
     original_height = df.height
-    
+
     # Remove completely empty columns
     if clean_null_columns:
         null_counts = df.null_count()
         columns_to_keep = [
-            col for col in df.columns 
+            col
+            for col in df.columns
             if null_counts.select(col).item() < df.height * 0.95
         ]
         if len(columns_to_keep) < len(df.columns):
-            print(f"📉 Removed {len(df.columns) - len(columns_to_keep)} columns with >95% null values")
+            print(
+                f"📉 Removed {len(df.columns) - len(columns_to_keep)} columns with >95% null values"
+            )
             df = df.select(columns_to_keep)
-    
+
     # Filter by minimum observations
     if min_observations is not None:
         # Count non-null values per row
-        non_null_count = df.select([
-            pl.sum_horizontal([pl.col(col).is_not_null() for col in df.columns]).alias("non_null_count")
-        ])
-        
-        mask = non_null_count.select(pl.col("non_null_count") >= min_observations).to_series()
+        non_null_count = df.select(
+            [
+                pl.sum_horizontal(
+                    [pl.col(col).is_not_null() for col in df.columns]
+                ).alias("non_null_count")
+            ]
+        )
+
+        mask = non_null_count.select(
+            pl.col("non_null_count") >= min_observations
+        ).to_series()
         df = df.filter(mask)
-        print(f"📉 Filtered to {df.height} rows with >= {min_observations} observations")
-    
+        print(
+            f"📉 Filtered to {df.height} rows with >= {min_observations} observations"
+        )
+
     # Clean magnitude columns if specified
     if magnitude_columns:
         available_mag_cols = [col for col in magnitude_columns if col in df.columns]
@@ -526,26 +557,29 @@ def preprocess_catalog(
             magnitude_filters = []
             for col in available_mag_cols:
                 magnitude_filters.append(
-                    (pl.col(col).is_null()) | 
-                    ((pl.col(col) >= 0) & (pl.col(col) <= 30))
+                    (pl.col(col).is_null()) | ((pl.col(col) >= 0) & (pl.col(col) <= 30))
                 )
-            
+
             combined_filter = pl.all_horizontal(magnitude_filters)
             df = df.filter(combined_filter)
             print(f"📉 Filtered magnitudes, {df.height} rows remain")
-    
+
     # Validate coordinate columns if specified
     if coordinate_columns:
         available_coord_cols = [col for col in coordinate_columns if col in df.columns]
         if available_coord_cols:
             coord_filters = []
             for col in available_coord_cols:
-                coord_filters.append(pl.col(col).is_not_null() & pl.col(col).is_finite())
-            
+                coord_filters.append(
+                    pl.col(col).is_not_null() & pl.col(col).is_finite()
+                )
+
             combined_filter = pl.all_horizontal(coord_filters)
             df = df.filter(combined_filter)
             print(f"📉 Filtered coordinates, {df.height} rows remain")
-    
-    print(f"✅ Preprocessing complete: {original_height} → {df.height} rows ({df.height/original_height:.1%} retained)")
-    
+
+    print(
+        f"✅ Preprocessing complete: {original_height} → {df.height} rows ({df.height / original_height:.1%} retained)"
+    )
+
     return df

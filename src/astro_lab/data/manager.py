@@ -152,10 +152,8 @@ class AstroDataManager:
 
             # Add derived columns with proper units (step by step to avoid dependency issues)
             # First: Distance in parsecs (1000/parallax)
-            df = df.with_columns(
-                (1000.0 / pl.col("parallax")).alias("distance_pc")
-            )
-            
+            df = df.with_columns((1000.0 / pl.col("parallax")).alias("distance_pc"))
+
             # Second: Add other derived columns that depend on distance_pc
             df = df.with_columns(
                 [
@@ -493,15 +491,32 @@ class AstroDataManager:
         return pl.DataFrame(catalogs).sort("size_mb", descending=True)
 
     def load_catalog(self, catalog_path: Union[str, Path]) -> pl.DataFrame:
-        """Load catalog with metadata info."""
-
+        """Load catalog from file (supports .parquet, .csv, .fits)."""
         catalog_path = Path(catalog_path)
 
         if not catalog_path.exists():
             raise FileNotFoundError(f"Catalog not found: {catalog_path}")
 
         print(f"📂 Loading: {catalog_path.name}")
-        df = pl.read_parquet(catalog_path)
+
+        # Handle different file formats
+        suffix = catalog_path.suffix.lower()
+
+        if suffix == ".parquet":
+            df = pl.read_parquet(catalog_path)
+        elif suffix == ".csv":
+            df = pl.read_csv(catalog_path)
+        elif suffix == ".fits":
+            # Use the optimized FITS loader from utils
+            from .utils import load_fits_table_optimized
+
+            df = load_fits_table_optimized(catalog_path, as_polars=True)
+            if df is None:
+                raise ValueError(f"Failed to load FITS file: {catalog_path}")
+        else:
+            raise ValueError(
+                f"Unsupported file format: {suffix}. Supported: .parquet, .csv, .fits"
+            )
 
         # Load metadata if available
         metadata_file = catalog_path.with_suffix(".json")

@@ -1,346 +1,299 @@
-# Exoplanet Graph Dataset Pipeline
+# Exoplanet-Daten: Was geht, was nicht
 
-## Overview
+## ❌ Aktueller Status
 
-The ExoplanetGraphDataset provides a PyTorch Geometric-based interface for NASA Exoplanet Archive data. It automatically downloads confirmed exoplanets and creates spatial graphs based on 3D stellar system positions for graph neural network training.
+**Exoplanet-Funktionalität ist NICHT in `astro_lab.data` verfügbar.** Das Hauptpaket fokussiert sich auf Gaia, SDSS, NSA und LINEAR.
 
-## 🌟 Key Features
+## ✅ Was du stattdessen machen kannst
 
-### PyTorch Geometric Integration
-- **InMemoryDataset** implementation for efficient graph processing
-- **Automatic k-NN graph construction** based on 3D stellar positions
-- **GPU-optimized** data loading and processing
-- **Spatial relationships** between exoplanet host stars
-
-### Data Source
-- **NASA Exoplanet Archive** via astroquery
-- **Table:** `ps` (Planetary Systems)
-- **Filter:** `default_flag=1` (confirmed planets only)
-- **Automatic download** with timeout protection
-
-### Graph Construction
-- **3D Cartesian coordinates** from RA/Dec/Distance
-- **k-nearest neighbor** connections (default k=5)
-- **Distance-based filtering** (default max 100 parsecs)
-- **Edge weights** based on 3D distances
-
-## 🚀 Usage
-
-### Basic Dataset Creation
+### Option 1: Direkt mit astroquery (30 Sekunden)
 
 ```python
-from astro_lab.data import ExoplanetGraphDataset
+# NASA Exoplanet Archive direkt abfragen
+from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
+import polars as pl
 
-# Create dataset with default settings
-dataset = ExoplanetGraphDataset()
-
-# Access the graph
-graph = dataset[0]
-print(f"Exoplanet graph: {graph.num_nodes:,} nodes, {graph.num_edges:,} edges")
-print(f"Node features: {graph.x.shape}")
-print(f"3D positions: {graph.pos.shape}")
-```
-
-### Custom Configuration
-
-```python
-# Custom graph parameters
-dataset = ExoplanetGraphDataset(
-    k_neighbors=8,           # More connections
-    max_distance=50.0,       # Closer systems only (parsecs)
-    root="custom/path"       # Custom storage location
-)
-```
-
-### DataLoader Integration
-
-```python
-from astro_lab.data import create_exoplanet_dataloader
-
-# Create optimized DataLoader
-loader = create_exoplanet_dataloader(
-    k_neighbors=5,
-    max_distance=100.0,
-    batch_size=1,
-    use_exoplanet_transforms=True
-)
-
-# Process graphs
-for data in loader:
-    # data.x: node features [N, F]
-    # data.edge_index: graph connectivity [2, E]
-    # data.pos: 3D positions [N, 3]
-    # data.edge_attr: edge weights [E, 1]
-    pass
-```
-
-### SurveyTensor Conversion
-
-```python
-# Convert to specialized tensor format (if available)
-dataset = ExoplanetGraphDataset()
-survey_tensor = dataset.to_survey_tensor()
-spatial_tensor = dataset.get_spatial_tensor()
-```
-
-## 📊 Data Structure
-
-### Node Features
-The graph nodes represent exoplanet host stars with features:
-
-```python
-# Feature columns (in order):
-features = [
-    "ra",          # Right Ascension (degrees)
-    "dec",         # Declination (degrees) 
-    "sy_dist",     # System distance (parsecs)
-    "pl_rade",     # Planet radius (Earth radii)
-    "pl_masse",    # Planet mass (Earth masses)
-    "disc_year",   # Discovery year
-    "x",           # 3D Cartesian X coordinate
-    "y",           # 3D Cartesian Y coordinate
-    "z"            # 3D Cartesian Z coordinate
-]
-```
-
-### Graph Properties
-- **Nodes**: Each confirmed exoplanet system
-- **Edges**: k-NN connections between nearby stellar systems
-- **Edge weights**: 3D Euclidean distances in parsecs
-- **Positions**: 3D Cartesian coordinates for spatial analysis
-
-## 🔧 Technical Implementation
-
-### Automatic Download
-
-```python
-# The dataset automatically downloads data on first use
-dataset = ExoplanetGraphDataset()
-
-# Output:
-# 🪐 Downloading exoplanet data from NASA Exoplanet Archive...
-# 📡 Querying NASA Exoplanet Archive...
-# ✅ Downloaded X,XXX confirmed exoplanets
-# 📁 Saved to: data/processed/exoplanet_graphs/raw/confirmed_exoplanets.parquet
-```
-
-### Graph Processing
-
-```python
-# Automatic processing creates graph structure
-# 🔄 Processing Exoplanet catalog: confirmed_exoplanets.parquet
-# 📊 Using all X,XXX available planets
-# Creating graph with X,XXX exoplanets...
-# Graph created: X,XXX nodes, X,XXX edges
-```
-
-### Storage Structure
-
-```
-data/processed/exoplanet_graphs/
-├── raw/
-│   └── confirmed_exoplanets.parquet     # Raw NASA data
-└── processed/
-    └── exoplanet_graph_k5_all.pt       # Processed graph
-```
-
-## 🎯 Machine Learning Applications
-
-### Graph Neural Networks
-
-```python
-import torch
-import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
-
-class ExoplanetGNN(torch.nn.Module):
-    def __init__(self, num_features, hidden_dim=64):
-        super().__init__()
-        self.conv1 = GCNConv(num_features, hidden_dim)
-        self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        self.classifier = torch.nn.Linear(hidden_dim, num_classes)
+try:
+    # Kleine Query (funktioniert meist)
+    result = NasaExoplanetArchive.query_criteria(
+        table="ps",
+        select="top 100 pl_name,hostname,pl_rade,pl_masse,sy_dist,disc_year",
+        where="default_flag=1"
+    )
     
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        
-        x = F.relu(self.conv1(x, edge_index))
-        x = F.dropout(x, training=self.training)
-        x = self.conv2(x, edge_index)
-        
-        return self.classifier(x)
-
-# Train on exoplanet graph
-dataset = ExoplanetGraphDataset()
-model = ExoplanetGNN(dataset[0].x.shape[1])
+    exoplanets = pl.from_pandas(result.to_pandas())
+    print(f"✅ {len(exoplanets)} Exoplaneten geladen")
+    
+except Exception as e:
+    print(f"❌ NASA Archive down: {e}")
+    print("💡 Verwende Demo-Daten (siehe unten)")
 ```
 
-### Use Cases
-
-1. **Discovery Method Prediction**
-   - Predict how exoplanets were discovered based on system properties
-   - Classification task using host star features
-
-2. **System Clustering**
-   - Group similar exoplanet systems
-   - Identify patterns in stellar neighborhoods
-
-3. **Planet Property Estimation**
-   - Predict planet properties from stellar environment
-   - Regression on planet radius/mass
-
-4. **Habitability Assessment**
-   - Classify potentially habitable systems
-   - Use spatial and physical features
-
-## 🔍 Advanced Usage
-
-### Custom Transforms
+### Option 2: Demo-Daten generieren (immer funktioniert)
 
 ```python
-from astro_lab.data import get_exoplanet_transforms
+import numpy as np
+import polars as pl
 
-# Apply specialized transforms
-transforms = get_exoplanet_transforms()
-dataset = ExoplanetGraphDataset(transform=transforms)
+# Realistische Exoplanet-Demo-Daten
+n_planets = 1000
+
+demo_exoplanets = pl.DataFrame({
+    'pl_name': [f'Demo-{i}b' for i in range(n_planets)],
+    'hostname': [f'Demo-{i}' for i in range(n_planets)],
+    'ra': np.random.uniform(0, 360, n_planets),
+    'dec': np.random.uniform(-90, 90, n_planets),
+    'sy_dist': np.random.lognormal(2, 1, n_planets),  # parsecs
+    'pl_rade': np.random.lognormal(0, 0.5, n_planets),  # Earth radii
+    'pl_masse': np.random.lognormal(0, 1, n_planets),   # Earth masses
+    'disc_year': np.random.randint(1995, 2024, n_planets)
+})
+
+print(f"✅ {len(demo_exoplanets)} Demo-Exoplaneten erstellt")
 ```
 
-### Data Filtering
+### Option 3: astro-torch Package (für Graphs)
 
 ```python
-# Filter by distance
-def close_systems_filter(data):
-    # Only keep systems within 50 parsecs
-    return data.pos.norm(dim=1) < 50.0
-
-dataset = ExoplanetGraphDataset(pre_filter=close_systems_filter)
+# Separates Package installieren: pip install astro-torch
+try:
+    from astro_torch.data import ExoplanetGraphDataset
+    
+    dataset = ExoplanetGraphDataset(max_planets=1000)
+    graph = dataset[0]
+    print(f"Graph: {graph.num_nodes} Knoten, {graph.num_edges} Kanten")
+    
+except ImportError:
+    print("❌ astro-torch nicht installiert")
+    print("💡 Verwende Option 1 oder 2")
 ```
 
-### Batch Processing
+## 🚀 Praktische Exoplanet-Analyse
+
+### Rezept 1: Planet-Größen analysieren
 
 ```python
-from torch_geometric.loader import DataLoader
+# 1. Daten laden (Demo oder echt)
+exoplanets = demo_exoplanets  # Oder von astroquery
 
-# Process multiple subgraphs
-loader = DataLoader(dataset, batch_size=4, shuffle=True)
+# 2. Größen-Verteilung
+import matplotlib.pyplot as plt
 
-for batch in loader:
-    # batch contains multiple graphs
-    # Use torch_geometric.data.Batch methods
-    pass
+radii = exoplanets['pl_rade'].to_numpy()
+radii = radii[~np.isnan(radii)]  # NaN entfernen
+
+# 3. Kategorien
+earth_like = np.sum(radii < 1.5)
+super_earth = np.sum((radii >= 1.5) & (radii < 4))
+neptune_like = np.sum((radii >= 4) & (radii < 10))
+jupiter_like = np.sum(radii >= 10)
+
+print(f"🌍 Earth-like: {earth_like}")
+print(f"🌎 Super-Earth: {super_earth}")
+print(f"🔵 Neptune-like: {neptune_like}")
+print(f"🪐 Jupiter-like: {jupiter_like}")
+
+# 4. Plot
+plt.hist(radii, bins=50, alpha=0.7)
+plt.xlabel('Planet Radius (Earth radii)')
+plt.ylabel('Count')
+plt.title('Exoplanet Size Distribution')
+plt.show()
 ```
 
-## 📈 Performance Characteristics
+### Rezept 2: Discovery Timeline
 
-### Download Performance
-- **Data Source**: NASA Exoplanet Archive
-- **Download Time**: ~10-15 seconds
-- **File Size**: ~1-2 MB (compressed Parquet)
-- **Update Frequency**: On-demand (cached locally)
+```python
+# Entdeckungen pro Jahr
+years = exoplanets['disc_year'].to_numpy()
+years = years[~np.isnan(years)]
 
-### Graph Processing
-- **Processing Time**: ~5-10 seconds
-- **Memory Usage**: ~50-100 MB
-- **Graph Size**: ~5,000-6,000 nodes (confirmed planets)
-- **Edge Count**: Variable (depends on k_neighbors and max_distance)
+# Zählen
+from collections import Counter
+year_counts = Counter(years)
 
-### Storage Requirements
-- **Raw Data**: ~2 MB
-- **Processed Graph**: ~20 MB
-- **Total**: ~25 MB
+# Plot
+years_sorted = sorted(year_counts.keys())
+counts = [year_counts[year] for year in years_sorted]
 
-## ⚠️ Known Issues
+plt.plot(years_sorted, counts, 'o-')
+plt.xlabel('Discovery Year')
+plt.ylabel('Number of Planets')
+plt.title('Exoplanet Discoveries Over Time')
+plt.grid(True)
+plt.show()
 
-### NASA API Limitations
-- **Timeout Issues**: NASA Exoplanet Archive occasionally times out
-- **Solution**: Automatic retry with exponential backoff
-- **Fallback**: Cached data used if download fails
+print(f"Peak year: {years_sorted[np.argmax(counts)]} ({max(counts)} planets)")
+```
 
-### Data Quality
-- **Missing Values**: Filled with 0.0 (using `np.nan_to_num`)
-- **Distance Estimates**: Some systems lack distance measurements
-- **Coordinate Precision**: Limited by catalog accuracy
+### Rezept 3: Host Star Distance
 
-## 🛠️ Development Commands
+```python
+# Distanz-Analyse
+distances = exoplanets['sy_dist'].to_numpy()
+distances = distances[~np.isnan(distances)]
+
+print(f"Closest system: {np.min(distances):.1f} parsecs")
+print(f"Farthest system: {np.max(distances):.1f} parsecs")
+print(f"Median distance: {np.median(distances):.1f} parsecs")
+
+# Nearby systems (< 50 parsecs)
+nearby = np.sum(distances < 50)
+print(f"🏠 Nearby systems (<50 pc): {nearby}")
+
+# Plot
+plt.hist(distances, bins=50, alpha=0.7)
+plt.axvline(50, color='red', linestyle='--', label='50 parsecs')
+plt.xlabel('Distance (parsecs)')
+plt.ylabel('Count')
+plt.legend()
+plt.title('Host Star Distances')
+plt.show()
+```
+
+## 🔧 Häufige Probleme & Lösungen
+
+### Problem: NASA Archive Timeout
+```python
+# Lösung: Kleinere Queries + Retry
+def safe_nasa_query(max_planets=100, retries=3):
+    for i in range(retries):
+        try:
+            result = NasaExoplanetArchive.query_criteria(
+                table="ps",
+                select=f"top {max_planets} pl_name,pl_rade,pl_masse",
+                where="default_flag=1"
+            )
+            return pl.from_pandas(result.to_pandas())
+        except:
+            print(f"Retry {i+1}/{retries}...")
+            time.sleep(2)
+    
+    print("❌ NASA Archive nicht erreichbar, verwende Demo-Daten")
+    return demo_exoplanets[:max_planets]
+```
+
+### Problem: Viele NaN Values
+```python
+# Lösung: Daten bereinigen
+def clean_exoplanet_data(df):
+    # Nur Planeten mit Radius und Masse
+    df = df.filter(
+        pl.col('pl_rade').is_not_null() & 
+        pl.col('pl_masse').is_not_null()
+    )
+    
+    # Unrealistische Werte entfernen
+    df = df.filter(
+        (pl.col('pl_rade') > 0) & (pl.col('pl_rade') < 50) &
+        (pl.col('pl_masse') > 0) & (pl.col('pl_masse') < 5000)
+    )
+    
+    return df
+
+clean_data = clean_exoplanet_data(exoplanets)
+print(f"Bereinigt: {len(clean_data)} von {len(exoplanets)} Planeten")
+```
+
+## 🔮 Zukünftige Integration
+
+### Geplante astro_lab.data Integration
+
+```python
+# Das würde in Zukunft funktionieren:
+from astro_lab.data import load_exoplanet_data  # NOCH NICHT VERFÜGBAR
+
+# Saubere API wie bei anderen Surveys
+exoplanets = load_exoplanet_data(
+    max_samples=1000,
+    source='nasa_archive',  # oder 'eu_archive'
+    return_tensor=True
+)
+
+print(f"Exoplanets: {exoplanets.shape}")
+```
+
+### Was dafür entwickelt werden muss
+
+1. **Robuste NASA Archive Integration** (Timeouts handhaben)
+2. **Caching System** (lokale Datenspeicherung)
+3. **Data Quality Filters** (NaN handling, unrealistic values)
+4. **SurveyTensor Support** (wie bei Gaia/SDSS)
+
+## 🛠️ Jetzt beitragen
+
+Wenn du Exoplanet-Support implementieren willst:
+
+### Schritt 1: Basis-Integration
+
+```python
+# In src/astro_lab/data/core.py erweitern:
+
+SURVEY_CONFIGS['exoplanet'] = {
+    'name': 'NASA Exoplanet Archive',
+    'coord_cols': ['ra', 'dec', 'sy_dist'],
+    'mag_cols': ['pl_rade', 'pl_masse'],
+    'extra_cols': ['disc_year', 'hostname'],
+    'photometric_bands': ['planet_radius', 'planet_mass'],
+    # ... weitere Config
+}
+```
+
+### Schritt 2: Download Function
+
+```python
+def download_exoplanet_data(max_planets=5000):
+    """Download exoplanet data with robust error handling."""
+    try:
+        result = NasaExoplanetArchive.query_criteria(
+            table="ps",
+            select=f"top {max_planets} *",
+            where="default_flag=1"
+        )
+        return pl.from_pandas(result.to_pandas())
+    except Exception as e:
+        print(f"NASA Archive error: {e}")
+        return generate_demo_exoplanets(max_planets)
+```
+
+### Schritt 3: Tests schreiben
+
+```python
+def test_exoplanet_loading():
+    # Mit Demo-Daten testen (nicht NASA API abhängig)
+    data = load_exoplanet_data(max_samples=100)
+    assert len(data) == 100
+    assert 'pl_rade' in data.columns
+```
+
+## 📝 Quick Commands
 
 ```bash
-# Test dataset creation
-uv run python -c "from astro_lab.data import ExoplanetGraphDataset; d = ExoplanetGraphDataset(); print(f'Graph: {d[0].num_nodes} nodes')"
+# Test NASA Archive Verbindung
+uv run python -c "
+from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
+try:
+    result = NasaExoplanetArchive.query_criteria(table='ps', select='top 1 pl_name')
+    print('✅ NASA Archive erreichbar')
+except:
+    print('❌ NASA Archive down')
+"
 
-# Test DataLoader
-uv run python -c "from astro_lab.data import create_exoplanet_dataloader; l = create_exoplanet_dataloader(); print('DataLoader created')"
+# Demo-Daten erstellen
+uv run python -c "
+import numpy as np
+import polars as pl
+demo = pl.DataFrame({
+    'pl_rade': np.random.lognormal(0, 0.5, 100),
+    'pl_masse': np.random.lognormal(0, 1, 100)
+})
+print(f'✅ {len(demo)} Demo-Planeten erstellt')
+"
 
-# Check dataset info
-uv run python scripts/check_datasets.py
-
-# Test with astroquery
+# Astroquery Demo laufen lassen
 uv run python examples/astroquery_demo.py
 ```
 
-## 🧪 Testing
-
-The exoplanet dataset is covered by the test suite:
-
-```bash
-# Run dataset tests
-uv run pytest test/test_*.py -v -k exoplanet
-
-# Test data loading
-uv run pytest test/test_data_module.py -v
-```
-
-## 🔗 Integration
-
-### With Other Datasets
-
-```python
-# Combine with other astronomical datasets
-from astro_lab.data import GaiaGraphDataset, NSAGraphDataset
-
-gaia_data = GaiaGraphDataset()
-nsa_data = NSAGraphDataset()
-exo_data = ExoplanetGraphDataset()
-
-# Cross-reference stellar systems
-```
-
-### With Training Pipeline
-
-```python
-# Use in training loop
-from astro_lab.training import LightningModule
-
-class ExoplanetModel(LightningModule):
-    def __init__(self):
-        super().__init__()
-        self.dataset = ExoplanetGraphDataset()
-        # ... model definition
-```
-
-## 🔮 Future Extensions
-
-### Planned Features
-- **Multi-planet systems**: Better representation of systems with multiple planets
-- **Temporal evolution**: Track discovery trends over time
-- **Cross-matching**: Link with Gaia stellar data
-- **Advanced filtering**: More sophisticated data quality filters
-
-### Research Directions
-- **Exoplanet population synthesis**
-- **Discovery bias analysis**
-- **Habitability zone modeling**
-- **System architecture studies**
-
-## 📚 References
-
-- [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/)
-- [PyTorch Geometric Documentation](https://pytorch-geometric.readthedocs.io/)
-- [astroquery Documentation](https://astroquery.readthedocs.io/)
-
 ---
 
-**Status:** ✅ Production Ready  
-**Implementation:** PyTorch Geometric InMemoryDataset  
-**Data Source:** NASA Exoplanet Archive via astroquery  
-**Graph Type:** 3D spatial k-NN graph  
-**Testing:** ✅ Integrated with test suite  
-**GPU Support:** ✅ Automatic optimization 
+**TL;DR**: Exoplanets nicht in astro_lab.data → Verwende astroquery direkt oder Demo-Daten → Beitrag zur Integration willkommen! 🪐

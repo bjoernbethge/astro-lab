@@ -20,6 +20,10 @@ from .core import (
     # Factory Functions
     create_astro_dataloader,
     create_astro_datamodule,
+    create_graph_datasets_from_splits,
+    # 🔗 GRAPH CREATION FUNCTIONS - NEW!
+    create_graph_from_dataframe,
+    detect_survey_type,
     # Convenience Functions for Common Surveys
     load_gaia_data,  # Stellar catalogs with astrometry
     load_lightcurve_data,  # Variable stars/lightcurves
@@ -68,6 +72,10 @@ __all__ = [
     "load_sdss_data",  # One-liner for SDSS
     "load_nsa_data",  # One-liner for NSA
     "load_lightcurve_data",  # One-liner for lightcurves
+    # 🔗 GRAPH CREATION FUNCTIONS - NEW!
+    "create_graph_from_dataframe",  # Create graph from DataFrame
+    "create_graph_datasets_from_splits",  # Create graphs from splits
+    "detect_survey_type",  # Auto-detect survey type
     # 🔧 CONFIGURATION
     "SURVEY_CONFIGS",  # Survey definitions (DRY)
     # 🔧 LEGACY MANAGER SUPPORT (for CLI)

@@ -36,6 +36,16 @@ except ImportError:
     TENSOR_INTEGRATION_AVAILABLE = False
     SurveyTensor = None
 
+# PyTorch Geometric integration
+try:
+    import torch_geometric
+    from torch_geometric.data import Data
+    from torch_geometric.loader import DataLoader
+
+    TORCH_GEOMETRIC_AVAILABLE = True
+except ImportError:
+    TORCH_GEOMETRIC_AVAILABLE = False
+
 # Survey configurations - DRY principle with TENSOR METADATA
 SURVEY_CONFIGS = {
     "gaia": {
@@ -775,4 +785,337 @@ def load_lightcurve_data(
         max_samples=max_samples,
         return_tensor=return_tensor,
         **kwargs,
+    )
+
+
+def detect_survey_type(dataset_name: str, df: pl.DataFrame) -> str:
+    """
+    Detect survey type from filename and columns.
+
+    Args:
+        dataset_name: Name of the dataset file
+        df: Polars DataFrame with astronomical data
+
+    Returns:
+        Survey type string
+    """
+    name_lower = dataset_name.lower()
+    columns = [col.lower() for col in df.columns]
+
+    if "nsa" in name_lower or any("petromag" in col for col in columns):
+        return "nsa"
+    elif "gaia" in name_lower or "phot_g_mean_mag" in columns:
+        return "gaia"
+    elif "sdss" in name_lower or any("modelmag" in col for col in columns):
+        return "sdss"
+    else:
+        return "generic"
+
+
+def create_graph_from_dataframe(
+    df: pl.DataFrame,
+    survey_type: str,
+    k_neighbors: int = 8,
+    distance_threshold: float = 50.0,
+    output_path: Optional[Path] = None,
+    **kwargs,
+) -> Optional[Data]:
+    """
+    Create PyTorch Geometric graph from Polars DataFrame.
+
+    Args:
+        df: Input DataFrame
+        survey_type: Type of survey ('nsa', 'gaia', 'sdss', 'generic')
+        k_neighbors: Number of neighbors for graph construction
+        distance_threshold: Distance threshold for edges
+        output_path: Optional path to save graph
+        **kwargs: Additional arguments
+
+    Returns:
+        PyTorch Geometric Data object or None if PyG not available
+    """
+    if not TORCH_GEOMETRIC_AVAILABLE:
+        print("⚠️  PyTorch Geometric not available for graph creation")
+        return None
+
+    try:
+        if survey_type == "nsa":
+            return _create_nsa_graph(df, k_neighbors, distance_threshold, **kwargs)
+        elif survey_type == "gaia":
+            return _create_gaia_graph(df, k_neighbors, distance_threshold, **kwargs)
+        elif survey_type == "sdss":
+            return _create_sdss_graph(df, k_neighbors, distance_threshold, **kwargs)
+        else:
+            return _create_generic_graph(df, k_neighbors, distance_threshold, **kwargs)
+
+    except Exception as e:
+        print(f"❌ Error creating {survey_type} graph: {e}")
+        return None
+
+
+def create_graph_datasets_from_splits(
+    train_df: pl.DataFrame,
+    val_df: pl.DataFrame,
+    test_df: pl.DataFrame,
+    output_path: Path,
+    dataset_name: str,
+    k_neighbors: int = 8,
+    distance_threshold: float = 50.0,
+    **kwargs,
+) -> Dict[str, Optional[Data]]:
+    """
+    Create graph datasets from train/val/test splits.
+
+    Args:
+        train_df, val_df, test_df: Split DataFrames
+        output_path: Output directory
+        dataset_name: Name of the dataset
+        k_neighbors: Number of neighbors for graph construction
+        distance_threshold: Distance threshold for edges
+        **kwargs: Additional arguments
+
+    Returns:
+        Dictionary with 'train', 'val', 'test' graph data objects
+    """
+    if not TORCH_GEOMETRIC_AVAILABLE:
+        print("⚠️  PyTorch Geometric not available - skipping graph creation")
+        return {"train": None, "val": None, "test": None}
+
+    print("\n🔗 Creating PyTorch Geometric Graphs (.pt) - Standard für GNNs")
+
+    # Detect survey type
+    survey_type = detect_survey_type(dataset_name, train_df)
+    print(f"📊 Detected survey type: {survey_type}")
+
+    results = {}
+
+    for split_name, df in [("train", train_df), ("val", val_df), ("test", test_df)]:
+        print(f"   🔄 Creating {split_name} graph...")
+
+        graph_data = create_graph_from_dataframe(
+            df, survey_type, k_neighbors, distance_threshold, **kwargs
+        )
+
+        if graph_data is not None:
+            # Save graph if output path provided
+            if output_path:
+                graph_dir = output_path / f"graphs_{split_name}"
+                graph_dir.mkdir(exist_ok=True)
+
+                graph_file = graph_dir / f"{dataset_name}_{split_name}.pt"
+                torch.save(graph_data, graph_file)
+                print(f"   💾 Saved to: {graph_file}")
+
+            print(
+                f"   📊 {split_name.title()}: {graph_data.num_nodes:,} nodes, {graph_data.num_edges:,} edges"
+            )
+
+        results[split_name] = graph_data
+
+    print("✅ Graph datasets created successfully!")
+    return results
+
+
+def _create_nsa_graph(
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+) -> Data:
+    """Create NSA galaxy graph."""
+    # Convert redshift to distance and create 3D coordinates
+    z = df["z"].to_numpy()
+    ra = df["ra"].to_numpy()
+    dec = df["dec"].to_numpy()
+
+    # Simple redshift to distance conversion (Hubble flow)
+    c = 299792.458  # km/s
+    H0 = 70.0  # km/s/Mpc
+    distance = c * z / H0  # Mpc
+
+    # Convert to 3D Cartesian coordinates
+    ra_rad = np.radians(ra)
+    dec_rad = np.radians(dec)
+
+    x = distance * np.cos(dec_rad) * np.cos(ra_rad)
+    y = distance * np.cos(dec_rad) * np.sin(ra_rad)
+    z_coord = distance * np.sin(dec_rad)
+
+    coords_3d = np.column_stack([x, y, z_coord])
+
+    # Create feature matrix
+    feature_cols = ["ra", "dec", "z"]
+    available_cols = [col for col in feature_cols if col in df.columns]
+
+    # Add photometry if available
+    photo_cols = ["petromag_r", "petromag_g", "petromag_i", "mass"]
+    available_cols.extend([col for col in photo_cols if col in df.columns])
+
+    features = df.select(available_cols).to_numpy()
+    features = np.nan_to_num(features, nan=0.0)
+
+    # Add 3D coordinates to features
+    features = np.column_stack([features, coords_3d])
+
+    # Create k-nearest neighbor graph
+    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
+    nbrs.fit(coords_3d)
+
+    distances_3d, indices = nbrs.kneighbors(coords_3d)
+
+    # Convert to edge list
+    edge_list = []
+    edge_weights = []
+
+    for i, (dist_row, idx_row) in enumerate(zip(distances_3d, indices)):
+        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
+            if dist <= distance_threshold:
+                edge_list.append([i, idx])
+                edge_weights.append(float(dist))
+
+    # Convert to tensors
+    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
+    node_features = torch.tensor(features, dtype=torch.float)
+
+    return Data(
+        x=node_features,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        pos=torch.tensor(coords_3d, dtype=torch.float),
+        num_nodes=len(features),
+    )
+
+
+def _create_gaia_graph(
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+) -> Data:
+    """Create Gaia stellar graph."""
+    # Use sky coordinates for Gaia
+    coords = df.select(["ra", "dec"]).to_numpy()
+
+    # Create feature matrix
+    feature_cols = ["ra", "dec", "phot_g_mean_mag", "bp_rp", "parallax"]
+    available_cols = [col for col in feature_cols if col in df.columns]
+
+    features = df.select(available_cols).to_numpy()
+    features = np.nan_to_num(features, nan=0.0)
+
+    # Create k-nearest neighbor graph on sky
+    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
+    nbrs.fit(np.radians(coords))
+
+    distances, indices = nbrs.kneighbors(np.radians(coords))
+
+    # Convert to edge list
+    edge_list = []
+    edge_weights = []
+
+    max_distance_rad = np.radians(
+        distance_threshold / 3600.0
+    )  # Convert arcsec to radians
+
+    for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
+        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
+            if dist <= max_distance_rad:
+                edge_list.append([i, idx])
+                edge_weights.append(float(dist))
+
+    # Convert to tensors
+    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
+    node_features = torch.tensor(features, dtype=torch.float)
+
+    return Data(
+        x=node_features,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        num_nodes=len(features),
+    )
+
+
+def _create_sdss_graph(
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+) -> Data:
+    """Create SDSS galaxy graph."""
+    # Similar to NSA but with SDSS-specific columns
+    coords = df.select(["ra", "dec"]).to_numpy()
+
+    # Create feature matrix
+    feature_cols = ["ra", "dec"]
+    if "z" in df.columns:
+        feature_cols.append("z")
+
+    # Add SDSS photometry
+    sdss_mags = ["modelmag_u", "modelmag_g", "modelmag_r", "modelmag_i", "modelmag_z"]
+    available_cols = feature_cols + [col for col in sdss_mags if col in df.columns]
+
+    features = df.select(available_cols).to_numpy()
+    features = np.nan_to_num(features, nan=0.0)
+
+    # Create k-nearest neighbor graph
+    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
+    nbrs.fit(np.radians(coords))
+
+    distances, indices = nbrs.kneighbors(np.radians(coords))
+
+    # Convert to edge list
+    edge_list = []
+    edge_weights = []
+
+    max_distance_rad = np.radians(
+        distance_threshold / 3600.0
+    )  # Convert arcsec to radians
+
+    for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
+        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
+            if dist <= max_distance_rad:
+                edge_list.append([i, idx])
+                edge_weights.append(float(dist))
+
+    # Convert to tensors
+    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
+    node_features = torch.tensor(features, dtype=torch.float)
+
+    return Data(
+        x=node_features,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        num_nodes=len(features),
+    )
+
+
+def _create_generic_graph(
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+) -> Data:
+    """Create generic astronomical graph."""
+    # Use first two columns as coordinates
+    coords = df.to_numpy()[:, :2]
+    features = df.to_numpy()
+    features = np.nan_to_num(features, nan=0.0)
+
+    # Create k-nearest neighbor graph
+    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
+    nbrs.fit(coords)
+
+    distances, indices = nbrs.kneighbors(coords)
+
+    # Convert to edge list
+    edge_list = []
+    edge_weights = []
+
+    for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
+        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
+            if dist <= distance_threshold:
+                edge_list.append([i, idx])
+                edge_weights.append(float(dist))
+
+    # Convert to tensors
+    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
+    node_features = torch.tensor(features, dtype=torch.float)
+
+    return Data(
+        x=node_features,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        num_nodes=len(features),
     )
