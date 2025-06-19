@@ -1,0 +1,105 @@
+model:
+  type: sdss_galaxy_classifier
+  params:
+    hidden_dim: 384
+    num_classes: 3 # Elliptical, Spiral, Irregular
+    dropout: 0.2
+    use_batch_norm: true
+    attention_heads: 8
+
+data:
+  dataset: sdss
+  data_dir: data/processed
+  cache_dir: data/cache
+  batch_size: 48
+  num_workers: 4
+  sample_size: 75000
+  split_ratios: [0.75, 0.125, 0.125]
+  augmentation:
+    photometric_noise: 0.02
+    redshift_uncertainty: 0.01
+    magnitude_cuts:
+      r_min: 14.0
+      r_max: 21.5
+
+training:
+  task_type: classification
+  experiment_name: sdss_galaxy_morphology_v3
+  max_epochs: 120
+  patience: 12
+  learning_rate: 0.0008
+  weight_decay: 0.0002
+  scheduler: cosine
+  warmup_epochs: 8
+  accelerator: auto
+  devices: auto
+  precision: 16-mixed
+  gradient_clip_val: 1.5
+
+  # Multi-task learning
+  loss_params:
+    morphology_weight: 1.0
+    size_weight: 0.3 # Auxiliary task: galaxy size
+    color_weight: 0.2 # Auxiliary task: color prediction
+
+optimization:
+  n_trials: 60
+  timeout: 5400 # 1.5 hours
+  study_name: galaxy_morphology_optimization
+  direction: maximize
+
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 5e-5
+      high: 2e-3
+    hidden_dim:
+      type: categorical
+      choices: [256, 384, 512, 640]
+    dropout:
+      type: uniform
+      low: 0.1
+      high: 0.4
+    attention_heads:
+      type: categorical
+      choices: [4, 6, 8, 12]
+
+mlflow:
+  tracking_uri: file:./mlruns
+  experiment_description: "SDSS galaxy morphology classification with multi-band photometry"
+  tags:
+    survey: SDSS
+    task: galaxy_morphology
+    data_release: DR17
+    version: v3.0
+    filters: ugriz
+
+callbacks:
+  early_stopping:
+    monitor: val_accuracy
+    patience: 12
+    min_delta: 0.0005
+    mode: max
+
+  model_checkpoint:
+    monitor: val_accuracy
+    save_top_k: 3
+    mode: max
+    save_last: true
+
+  lr_monitor:
+    logging_interval: epoch
+
+# Advanced features
+features:
+  use_color_indices: true
+  use_concentration_index: true
+  use_asymmetry: true
+  use_smoothness: true
+
+# Data quality filters
+quality_cuts:
+  psf_fwhm_max: 2.0 # arcsec
+  extinction_max: 0.5 # mag
+  clean_photometry: true
+  deblend_flag: 0

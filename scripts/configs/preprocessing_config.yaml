@@ -1,0 +1,58 @@
+# Modern AstroLab Preprocessing Configuration
+# =========================================
+
+# Train/Validation/Test Split Configuration
+split_config:
+  test_size: 0.2 # 20% für Test-Set
+  val_size: 0.1 # 10% für Validierungs-Set (70% für Training)
+  random_state: 42 # Für reproduzierbare Ergebnisse
+  shuffle: true # Daten vor Split mischen
+
+# Data Preprocessing Options
+preprocessing:
+  clean_null_columns: true # Spalten mit >95% null Werten entfernen
+  min_observations_factor: 1.0 # Multiplikator für minimale Beobachtungen
+
+# Parallel Processing Configuration
+parallel_processing:
+  n_threads: null # null = alle verfügbaren Threads nutzen
+
+# Dataset-specific Overrides (optional)
+dataset_overrides:
+  nsa:
+    split_config:
+      stratify_column: null # Keine Stratifizierung für NSA
+
+  exoplanet:
+    split_config:
+      stratify_column: "disposition" # Stratifiziere nach Exoplanet-Status
+    preprocessing:
+      min_observations_factor: 0.8 # Weniger strenge Filterung
+
+  linear_lightcurves:
+    split_config:
+      stratify_column: "classification"
+    preprocessing:
+      min_observations_factor: 1.5 # Strengere Filterung für Lichtkurven
+
+  rrlyrae:
+    preprocessing:
+      min_observations_factor: 2.0 # Sehr strenge Filterung für RR Lyrae
+
+# Advanced Options
+advanced:
+  cache_intermediate: true # Zwischenergebnisse cachen
+  validate_splits: true # Splits auf Konsistenz prüfen
+  create_backup: false # Backup alter Splits erstellen
+
+# Output Configuration
+output:
+  save_metadata: true # Metadaten-YAML Dateien erstellen
+  save_statistics: true # Datenstatistiken speichern
+  compression_level: 6 # Parquet-Kompression (0-9)
+
+# Logging Configuration
+logging:
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR
+  show_progress: true # Fortschrittsbalken anzeigen
+  log_to_file: false # Log in Datei schreiben

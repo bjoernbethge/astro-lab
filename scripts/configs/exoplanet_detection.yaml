@@ -1,0 +1,90 @@
+model:
+  type: lsst_transient_detector
+  params:
+    hidden_dim: 512
+    num_classes: 2 # Planet transit vs no transit
+    dropout: 0.15
+    use_batch_norm: true
+    temporal_layers: 4
+
+data:
+  dataset: lightcurves # Custom dataset for light curves
+  data_dir: data/processed/exoplanets
+  cache_dir: data/cache
+  batch_size: 32
+  num_workers: 6
+  sample_size: 100000
+  split_ratios: [0.8, 0.1, 0.1] # More training data for detection
+  augmentation:
+    time_jitter: 0.001 # Small timing variations
+    flux_noise: 0.005 # Photometric noise
+    random_gaps: 0.1 # Missing data simulation
+
+training:
+  task_type: classification
+  experiment_name: kepler_exoplanet_detection
+  max_epochs: 200
+  patience: 20
+  learning_rate: 0.0005
+  weight_decay: 0.00001
+  scheduler: onecycle
+  warmup_epochs: 5
+  accelerator: auto
+  devices: auto
+  precision: 16-mixed
+  gradient_clip_val: 0.5
+
+  # Class imbalance handling
+  loss_params:
+    focal_loss: true
+    alpha: 0.25
+    gamma: 2.0
+    pos_weight: 10.0 # Exoplanets are rare
+
+optimization:
+  n_trials: 80
+  timeout: 10800 # 3 hours
+  study_name: exoplanet_detection_optimization
+  direction: maximize
+
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1e-5
+      high: 5e-3
+    hidden_dim:
+      type: categorical
+      choices: [256, 512, 768, 1024]
+    dropout:
+      type: uniform
+      low: 0.1
+      high: 0.3
+    temporal_layers:
+      type: int
+      low: 2
+      high: 8
+
+mlflow:
+  tracking_uri: file:./mlruns
+  experiment_description: "Kepler/TESS exoplanet transit detection using light curves"
+  tags:
+    survey: Kepler
+    task: exoplanet_detection
+    mission: TESS
+    version: v1.0
+
+callbacks:
+  early_stopping:
+    monitor: val_f1_score
+    patience: 20
+    min_delta: 0.001
+    mode: max
+
+  model_checkpoint:
+    monitor: val_f1_score
+    save_top_k: 5
+    mode: max
+    save_last: true
+
+  lr_monitor:
+    logging_interval: step

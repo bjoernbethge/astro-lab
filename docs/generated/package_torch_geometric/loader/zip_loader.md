@@ -1,0 +1,393 @@
+# zip_loader
+
+Part of `torch_geometric.loader`
+Module: `torch_geometric.loader.zip_loader`
+
+## Functions (1)
+
+### `infer_filter_per_worker(data: Any) -> bool`
+
+## Classes (8)
+
+### `Any`
+
+Special type indicating an unconstrained type.
+
+- Any is compatible with every type.
+- Any assumed to have all methods.
+- All values assumed to be instances of Any.
+
+Note that all the above statements are true from the point of view of
+static type checkers. At runtime, Any should not be used with instance
+checks.
+
+### `Data`
+
+A data object describing a homogeneous graph.
+The data object can hold node-level, link-level and graph-level attributes.
+In general, :class:`~torch_geometric.data.Data` tries to mimic the
+behavior of a regular :python:`Python` dictionary.
+In addition, it provides useful functionality for analyzing graph
+structures, and provides basic PyTorch tensor functionalities.
+See `here <https://pytorch-geometric.readthedocs.io/en/latest/get_started/
+introduction.html#data-handling-of-graphs>`__ for the accompanying
+tutorial.
+
+.. code-block:: python
+
+    from torch_geometric.data import Data
+
+    data = Data(x=x, edge_index=edge_index, ...)
+
+    # Add additional arguments to `data`:
+    data.train_idx = torch.tensor([...], dtype=torch.long)
+    data.test_mask = torch.tensor([...], dtype=torch.bool)
+
+    # Analyzing the graph structure:
+    data.num_nodes
+    >>> 23
+
+    data.is_directed()
+    >>> False
+
+    # PyTorch tensor functionality:
+    data = data.pin_memory()
+    data = data.to('cuda:0', non_blocking=True)
+
+Args:
+    x (torch.Tensor, optional): Node feature matrix with shape
+        :obj:`[num_nodes, num_node_features]`. (default: :obj:`None`)
+    edge_index (LongTensor, optional): Graph connectivity in COO format
+        with shape :obj:`[2, num_edges]`. (default: :obj:`None`)
+    edge_attr (torch.Tensor, optional): Edge feature matrix with shape
+        :obj:`[num_edges, num_edge_features]`. (default: :obj:`None`)
+    y (torch.Tensor, optional): Graph-level or node-level ground-truth
+        labels with arbitrary shape. (default: :obj:`None`)
+    pos (torch.Tensor, optional): Node position matrix with shape
+        :obj:`[num_nodes, num_dimensions]`. (default: :obj:`None`)
+    time (torch.Tensor, optional): The timestamps for each event with shape
+        :obj:`[num_edges]` or :obj:`[num_nodes]`. (default: :obj:`None`)
+    **kwargs (optional): Additional attributes.
+
+#### Methods
+
+- **`stores_as(self, data: Self)`**
+
+- **`to_dict(self) -> Dict[str, Any]`**
+  Returns a dictionary of stored key/value pairs.
+
+- **`to_namedtuple(self) -> <function NamedTuple at 0x000001FE17E66F20>`**
+  Returns a :obj:`NamedTuple` of stored key/value pairs.
+
+### `DataLoaderIterator`
+
+A data loader iterator extended by a simple post transformation
+function :meth:`transform_fn`. While the iterator may request items from
+different sub-processes, :meth:`transform_fn` will always be executed in
+the main process.
+
+This iterator is used in PyG's sampler classes, and is responsible for
+feature fetching and filtering data objects after sampling has taken place
+in a sub-process. This has the following advantages:
+
+* We do not need to share feature matrices across processes which may
+  prevent any errors due to too many open file handles.
+* We can execute any expensive post-processing commands on the main thread
+  with full parallelization power (which usually executes faster).
+* It lets us naturally support data already being present on the GPU.
+
+### `HeteroData`
+
+A data object describing a heterogeneous graph, holding multiple node
+and/or edge types in disjunct storage objects.
+Storage objects can hold either node-level, link-level or graph-level
+attributes.
+In general, :class:`~torch_geometric.data.HeteroData` tries to mimic the
+behavior of a regular **nested** :python:`Python` dictionary.
+In addition, it provides useful functionality for analyzing graph
+structures, and provides basic PyTorch tensor functionalities.
+
+.. code-block::
+
+    from torch_geometric.data import HeteroData
+
+    data = HeteroData()
+
+    # Create two node types "paper" and "author" holding a feature matrix:
+    data['paper'].x = torch.randn(num_papers, num_paper_features)
+    data['author'].x = torch.randn(num_authors, num_authors_features)
+
+    # Create an edge type "(author, writes, paper)" and building the
+    # graph connectivity:
+    data['author', 'writes', 'paper'].edge_index = ...  # [2, num_edges]
+
+    data['paper'].num_nodes
+    >>> 23
+
+    data['author', 'writes', 'paper'].num_edges
+    >>> 52
+
+    # PyTorch tensor functionality:
+    data = data.pin_memory()
+    data = data.to('cuda:0', non_blocking=True)
+
+Note that there exists multiple ways to create a heterogeneous graph data,
+*e.g.*:
+
+* To initialize a node of type :obj:`"paper"` holding a node feature
+  matrix :obj:`x_paper` named :obj:`x`:
+
+  .. code-block:: python
+
+    from torch_geometric.data import HeteroData
+
+    # (1) Assign attributes after initialization,
+    data = HeteroData()
+    data['paper'].x = x_paper
+
+    # or (2) pass them as keyword arguments during initialization,
+    data = HeteroData(paper={ 'x': x_paper })
+
+    # or (3) pass them as dictionaries during initialization,
+    data = HeteroData({'paper': { 'x': x_paper }})
+
+* To initialize an edge from source node type :obj:`"author"` to
+  destination node type :obj:`"paper"` with relation type :obj:`"writes"`
+  holding a graph connectivity matrix :obj:`edge_index_author_paper` named
+  :obj:`edge_index`:
+
+  .. code-block:: python
+
+    # (1) Assign attributes after initialization,
+    data = HeteroData()
+    data['author', 'writes', 'paper'].edge_index = edge_index_author_paper
+
+    # or (2) pass them as keyword arguments during initialization,
+    data = HeteroData(author__writes__paper={
+        'edge_index': edge_index_author_paper
+    })
+
+    # or (3) pass them as dictionaries during initialization,
+    data = HeteroData({
+        ('author', 'writes', 'paper'):
+        { 'edge_index': edge_index_author_paper }
+    })
+
+#### Methods
+
+- **`stores_as(self, data: Self)`**
+
+- **`node_items(self) -> List[Tuple[str, torch_geometric.data.storage.NodeStorage]]`**
+  Returns a list of node type and node storage pairs.
+
+- **`edge_items(self) -> List[Tuple[Tuple[str, str, str], torch_geometric.data.storage.EdgeStorage]]`**
+  Returns a list of edge type and edge storage pairs.
+
+### `LinkLoader`
+
+A data loader that performs mini-batch sampling from link information,
+using a generic :class:`~torch_geometric.sampler.BaseSampler`
+implementation that defines a
+:meth:`~torch_geometric.sampler.BaseSampler.sample_from_edges` function and
+is supported on the provided input :obj:`data` object.
+
+.. note::
+    Negative sampling is currently implemented in an approximate
+    way, *i.e.* negative edges may contain false negatives.
+
+Args:
+    data (Any): A :class:`~torch_geometric.data.Data`,
+        :class:`~torch_geometric.data.HeteroData`, or
+        (:class:`~torch_geometric.data.FeatureStore`,
+        :class:`~torch_geometric.data.GraphStore`) data object.
+    link_sampler (torch_geometric.sampler.BaseSampler): The sampler
+        implementation to be used with this loader.
+        Needs to implement
+        :meth:`~torch_geometric.sampler.BaseSampler.sample_from_edges`.
+        The sampler implementation must be compatible with the input
+        :obj:`data` object.
+    edge_label_index (Tensor or EdgeType or Tuple[EdgeType, Tensor]):
+        The edge indices, holding source and destination nodes to start
+        sampling from.
+        If set to :obj:`None`, all edges will be considered.
+        In heterogeneous graphs, needs to be passed as a tuple that holds
+        the edge type and corresponding edge indices.
+        (default: :obj:`None`)
+    edge_label (Tensor, optional): The labels of edge indices from which to
+        start sampling from. Must be the same length as
+        the :obj:`edge_label_index`. (default: :obj:`None`)
+    edge_label_time (Tensor, optional): The timestamps of edge indices from
+        which to start sampling from. Must be the same length as
+        :obj:`edge_label_index`. If set, temporal sampling will be
+        used such that neighbors are guaranteed to fulfill temporal
+        constraints, *i.e.*, neighbors have an earlier timestamp than
+        the ouput edge. The :obj:`time_attr` needs to be set for this
+        to work. (default: :obj:`None`)
+    neg_sampling (NegativeSampling, optional): The negative sampling
+        configuration.
+        For negative sampling mode :obj:`"binary"`, samples can be accessed
+        via the attributes :obj:`edge_label_index` and :obj:`edge_label` in
+        the respective edge type of the returned mini-batch.
+        In case :obj:`edge_label` does not exist, it will be automatically
+        created and represents a binary classification task (:obj:`0` =
+        negative edge, :obj:`1` = positive edge).
+        In case :obj:`edge_label` does exist, it has to be a categorical
+        label from :obj:`0` to :obj:`num_classes - 1`.
+        After negative sampling, label :obj:`0` represents negative edges,
+        and labels :obj:`1` to :obj:`num_classes` represent the labels of
+        positive edges.
+        Note that returned labels are of type :obj:`torch.float` for binary
+        classification (to facilitate the ease-of-use of
+        :meth:`F.binary_cross_entropy`) and of type
+        :obj:`torch.long` for multi-class classification (to facilitate the
+        ease-of-use of :meth:`F.cross_entropy`).
+        For negative sampling mode :obj:`"triplet"`, samples can be
+        accessed via the attributes :obj:`src_index`, :obj:`dst_pos_index`
+        and :obj:`dst_neg_index` in the respective node types of the
+        returned mini-batch.
+        :obj:`edge_label` needs to be :obj:`None` for :obj:`"triplet"`
+        negative sampling mode.
+        If set to :obj:`None`, no negative sampling strategy is applied.
+        (default: :obj:`None`)
+    neg_sampling_ratio (int or float, optional): The ratio of sampled
+        negative edges to the number of positive edges.
+        Deprecated in favor of the :obj:`neg_sampling` argument.
+        (default: :obj:`None`).
+    transform (callable, optional): A function/transform that takes in
+        a sampled mini-batch and returns a transformed version.
+        (default: :obj:`None`)
+    transform_sampler_output (callable, optional): A function/transform
+        that takes in a :class:`torch_geometric.sampler.SamplerOutput` and
+        returns a transformed version. (default: :obj:`None`)
+    filter_per_worker (bool, optional): If set to :obj:`True`, will filter
+        the returned data in each worker's subprocess.
+        If set to :obj:`False`, will filter the returned data in the main
+        process.
+        If set to :obj:`None`, will automatically infer the decision based
+        on whether data partially lives on the GPU
+        (:obj:`filter_per_worker=True`) or entirely on the CPU
+        (:obj:`filter_per_worker=False`).
+        There exists different trade-offs for setting this option.
+        Specifically, setting this option to :obj:`True` for in-memory
+        datasets will move all features to shared memory, which may result
+        in too many open file handles. (default: :obj:`None`)
+    custom_cls (HeteroData, optional): A custom
+        :class:`~torch_geometric.data.HeteroData` class to return for
+        mini-batches in case of remote backends. (default: :obj:`None`)
+    **kwargs (optional): Additional arguments of
+        :class:`torch.utils.data.DataLoader`, such as :obj:`batch_size`,
+        :obj:`shuffle`, :obj:`drop_last` or :obj:`num_workers`.
+
+#### Methods
+
+- **`collate_fn(self, index: Union[torch.Tensor, List[int]]) -> Any`**
+  Samples a subgraph from a batch of input edges.
+
+- **`filter_fn(self, out: Union[torch_geometric.sampler.base.SamplerOutput, torch_geometric.sampler.base.HeteroSamplerOutput]) -> Union[torch_geometric.data.data.Data, torch_geometric.data.hetero_data.HeteroData]`**
+  Joins the sampled nodes with their corresponding features,
+
+### `NodeLoader`
+
+A data loader that performs mini-batch sampling from node information,
+using a generic :class:`~torch_geometric.sampler.BaseSampler`
+implementation that defines a
+:meth:`~torch_geometric.sampler.BaseSampler.sample_from_nodes` function and
+is supported on the provided input :obj:`data` object.
+
+Args:
+    data (Any): A :class:`~torch_geometric.data.Data`,
+        :class:`~torch_geometric.data.HeteroData`, or
+        (:class:`~torch_geometric.data.FeatureStore`,
+        :class:`~torch_geometric.data.GraphStore`) data object.
+    node_sampler (torch_geometric.sampler.BaseSampler): The sampler
+        implementation to be used with this loader.
+        Needs to implement
+        :meth:`~torch_geometric.sampler.BaseSampler.sample_from_nodes`.
+        The sampler implementation must be compatible with the input
+        :obj:`data` object.
+    input_nodes (torch.Tensor or str or Tuple[str, torch.Tensor]): The
+        indices of seed nodes to start sampling from.
+        Needs to be either given as a :obj:`torch.LongTensor` or
+        :obj:`torch.BoolTensor`.
+        If set to :obj:`None`, all nodes will be considered.
+        In heterogeneous graphs, needs to be passed as a tuple that holds
+        the node type and node indices. (default: :obj:`None`)
+    input_time (torch.Tensor, optional): Optional values to override the
+        timestamp for the input nodes given in :obj:`input_nodes`. If not
+        set, will use the timestamps in :obj:`time_attr` as default (if
+        present). The :obj:`time_attr` needs to be set for this to work.
+        (default: :obj:`None`)
+    transform (callable, optional): A function/transform that takes in
+        a sampled mini-batch and returns a transformed version.
+        (default: :obj:`None`)
+    transform_sampler_output (callable, optional): A function/transform
+        that takes in a :class:`torch_geometric.sampler.SamplerOutput` and
+        returns a transformed version. (default: :obj:`None`)
+    filter_per_worker (bool, optional): If set to :obj:`True`, will filter
+        the returned data in each worker's subprocess.
+        If set to :obj:`False`, will filter the returned data in the main
+        process.
+        If set to :obj:`None`, will automatically infer the decision based
+        on whether data partially lives on the GPU
+        (:obj:`filter_per_worker=True`) or entirely on the CPU
+        (:obj:`filter_per_worker=False`).
+        There exists different trade-offs for setting this option.
+        Specifically, setting this option to :obj:`True` for in-memory
+        datasets will move all features to shared memory, which may result
+        in too many open file handles. (default: :obj:`None`)
+    custom_cls (HeteroData, optional): A custom
+        :class:`~torch_geometric.data.HeteroData` class to return for
+        mini-batches in case of remote backends. (default: :obj:`None`)
+    **kwargs (optional): Additional arguments of
+        :class:`torch.utils.data.DataLoader`, such as :obj:`batch_size`,
+        :obj:`shuffle`, :obj:`drop_last` or :obj:`num_workers`.
+
+#### Methods
+
+- **`collate_fn(self, index: Union[torch.Tensor, List[int]]) -> Any`**
+  Samples a subgraph from a batch of input nodes.
+
+- **`filter_fn(self, out: Union[torch_geometric.sampler.base.SamplerOutput, torch_geometric.sampler.base.HeteroSamplerOutput]) -> Union[torch_geometric.data.data.Data, torch_geometric.data.hetero_data.HeteroData]`**
+  Joins the sampled nodes with their corresponding features,
+
+### `Tensor`
+
+#### Methods
+
+- **`storage(self)`**
+  storage() -> torch.TypedStorage
+
+- **`backward(self, gradient=None, retain_graph=None, create_graph=False, inputs=None)`**
+  Computes the gradient of current tensor wrt graph leaves.
+
+- **`register_hook(self, hook)`**
+  Registers a backward hook.
+
+### `ZipLoader`
+
+A loader that returns a tuple of data objects by sampling from multiple
+:class:`NodeLoader` or :class:`LinkLoader` instances.
+
+Args:
+    loaders (List[NodeLoader] or List[LinkLoader]): The loader instances.
+    filter_per_worker (bool, optional): If set to :obj:`True`, will filter
+        the returned data in each worker's subprocess.
+        If set to :obj:`False`, will filter the returned data in the main
+        process.
+        If set to :obj:`None`, will automatically infer the decision based
+        on whether data partially lives on the GPU
+        (:obj:`filter_per_worker=True`) or entirely on the CPU
+        (:obj:`filter_per_worker=False`).
+        There exists different trade-offs for setting this option.
+        Specifically, setting this option to :obj:`True` for in-memory
+        datasets will move all features to shared memory, which may result
+        in too many open file handles. (default: :obj:`None`)
+    **kwargs (optional): Additional arguments of
+        :class:`torch.utils.data.DataLoader`, such as :obj:`batch_size`,
+        :obj:`shuffle`, :obj:`drop_last` or :obj:`num_workers`.
+
+#### Methods
+
+- **`collate_fn(self, index: List[int]) -> Tuple[Any, ...]`**
+
+- **`filter_fn(self, outs: Tuple[Any, ...]) -> Tuple[Union[torch_geometric.data.data.Data, torch_geometric.data.hetero_data.HeteroData], ...]`**
