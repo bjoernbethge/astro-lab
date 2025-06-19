@@ -1,231 +1,275 @@
-# Astro-Lab: Astronomical Tensor Library
+# AstroLab: Comprehensive Astronomical Data Analysis Framework
 
-A specialized Python library for astronomical data processing with PyTorch-based tensors optimized for astronomical coordinate systems, photometry, spectroscopy, and 3D spatial analysis.
+A modern Python framework for astronomical data analysis, machine learning, and visualization that combines specialized astronomy libraries with cutting-edge ML tools.
+
+## 🚀 Project Overview
+
+AstroLab is designed as a comprehensive ecosystem for astronomical research, featuring:
+
+- **Interactive Development**: Marimo reactive notebooks and Jupyter integration
+- **ML Experiment Tracking**: MLflow for reproducible research
+- **Specialized Data Types**: Astronomy-specific tensor implementations
+- **3D Visualization**: Blender and PyVista integration
+- **GPU Acceleration**: CUDA-optimized PyTorch workflows
+- **Graph Neural Networks**: For spatial astronomical data structures
+
+## 📦 Architecture
+
+### Core Package Structure
+
+```
+astro-lab/
+├── astro-viz/          # 3D Visualization & Blender Integration
+├── astro-torch/        # PyTorch & ML for Astronomy  
+├── astro-pack/         # Astronomy Libraries & Data Access
+├── astro-lab/          # Main Framework
+└── astro-lab-ml/       # ML-specific Extensions
+```
+
+### Key Components
+
+#### 🎯 Interactive Development Stack
+- **Marimo v0.14.0**: Reactive notebook system for interactive development
+- **MLflow v3.1.0**: Experiment tracking and model management
+- **Jupyter**: Traditional notebook support
+
+#### 🔬 Astronomy-Specific Libraries
+- **AstroPy v7.1.0**: Core astronomy computations
+- **AstroML v1.0.2**: Machine learning for astronomy
+- **AstroQuery v0.4.10**: Database queries (Gaia, SDSS, etc.)
+- **AstroPhot v0.16.13**: Advanced photometry with PyTorch backend
+
+#### 🧠 Machine Learning Stack
+- **PyTorch v2.7.1+cu128**: GPU-accelerated deep learning
+- **Lightning v2.5.1**: Training framework
+- **Torch Geometric v2.6.1**: Graph neural networks
+- **Optuna v4.4.0**: Hyperparameter optimization
+
+#### 📊 Data Processing
+- **Polars v1.31.0**: High-performance dataframes (10-100x faster than Pandas)
+- **PyArrow v20.0.0**: Columnar data processing
+- **NumPy v1.26.4** + **SciPy v1.15.3**: Scientific computing
 
 ## 🌟 Key Features
 
-### 3D Spatial Coordinates
-- **Direct Distance Measurements**: Support for precise distance values (e.g., NSA ZDIST)
-- **Spatial3DTensor**: Complete 3D coordinate processing (Spherical ↔ Cartesian)
-- **Neighbor Search**: Efficient algorithms for galaxy clustering
-- **Density Fields**: 3D grid-based structure analysis
-- **Volume Calculations**: Cosmological volumes and number densities
+### Specialized Tensor Types
+```python
+from astro_lab.tensors import (
+    Spatial3DTensor,      # 3D coordinates & transformations
+    PhotometricTensor,    # Multi-band photometry
+    SpectralTensor,       # Spectroscopy data
+    LightcurveTensor,     # Time-series observations
+    OrbitalTensor         # Satellite & planetary orbits
+)
+```
 
-### Data Sources
-- **NSA (NASA Sloan Atlas)**: Galaxy catalog with distance measurements
-- **Exoplanets**: Confirmed exoplanets from NASA Exoplanet Archive
-- **TNG50 Simulations**: Batch processing of all particle types (Gas, Dark Matter, Stars, Black Holes)
-- **Gaia DR3**: Stellar catalogs with proper motions and parallax
-- **AstroML Integration**: LINEAR light curves, SDSS spectra
-- **Satellite Data**: TLE-based orbital mechanics
+### Data Sources Integration
+- **Gaia DR3**: Stellar catalogs with proper motions
+- **SDSS**: Galaxy surveys and spectra
+- **TNG50**: Cosmological simulations
+- **NASA Exoplanet Archive**: Confirmed exoplanets
+- **LINEAR**: Asteroid light curves
+- **NSA**: Galaxy catalogs with distances
 
-### Tensor-based Processing
-- **PyTorch Integration**: Full GPU acceleration support with CUDA optimization
-- **Polars Backend**: High-performance data processing (10-100x faster than Pandas)
-- **Graph Neural Networks**: Spatial graphs from particle simulations
-- **Multiple Tensor Types**: Spatial, Photometric, Spectral, Temporal
-- **Batch Processing**: Automated processing of multiple datasets
-- **ML-Ready**: Direct usage for deep learning applications
+### Advanced ML Capabilities
+- **Graph Neural Networks**: For spatial astronomical structures
+- **3D Point Cloud Models**: Stellar cluster analysis
+- **Temporal Models**: Variable star classification
+- **Multi-modal Learning**: Combined photometry, spectroscopy, and astrometry
 
 ## 🚀 Quick Start
 
 ### Installation
+
 ```bash
 # Clone repository
-git clone https://github.com/bjoernbethge/astro-lab.git
+git clone https://github.com/your-username/astro-lab.git
 cd astro-lab
 
 # Install with uv (recommended)
 uv sync
-# Install torch geometric extensions
-uv pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+
+# Verify installation
+uv run pytest -v
 ```
 
-## 🔧 AstroLab CLI
+### Interactive Development
 
-The `astro-lab` command provides powerful tools for data processing and machine learning:
-
-### 📥 Download Data
 ```bash
-# Download Gaia DR3 bright stars (magnitude < 12.0)
+# Start Marimo reactive notebook
+uv run marimo edit
+
+# Start Jupyter Lab
+uv run jupyter lab
+
+# Launch MLflow UI
+uv run mlflow ui
+```
+
+## 🔧 CLI Tools
+
+### Data Management
+```bash
+# Download Gaia DR3 data
 astro-lab download gaia --magnitude-limit 12.0
 
-# List all available datasets
-astro-lab download list
+# Process TNG50 simulations
+astro-lab preprocess tng50 --all-snapshots --all --max-particles 10000
+
+# Create train/validation splits
+astro-lab preprocess process catalog.parquet --create-splits
 ```
 
-### 🔄 Data Preprocessing
+### Machine Learning
 ```bash
-# Show available preprocessing functions
-astro-lab preprocess --show-functions
+# Create configuration
+astro-lab train create-config --output config.yaml
 
-# Process a catalog with statistics and train/val/test splits
-astro-lab preprocess process catalog.parquet --stats --create-splits --output processed/
-
-# Process single TNG50 snapshot
-astro-lab preprocess tng50 data/raw/snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 5000
-
-# Process ALL TNG50 snapshots at once (NEW!)
-astro-lab preprocess tng50 --all-snapshots --all --max-particles 2000 --stats
-
-# Process specific particle types across all snapshots
-astro-lab preprocess tng50 --all-snapshots --particle-types PartType0,PartType1 --max-particles 5000
-
-# List all available TNG50 snapshots with inspection
-astro-lab preprocess tng50-list --inspect
-```
-
-### 🎯 Machine Learning Training
-```bash
-# Create a default configuration file
-astro-lab train create-config --output my_config.yaml
-
-# Train with configuration file
-astro-lab train train --config my_config.yaml
-
-# Quick training without config
-astro-lab train train --dataset gaia --model gaia_classifier --epochs 50 --batch-size 64
+# Train models
+astro-lab train train --config config.yaml
 
 # Hyperparameter optimization
-astro-lab train optimize --config optimization_config.yaml
+astro-lab train optimize --config optuna_config.yaml
 ```
 
-### Basic Data Loading
-```bash
-# Check available datasets
-python scripts/check_datasets.py
+## 💻 Development Examples
 
-# Process NSA catalog
-python examples/nsa_processing_example.py
-```
-
-### Basic 3D Coordinate Analysis
+### Basic Tensor Usage
 ```python
-from astro_lab.data import load_catalog
-from astro_lab.tensors.spatial_3d import Spatial3DTensor
 import polars as pl
+from astro_lab.tensors import Spatial3DTensor
 
-# Load NSA data
-df = pl.read_parquet("data/processed/nsa/nsa_catalog.parquet").head(1000)
+# Load catalog data
+df = pl.read_parquet("data/gaia_sample.parquet")
 
-# Convert to spatial tensor
-catalog_data = {
-    "RA": df["RA"].to_pandas() if "RA" in df.columns else df["ra"].to_pandas(),
-    "DEC": df["DEC"].to_pandas() if "DEC" in df.columns else df["dec"].to_pandas(),
-    "DISTANCE": df.get_column("zdist").to_pandas() if "zdist" in df.columns else df.get_column("z").to_pandas() * 3000
-}
-
-spatial_tensor = Spatial3DTensor.from_catalog_data(
-    catalog_data,
-    ra_col="RA", 
-    dec_col="DEC",
-    distance_col="DISTANCE"
-)
+# Create spatial tensor
+spatial = Spatial3DTensor.from_catalog_data({
+    "RA": df["ra"].to_pandas(),
+    "DEC": df["dec"].to_pandas(), 
+    "DISTANCE": df["distance"].to_pandas()
+})
 
 # 3D analysis
-ra, dec, distance = spatial_tensor.get_coordinates_spherical()
-x, y, z = spatial_tensor.get_coordinates_cartesian()
-
-# Neighbor search
-neighbors = spatial_tensor.find_neighbors(radius=10.0)  # 10 Mpc radius
+neighbors = spatial.find_neighbors(radius=10.0)  # 10 pc radius
+x, y, z = spatial.get_coordinates_cartesian()
 ```
 
-### TNG50 Simulation Processing
+### Machine Learning Pipeline
+```python
+from astro_lab.models import create_gaia_classifier
+from astro_lab.data import AstroDataModule
+from astro_lab.training import AstroTrainer
 
-Process cosmological simulation data efficiently:
+# Load data
+data_module = AstroDataModule("data/processed/gaia/")
+
+# Create model
+model = create_gaia_classifier(
+    input_features=["bp_rp", "g_mag", "parallax"],
+    num_classes=5
+)
+
+# Train
+trainer = AstroTrainer(max_epochs=100, accelerator="gpu")
+trainer.fit(model, data_module)
+```
+
+### 3D Visualization
+```python
+from astro_lab.utils.blender import create_galaxy_visualization
+
+# Create 3D scene
+scene = create_galaxy_visualization(
+    positions=galaxy_positions,
+    colors=galaxy_colors,
+    sizes=galaxy_masses
+)
+
+# Render
+scene.render("galaxy_cluster.png")
+```
+
+## 🧪 Testing & Development
 
 ```bash
-# Process all snapshots with all particle types
-astro-lab preprocess tng50 --all-snapshots --all --max-particles 10000 --stats
+# Run all tests
+uv run pytest -v
 
-# Focus on dark matter and gas
-astro-lab preprocess tng50 --all-snapshots --particle-types PartType0,PartType1 --max-particles 20000
+# Test specific components
+uv run pytest test/models/ -v
+uv run pytest test/tensors/ -v
 
-# Single snapshot processing
-astro-lab preprocess tng50 snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 5000
-
-# Check available snapshots
-astro-lab preprocess tng50-list --inspect
+# Check dependencies
+uv tree
+uv tree --package astro-torch
 ```
 
-**Features:**
-- ✅ **Robust Mass Handling**: Automatically handles missing mass fields for dark matter
-- ✅ **All Particle Types**: Gas, Dark Matter, Stars, Black Holes
-- ✅ **Spatial Graphs**: Creates k-NN graphs for machine learning
-- ✅ **GPU Acceleration**: CUDA optimization when available
-- ✅ **Batch Processing**: Process 11 snapshots automatically
-- ✅ **Error Recovery**: Continues processing even if individual snapshots fail
+## 📁 Project Structure
 
-## 🛠️ Development
-
-### Project Structure
 ```
-astro-lab/
-├── src/astro_lab/
-│   ├── cli/            # Command Line Interface  
-│   ├── data/           # Data processing (Polars)
-│   ├── tensors/        # Tensor implementations
-│   ├── models/         # ML models
-│   ├── training/       # Lightning training
-│   └── utils/          # Utilities & visualization
-├── examples/           # Usage examples
-├── scripts/           # Utility scripts
-├── test/             # Test suite
-└── docs/             # Documentation
-```
-
-### Available Examples
-```bash
-# NSA galaxy processing
-python examples/nsa_processing_example.py
-
-# AstroQuery demonstrations  
-python examples/astroquery_demo.py
-
-# FITS optimization
-python examples/fits_optimization_demo.py
-
-# Dataset verification
-python scripts/check_datasets.py
+src/astro_lab/
+├── cli/                    # Command Line Interface
+│   ├── download.py         # Data acquisition
+│   ├── preprocessing.py    # Data processing
+│   └── train.py           # ML training
+├── data/                   # Data Processing & Loading
+│   ├── core.py            # Core data structures
+│   ├── manager.py         # Data management
+│   └── transforms.py      # Data transformations
+├── models/                 # ML Models & Architectures
+│   ├── base_gnn.py        # Base graph neural networks
+│   ├── factory.py         # Model factory
+│   ├── encoders.py        # Feature encoders
+│   ├── output_heads.py    # Task-specific heads
+│   └── point_cloud_models.py  # 3D stellar models
+├── tensors/                # Specialized Tensor Types
+│   ├── spatial_3d.py      # 3D coordinates
+│   ├── photometric.py     # Multi-band photometry
+│   ├── spectral.py        # Spectroscopy
+│   └── lightcurve.py      # Time series
+├── training/               # Training Utilities
+│   ├── lightning_module.py # PyTorch Lightning integration
+│   ├── mlflow_logger.py   # Experiment tracking
+│   └── trainer.py         # Training orchestration
+└── utils/                  # Utility Functions
+    ├── blender/           # 3D visualization
+    ├── graph.py           # Graph utilities
+    └── tensor.py          # Tensor operations
 ```
 
-## 📈 Performance
+## 🎯 Research Applications
 
-- **Polars Backend**: 10-100x faster than Pandas
-- **PyTorch Integration**: GPU acceleration with CUDA support
-- **Batch Processing**: Process 11 TNG50 snapshots automatically
-- **Robust Error Handling**: Handles missing data fields gracefully
-- **Lazy Loading**: Memory-efficient processing
-- **Parquet Format**: Optimized data storage
-- **Graph Neural Networks**: Scalable spatial analysis with k-NN fallback
+- **Galaxy Classification**: Multi-band photometry analysis
+- **Variable Star Detection**: Time-series classification
+- **Exoplanet Discovery**: Transit detection and characterization
+- **Stellar Cluster Analysis**: 3D spatial clustering
+- **Cosmological Simulations**: Large-scale structure analysis
+- **Asteroid Tracking**: Orbital mechanics and light curves
 
-## 🎯 Scientific Applications
+## 📚 Documentation
 
-- **Large-Scale Structure**: 3D galaxy distributions and cosmic web analysis
-- **Cosmological Simulations**: TNG50 particle analysis (Gas, Dark Matter, Stars, Black Holes)
-- **Exoplanet Analysis**: Classification, habitability, discovery methods
-- **Clustering Analysis**: Neighbor-based studies with spatial graphs
-- **Machine Learning**: Graph Neural Networks for astronomical objects
-- **Simulation Comparison**: Observation vs. theory (TNG50 integration)
-- **Multi-Survey Analysis**: Cross-matching different catalogs (NSA, Gaia, etc.)
-
-## 🧪 Testing
-
-```bash
-# Run test suite
-python scripts/run_tests.py
-
-# Check CUDA availability
-python test/test_cuda.py
-
-# Verify datasets
-python scripts/check_datasets.py
-```
+- [Development Guide](docs/DEVGUIDE.md) - Detailed setup and architecture
+- [Data Loaders](docs/DATA_LOADERS.md) - Data processing documentation
+- [Exoplanet Pipeline](docs/EXOPLANET_PIPELINE.md) - Specialized workflows
+- [Examples](examples/) - Practical usage examples
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please create issues for bugs or feature requests.
+1. **Setup Development Environment**: `uv sync`
+2. **Run Tests**: `uv run pytest -v`
+3. **Follow Code Style**: Use provided pre-commit hooks
+4. **Add Tests**: Ensure new features have test coverage
+5. **Update Documentation**: Keep docs current with changes
 
 ## 📄 License
 
-MIT License - see LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+Built with modern astronomy and machine learning libraries:
+- AstroPy Collaboration
+- PyTorch Team
+- Polars Development Team
+- MLflow Community
+- Marimo Developers 
