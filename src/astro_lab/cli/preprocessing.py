@@ -539,7 +539,7 @@ astro-lab preprocess tng50-list --inspect
         print()
         print("🌌 TNG50 Simulation:")
         print("  • import_tng50(hdf5_file, dataset_name)")
-        print("  • TNG50Loader.load_snapshot()")
+        print("  • AstroDataManager.import_tng50_hdf5()")
         print("  • TNG50GraphDataset")
         print("  • create_tng50_dataloader()")
         print()
