@@ -37,6 +37,8 @@ cd astro-lab
 
 # Install with uv (recommended)
 uv sync
+# Install torch geometric extensions
+uv pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 ```
 
 ## 🔧 AstroLab CLI
