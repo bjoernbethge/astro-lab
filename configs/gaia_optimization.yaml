@@ -1,0 +1,93 @@
+# Gaia Stellar Classification - Hyperparameter Optimization
+# ========================================================
+
+model:
+  type: gaia_classifier
+  params:
+    hidden_dim: 128 # Will be optimized
+    num_classes: 8
+    dropout: 0.1 # Will be optimized
+    use_batch_norm: true
+
+data:
+  dataset: gaia
+  data_dir: data/processed
+  batch_size: 64
+  num_workers: 4
+  max_samples: 50000
+  return_tensor: true
+  split_ratios: [0.7, 0.15, 0.15]
+
+training:
+  max_epochs: 50 # Reduced for optimization
+  learning_rate: 0.001 # Will be optimized
+  weight_decay: 0.0001
+
+  # Lightning settings
+  accelerator: auto
+  devices: 1 # Single device for optimization
+  precision: 16-mixed
+  gradient_clip_val: 1.0
+
+  # Early stopping for faster trials
+  patience: 8
+  monitor: val_acc
+  mode: max
+
+# 🎯 Optuna Optimization Configuration
+optimization:
+  n_trials: 50
+  timeout: 7200 # 2 hours
+  study_name: gaia_stellar_classification
+  direction: maximize # Maximize validation accuracy
+
+  # Hyperparameter search space
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 0.00001
+      high: 0.1
+
+    hidden_dim:
+      type: categorical
+      choices: [64, 128, 256, 512, 768]
+
+    dropout:
+      type: uniform
+      low: 0.05
+      high: 0.3
+
+    weight_decay:
+      type: loguniform
+      low: 0.000001
+      high: 0.001
+
+    batch_size:
+      type: categorical
+      choices: [32, 64, 128]
+
+mlflow:
+  tracking_uri: ./mlruns
+  experiment_name: gaia_optuna_optimization
+  experiment_description: "Hyperparameter optimization for Gaia stellar classification"
+
+  tags:
+    survey: Gaia
+    task: stellar_classification
+    optimizer: optuna
+    version: v1.0
+
+# Checkpoint Configuration
+checkpoints:
+  dir: ./checkpoints
+  monitor: val_acc
+  save_top_k: 3
+  mode: max
+  save_last: true
+
+callbacks:
+  early_stopping:
+    monitor: val_acc
+    patience: 8
+    min_delta: 0.001
+    mode: max

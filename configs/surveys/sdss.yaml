@@ -24,5 +24,3 @@ survey:
   # Data processing
   processing:
     normalize_features: true
-    remove_outliers: true
-    outlier_threshold: 3.0 # sigma threshold
