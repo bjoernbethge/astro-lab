@@ -90,7 +90,8 @@ cd astro-lab
 
 # Install with uv (recommended)
 uv sync
-
+# needed
+uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 # Verify installation
 uv run pytest -v
 ```
