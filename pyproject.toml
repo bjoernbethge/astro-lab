@@ -56,12 +56,6 @@ optim = [
     "optuna>=4.4.0",
 ]
 
-# Jupyter and interactive development
-jupyter = [
-    "ipykernel>=6.0.0",
-    "marimo-flow>=0.1.1",
-]
-
 # Additional astronomical tools
 astro-extra = [
     "astropy>=5.0.0",
@@ -72,7 +66,7 @@ astro-extra = [
 
 # All optional dependencies
 all = [
-    "astro-lab[optim,jupyter,astro-extra]",
+    "astro-lab[optim,astro-extra]",
 ]
 extended = [
     "sdss-access>=3.0.7",
@@ -132,8 +126,6 @@ viz = [
 name = "pytorch-cuda"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
-
-
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cuda" }]
