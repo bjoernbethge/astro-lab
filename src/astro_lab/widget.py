@@ -1,405 +1,643 @@
 """
-AnyWidget for direct display of Blender renderings in Jupyter notebooks.
+AstroLab Widget - Interactive Blender visualization widget for Jupyter notebooks.
 
-This widget displays rendered images directly in the notebook and enables
-interactive controls for various rendering parameters. It can handle both
-Render-Ergebnisse als auch Live-Viewport-Daten anzeigen.
+This widget provides direct access to bpy.ops for enhanced usability and
+allows real-time Blender scene manipulation from Jupyter notebooks.
 """
 
 import base64
 from pathlib import Path
-from typing import Optional, Union
-
-import traitlets
+from typing import Any, Dict, Optional, Union
 
 try:
     import anywidget
+    import traitlets
 
     ANYWIDGET_AVAILABLE = True
 except ImportError:
     ANYWIDGET_AVAILABLE = False
     anywidget = None
+    traitlets = None
 
+# Modern CSS with enhanced UI
+CSS = """
+.astro-widget {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 15px;
+    padding: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    color: white;
+    max-width: 100%;
+    margin: 10px 0;
+}
 
-class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object):
-    """
-    AnyWidget zur Anzeige von Blender-Renderings mit interaktiven Kontrollen.
-    """
+.astro-header {
+    text-align: center;
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 20px;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
 
-    _esm = """
-    function render({ model, el }) {
-        // Container für das Widget erstellen
-        const container = document.createElement('div');
-        container.style.cssText = `
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 20px;
-            border: 2px solid #333;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #1e1e1e, #2d2d2d);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        `;
+.astro-controls {
+    display: flex;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
 
-        // Titel
-        const title = document.createElement('h3');
-        title.style.cssText = `
-            color: #00d4ff;
-            margin: 0 0 15px 0;
-            text-align: center;
-            text-shadow: 0 0 10px rgba(0,212,255,0.5);
-        `;
-        title.textContent = '🎨 Blender Astronomical Visualization';
+.astro-button {
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
 
-        // Image Container
-        const imageContainer = document.createElement('div');
-        imageContainer.style.cssText = `
-            position: relative;
-            max-width: 100%;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 2px 15px rgba(0,0,0,0.5);
-        `;
+.astro-button:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}
 
-        // Bild Element
-        const img = document.createElement('img');
-        img.style.cssText = `
-            max-width: 100%;
-            height: auto;
-            display: block;
-            border-radius: 8px;
-        `;
+.astro-image-container {
+    text-align: center;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    min-height: 200px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
 
-        // Info Panel
-        const infoPanel = document.createElement('div');
-        infoPanel.style.cssText = `
-            margin-top: 15px;
-            padding: 10px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 5px;
-            color: #ccc;
-            font-size: 14px;
-            text-align: center;
-            min-width: 300px;
-        `;
+.astro-image {
+    max-width: 100%;
+    max-height: 600px;
+    border-radius: 8px;
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.4);
+}
 
-        // Render Button
-        const renderButton = document.createElement('button');
-        renderButton.style.cssText = `
-            margin-top: 15px;
-            padding: 12px 24px;
-            background: linear-gradient(45deg, #ff6b35, #f7931e);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: bold;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(255,107,53,0.3);
-        `;
-        renderButton.textContent = '🚀 New Render';
+.astro-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 15px;
+}
 
-        // Button Hover Effekt
-        renderButton.addEventListener('mouseenter', () => {
-            renderButton.style.transform = 'translateY(-2px)';
-            renderButton.style.boxShadow = '0 6px 20px rgba(255,107,53,0.4)';
-        });
-        renderButton.addEventListener('mouseleave', () => {
-            renderButton.style.transform = 'translateY(0)';
-            renderButton.style.boxShadow = '0 4px 15px rgba(255,107,53,0.3)';
-        });
+.astro-info-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+}
 
-        // Event Listeners
-        renderButton.addEventListener('click', () => {
+.astro-info-label {
+    font-size: 12px;
+    opacity: 0.8;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 5px;
+}
+
+.astro-info-value {
+    font-size: 16px;
+    font-weight: bold;
+}
+
+.astro-placeholder {
+    color: rgba(255, 255, 255, 0.6);
+    font-style: italic;
+    font-size: 18px;
+}
+
+.astro-ops-info {
+    background: rgba(0, 255, 100, 0.2);
+    border: 1px solid rgba(0, 255, 100, 0.3);
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    text-align: center;
+}
+
+.astro-scene-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.astro-quick-button {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.astro-quick-button:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+"""
+
+JS = """
+function render({ model, el }) {
+    const container = document.createElement('div');
+    container.className = 'astro-widget';
+    
+    const header = document.createElement('div');
+    header.className = 'astro-header';
+    header.textContent = '🚀 AstroLab Widget';
+    container.appendChild(header);
+    
+    // Ops status indicator
+    const opsInfo = document.createElement('div');
+    opsInfo.className = 'astro-ops-info';
+    opsInfo.innerHTML = '⚡ widget.ops - Direct Blender Access Available';
+    container.appendChild(opsInfo);
+    
+    // Quick scene controls
+    const sceneControls = document.createElement('div');
+    sceneControls.className = 'astro-scene-controls';
+    
+    const quickButtons = [
+        { text: 'Galaxy', action: 'galaxy' },
+        { text: 'Solar System', action: 'solar_system' },
+        { text: 'Reset Scene', action: 'reset' },
+        { text: 'Quick Render', action: 'render' }
+    ];
+    
+    quickButtons.forEach(btn => {
+        const button = document.createElement('button');
+        button.className = 'astro-quick-button';
+        button.textContent = btn.text;
+        button.onclick = () => {
             model.set('trigger_render', model.get('trigger_render') + 1);
             model.save_changes();
-        });
-
-        // Update Funktionen
-        function updateImage() {
-            const imageData = model.get('image_data');
-            const imagePath = model.get('image_path');
-            
-            if (imageData) {
-                img.src = `data:image/png;base64,${imageData}`;
-                img.style.display = 'block';
-            } else if (imagePath) {
-                img.src = imagePath;
-                img.style.display = 'block';
-            } else {
-                img.style.display = 'none';
-            }
-        }
-
-        function updateInfo() {
-            const renderTime = model.get('render_time');
-            const resolution = model.get('resolution');
-            const engine = model.get('render_engine');
-            const samples = model.get('samples');
-            
-            let infoText = '';
-            if (engine) infoText += `🎮 Engine: ${engine}<br>`;
-            if (resolution) infoText += `📐 Resolution: ${resolution}<br>`;
-            if (samples) infoText += `🔢 Samples: ${samples}<br>`;
-            if (renderTime) infoText += `⏱️ Render Time: ${renderTime}s`;
-            
-            infoPanel.innerHTML = infoText || '📊 Rendering information will appear here';
-        }
-
-        // Model Change Listeners
-        model.on('change:image_data', updateImage);
-        model.on('change:image_path', updateImage);
-        model.on('change:render_time', updateInfo);
-        model.on('change:resolution', updateInfo);
-        model.on('change:render_engine', updateInfo);
-        model.on('change:samples', updateInfo);
-
-        // Initial Updates
-        updateImage();
-        updateInfo();
-
-        // Zusammenbauen
-        imageContainer.appendChild(img);
-        container.appendChild(title);
-        container.appendChild(imageContainer);
-        container.appendChild(infoPanel);
-        container.appendChild(renderButton);
+        };
+        sceneControls.appendChild(button);
+    });
+    
+    container.appendChild(sceneControls);
+    
+    // Main controls
+    const controls = document.createElement('div');
+    controls.className = 'astro-controls';
+    
+    const renderButton = document.createElement('button');
+    renderButton.className = 'astro-button';
+    renderButton.textContent = '🎬 Render Scene';
+    renderButton.onclick = () => {
+        model.set('trigger_render', model.get('trigger_render') + 1);
+        model.save_changes();
+    };
+    controls.appendChild(renderButton);
+    
+    const clearButton = document.createElement('button');
+    clearButton.className = 'astro-button';
+    clearButton.textContent = '🧹 Clear';
+    clearButton.onclick = () => {
+        model.set('image_data', '');
+        model.set('image_path', '');
+        model.save_changes();
+    };
+    controls.appendChild(clearButton);
+    
+    container.appendChild(controls);
+    
+    // Image container
+    const imageContainer = document.createElement('div');
+    imageContainer.className = 'astro-image-container';
+    
+    const updateImage = () => {
+        const imageData = model.get('image_data');
+        const imagePath = model.get('image_path');
         
-        el.appendChild(container);
-    }
-    export default { render };
-    """
-
-    _css = """
-    .blender-widget {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    }
+        if (imageData) {
+            imageContainer.innerHTML = `<img src="data:image/png;base64,${imageData}" class="astro-image" alt="Rendered Image">`;
+        } else if (imagePath) {
+            imageContainer.innerHTML = `<img src="${imagePath}" class="astro-image" alt="Rendered Image">`;
+        } else {
+            imageContainer.innerHTML = '<div class="astro-placeholder">🌌 Ready for astronomical visualization</div>';
+        }
+    };
     
-    .blender-widget img {
-        transition: transform 0.3s ease;
-    }
+    updateImage();
+    model.on('change:image_data', updateImage);
+    model.on('change:image_path', updateImage);
     
-    .blender-widget img:hover {
-        transform: scale(1.02);
-    }
-    """
+    container.appendChild(imageContainer);
+    
+    // Info panel
+    const infoPanel = document.createElement('div');
+    infoPanel.className = 'astro-info';
+    
+    const updateInfo = () => {
+        const renderTime = model.get('render_time');
+        const resolution = model.get('resolution');
+        const engine = model.get('render_engine');
+        const samples = model.get('samples');
+        
+        infoPanel.innerHTML = `
+            <div class="astro-info-item">
+                <div class="astro-info-label">Render Time</div>
+                <div class="astro-info-value">${renderTime.toFixed(2)}s</div>
+            </div>
+            <div class="astro-info-item">
+                <div class="astro-info-label">Resolution</div>
+                <div class="astro-info-value">${resolution || 'N/A'}</div>
+            </div>
+            <div class="astro-info-item">
+                <div class="astro-info-label">Engine</div>
+                <div class="astro-info-value">${engine}</div>
+            </div>
+            <div class="astro-info-item">
+                <div class="astro-info-label">Samples</div>
+                <div class="astro-info-value">${samples}</div>
+            </div>
+        `;
+    };
+    
+    updateInfo();
+    model.on('change:render_time', updateInfo);
+    model.on('change:resolution', updateInfo);
+    model.on('change:render_engine', updateInfo);
+    model.on('change:samples', updateInfo);
+    
+    container.appendChild(infoPanel);
+    el.appendChild(container);
+}
 
-    # Widget Traits
-    image_data = traitlets.Unicode("").tag(sync=True)
-    image_path = traitlets.Unicode("").tag(sync=True)
-    render_time = traitlets.Float(0.0).tag(sync=True)
-    resolution = traitlets.Unicode("").tag(sync=True)
-    render_engine = traitlets.Unicode("BLENDER_EEVEE_NEXT").tag(sync=True)
-    samples = traitlets.Int(64).tag(sync=True)
-    trigger_render = traitlets.Int(0).tag(sync=True)
+export default { render };
+"""
 
-    def __init__(self, **kwargs):
-        if not ANYWIDGET_AVAILABLE:
-            raise ImportError("anywidget is required for BlenderImageWidget")
-        super().__init__(**kwargs)
-
-    def display_image_from_path(
-        self,
-        image_path: Union[str, Path],
-        render_time: float = 0.0,
-        resolution: str = "",
-        engine: str = "BLENDER_EEVEE_NEXT",
-        samples: int = 64,
-    ):
-        """
-        Display an image from a file.
-
-        Args:
-            image_path: Path to the image file
-            render_time: Render time in seconds
-            resolution: Resolution as string (e.g. "1920x1080")
-            engine: Render engine name
-            samples: Number of samples
-        """
-        image_path = Path(image_path)
-
-        if image_path.exists():
-            # Convert to Base64 for better compatibility
-            with open(image_path, "rb") as f:
-                image_data = base64.b64encode(f.read()).decode("utf-8")
-
-            self.image_data = image_data
-            self.image_path = ""  # Clear path when using data
-            self.render_time = render_time
-            self.resolution = resolution
-            self.render_engine = engine
-            self.samples = samples
-        else:
-            print(f"⚠️ Image file not found: {image_path}")
-
-    def display_image_from_data(
-        self,
-        image_data: bytes,
-        render_time: float = 0.0,
-        resolution: str = "",
-        engine: str = "BLENDER_EEVEE_NEXT",
-        samples: int = 64,
-    ):
-        """
-        Display an image from binary data.
-
-        Args:
-            image_data: Image data as bytes
-            render_time: Render time in seconds
-            resolution: Resolution as string
-            engine: Render engine name
-            samples: Number of samples
-        """
-        encoded_data = base64.b64encode(image_data).decode("utf-8")
-
-        self.image_data = encoded_data
-        self.image_path = ""
-        self.render_time = render_time
-        self.resolution = resolution
-        self.render_engine = engine
-        self.samples = samples
-
-    def clear_image(self):
-        """Clear the displayed image."""
-        self.image_data = ""
-        self.image_path = ""
-        self.render_time = 0.0
-        self.resolution = ""
-
-    def capture_live_viewport(self):
-        """
-        Erfasse Live-Daten aus dem Blender-Viewport.
-
-        Returns:
-            Viewport-Screenshot und -Daten
-        """
-        try:
-            from .utils.blender.viewport_capture import capture_viewport, get_scene_data
-
-            # Screenshot aufnehmen
-            viewport_image = capture_viewport()
-            if viewport_image is not None:
-                # Konvertiere zu bytes
-                try:
-                    import io
-
-                    from PIL import Image
-
-                    # Numpy array zu PIL Image
-                    if viewport_image.shape[2] == 4:  # RGBA
-                        pil_image = Image.fromarray(viewport_image, "RGBA")
-                        pil_image = pil_image.convert("RGB")
-                    else:
-                        pil_image = Image.fromarray(viewport_image, "RGB")
-
-                    # Zu bytes konvertieren
-                    buffer = io.BytesIO()
-                    pil_image.save(buffer, format="PNG")
-                    image_bytes = buffer.getvalue()
-
-                    # Szenen-Daten holen
-                    scene_data = get_scene_data()
-                    viewport_info = scene_data.get("viewport_info", {})
-                    viewport_size = viewport_info.get("viewport_size", (0, 0))
-
-                    # Widget aktualisieren
-                    self.display_image_from_data(
-                        image_bytes,
-                        render_time=0.0,
-                        resolution=f"{viewport_size[0]}x{viewport_size[1]}",
-                        engine="VIEWPORT_LIVE",
-                        samples=0,
-                    )
-
-                    return viewport_image, scene_data
-                except ImportError:
-                    print("⚠️ PIL nicht verfügbar für Bildkonvertierung")
-
-        except Exception as e:
-            print(f"⚠️ Live Viewport Capture Error: {e}")
-
-        return None, {}
-
-    def capture_live_render(self):
-        """
-        Erfasse Live-Render-Daten aus Blender.
-
-        Returns:
-            Render-Daten und -Informationen
-        """
-        try:
-            from .utils.blender.viewport_capture import capture_render
-
-            # Render aufnehmen
-            render_data = capture_render()
-
-            if "beauty" in render_data:
-                beauty_image = render_data["beauty"]
-
-                # Konvertiere zu bytes
-                try:
-                    import io
-
-                    import numpy as np
-                    from PIL import Image
-
-                    # Float zu uint8 konvertieren
-                    if beauty_image.dtype != np.uint8:
-                        beauty_image = (beauty_image * 255).astype(np.uint8)
-
-                    # Zu PIL Image
-                    if beauty_image.shape[2] == 4:  # RGBA
-                        pil_image = Image.fromarray(beauty_image, "RGBA")
-                        pil_image = pil_image.convert("RGB")
-                    else:
-                        pil_image = Image.fromarray(beauty_image, "RGB")
-
-                    # Zu bytes
-                    buffer = io.BytesIO()
-                    pil_image.save(buffer, format="PNG")
-                    image_bytes = buffer.getvalue()
-
-                    # Widget aktualisieren
-                    self.display_image_from_data(
-                        image_bytes,
-                        render_time=0.0,
-                        resolution=f"{beauty_image.shape[1]}x{beauty_image.shape[0]}",
-                        engine="LIVE_RENDER",
-                        samples=0,
-                    )
-
-                    return render_data
-                except ImportError:
-                    print("⚠️ PIL nicht verfügbar für Bildkonvertierung")
-
-        except Exception as e:
-            print(f"⚠️ Live Render Capture Error: {e}")
-
-        return {}
-
-
-# Stub class for when anywidget is not available
-class BlenderImageWidgetStub:
-    """Stub class when anywidget is not available."""
-
-    def __init__(self, **kwargs):
-        print("⚠️ anywidget not available - BlenderImageWidget disabled")
-
-    def display_image_from_path(self, *args, **kwargs):
-        print("⚠️ BlenderImageWidget not available")
-
-    def display_image_from_data(self, *args, **kwargs):
-        print("⚠️ BlenderImageWidget not available")
-
-    def clear_image(self):
-        print("⚠️ BlenderImageWidget not available")
-
-
-# Export der entsprechenden Klasse
 if ANYWIDGET_AVAILABLE:
-    __all__ = ["BlenderImageWidget"]
+
+    class AstroLabWidget(anywidget.AnyWidget):
+        """
+        AstroLab Widget for interactive Blender visualization in Jupyter notebooks.
+
+        Features:
+        - Direct bpy.ops access via widget.ops
+        - Quick scene creation and rendering
+        - Real-time scene information
+        - Modern, responsive UI
+
+        Usage:
+            widget = AstroLabWidget()
+            widget.ops.mesh.primitive_cube_add()  # Direct Blender ops access
+            widget.quick_render()  # Render and display
+        """
+
+        _esm = JS
+        _css = CSS
+
+        # Widget Traits
+        image_data = traitlets.Unicode("").tag(sync=True)
+        image_path = traitlets.Unicode("").tag(sync=True)
+        render_time = traitlets.Float(0.0).tag(sync=True)
+        resolution = traitlets.Unicode("").tag(sync=True)
+        render_engine = traitlets.Unicode("BLENDER_EEVEE_NEXT").tag(sync=True)
+        samples = traitlets.Int(64).tag(sync=True)
+        trigger_render = traitlets.Int(0).tag(sync=True)
+
+        def __init__(self, **kwargs):
+            if not ANYWIDGET_AVAILABLE:
+                raise ImportError("anywidget is required for AstroLabWidget")
+            super().__init__(**kwargs)
+
+            # Initialize Blender integration
+            self._init_blender_integration()
+
+        def _init_blender_integration(self):
+            """Initialize Blender integration and bpy.ops access."""
+            try:
+                import bpy
+
+                self._bpy_available = True
+                self.bpy = bpy
+                self.ops = bpy.ops  # Direct ops access
+                self.data = bpy.data
+                self.context = bpy.context
+                print("✅ Blender integration initialized - widget.ops available!")
+            except ImportError:
+                self._bpy_available = False
+                self.bpy = None
+                self.ops = None
+                self.data = None
+                self.context = None
+                print("⚠️ Blender not available - ops functionality disabled")
+
+        def display_image_from_path(
+            self,
+            image_path: Union[str, Path],
+            render_time: float = 0.0,
+            resolution: str = "",
+            engine: str = "BLENDER_EEVEE_NEXT",
+            samples: int = 64,
+        ):
+            """Display image from file path with render information."""
+            try:
+                image_path = Path(image_path)
+                if not image_path.exists():
+                    print(f"❌ Image not found: {image_path}")
+                    return
+
+                # Convert to absolute path for proper display
+                abs_path = image_path.resolve()
+                self.image_path = f"file:///{abs_path}"
+                self.image_data = ""  # Clear base64 data when using path
+
+                # Update render info
+                self.render_time = render_time
+                self.resolution = resolution
+                self.render_engine = engine
+                self.samples = samples
+
+                print(f"🖼️ Image displayed: {abs_path}")
+
+            except Exception as e:
+                print(f"❌ Error displaying image: {e}")
+
+        def display_image_from_base64(
+            self,
+            base64_data: str,
+            render_time: float = 0.0,
+            resolution: str = "",
+            engine: str = "BLENDER_EEVEE_NEXT",
+            samples: int = 64,
+        ):
+            """Display image from base64 data with render information."""
+            try:
+                self.image_data = base64_data
+                self.image_path = ""  # Clear path when using base64
+
+                # Update render info
+                self.render_time = render_time
+                self.resolution = resolution
+                self.render_engine = engine
+                self.samples = samples
+
+                print("🖼️ Image displayed from base64 data")
+
+            except Exception as e:
+                print(f"❌ Error displaying base64 image: {e}")
+
+        def display_image_from_file(
+            self,
+            file_path: Union[str, Path],
+            as_base64: bool = False,
+            render_time: float = 0.0,
+            resolution: str = "",
+            engine: str = "BLENDER_EEVEE_NEXT",
+            samples: int = 64,
+        ):
+            """Display image from file, optionally converting to base64."""
+            try:
+                file_path = Path(file_path)
+                if not file_path.exists():
+                    print(f"❌ File not found: {file_path}")
+                    return
+
+                if as_base64:
+                    with open(file_path, "rb") as f:
+                        image_data = base64.b64encode(f.read()).decode()
+                    self.display_image_from_base64(
+                        image_data, render_time, resolution, engine, samples
+                    )
+                else:
+                    self.display_image_from_path(
+                        file_path, render_time, resolution, engine, samples
+                    )
+
+            except Exception as e:
+                print(f"❌ Error loading image file: {e}")
+
+        def clear_image(self):
+            """Clear the displayed image."""
+            self.image_data = ""
+            self.image_path = ""
+            self.render_time = 0.0
+            self.resolution = ""
+
+        def quick_render(self, output_path: str = "results/widget_render.png"):
+            """Quick render current scene and display in widget."""
+            if not self._bpy_available:
+                print("❌ Blender not available for rendering")
+                return False
+
+            try:
+                import time
+                from pathlib import Path
+
+                # Ensure output directory exists
+                output_path_obj = Path(output_path)
+                output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+                # Set render settings
+                self.context.scene.render.filepath = str(output_path_obj)
+                self.context.scene.render.image_settings.file_format = "PNG"
+
+                # Record render time
+                start_time = time.time()
+
+                # Render
+                self.ops.render.render(write_still=True)
+
+                render_time = time.time() - start_time
+
+                # Get render info
+                scene = self.context.scene
+                resolution = f"{scene.render.resolution_x}x{scene.render.resolution_y}"
+                engine = scene.render.engine
+
+                # Display in widget
+                self.display_image_from_path(
+                    output_path_obj,
+                    render_time=render_time,
+                    resolution=resolution,
+                    engine=engine,
+                    samples=getattr(scene.cycles, "samples", 64)
+                    if engine == "CYCLES"
+                    else 64,
+                )
+
+                print(f"🎬 Quick render completed: {output_path_obj}")
+                return True
+
+            except Exception as e:
+                print(f"❌ Render error: {e}")
+                return False
+
+        def scene_info(self) -> Dict[str, Any]:
+            """Get current scene information."""
+            if not self._bpy_available:
+                return {"error": "Blender not available"}
+
+            try:
+                scene = self.context.scene
+                return {
+                    "scene_name": scene.name,
+                    "render_engine": scene.render.engine,
+                    "resolution": f"{scene.render.resolution_x}x{scene.render.resolution_y}",
+                    "frame_current": scene.frame_current,
+                    "frame_start": scene.frame_start,
+                    "frame_end": scene.frame_end,
+                    "objects_count": len(self.data.objects),
+                    "cameras_count": len(
+                        [obj for obj in self.data.objects if obj.type == "CAMERA"]
+                    ),
+                    "lights_count": len(
+                        [obj for obj in self.data.objects if obj.type == "LIGHT"]
+                    ),
+                    "meshes_count": len(
+                        [obj for obj in self.data.objects if obj.type == "MESH"]
+                    ),
+                }
+            except Exception as e:
+                return {"error": str(e)}
+
+        def reset_scene(self):
+            """Reset scene using widget.ops."""
+            if not self._bpy_available:
+                print("❌ Blender not available")
+                return False
+
+            try:
+                # Select all objects
+                self.ops.object.select_all(action="SELECT")
+                # Delete all selected objects
+                self.ops.object.delete(use_global=False)
+                print("🧹 Scene reset completed")
+                return True
+            except Exception as e:
+                print(f"❌ Scene reset error: {e}")
+                return False
+
+        def add_camera(self, location=(5, -5, 3), rotation=(1.1, 0, 0.8)):
+            """Add camera using widget.ops."""
+            if not self._bpy_available:
+                print("❌ Blender not available")
+                return None
+
+            try:
+                self.ops.object.camera_add(location=location, rotation=rotation)
+                camera = self.context.active_object
+                self.context.scene.camera = camera
+                print(f"📷 Camera added at {location}")
+                return camera
+            except Exception as e:
+                print(f"❌ Camera add error: {e}")
+                return None
+
+        def add_light(self, light_type="SUN", location=(5, 5, 10), energy=1000):
+            """Add light using widget.ops."""
+            if not self._bpy_available:
+                print("❌ Blender not available")
+                return None
+
+            try:
+                self.ops.object.light_add(type=light_type, location=location)
+                light = self.context.active_object
+                light.data.energy = energy
+                print(f"💡 {light_type} light added at {location}")
+                return light
+            except Exception as e:
+                print(f"❌ Light add error: {e}")
+                return None
+
+        def create_astro_scene(self, scene_type="galaxy"):
+            """Create predefined astronomical scenes."""
+            if not self._bpy_available:
+                print("❌ Blender not available")
+                return False
+
+            try:
+                # Reset scene
+                self.reset_scene()
+
+                if scene_type == "galaxy":
+                    # Add camera
+                    self.add_camera(location=(10, -10, 8))
+                    # Add lights
+                    self.add_light("SUN", location=(5, -5, 10), energy=1000)
+                    # Add some objects for galaxy simulation
+                    for i in range(20):
+                        import random
+
+                        x = random.uniform(-5, 5)
+                        y = random.uniform(-5, 5)
+                        z = random.uniform(-1, 1)
+                        self.ops.mesh.primitive_ico_sphere_add(
+                            location=(x, y, z), radius=0.1
+                        )
+
+                elif scene_type == "solar_system":
+                    # Add camera
+                    self.add_camera(location=(15, -15, 10))
+                    # Add sun (large sphere)
+                    self.ops.mesh.primitive_uv_sphere_add(location=(0, 0, 0), radius=2)
+                    # Add planets
+                    for i in range(8):
+                        distance = 3 + i * 1.5
+                        self.ops.mesh.primitive_uv_sphere_add(
+                            location=(distance, 0, 0), radius=0.2 + i * 0.1
+                        )
+
+                print(f"🌌 {scene_type} scene created")
+                return True
+
+            except Exception as e:
+                print(f"❌ Scene creation error: {e}")
+                return False
+
+        # Convenience methods for common operations
+        def add_cube(self, location=(0, 0, 0), size=2.0):
+            """Add cube using widget.ops."""
+            if self._bpy_available:
+                self.ops.mesh.primitive_cube_add(location=location, size=size)
+                return self.context.active_object
+            return None
+
+        def add_sphere(self, location=(0, 0, 0), radius=1.0):
+            """Add sphere using widget.ops."""
+            if self._bpy_available:
+                self.ops.mesh.primitive_uv_sphere_add(location=location, radius=radius)
+                return self.context.active_object
+            return None
+
+        def add_plane(self, location=(0, 0, 0), size=2.0):
+            """Add plane using widget.ops."""
+            if self._bpy_available:
+                self.ops.mesh.primitive_plane_add(location=location, size=size)
+                return self.context.active_object
+            return None
+
 else:
-    BlenderImageWidget = BlenderImageWidgetStub
-    __all__ = ["BlenderImageWidget"]
+    # Stub class for when anywidget is not available
+    class AstroLabWidgetStub:
+        """Stub class when anywidget is not available."""
+
+        def __init__(self, **kwargs):
+            raise ImportError(
+                "anywidget is required for AstroLabWidget. "
+                "Install with: pip install anywidget"
+            )
+
+    AstroLabWidget = AstroLabWidgetStub

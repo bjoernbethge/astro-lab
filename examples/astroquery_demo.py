@@ -33,11 +33,11 @@ def test_basic_functionality():
 
     try:
         if not check_astroquery_available():
-            print("❌ astroquery nicht verfügbar")
+            print("❌ astroquery not available")
             print("💡 Installiere mit: uv add astroquery")
             return False
 
-        print("✅ astroquery verfügbar!")
+        print("✅ astroquery available!")
         return True
 
     except ImportError as e:
@@ -53,7 +53,7 @@ def demo_exoplanet_data():
         from astroquery.ipac.nexsci.nasa_exoplanet_archive import NasaExoplanetArchive
 
         # Very small query to avoid timeouts
-        print("📡 Lade 3 bestätigte Exoplaneten (minimale Daten)...")
+        print("📡 Loading 3 confirmed exoplanets (minimal data)...")
 
         # Use direct TAP query with minimal columns
         result = NasaExoplanetArchive.query_criteria(
@@ -81,7 +81,7 @@ def demo_exoplanet_data():
     except Exception as e:
         print(f"❌ Fehler beim Laden der Exoplanet-Daten: {e}")
         print("💡 NASA Exoplanet Archive hat bekannte Timeout-Probleme")
-        print("💡 Versuche es später nochmal oder verwende kleinere Queries")
+        print("💡 Try again later or use smaller queries")
         return None
 
 

@@ -1,7 +1,7 @@
 """
-Tests für das neue AstroLab Preprocessing System.
+Tests for the new AstroLab preprocessing system.
 
-Tests für Datenverarbeitung, Splits, und die moderne Preprocessing-Pipeline.
+Tests for data processing, splits, and the modern preprocessing pipeline.
 """
 
 import tempfile
