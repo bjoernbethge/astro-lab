@@ -28,7 +28,7 @@ def demo_blender_api():
         print(f"   - widget.data: {type(widget.data)}")
         print(f"   - widget.context: {type(widget.context)}")
         print(f"   - widget.scene: {type(widget.scene)}")
-        print(f"   - widget.utils: {type(widget.utils)}")
+        print(f"   - widget.al: {type(widget.al)}")
         
         # Create Blender scene
         print("\n🎬 Creating Blender scene...")
@@ -40,8 +40,8 @@ def demo_blender_api():
         
         # Add camera and light
         print("📷 Creating camera and light...")
-        camera = widget.utils.create_camera(location=(0, 0, 5))
-        light = widget.utils.create_light(light_type='SUN', location=(5, 5, 5))
+        camera = widget.al.core['create_camera'](location=(0, 0, 5))
+        light = widget.al.core['create_light'](light_type='SUN', location=(5, 5, 5))
         
         # Export scene
         print("💾 Exporting scene...")

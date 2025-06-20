@@ -1,22 +1,20 @@
 """
-Simplified Base Class for Astronomical Tensors
-=============================================
+Base Tensor Classes - Core Tensor Infrastructure
+===============================================
 
-Refactored version with simplified memory management, following the guide to:
-- Remove complex global registry
-- Use Python's garbage collection
-- Eliminate unnecessary cleanup callbacks
-- Improve type annotations
-- Add validation mixin
+Provides base classes and interfaces for all tensor types in the AstroLab framework.
 """
 
-from __future__ import annotations
+import numpy as np
+import torch
+import polars as pl
+from typing import Any, Dict, List, Optional, Union, Tuple, Protocol, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Self
 
 import logging
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Union
-
-import torch
 from pydantic import BaseModel, ConfigDict
 
 from .constants import ASTRO  # Import centralized constants
@@ -201,25 +199,25 @@ class AstroTensorBase(BaseModel, ValidationMixin):
     # Tensor operations
     # =========================================================================
 
-    def clone(self) -> AstroTensorBase:
+    def clone(self) -> "Self":
         """Create a deep copy of the tensor."""
         return self.__class__(data=self._data.clone(), **self._metadata)
 
-    def detach(self) -> AstroTensorBase:
+    def detach(self) -> "Self":
         """Detach from computation graph."""
         return self.__class__(data=self._data.detach(), **self._metadata)
 
-    def to(self, *args, **kwargs) -> AstroTensorBase:
+    def to(self, *args, **kwargs) -> "Self":
         """Move tensor to device/dtype."""
         return self.__class__(data=self._data.to(*args, **kwargs), **self._metadata)
 
-    def cpu(self) -> AstroTensorBase:
+    def cpu(self) -> "Self":
         """Move tensor to CPU."""
         return self.to(device=torch.device("cpu"))
 
     def cuda(
         self, device: Optional[Union[int, str, torch.device]] = None
-    ) -> AstroTensorBase:
+    ) -> "Self":
         """Move tensor to CUDA device."""
         if device is None:
             device = torch.device("cuda")
@@ -317,7 +315,7 @@ class AstroTensorBase(BaseModel, ValidationMixin):
     # Utility methods
     # =========================================================================
 
-    def apply_mask(self, mask: torch.Tensor) -> AstroTensorBase:
+    def apply_mask(self, mask: torch.Tensor) -> "Self":
         """Apply boolean mask to tensor."""
         if mask.dtype != torch.bool:
             raise ValueError("Mask must be boolean tensor")

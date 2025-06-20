@@ -1,8 +1,8 @@
-# AstroLab Development Guide
+# 🌌 AstroLab Development Guide
 
 ## 🚀 Project Overview
 
-AstroLab is a comprehensive Python framework for astronomical data analysis, machine learning, and visualization. The project combines modern ML tools with specialized astronomy libraries.
+AstroLab is a comprehensive Python framework for astronomical data analysis, machine learning, and visualization with advanced cosmic web analysis and interactive 3D visualization capabilities. The project combines modern ML tools with specialized astronomy libraries.
 
 ## 📦 Dependency Architecture
 
@@ -18,6 +18,20 @@ astro-lab/
 ├── astro-lab/          # Main Framework
 └── astro-lab-ml/       # ML-specific Extensions
 ```
+
+### 🌌 New Features in 2025
+
+#### Cosmic Web Analysis
+- **Multi-scale clustering** across stellar and cosmological scales
+- **Adaptive density-based analysis** for all survey types
+- **Real-time cosmic web visualization** with CosmographBridge
+- **Survey-specific color mapping** and physics simulation
+
+#### Interactive 3D Visualization
+- **CosmographBridge**: Seamless integration with cosmic web analysis
+- **Survey-specific colors**: Gold for stars, blue for galaxies, green for simulations
+- **Real-time physics**: Gravity and repulsion simulation
+- **Multi-survey support**: Gaia, SDSS, NSA, TNG50, LINEAR, Exoplanets
 
 ### 🎯 marimo-flow v0.1.1 Dependencies
 
@@ -92,6 +106,7 @@ astro-lab/
 - `astropy v7.1.0` - Astronomy Core
 - `bpy v4.4.0` - Blender Python API
 - `pyvista v0.45.2` - 3D Visualization + VTK
+- `cosmograph v0.0.47` - Interactive Graph Visualization
 
 ### 🧠 ML/Training Packages
 - `lightning v2.5.1.post0` - PyTorch Lightning
@@ -145,6 +160,11 @@ uv run pytest -v
 - `jupyter v1.1.1` - Jupyter Ecosystem
 - `mlflow v3.1.0` - Experiment Tracking
 
+**Visualization:**
+- `cosmograph v0.0.47` - Interactive Graph Visualization
+- `pyvista v0.45.2` - 3D Visualization
+- `bpy v4.4.0` - Blender Integration
+
 ## 🔧 Development Commands
 
 ```bash
@@ -164,6 +184,36 @@ uv run mlflow ui                    # MLflow UI
 # CLI Tools
 uv run python -m astro_lab.cli.preprocessing --help
 uv run python -m astro_lab.cli.train --help
+uv run python -m astro_lab.cli.cosmic_web --help
+```
+
+## 🌌 Cosmic Web Development
+
+### Quick Start with Cosmic Web Analysis
+
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
+
+# Load and analyze data
+results = create_cosmic_web_loader(survey="gaia", max_samples=500)
+
+# Create interactive visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+```
+
+### Testing Cosmic Web Features
+
+```bash
+# Test cosmic web analysis
+uv run python test_cosmograph_real.py
+
+# Run cosmic web examples
+uv run python examples/simple_cosmograph_demo.py
+
+# Test CLI cosmic web commands
+uv run python -m astro_lab.cli.cosmic_web --help
 ```
 
 ## 📁 Project Structure
@@ -171,11 +221,23 @@ uv run python -m astro_lab.cli.train --help
 ```
 src/astro_lab/
 ├── cli/                    # Command Line Interface
+│   ├── cosmic_web.py      # Cosmic web analysis CLI
+│   ├── download.py        # Data download
+│   ├── preprocessing.py   # Data preprocessing
+│   └── train.py          # Model training
 ├── data/                   # Data Processing & Loading
+│   ├── core.py           # Cosmic web analysis functions
+│   ├── manager.py        # Data management
+│   └── processing.py     # Data processing
 ├── models/                 # ML Models & Architectures
 ├── tensors/                # Specialized Tensor Types
+│   └── spatial_3d.py     # 3D spatial tensors with cosmic web methods
 ├── training/               # Training Utilities
 ├── utils/                  # Utility Functions
+│   └── viz/              # Visualization utilities
+│       ├── cosmograph_bridge.py  # Cosmograph integration
+│       ├── tensor_bridge.py      # Tensor visualization
+│       └── bidirectional_bridge.py # Multi-framework bridges
 └── simulation/             # Simulation Tools
 ```
 
@@ -187,6 +249,8 @@ src/astro_lab/
 - **Graph Neural Networks**: For spatial data structures
 - **3D Visualization**: Blender & PyVista Integration
 - **CUDA Support**: GPU-accelerated computations
+- **Cosmic Web Analysis**: Multi-scale structure analysis
+- **Interactive 3D Visualization**: CosmographBridge integration
 
 ## 🚀 Getting Started
 
@@ -195,9 +259,12 @@ src/astro_lab/
 3. **Start Marimo**: `uv run marimo edit`
 4. **Explore Data**: Check `data/` directory
 5. **Train Models**: Use CLI tools or notebooks
+6. **Analyze Cosmic Web**: Use `create_cosmic_web_loader`
+7. **Visualize Results**: Use `CosmographBridge`
 
 ## 📚 Additional Resources
 
-- [Data Loaders Documentation](DATA_LOADERS.md)
-- [Exoplanet Pipeline](EXOPLANET_PIPELINE.md)
-- Example notebooks in `examples/` 
+- **Cosmograph Integration**: See `docs/COSMOGRAPH_INTEGRATION.md`
+- **Data Loaders**: See `docs/DATA_LOADERS.md`
+- **Cosmic Web Analysis**: See `docs/GAIA_COSMIC_WEB.md`
+- **Examples**: Check `examples/simple_cosmograph_demo.py` 

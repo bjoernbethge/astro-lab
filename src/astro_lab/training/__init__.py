@@ -1,55 +1,47 @@
 """
-AstroLab Training Module with Enhanced Tensor Integration
-========================================================
+Training Module - Neural Network Training Infrastructure
+======================================================
 
-PyTorch Lightning-based training with native SurveyTensor support.
+Provides training infrastructure for neural network models including
+Lightning modules, MLflow logging, and Optuna optimization.
 """
 
-from .lightning_module import AstroLightningModule
+import numpy as np
+import torch
+import torch.nn as nn
+from typing import Any, Dict, List, Optional, Union, Tuple
+
+# Import training components
 from .trainer import AstroTrainer
+from .lightning_module import AstroLightningModule
+from .mlflow_logger import AstroMLflowLogger
+from .optuna_trainer import OptunaTrainer
 
-# MLFlow logger available conditionally
+# Check for optional dependencies
 try:
-    from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
+    import lightning
+    LIGHTNING_AVAILABLE = True
+except ImportError:
+    LIGHTNING_AVAILABLE = False
 
+try:
+    import mlflow
     MLFLOW_AVAILABLE = True
 except ImportError:
-    AstroMLflowLogger = None
-    setup_mlflow_experiment = None
     MLFLOW_AVAILABLE = False
 
-# Optuna trainer available conditionally
 try:
-    from .optuna_trainer import OptunaTrainer
-
+    import optuna
     OPTUNA_AVAILABLE = True
 except ImportError:
-    OptunaTrainer = None
     OPTUNA_AVAILABLE = False
-
-# Data integration
-try:
-    from astro_lab.data import (
-        AstroDataModule,
-        create_astro_dataloader,
-        create_astro_datamodule,
-    )
-
-    DATA_MODULE_AVAILABLE = True
-except ImportError:
-    DATA_MODULE_AVAILABLE = False
-    create_astro_datamodule = None
-    create_astro_dataloader = None
-    AstroDataModule = None
 
 __all__ = [
     "AstroTrainer",
-    "AstroLightningModule",
-    "OptunaTrainer",
+    "AstroLightningModule", 
     "AstroMLflowLogger",
-    "setup_mlflow_experiment",
-    # Data integration
-    "create_astro_datamodule",
-    "create_astro_dataloader",
-    "AstroDataModule",
+    "OptunaTrainer",
+    "LIGHTNING_AVAILABLE",
+    "MLFLOW_AVAILABLE",
+    "OPTUNA_AVAILABLE"
 ]

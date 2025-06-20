@@ -1,6 +1,74 @@
-# AstroLab: Comprehensive Astronomical Data Analysis Framework
+# 🌌 AstroLab - Astronomical Data Analysis Framework
 
-A modern Python framework for astronomical data analysis, machine learning, and visualization that combines specialized astronomy libraries with cutting-edge ML tools.
+AstroLab is a comprehensive framework for astronomical data analysis, visualization, and machine learning with advanced cosmic web analysis and interactive 3D visualization.
+
+## 🚀 Quick Start
+
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
+
+# Load real survey data with cosmic web analysis
+results = create_cosmic_web_loader(survey="gaia", max_samples=500)
+
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+
+# Explore the cosmic web interactively!
+```
+
+## 📦 Main Dependencies
+
+The framework requires the following main dependencies:
+- **numpy** - Scientific computing
+- **torch** - GPU-accelerated deep learning
+- **polars** - High-performance data processing
+- **astropy** - Astronomical calculations
+- **pyvista** - 3D visualization
+- **cosmograph** - Interactive graph visualization
+- **blender** (optional) - Advanced 3D rendering
+
+## 🌟 Key Features
+
+### 🌌 Cosmic Web Analysis
+- **Multi-scale clustering** across stellar and cosmological scales
+- **Adaptive density-based analysis** for all survey types
+- **Real-time cosmic web visualization** with CosmographBridge
+- **Survey-specific color mapping** and physics simulation
+
+### 🎨 Interactive 3D Visualization
+- **CosmographBridge**: Seamless integration with cosmic web analysis
+- **Survey-specific colors**: Gold for stars, blue for galaxies, green for simulations
+- **Real-time physics**: Gravity and repulsion simulation
+- **Multi-survey support**: Gaia, SDSS, NSA, TNG50, LINEAR, Exoplanets
+
+### 🔬 Specialized Tensor Types
+```python
+from astro_lab.tensors import (
+    Spatial3DTensor,      # 3D coordinates & transformations
+    PhotometricTensor,    # Multi-band photometry
+    SpectralTensor,       # Spectroscopy data
+    LightcurveTensor,     # Time-series observations
+    OrbitalTensor         # Satellite & planetary orbits
+)
+```
+
+### 📊 Data Sources Integration
+- **Gaia DR3**: Stellar catalogs with proper motions
+- **SDSS**: Galaxy surveys and spectra
+- **TNG50**: Cosmological simulations
+- **NASA Exoplanet Archive**: Confirmed exoplanets
+- **LINEAR**: Asteroid light curves
+- **NSA**: Galaxy catalogs with distances
+
+### 🧠 Advanced ML Capabilities
+- **Graph Neural Networks**: For spatial astronomical structures
+- **3D Point Cloud Models**: Stellar cluster analysis
+- **Temporal Models**: Variable star classification
+- **Multi-modal Learning**: Combined photometry, spectroscopy, and astrometry
+- **2025 System Metrics**: Real-time hardware monitoring (CPU, GPU, memory, disk)
+- **Automatic Hardware Detection**: GPU optimization, precision selection, device management
 
 ## 🚀 Project Overview
 
@@ -12,6 +80,7 @@ AstroLab is designed as a comprehensive ecosystem for astronomical research, fea
 - **3D Visualization**: Blender and PyVista integration
 - **GPU Acceleration**: CUDA-optimized PyTorch workflows
 - **Graph Neural Networks**: For spatial astronomical data structures
+- **Cosmic Web Analysis**: Multi-scale structure analysis across all surveys
 
 ## 📦 Architecture
 
@@ -50,34 +119,48 @@ astro-lab/
 - **PyArrow v20.0.0**: Columnar data processing
 - **NumPy v1.26.4** + **SciPy v1.15.3**: Scientific computing
 
-## 🌟 Key Features
+## 🌌 Cosmic Web Analysis Examples
 
-### Specialized Tensor Types
+### Basic Cosmic Web Analysis
 ```python
-from astro_lab.tensors import (
-    Spatial3DTensor,      # 3D coordinates & transformations
-    PhotometricTensor,    # Multi-band photometry
-    SpectralTensor,       # Spectroscopy data
-    LightcurveTensor,     # Time-series observations
-    OrbitalTensor         # Satellite & planetary orbits
+from astro_lab.data.core import create_cosmic_web_loader
+
+# Analyze Gaia stellar cosmic web
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=1000,
+    scales_mpc=[5.0, 10.0, 20.0]
+)
+
+print(f"Found {results['n_objects']} objects")
+print(f"Volume: {results['total_volume']:.0f} Mpc³")
+```
+
+### Interactive Visualization
+```python
+from astro_lab.utils.viz import CosmographBridge
+
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    radius=3.0,
+    background_color='#000011'
 )
 ```
 
-### Data Sources Integration
-- **Gaia DR3**: Stellar catalogs with proper motions
-- **SDSS**: Galaxy surveys and spectra
-- **TNG50**: Cosmological simulations
-- **NASA Exoplanet Archive**: Confirmed exoplanets
-- **LINEAR**: Asteroid light curves
-- **NSA**: Galaxy catalogs with distances
+### Multi-Survey Comparison
+```python
+# Compare different surveys
+surveys = ["gaia", "sdss", "nsa", "tng50"]
+widgets = []
 
-### Advanced ML Capabilities
-- **Graph Neural Networks**: For spatial astronomical structures
-- **3D Point Cloud Models**: Stellar cluster analysis
-- **Temporal Models**: Variable star classification
-- **Multi-modal Learning**: Combined photometry, spectroscopy, and astrometry
-- **2025 System Metrics**: Real-time hardware monitoring (CPU, GPU, memory, disk)
-- **Automatic Hardware Detection**: GPU optimization, precision selection, device management
+for survey in surveys:
+    results = create_cosmic_web_loader(survey=survey, max_samples=500)
+    widget = bridge.from_cosmic_web_results(results, survey_name=survey)
+    widgets.append(widget)
+```
 
 ## 🚀 Quick Start
 
@@ -121,6 +204,7 @@ astro-lab preprocess     # Data preprocessing and graph creation
 astro-lab train          # Single ML model training
 astro-lab optimize       # Hyperparameter optimization with Optuna
 astro-lab config         # Configuration management
+astro-lab cosmic-web     # Cosmic web analysis and visualization
 ```
 
 **Get help for any command:**
@@ -129,6 +213,7 @@ astro-lab --help                    # Main help
 astro-lab train --help              # Training options
 astro-lab optimize --help           # Optimization options
 astro-lab config --help             # Configuration management
+astro-lab cosmic-web --help         # Cosmic web analysis
 ```
 
 ### 📥 Data Download & Management
@@ -142,6 +227,18 @@ astro-lab download nsa --catalog v1_0_1
 # Quick data exploration
 astro-lab download --list-surveys          # Show available surveys
 astro-lab download --status                # Show download progress
+```
+
+### 🌌 Cosmic Web Analysis
+
+```bash
+# Perform cosmic web analysis
+astro-lab cosmic-web gaia --max-samples 1000 --scales 5.0 10.0 20.0
+astro-lab cosmic-web sdss --output results/sdss_cosmic_web/
+astro-lab cosmic-web nsa --create-visualization
+
+# Multi-survey analysis
+astro-lab cosmic-web compare --surveys gaia sdss nsa --output results/comparison/
 ```
 
 ### 🔄 Data Preprocessing
@@ -173,9 +270,6 @@ astro-lab train --config configs/gaia_classification.yaml
 
 # Hyperparameter optimization with multiple trials
 astro-lab optimize configs/gaia_optimization.yaml --trials 50
-
-# Quick training (without config file)
-astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 ```
 
 #### 🎯 Train vs Optimize - When to Use What?

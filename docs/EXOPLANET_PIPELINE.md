@@ -1,3 +1,35 @@
+# Exoplanet Pipeline Documentation
+
+This document describes the exoplanet data processing pipeline for the AstroLab framework.
+
+## Overview
+
+The exoplanet pipeline processes confirmed exoplanet data from various surveys and provides
+cosmic web analysis capabilities for stellar neighborhood studies.
+
+## Dependencies
+
+The pipeline requires the following main dependencies:
+- numpy
+- torch  
+- polars
+- astropy
+- pyvista
+- cosmograph
+
+## Usage
+
+```python
+import numpy as np
+import torch
+import polars as pl
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.tensors.spatial_3d import Spatial3DTensor
+```
+
 # Exoplanet-Daten: Was geht, was nicht
 
 ## ❌ Aktueller Status

@@ -1,5 +1,9 @@
 """
-Pytest configuration and fixtures for astro-lab tests.
+Test Configuration - Pytest Configuration and Fixtures
+=====================================================
+
+Provides pytest configuration and common fixtures for testing
+the AstroLab framework.
 """
 
 import sys
@@ -11,6 +15,7 @@ from typing import Any, Dict, Generator, Optional
 import numpy as np
 import pytest
 import torch
+import polars as pl
 
 # Add src to Python path for testing
 project_root = Path(__file__).parent.parent
@@ -336,8 +341,6 @@ def mock_parquet_file(
 ) -> Path:
     """Create a mock Parquet file for testing."""
     try:
-        import polars as pl
-
         # Create DataFrame from sample data
         df_data = {
             "ra": sample_astronomical_data["ra"],

@@ -1,20 +1,27 @@
 """
-3D Spatial Coordinate Tensors for Astronomical Data
+Spatial 3D Tensor - 3D Spatial Data Representation
+=================================================
 
-Proper astronomical spatial tensor with astroML and poliastro compatibility.
-Uses unified [N, 3] tensor structure for efficient spatial operations.
+Provides 3D spatial tensor classes for astronomical coordinate systems
+and spatial data processing.
 """
 
+import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import polars as pl
 import torch
 
 from .base import AstroTensorBase
 
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Check for optional dependencies
 try:
     import astropy.units as u
-    from astropy.coordinates import ICRS, Galactic, SkyCoord
+    from astropy.coordinates import Galactic, ICRS, SkyCoord
     from astropy.time import Time
 
     ASTROPY_AVAILABLE = True
@@ -35,7 +42,6 @@ try:
     TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
     TORCH_GEOMETRIC_AVAILABLE = False
-
 
 class Spatial3DTensor(AstroTensorBase):
     """
@@ -594,7 +600,7 @@ class Spatial3DTensor(AstroTensorBase):
         elif self.unit == "Mpc":
             coords_pc *= 1_000_000  # Mpc to pc
 
-        print(
+        logger.info(
             f"🌌 Cosmic web clustering: {len(coords_pc):,} stars in {eps_pc} pc radius"
         )
 
@@ -637,11 +643,11 @@ class Spatial3DTensor(AstroTensorBase):
                     ),
                 }
 
-        print(f"✅ Found {n_clusters:,} stellar groups")
-        print(
+        logger.info(f"✅ Found {n_clusters:,} stellar groups")
+        logger.info(
             f"   Grouped stars: {len(labels) - n_noise:,} ({(len(labels) - n_noise) / len(labels) * 100:.1f}%)"
         )
-        print(f"   Isolated stars: {n_noise:,} ({n_noise / len(labels) * 100:.1f}%)")
+        logger.info(f"   Isolated stars: {n_noise:,} ({n_noise / len(labels) * 100:.1f}%)")
 
         return {
             "cluster_labels": labels_tensor,
@@ -717,7 +723,7 @@ class Spatial3DTensor(AstroTensorBase):
         y_bins = int((y_max - y_min) / grid_size_pc) + 1
         z_bins = int((z_max - z_min) / grid_size_pc) + 1
 
-        print(f"🕸️ Creating {x_bins}×{y_bins}×{z_bins} density grid")
+        logger.info(f"🕸️ Creating {x_bins}×{y_bins}×{z_bins} density grid")
 
         # Calculate 3D histogram (density field)
         density_field, edges = np.histogramdd(

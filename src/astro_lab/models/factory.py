@@ -1,15 +1,15 @@
 """
-Model Factory und Registry für AstroLab Models
+Model Factory - Neural Network Model Creation
+============================================
 
-Zentrale Factory-Funktionen für konsistente Modell-Erstellung:
-- ModelRegistry: Zentrale Registrierung aller Modelle
-- ModelFactory: Hauptfactory mit Survey-spezifischen Konfigurationen
-- Spezialisierte Factories für verschiedene Anwendungsfälle
+Provides factory functions and registry for creating neural network models
+for astronomical data analysis.
 """
 
-from typing import Any, Dict, List, Optional, Union
-
+import numpy as np
+import torch
 import torch.nn as nn
+from typing import Any, Dict, List, Optional, Union, Tuple, Type
 
 from astro_lab.models.base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel
 from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head

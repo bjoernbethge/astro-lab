@@ -1,15 +1,20 @@
 """
-AstroLab Training CLI - Streamlined Interface with Full Tensor Integration
-=========================================================================
+CLI Training - Command Line Training Interface
+============================================
 
-Schlanke moderne Training-Schnittstelle mit YAML-Konfiguration.
-Fokus auf Einfachheit und Performance mit Lightning DataModules.
-🌟 Enhanced with native SurveyTensor support for optimal performance.
+Provides command line interface for training neural network models
+with configuration management and experiment tracking.
 """
+
+import numpy as np
+import torch
+import yaml
+import click
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import argparse
 import logging
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml

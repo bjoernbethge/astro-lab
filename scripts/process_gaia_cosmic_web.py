@@ -1,10 +1,19 @@
 #!/usr/bin/env python3
-"""Process GAIA survey with cosmic web analysis using integrated Data module functions."""
+"""
+Gaia Cosmic Web Processing Script
+================================
+
+Processes Gaia DR3 data for cosmic web analysis and visualization.
+"""
 
 import time
-from pathlib import Path
-
+import numpy as np
 import torch
+import polars as pl
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 from src.astro_lab.data.core import create_cosmic_web_loader
 
