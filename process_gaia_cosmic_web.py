@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Process Exoplanet survey with cosmic web analysis using integrated Data module functions."""
+"""Process GAIA survey with cosmic web analysis using integrated Data module functions."""
 
 import time
 from pathlib import Path
@@ -10,15 +10,15 @@ from src.astro_lab.data.core import create_cosmic_web_loader
 
 
 def main():
-    print("🌌 EXOPLANET COSMIC WEB ANALYSIS (Integrated)")
+    print("🌌 GAIA COSMIC WEB ANALYSIS (Integrated)")
     print("=" * 50)
 
     start_time = time.time()
-    print("📊 Loading Exoplanet survey and performing cosmic web analysis...")
+    print("📊 Loading GAIA survey and performing cosmic web analysis...")
     
     # Use integrated cosmic web analysis
     cosmic_web_results = create_cosmic_web_loader(
-        survey="exoplanet",
+        survey="gaia",
         max_samples=None,  # Full dataset
         scales_mpc=[5.0, 10.0, 20.0, 50.0],
     )
@@ -27,16 +27,16 @@ def main():
     print(f"\n⏱️ Total time: {total_time:.1f}s")
 
     # Save results
-    output_dir = Path("results/exoplanet_cosmic_web")
+    output_dir = Path("results/gaia_cosmic_web")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Save coordinates
     coords_tensor = torch.tensor(cosmic_web_results["coordinates"])
-    torch.save(coords_tensor, output_dir / "exoplanet_coords_3d_mpc.pt")
+    torch.save(coords_tensor, output_dir / "gaia_coords_3d_mpc.pt")
     
     # Save detailed summary
-    with open(output_dir / "exoplanet_cosmic_web_summary.txt", "w") as f:
-        f.write("Exoplanet Cosmic Web Analysis (Integrated Data Module)\n")
+    with open(output_dir / "gaia_cosmic_web_summary.txt", "w") as f:
+        f.write("GAIA Cosmic Web Analysis (Integrated Data Module)\n")
         f.write("=" * 50 + "\n\n")
         f.write(f"Survey: {cosmic_web_results['survey_name']}\n")
         f.write(f"Total objects: {cosmic_web_results['n_objects']:,}\n")
@@ -55,7 +55,7 @@ def main():
             f.write(f"max={result['local_density_stats']['max']:.2e}\n\n")
 
     print(f"\n💾 Results saved to: {output_dir}")
-    print("🎉 Exoplanet cosmic web analysis complete!")
+    print("🎉 GAIA cosmic web analysis complete!")
 
 
 if __name__ == "__main__":

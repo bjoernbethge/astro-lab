@@ -1,42 +1,49 @@
 #!/usr/bin/env python3
-"""Process Exoplanet survey with cosmic web analysis using integrated Data module functions."""
+"""Process LINEAR survey with cosmic web analysis using integrated Data module functions."""
 
 import time
 from pathlib import Path
 
+import polars as pl
 import torch
 
 from src.astro_lab.data.core import create_cosmic_web_loader
 
 
 def main():
-    print("🌌 EXOPLANET COSMIC WEB ANALYSIS (Integrated)")
+    print("🌌 LINEAR COSMIC WEB ANALYSIS (Integrated)")
     print("=" * 50)
 
+    # Lade echten LINEAR-Katalog
+    data_path = Path("data/raw/linear/linear_raw.parquet")
+    if not data_path.exists():
+        print(f"❌ LINEAR-Katalog nicht gefunden: {data_path}")
+        return
+
     start_time = time.time()
-    print("📊 Loading Exoplanet survey and performing cosmic web analysis...")
+    print("📊 Lade LINEAR Survey und führe Cosmic Web-Analyse durch...")
     
-    # Use integrated cosmic web analysis
+    # Nutze die integrierte Cosmic Web-Analyse
     cosmic_web_results = create_cosmic_web_loader(
-        survey="exoplanet",
-        max_samples=None,  # Full dataset
+        survey="linear",
+        max_samples=None,  # Vollständiger Datensatz
         scales_mpc=[5.0, 10.0, 20.0, 50.0],
     )
     
     total_time = time.time() - start_time
-    print(f"\n⏱️ Total time: {total_time:.1f}s")
+    print(f"\n⏱️ Gesamtzeit: {total_time:.1f}s")
 
-    # Save results
-    output_dir = Path("results/exoplanet_cosmic_web")
+    # Ergebnisse speichern
+    output_dir = Path("results/linear_cosmic_web")
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Save coordinates
+    # Koordinaten speichern
     coords_tensor = torch.tensor(cosmic_web_results["coordinates"])
-    torch.save(coords_tensor, output_dir / "exoplanet_coords_3d_mpc.pt")
+    torch.save(coords_tensor, output_dir / "linear_coords_3d_mpc.pt")
     
-    # Save detailed summary
-    with open(output_dir / "exoplanet_cosmic_web_summary.txt", "w") as f:
-        f.write("Exoplanet Cosmic Web Analysis (Integrated Data Module)\n")
+    # Detaillierte Zusammenfassung speichern
+    with open(output_dir / "linear_cosmic_web_summary.txt", "w") as f:
+        f.write("LINEAR Cosmic Web Analysis (Integrated Data Module)\n")
         f.write("=" * 50 + "\n\n")
         f.write(f"Survey: {cosmic_web_results['survey_name']}\n")
         f.write(f"Total objects: {cosmic_web_results['n_objects']:,}\n")
@@ -55,8 +62,8 @@ def main():
             f.write(f"max={result['local_density_stats']['max']:.2e}\n\n")
 
     print(f"\n💾 Results saved to: {output_dir}")
-    print("🎉 Exoplanet cosmic web analysis complete!")
+    print("🎉 LINEAR cosmic web analysis complete!")
 
 
 if __name__ == "__main__":
-    main()
+    main() 
