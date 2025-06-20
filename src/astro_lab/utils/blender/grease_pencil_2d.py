@@ -11,15 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import polars as pl
 
-try:
-    import bpy
-    import mathutils
-
-    BLENDER_AVAILABLE = True
-except ImportError:
-    BLENDER_AVAILABLE = False
-    bpy = None
-    mathutils = None
+from . import bpy
+import mathutils
 
 
 class GreasePencil2DPlotter:
@@ -37,7 +30,7 @@ class GreasePencil2DPlotter:
         scale: float = 5.0,
     ) -> List[Any]:
         """Create radar chart like the data format comparison example."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return []
 
         if colors is None:
@@ -97,7 +90,7 @@ class GreasePencil2DPlotter:
         panel_size: float = 3.0,
     ) -> List[Any]:
         """Create multi-panel plot like NSA galaxy analysis."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return []
 
         objects = []
@@ -134,7 +127,7 @@ class GreasePencil2DPlotter:
         colors: Optional[List[List[float]]] = None,
     ) -> List[Any]:
         """Create comparison histogram plot."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return []
 
         if colors is None:
@@ -324,7 +317,7 @@ class GreasePencil2DPlotter:
         line_width: float = 0.01,
     ) -> Optional[Any]:
         """Create curve line from points."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return None
 
         try:
@@ -358,7 +351,7 @@ class GreasePencil2DPlotter:
 
     def _create_point(self, position: List[float], size: float = 0.02) -> Optional[Any]:
         """Create a point as small UV sphere."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return None
 
         try:
@@ -382,7 +375,7 @@ class GreasePencil2DPlotter:
         self, text: str, position: List[float], size: float = 0.5
     ) -> Optional[Any]:
         """Create text object."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return None
 
         try:
@@ -408,7 +401,7 @@ class GreasePencil2DPlotter:
         self, name: str, color: List[float], strength: float = 2.0
     ) -> Optional[Any]:
         """Create emission material."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return None
 
         if name in bpy.data.materials:
@@ -442,7 +435,7 @@ class GreasePencil2DPlotter:
 
     def clear_objects(self) -> None:
         """Clear all created objects."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return
 
         for obj in self.created_objects:

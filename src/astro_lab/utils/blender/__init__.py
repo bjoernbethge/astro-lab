@@ -1,98 +1,126 @@
 """
-Blender integration for astronomical visualization.
+Blender Integration Module
+=========================
 
-Handles compatibility issues with NumPy 2.x and provides robust fallbacks.
+Centralized Blender availability check and import management.
+Prevents memory leaks and numpy multiarray issues.
 """
 
-import contextlib
-import io
-import os
-import sys
 import warnings
-from typing import Any, Optional
+import sys
+from contextlib import contextmanager
+from typing import Optional, Any
 
-# Suppress NumPy 2.x compatibility warnings globally
-warnings.filterwarnings("ignore", message=".*NumPy 1.x.*")
-warnings.filterwarnings("ignore", message=".*Unable to initialise audio.*")
-warnings.filterwarnings("ignore", message=".*unable to initialise audio.*")
-warnings.filterwarnings("ignore", message=".*numpy.core.multiarray.*")
-warnings.filterwarnings("ignore", message=".*compiled using NumPy 1.x.*")
-warnings.filterwarnings("ignore", message=".*cannot be run in NumPy.*")
-warnings.filterwarnings(
-    "ignore", message=".*A module that was compiled using NumPy 1.x.*"
-)
-warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", category=FutureWarning)
+# Global state to prevent multiple imports
+_bpy = None
+_mathutils = None
+_blender_checked = False
+_blender_available = False
+_blender_error = None
 
-# Additionally suppress all numpy-related warnings during imports
-os.environ["PYTHONWARNINGS"] = "ignore::UserWarning:numpy"
-
-# Set numpy to ignore errors if possible
-import numpy as np
-
-if hasattr(np, "_NoValue"):
-    try:
-        np.seterr(all="ignore")
-    except:
-        pass
-
-
-@contextlib.contextmanager
+@contextmanager
 def _suppress_all_output():
-    """Suppress both stdout and stderr completely."""
-    # Save original file descriptors
-    stdout_fd = os.dup(sys.stdout.fileno())
-    stderr_fd = os.dup(sys.stderr.fileno())
-
+    """Suppress all output during import."""
+    import os
+    import sys
+    
+    # Redirect stdout/stderr
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    
+    # Create null devices
+    null_fd = os.open(os.devnull, os.O_RDWR)
+    old_stdout_fd = os.dup(sys.stdout.fileno())
+    old_stderr_fd = os.dup(sys.stderr.fileno())
+    
+    sys.stdout = os.fdopen(null_fd, 'w')
+    sys.stderr = os.fdopen(null_fd, 'w')
+    
     try:
-        # Redirect to null device (complete suppression)
-        with open(os.devnull, "w") as devnull:
-            os.dup2(devnull.fileno(), sys.stdout.fileno())
-            os.dup2(devnull.fileno(), sys.stderr.fileno())
         yield
     finally:
-        # Restore original file descriptors
-        os.dup2(stdout_fd, sys.stdout.fileno())
-        os.dup2(stderr_fd, sys.stderr.fileno())
-        os.close(stdout_fd)
-        os.close(stderr_fd)
+        # Restore stdout/stderr
+        sys.stdout.close()
+        sys.stderr.close()
+        os.dup2(old_stdout_fd, sys.stdout.fileno())
+        os.dup2(old_stderr_fd, sys.stderr.fileno())
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        os.close(old_stdout_fd)
+        os.close(old_stderr_fd)
 
+def _safe_import_blender() -> tuple[Optional[Any], Optional[Any], bool, Optional[str]]:
+    """
+    Safely import Blender modules once.
+    
+    Returns:
+        Tuple of (bpy, mathutils, available, error_message)
+    """
+    global _bpy, _mathutils, _blender_checked, _blender_available, _blender_error
+    
+    if _blender_checked:
+        return _bpy, _mathutils, _blender_available, _blender_error
+    
+    try:
+        # Suppress all output and warnings during import
+        with _suppress_all_output():
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                
+                # Import bpy and mathutils
+                import bpy as bpy_module
+                import mathutils as mathutils_module
+                
+                # Test basic functionality
+                _ = bpy_module.context
+                _ = mathutils_module.Vector((0, 0, 0))
+                
+                _bpy = bpy_module
+                _mathutils = mathutils_module
+                _blender_available = True
+                _blender_error = None
+                
+    except ImportError as e:
+        _bpy = None
+        _mathutils = None
+        _blender_available = False
+        _blender_error = f"Blender modules not available: {e}"
+    except Exception as e:
+        _bpy = None
+        _mathutils = None
+        _blender_available = False
+        _blender_error = f"Blender import failed: {e}"
+    
+    _blender_checked = True
+    return _bpy, _mathutils, _blender_available, _blender_error
 
-# Blender availability check with suppressed output
-BLENDER_AVAILABLE = False
-BLENDER_ERROR = None
+# Initialize Blender modules once
+bpy, mathutils, BLENDER_AVAILABLE, BLENDER_ERROR = _safe_import_blender()
 
-try:
-    # Suppress all output during Blender import
-    with _suppress_all_output():
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            # Try importing bpy - this can fail with numpy multiarray errors
-            import bpy
-            import mathutils
-            from . import advanced as b3d_adv
-            from . import core
-            from . import grease_pencil_2d
-            from . import grease_pencil_3d
-            from . import lazy
-            from .operators import AstroLabApi, register as al_register, unregister as al_unregister
-            from . import live_tensor_bridge
-
-        # Test basic functionality safely
-        try:
-            _ = bpy.context
-            _ = mathutils.Vector((0, 0, 0))
-            BLENDER_AVAILABLE = True
-        except (AttributeError, RuntimeError):
-            # Blender modules loaded but context not available (headless mode)
-            BLENDER_AVAILABLE = True
-
-except ImportError as e:
-    BLENDER_ERROR = f"Blender modules not available: {e}"
-    BLENDER_AVAILABLE = False
-    bpy = None
-    mathutils = None
+# Import other modules only if Blender is available
+if BLENDER_AVAILABLE:
+    try:
+        from . import advanced as b3d_adv
+        from . import core
+        from . import grease_pencil_2d
+        from . import grease_pencil_3d
+        from . import lazy
+        from .operators import AstroLabApi, register as al_register, unregister as al_unregister
+        from . import live_tensor_bridge
+    except ImportError as e:
+        BLENDER_ERROR = f"Blender submodules not available: {e}"
+        BLENDER_AVAILABLE = False
+        b3d_adv = None
+        core = None
+        grease_pencil_2d = None
+        grease_pencil_3d = None
+        lazy = None
+        AstroLabApi = None
+        al_register = None
+        al_unregister = None
+        live_tensor_bridge = None
+else:
+    # Set all to None if Blender is not available
     b3d_adv = None
     core = None
     grease_pencil_2d = None
@@ -103,39 +131,14 @@ except ImportError as e:
     al_unregister = None
     live_tensor_bridge = None
 
-except Exception as e:
-    # Handle numpy multiarray import errors gracefully
-    if "numpy.core.multiarray" in str(e):
-        BLENDER_ERROR = f"Blender-NumPy compatibility issue (NumPy 2.x): {e}. Blender features disabled."
-    else:
-        BLENDER_ERROR = f"Blender initialization failed: {e}"
-    BLENDER_AVAILABLE = False
-    # Make sure all potential imports are None
-    bpy = None
-    mathutils = None
-    b3d_adv = None
-    core = None
-    grease_pencil_2d = None
-    grease_pencil_3d = None
-    lazy = None
-    AstroLabApi = None
-    al_register = None
-    al_unregister = None
-    live_tensor_bridge = None
-
-
-# Base exports - always available
+# Export availability status
 __all__ = [
+    "BLENDER_ERROR", 
     "bpy",
-    "BLENDER_AVAILABLE",
-    "BLENDER_ERROR",
+    "mathutils",
     "AstroLabApi",
-    "core",
-    "advanced",
-    "grease_pencil_2d",
-    "grease_pencil_3d",
-    "lazy",
-    "live_tensor_bridge",
+    "al_register",
+    "al_unregister"
 ]
 
 def register():

@@ -17,22 +17,16 @@ Access via:
 
 from typing import Set
 
-try:
-    import bpy
-    from . import advanced as b3d_adv
-    from .core import (
-        create_camera, create_light, create_material, normalize_scene, reset_scene,
-        create_cosmic_grid, create_text_legend
-    )
-    from .grease_pencil_2d import GreasePencil2DPlotter
-    from .grease_pencil_3d import GreasePencil3DPlotter
-    from .live_tensor_bridge import live_bridge
+# Use centralized bpy import - modules are already loaded if available
+from . import bpy, advanced as b3d_adv, core, grease_pencil_2d, grease_pencil_3d, live_tensor_bridge
 
-    BLENDER_AVAILABLE = True
-except ImportError:
-    BLENDER_AVAILABLE = False
-    bpy = None
-
+# Import core functions directly
+from .core import (
+    create_camera, create_light, create_material, normalize_scene, reset_scene,
+    create_cosmic_grid, create_text_legend
+)
+from .grease_pencil_2d import GreasePencil2DPlotter
+from .grease_pencil_3d import GreasePencil3DPlotter
 
 # =============================================================================
 # Programmatic Python API (for Widget and advanced scripting)
@@ -44,11 +38,11 @@ class AstroLabApi:
     This class provides direct access to all visualization and simulation tools.
     """
     def __init__(self):
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             raise RuntimeError("Blender is not available. AstroLabApi cannot be initialized.")
 
         # Live Tensor-Socket Bridge
-        self.live_bridge = live_bridge
+        self.live_bridge = live_tensor_bridge
 
         # Advanced Visualization Suite
         self.advanced = b3d_adv.AdvancedVisualizationSuite()
@@ -76,97 +70,99 @@ class AstroLabApi:
 # Blender Operator Wrappers (for Blender UI and simple scripting)
 # =============================================================================
 
-class AL_OT_CreateProceduralGalaxy(bpy.types.Operator):
-    """Create a procedural galaxy using Astro-Lab's advanced tools."""
-    bl_idname = "al.create_procedural_galaxy"
-    bl_label = "AL: Create Procedural Galaxy"
-    bl_description = "Generates a procedural galaxy with Geometry Nodes"
-    bl_options = {'REGISTER', 'UNDO'}
+if bpy is not None:
+    class AL_OT_CreateProceduralGalaxy(bpy.types.Operator):  # type: ignore
+        """Create a procedural galaxy using Astro-Lab's advanced tools."""
+        bl_idname = "al.create_procedural_galaxy"
+        bl_label = "AL: Create Procedural Galaxy"
+        bl_description = "Generates a procedural galaxy with Geometry Nodes"
+        bl_options = {'REGISTER', 'UNDO'}
 
-    galaxy_type: bpy.props.EnumProperty(
-        name="Galaxy Type",
-        items=[
-            ('spiral', "Spiral", "A spiral galaxy with arms"),
-            ('elliptical', "Elliptical", "An elliptical galaxy"),
-            ('irregular', "Irregular", "An irregular galaxy"),
-        ],
-        default='spiral'
-    )
-    num_stars: bpy.props.IntProperty(name="Number of Stars", default=50000, min=1000, max=500000)
-    radius: bpy.props.FloatProperty(name="Radius", default=20.0, min=1.0, max=100.0)
-
-    @classmethod
-    def poll(cls, context):
-        return BLENDER_AVAILABLE and b3d_adv.ADVANCED_AVAILABLE
-
-    def execute(self, context):
-        api = AstroLabApi()
-        api.advanced.create_procedural_galaxy(
-            galaxy_type=self.galaxy_type,
-            num_stars=self.num_stars,
-            radius=self.radius
+        galaxy_type: bpy.props.EnumProperty(  # type: ignore
+            name="Galaxy Type",
+            items=[
+                ('spiral', "Spiral", "A spiral galaxy with arms"),
+                ('elliptical', "Elliptical", "An elliptical galaxy"),
+                ('irregular', "Irregular", "An irregular galaxy"),
+            ],
+            default='spiral'
         )
-        self.report({'INFO'}, f"Created {self.galaxy_type} galaxy.")
-        return {'FINISHED'}
+        num_stars: bpy.props.IntProperty(name="Number of Stars", default=50000, min=1000, max=500000)  # type: ignore
+        radius: bpy.props.FloatProperty(name="Radius", default=20.0, min=1.0, max=100.0)  # type: ignore
+
+        @classmethod
+        def poll(cls, context):  # type: ignore
+            return b3d_adv.ADVANCED_AVAILABLE
+
+        def execute(self, context):  # type: ignore
+            api = AstroLabApi()
+            api.advanced.create_procedural_galaxy(
+                galaxy_type=self.galaxy_type,
+                num_stars=self.num_stars,
+                radius=self.radius
+            )
+            self.report({'INFO'}, f"Created {self.galaxy_type} galaxy.")
+            return {'FINISHED'}
 
 
-class AL_OT_CreateEmissionNebula(bpy.types.Operator):
-    """Create a volumetric emission nebula."""
-    bl_idname = "al.create_emission_nebula"
-    bl_label = "AL: Create Emission Nebula"
-    bl_description = "Generates a volumetric emission nebula"
-    bl_options = {'REGISTER', 'UNDO'}
+    class AL_OT_CreateEmissionNebula(bpy.types.Operator):  # type: ignore
+        """Create a volumetric emission nebula."""
+        bl_idname = "al.create_emission_nebula"
+        bl_label = "AL: Create Emission Nebula"
+        bl_description = "Generates a volumetric emission nebula"
+        bl_options = {'REGISTER', 'UNDO'}
 
-    nebula_type: bpy.props.EnumProperty(
-        name="Nebula Type",
-        items=[
-            ('h_alpha', "H-Alpha", "Hydrogen-alpha emission"),
-            ('oxygen', "Oxygen-III", "Oxygen-III emission"),
-            ('planetary', "Planetary", "A planetary nebula"),
-        ],
-        default='h_alpha'
-    )
-    size: bpy.props.FloatProperty(name="Size", default=15.0, min=1.0, max=100.0)
-    density: bpy.props.FloatProperty(name="Density", default=0.2, min=0.01, max=1.0)
-
-    @classmethod
-    def poll(cls, context):
-        return BLENDER_AVAILABLE and b3d_adv.ADVANCED_AVAILABLE
-
-    def execute(self, context):
-        api = AstroLabApi()
-        api.advanced.create_emission_nebula_complex(
-            nebula_type=self.nebula_type,
-            size=self.size,
+        nebula_type: bpy.props.EnumProperty(  # type: ignore
+            name="Nebula Type",
+            items=[
+                ('h_alpha', "H-Alpha", "Hydrogen-alpha emission"),
+                ('oxygen', "Oxygen-III", "Oxygen-III emission"),
+                ('planetary', "Planetary", "A planetary nebula"),
+            ],
+            default='h_alpha'
         )
-        self.report({'INFO'}, f"Created {self.nebula_type} nebula.")
-        return {'FINISHED'}
+        size: bpy.props.FloatProperty(name="Size", default=15.0, min=1.0, max=100.0)  # type: ignore
+        density: bpy.props.FloatProperty(name="Density", default=0.2, min=0.01, max=1.0)  # type: ignore
+
+        @classmethod
+        def poll(cls, context):  # type: ignore
+            return b3d_adv.ADVANCED_AVAILABLE
+
+        def execute(self, context):  # type: ignore
+            api = AstroLabApi()
+            api.advanced.create_emission_nebula_complex(
+                nebula_type=self.nebula_type,
+                size=self.size,
+            )
+            self.report({'INFO'}, f"Created {self.nebula_type} nebula.")
+            return {'FINISHED'}
 
 
-# Add more operators for other functionalities here...
+    # Add more operators for other functionalities here...
 
+    # =============================================================================
+    # Registration
+    # =============================================================================
 
-# =============================================================================
-# Registration
-# =============================================================================
+    # List of all operator classes to register
+    operator_classes = [
+        AL_OT_CreateProceduralGalaxy,
+        AL_OT_CreateEmissionNebula,
+    ]
 
-# List of all operator classes to register
-operator_classes = [
-    AL_OT_CreateProceduralGalaxy,
-    AL_OT_CreateEmissionNebula,
-]
+    def register():
+        """Register all Astro-Lab operators and create the API."""
+        for cls in operator_classes:
+            bpy.utils.register_class(cls)
 
-def register():
-    """Register all Astro-Lab operators and create the API."""
-    if not BLENDER_AVAILABLE:
-        return
-    for cls in operator_classes:
-        bpy.utils.register_class(cls)
-
-
-def unregister():
-    """Unregister all Astro-Lab operators."""
-    if not BLENDER_AVAILABLE:
-        return
-    for cls in reversed(operator_classes):
-        bpy.utils.unregister_class(cls) 
+    def unregister():
+        """Unregister all Astro-Lab operators."""
+        for cls in reversed(operator_classes):
+            bpy.utils.unregister_class(cls)
+else:
+    # Dummy functions when Blender is not available
+    def register():
+        pass
+    
+    def unregister():
+        pass 

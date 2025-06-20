@@ -31,10 +31,10 @@ except ImportError:
 
 import polars as pl
 
-try:
-    import bpy
-    import mathutils
+from . import bpy
+import mathutils
 
+try:
     BLENDER_AVAILABLE = True
 except ImportError:
     BLENDER_AVAILABLE = False
@@ -49,7 +49,7 @@ except ImportError:
 
 def reset_scene() -> None:
     """Reset Blender scene to clean state."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return
 
     try:
@@ -69,7 +69,7 @@ def normalize_scene(
     target_scale: float = 5.0, center: bool = True
 ) -> Tuple[float, Tuple[float, float, float]]:
     """Normalize scene objects to target scale."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return 1.0, (0.0, 0.0, 0.0)
 
     try:
@@ -131,7 +131,7 @@ def setup_scene(
     units: str = "METRIC",
 ) -> bool:
     """Setup scene with astronomical defaults."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return False
 
     try:
@@ -177,7 +177,7 @@ def create_material(  # type: ignore
     **kwargs,
 ) -> Optional[Any]:
     """Create material with unified API."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return None
 
     try:
@@ -249,7 +249,7 @@ def create_cosmic_grid(
     size: float = 50.0, divisions: int = 10, color: List[float] = [0.1, 0.1, 0.1]
 ) -> Optional[Any]:
     """Create a 3D cosmic grid."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return None
     try:
         # Create a new mesh and object
@@ -302,7 +302,7 @@ def create_text_legend(
     font_size: float = 0.5,
 ) -> List[Any]:
     """Create a text-based legend in the 3D scene."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return []
 
     legend_objects = []
@@ -350,7 +350,7 @@ def create_light(
     **kwargs,
 ) -> Optional[Any]:
     """Create light with unified API."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return None
 
     try:
@@ -383,7 +383,7 @@ def setup_lighting_preset(
     color_temp: float = 6500.0,
 ) -> List[Any]:
     """Setup lighting presets for astronomical visualization."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return []
 
     lights = []
@@ -441,7 +441,7 @@ def create_camera(
     name: str = "AstroCamera",
 ) -> Optional[Any]:
     """Create camera with unified API."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return None
 
     try:
@@ -476,7 +476,7 @@ def animate_camera(
     frame_end: int = 250,
 ) -> bool:
     """Animate camera with keyframes."""
-    if not BLENDER_AVAILABLE or not camera:
+    if bpy is None or not camera:
         return False
 
     try:
@@ -509,7 +509,7 @@ def create_camera_path(
     smooth: bool = True,
 ) -> Optional[Any]:
     """Create camera path using curve."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return None
 
     try:
@@ -551,7 +551,7 @@ def create_astro_object(
     name: str = "AstroObject",
 ) -> Optional[Any]:
     """Create astronomical object with properties."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return None
 
     obj = None
@@ -625,7 +625,7 @@ def setup_astronomical_scene(
     color_col: Optional[str] = None,
 ) -> List[Any]:
     """Setup scene with astronomical data."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return []
 
     objects = []
@@ -668,7 +668,7 @@ def setup_render_settings(
     output_path: str = "results/render.png",
 ) -> bool:
     """Setup render settings."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return False
 
     try:
@@ -710,7 +710,7 @@ def render_scene(
     output_path: str = "results/render.png", animation: bool = False
 ) -> bool:
     """Render scene or animation."""
-    if not BLENDER_AVAILABLE:
+    if bpy is None:
         return False
 
     try:
@@ -743,12 +743,12 @@ class AstroPlotter:
         self.lights = []
         self.camera = None
 
-        if BLENDER_AVAILABLE:
+        if bpy is not None:
             self.setup_scene()
 
     def setup_scene(self) -> bool:
         """Setup the Blender scene."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return False
 
         try:
@@ -768,7 +768,7 @@ class AstroPlotter:
         **kwargs,
     ) -> List[Any]:
         """Plot astronomical data."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return []
 
         try:
@@ -781,7 +781,7 @@ class AstroPlotter:
 
     def render(self, output_path: str = "results/astro_render.png") -> bool:
         """Render the scene."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return False
 
         try:
@@ -797,7 +797,7 @@ class FuturisticAstroPlotter(AstroPlotter):
 
     def setup_scene(self) -> bool:
         """Setup futuristic scene."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return False
 
         try:
@@ -820,7 +820,7 @@ class GeometryNodesVisualizer:
 
     def create_procedural_galaxy(self, name: str = "ProceduralGalaxy") -> Optional[Any]:
         """Create procedural galaxy using geometry nodes."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return None
 
         try:
@@ -846,7 +846,7 @@ class GreasePencilPlotter:
         self, star_positions: List[List[float]], connections: List[Tuple[int, int]]
     ) -> Optional[Any]:
         """Create constellation lines using Grease Pencil."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return None
 
         try:

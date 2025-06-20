@@ -11,15 +11,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 import polars as pl
 
-try:
-    import bpy
-    import mathutils
-
-    BLENDER_AVAILABLE = True
-except ImportError:
-    BLENDER_AVAILABLE = False
-    bpy = None
-    mathutils = None
+from . import bpy
+import mathutils
 
 
 class GreasePencil3DPlotter:
@@ -41,7 +34,7 @@ class GreasePencil3DPlotter:
         max_points: int = 1000,
     ) -> List[Any]:
         """Create 3D scatter plot like galaxy distribution visualization."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return []
 
         objects = []
@@ -86,7 +79,7 @@ class GreasePencil3DPlotter:
         line_width: float = 0.05,
     ) -> List[Any]:
         """Create 3D trajectory visualization."""
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             return []
 
         objects = []

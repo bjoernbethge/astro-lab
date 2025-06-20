@@ -10,17 +10,17 @@ Changes are propagated in real-time in both directions.
 - Blender -> Python: Uses the `bpy.msgbus` for event-based updates.
 """
 
+import math
 from typing import Dict, Any, Tuple, Callable
 import torch
-import mathutils
 
-try:
-    import bpy
+# Use centralized bpy import
+from . import bpy, mathutils
+
+# Import bpy components if available
+if bpy is not None:
     from bpy.app.handlers import depsgraph_update_post
-    BLENDER_AVAILABLE = True
-except (ImportError, ModuleNotFoundError):
-    BLENDER_AVAILABLE = False
-    bpy = None
+else:
     depsgraph_update_post = None
 
 
@@ -36,205 +36,164 @@ class LiveTensorSocketBridge:
         # Format: { (obj, mod, sock): (owner, path, callback) }
         self._subscriptions: Dict[Tuple[str, str, str], Tuple[Any, str, Callable]] = {}
 
-        if BLENDER_AVAILABLE:
+        if bpy is not None:
             self._ensure_handler_is_running()
 
-    def link(
-        self,
-        tensor: torch.Tensor,
-        obj_name: str,
-        socket_name: str,
-        modifier_name: str = "GeometryNodes",
-    ):
+    def _ensure_handler_is_running(self):
+        """Ensure the update handler is registered."""
+        if self._handler_active or depsgraph_update_post is None:
+            return
+
+        # Register the handler
+        depsgraph_update_post.append(self._update_handler)  # type: ignore
+        self._handler_active = True
+
+    def _update_handler(self, scene):  # type: ignore
+        """Handle depsgraph updates to sync tensor changes to Blender."""
+        if self._is_updating:
+            return
+
+        self._is_updating = True
+        try:
+            for (obj_name, mod_name, sock_name), data in self._linked_sockets.items():
+                tensor = data['tensor']
+                last_value = data['last_value']
+                
+                # Check if tensor has changed
+                if not torch.equal(tensor, last_value):
+                    self._update_socket_value(obj_name, mod_name, sock_name, tensor)
+                    data['last_value'] = tensor.clone()
+        finally:
+            self._is_updating = False
+
+    def _update_socket_value(self, obj_name: str, mod_name: str, sock_name: str, tensor: torch.Tensor):
+        """Update a specific socket value."""
+        try:
+            obj = bpy.data.objects.get(obj_name)
+            if obj is None:
+                return
+
+            mod = obj.modifiers.get(mod_name)
+            if mod is None or mod.type != 'NODES':
+                return
+
+            # Find the socket
+            for sock in mod.node_group.inputs:
+                if sock.name == sock_name:
+                    # Convert tensor to appropriate type
+                    if tensor.dim() == 0:  # Scalar
+                        sock.default_value = float(tensor.item())
+                    elif tensor.dim() == 1:  # Vector
+                        sock.default_value = tuple(tensor.tolist())
+                    elif tensor.dim() == 2:  # Matrix
+                        sock.default_value = [tuple(row) for row in tensor.tolist()]
+                    break
+        except Exception as e:
+            print(f"Error updating socket {sock_name}: {e}")
+
+    def link_tensor_to_socket(self, tensor: torch.Tensor, obj_name: str, mod_name: str, sock_name: str):
         """
         Create a live, bidirectional link between a tensor and a Blender socket.
         """
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             print("⚠️ Blender not available. Cannot link tensor.")
             return
 
-        key = (obj_name, modifier_name, socket_name)
-        if key in self._linked_sockets:
-            print(f"🔗 Link for '{obj_name}.{socket_name}' already exists.")
-            return
-
-        # 1. Initial value sync (Python -> Blender)
-        initial_value = self._get_tensor_value(tensor)
-        if initial_value is None:
-            return
-        self._set_socket_value(obj_name, modifier_name, socket_name, initial_value)
-
-        # 2. Store the link information
+        key = (obj_name, mod_name, sock_name)
         self._linked_sockets[key] = {
-            "tensor": tensor,
-            "last_value": initial_value
+            'tensor': tensor,
+            'last_value': tensor.clone()
         }
 
-        # 3. Subscribe to Blender UI changes (Blender -> Python)
-        self._subscribe_to_socket(key)
+        # Subscribe to socket changes
+        self._subscribe_to_socket_changes(obj_name, mod_name, sock_name)
 
-        print(f"🔗<=>🔗 Bidirectional link created for '{obj_name}.{socket_name}'.")
-        self._ensure_handler_is_running()
-
-    def unlink(self, obj_name: str, socket_name: str, modifier_name: str = "GeometryNodes"):
-        """Remove a live link."""
-        key = (obj_name, modifier_name, socket_name)
-        if key in self._linked_sockets:
-            del self._linked_sockets[key]
-            self._unsubscribe_from_socket(key)
-            print(f"🚫 Unlinked tensor from '{obj_name}.{socket_name}'.")
-        
-        if not self._linked_sockets:
-            self._remove_handler()
-
-    def _subscribe_to_socket(self, key: Tuple[str, str, str]):
-        """Use msgbus to listen for changes on a modifier socket."""
-        obj_name, modifier_name, socket_name = key
-        
-        obj = bpy.data.objects.get(obj_name)
-        if not obj: return
-        mod = obj.modifiers.get(modifier_name)
-        if not mod: return
-
-        # Construct the data path for the subscription
-        path = f'modifiers["{modifier_name}"]["{socket_name}"]'
-
-        # Create a unique callback for this specific key
-        callback = lambda: self._blender_to_python_update(key)
-        
-        bpy.msgbus.subscribe_rna(
-            key=(mod, path),
-            owner=self,
-            args=(),
-            notify=callback,
-        )
-        self._subscriptions[key] = (mod, path, callback)
-
-    def _unsubscribe_from_socket(self, key: Tuple[str, str, str]):
-        """Remove a msgbus subscription."""
-        if key in self._subscriptions:
-            bpy.msgbus.clear_by_owner(self)
-            del self._subscriptions[key]
-
-    def _blender_to_python_update(self, key: Tuple[str, str, str]):
-        """Callback triggered by msgbus when a Blender property changes."""
-        if self._is_updating:
-            return # Prevent feedback loop
-
-        obj_name, modifier_name, socket_name = key
-        link_data = self._linked_sockets.get(key)
-        if not link_data:
+    def _subscribe_to_socket_changes(self, obj_name: str, mod_name: str, sock_name: str):
+        """Subscribe to socket changes using bpy.msgbus."""
+        if bpy is None or not hasattr(bpy, 'msgbus'):
             return
 
-        self._is_updating = True
         try:
-            new_value = self._get_socket_value(obj_name, modifier_name, socket_name)
-            tensor = link_data["tensor"]
-            
-            if new_value is not None:
-                # Update tensor in-place
-                if tensor.numel() == 1:
-                    tensor.fill_(new_value)
-                else: # Handle vectors/colors
-                    tensor_val = torch.tensor(new_value, dtype=tensor.dtype, device=tensor.device)
-                    tensor.data = tensor_val.data
+            obj = bpy.data.objects.get(obj_name)
+            if obj is None:
+                return
 
-                # Update our last known value to prevent Python->Blender echo
-                link_data["last_value"] = self._get_tensor_value(tensor)
-        finally:
-            self._is_updating = False
-            
-    def _set_socket_value(self, obj_name, modifier_name, socket_name, value):
-        """Safely sets the value of a geometry node input socket."""
-        obj = bpy.data.objects.get(obj_name)
-        if not obj: return
-        mod = obj.modifiers.get(modifier_name)
-        if not mod: return
-        try:
-            if socket_name in mod:
-                mod[socket_name] = value
-        except (KeyError, AttributeError, TypeError):
-            pass
+            mod = obj.modifiers.get(mod_name)
+            if mod is None:
+                return
 
-    def _get_socket_value(self, obj_name, modifier_name, socket_name):
-        """Safely gets the value of a geometry node input socket."""
-        obj = bpy.data.objects.get(obj_name)
-        if not obj: return None
-        mod = obj.modifiers.get(modifier_name)
-        if not mod: return None
-        try:
-            value = mod.get(socket_name)
-            # Convert Blender math types to lists
-            if isinstance(value, (mathutils.Vector, mathutils.Color, mathutils.Euler)):
-                return list(value)
-            return value
-        except (KeyError, AttributeError):
-            return None
+            # Subscribe to socket changes
+            bpy.msgbus.subscribe_rna(  # type: ignore
+                key=mod.node_group.inputs[sock_name],
+                owner=self,
+                args=(obj_name, mod_name, sock_name),
+                notify=self._on_socket_changed
+            )
+        except Exception as e:
+            print(f"Error subscribing to socket changes: {e}")
 
-    @staticmethod
-    def _get_tensor_value(tensor: torch.Tensor):
-        """Extracts a Python scalar or list from a tensor."""
-        try:
-            if tensor.numel() == 1:
-                return tensor.item()
-            else:
-                return tensor.detach().cpu().tolist()
-        except Exception:
-            return None
-
-    def _python_to_blender_update(self):
-        """
-        The core update function that runs on scene changes (depsgraph).
-        Checks for changes in Python tensors and updates Blender.
-        """
+    def _on_socket_changed(self, obj_name: str, mod_name: str, sock_name: str):
+        """Handle socket changes from Blender."""
         if self._is_updating:
-            return # Prevent feedback loop
+            return
 
-        self._is_updating = True
         try:
-            for key, data in list(self._linked_sockets.items()):
-                obj_name, modifier_name, socket_name = key
-                tensor = data["tensor"]
-                last_value = data["last_value"]
-                current_value = self._get_tensor_value(tensor)
+            obj = bpy.data.objects.get(obj_name)
+            if obj is None:
+                return
+
+            mod = obj.modifiers.get(mod_name)
+            if mod is None:
+                return
+
+            # Get socket value
+            sock = mod.node_group.inputs.get(sock_name)
+            if sock is None:
+                return
+
+            # Update tensor
+            key = (obj_name, mod_name, sock_name)
+            if key in self._linked_sockets:
+                data = self._linked_sockets[key]
+                tensor = data['tensor']
                 
-                # Check for change (handles scalars and lists with tolerance)
-                is_different = False
-                if isinstance(current_value, list):
-                    if not isinstance(last_value, list) or len(current_value) != len(last_value):
-                        is_different = True
-                    else:
-                        for v1, v2 in zip(current_value, last_value):
-                            if not math.isclose(v1, v2, rel_tol=1e-6):
-                                is_different = True
-                                break
-                elif not math.isclose(current_value, last_value, rel_tol=1e-6):
-                    is_different = True
+                # Convert socket value to tensor
+                if hasattr(sock, 'default_value'):
+                    value = sock.default_value
+                    if isinstance(value, (int, float)):
+                        tensor.fill_(value)
+                    elif isinstance(value, (list, tuple)):
+                        new_tensor = torch.tensor(value, dtype=tensor.dtype, device=tensor.device)
+                        tensor.copy_(new_tensor)
+        except Exception as e:
+            print(f"Error handling socket change: {e}")
 
-                if is_different:
-                    self._set_socket_value(obj_name, modifier_name, socket_name, current_value)
-                    self._linked_sockets[key]["last_value"] = current_value
-        finally:
-            self._is_updating = False
+    def unlink_tensor(self, obj_name: str, mod_name: str, sock_name: str):
+        """Remove a tensor-socket link."""
+        key = (obj_name, mod_name, sock_name)
+        if key in self._linked_sockets:
+            del self._linked_sockets[key]
 
-    def _ensure_handler_is_running(self):
-        """Make sure the update handler is registered and running."""
-        global _update_handler_wrapper
-        if not self._handler_active:
-            # Create a wrapper that can be stored and removed reliably
-            _update_handler_wrapper = lambda scene: self._python_to_blender_update()
-            depsgraph_update_post.append(_update_handler_wrapper)
-            self._handler_active = True
-            print("📈 Live tensor bridge handler started.")
+        # Unsubscribe from changes
+        if bpy is not None and hasattr(bpy, 'msgbus'):
+            try:
+                bpy.msgbus.clear_by_owner(self)  # type: ignore
+            except Exception as e:
+                print(f"Error unsubscribing from socket changes: {e}")
 
-    def _remove_handler(self):
-        """Remove the update handler if it's running."""
-        global _update_handler_wrapper
-        if self._handler_active and _update_handler_wrapper in depsgraph_update_post:
-            depsgraph_update_post.remove(_update_handler_wrapper)
-            self._handler_active = False
-            print("📉 Live tensor bridge handler stopped.")
+    def cleanup(self):
+        """Clean up all links and handlers."""
+        self._linked_sockets.clear()
+        
+        if bpy is not None and depsgraph_update_post is not None:
+            try:
+                if self._update_handler in depsgraph_update_post:  # type: ignore
+                    depsgraph_update_post.remove(self._update_handler)  # type: ignore
+                self._handler_active = False
+            except Exception as e:
+                print(f"Error cleaning up handler: {e}")
+
 
 # Global state for the single instance and its handler
 _update_handler_wrapper = None
-live_bridge = LiveTensorSocketBridge() if BLENDER_AVAILABLE else None 
+live_bridge = LiveTensorSocketBridge() if bpy is not None else None 
