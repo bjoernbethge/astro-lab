@@ -32,7 +32,6 @@ dependencies = [
     "bvh>=0.3",
     "anywidget>=0.9.18",
     "traitlets>=5.14.3",
-    "astro-torch",
     "pydantic>=2.11.6",
     "astropy>=7.1.0",
     "astro-pack",
@@ -136,13 +135,11 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cuda" }]
-astro-torch = { workspace = true }
 astro-pack = { workspace = true }
 astro-viz = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "astro-torch",
     "astro-pack",
     "astro-viz",
 ]

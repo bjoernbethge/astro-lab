@@ -10,7 +10,6 @@ resolution-markers = [
 members = [
     "astro-lab",
     "astro-pack",
-    "astro-torch",
     "astro-viz",
 ]
 
@@ -241,7 +240,6 @@ source = { editable = "." }
 dependencies = [
     { name = "anywidget" },
     { name = "astro-pack" },
-    { name = "astro-torch" },
     { name = "astro-viz" },
     { name = "astroml" },
     { name = "astropy" },
@@ -333,7 +331,6 @@ requires-dist = [
     { name = "anywidget", specifier = ">=0.9.18" },
     { name = "astro-lab", extras = ["optim", "jupyter", "astro-extra"], marker = "extra == 'all'" },
     { name = "astro-pack", editable = "astro-pack" },
-    { name = "astro-torch", editable = "astro-torch" },
     { name = "astro-viz", editable = "astro-viz" },
     { name = "astroml", specifier = ">=1.0.2.post1" },
     { name = "astropy", specifier = ">=7.1.0" },
@@ -422,25 +419,6 @@ requires-dist = [
     { name = "poliastro", specifier = ">=0.7.0" },
     { name = "sdss-access", specifier = ">=3.0.8" },
     { name = "sgp4", specifier = ">=2.24" },
-]
-
-[[package]]
-name = "astro-torch"
-version = "0.1.0"
-source = { editable = "astro-torch" }
-dependencies = [
-    { name = "astroml" },
-    { name = "astropy" },
-    { name = "polars" },
-    { name = "torch" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "astroml", specifier = ">=1.0.2.post1" },
-    { name = "astropy", specifier = ">=7.1.0" },
-    { name = "polars", specifier = ">=1.30.0" },
-    { name = "torch", specifier = ">=2.7.1", index = "https://download.pytorch.org/whl/cu128" },
 ]
 
 [[package]]

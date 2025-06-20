@@ -245,6 +245,97 @@ def _temperature_to_color(temperature: float) -> Tuple[float, float, float]:
     return (max(0, min(1, red)), max(0, min(1, green)), max(0, min(1, blue)))
 
 
+def create_cosmic_grid(
+    size: float = 50.0, divisions: int = 10, color: List[float] = [0.1, 0.1, 0.1]
+) -> Optional[Any]:
+    """Create a 3D cosmic grid."""
+    if not BLENDER_AVAILABLE:
+        return None
+    try:
+        # Create a new mesh and object
+        mesh = bpy.data.meshes.new("CosmicGridMesh")
+        obj = bpy.data.objects.new("CosmicGrid", mesh)
+
+        # Create vertices and edges
+        verts = []
+        edges = []
+        step = size / divisions
+
+        for i in range(divisions + 1):
+            offset = i * step - size / 2
+            # Lines along X
+            verts.append((offset, -size / 2, 0))
+            verts.append((offset, size / 2, 0))
+            edges.append((len(verts) - 2, len(verts) - 1))
+            # Lines along Y
+            verts.append((-size / 2, offset, 0))
+            verts.append((size / 2, offset, 0))
+            edges.append((len(verts) - 2, len(verts) - 1))
+
+        mesh.from_pydata(verts, edges, [])
+        mesh.update()
+
+        # Link object to scene
+        bpy.context.collection.objects.link(obj)
+
+        # Create a simple material for the grid
+        mat = create_material(
+            name="GridMat",
+            material_type="emission",
+            base_color=color,
+            emission_strength=0.5,
+        )
+        if obj.data.materials:
+            obj.data.materials[0] = mat
+        else:
+            obj.data.materials.append(mat)
+
+        return obj
+    except Exception as e:
+        warnings.warn(f"Failed to create cosmic grid: {e}", UserWarning)
+        return None
+
+
+def create_text_legend(
+    items: Dict[str, List[float]],
+    position: Tuple[float, float, float] = (-8, 5, 0),
+    font_size: float = 0.5,
+) -> List[Any]:
+    """Create a text-based legend in the 3D scene."""
+    if not BLENDER_AVAILABLE:
+        return []
+
+    legend_objects = []
+    try:
+        for i, (name, color) in enumerate(items.items()):
+            # Create text object
+            bpy.ops.object.text_add(
+                location=(position[0], position[1] - i * (font_size * 1.5), position[2])
+            )
+            text_obj = bpy.context.object
+            text_obj.data.body = name
+            text_obj.data.size = font_size
+            text_obj.name = f"Legend_{name}"
+
+            # Create a material for the text
+            mat = create_material(
+                name=f"LegendMat_{name}",
+                material_type="emission",
+                base_color=color[:3],
+                emission_strength=1.0,
+            )
+            if text_obj.data.materials:
+                text_obj.data.materials[0] = mat
+            else:
+                text_obj.data.materials.append(mat)
+
+            legend_objects.append(text_obj)
+        return legend_objects
+    except Exception as e:
+        warnings.warn(f"Failed to create text legend: {e}", UserWarning)
+        return legend_objects
+
+
 # =============================================================================
 # LIGHTING
 # =============================================================================
