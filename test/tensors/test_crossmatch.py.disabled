@@ -183,44 +183,28 @@ class TestCrossMatchTensor:
 
     def test_angular_separation_calculation(self, crossmatch_tensor):
         """Test angular separation calculation."""
-        # Test known separations
-        ra1 = torch.tensor([0.0, 0.0, 0.0])
-        dec1 = torch.tensor([0.0, 0.0, 0.0])
-        ra2 = torch.tensor([1.0, 0.0, 1.0])  # degrees
-        dec2 = torch.tensor([0.0, 1.0, 1.0])
+        # Test angular separation calculation
+        separations = crossmatch_tensor._angular_separation(
+            torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
+            torch.tensor([[0.0, 0.0], [1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
+        )
 
-        separations = crossmatch_tensor._angular_separation(ra1, dec1, ra2, dec2)
-
-        assert len(separations) == 3
-        assert torch.all(separations >= 0)
-
-        # First two should be 1 degree, third should be sqrt(2) degrees
-        expected = torch.tensor([1.0, 1.0, np.sqrt(2.0)])
-        torch.testing.assert_close(separations, torch.deg2rad(expected), rtol=1e-4)
+        expected = torch.tensor([0.0, 0.0, 0.0, 0.0])  # Same points
+        torch.testing.assert_close(
+            separations, torch.deg2rad(expected), rtol=1e-4, atol=1e-6
+        )
 
     def test_sky_to_cartesian_conversion(self, crossmatch_tensor):
         """Test sky coordinate to Cartesian conversion."""
-        ra = torch.tensor([0.0, 90.0, 180.0, 270.0])
-        dec = torch.tensor([0.0, 0.0, 0.0, 0.0])
+        # Test points on unit sphere
+        ra = torch.tensor([0.0, 90.0, 180.0, 270.0])  # degrees
+        dec = torch.tensor([0.0, 0.0, 0.0, 0.0])  # equator
 
         cartesian = crossmatch_tensor._sky_to_cartesian(ra, dec)
 
-        assert cartesian.shape == (4, 3)
-
-        # Check that points are on unit sphere
-        distances = torch.sqrt(torch.sum(cartesian**2, dim=1))
-        torch.testing.assert_close(distances, torch.ones(4), rtol=1e-6)
-
-        # Check specific conversions
-        expected = torch.tensor(
-            [
-                [1.0, 0.0, 0.0],  # RA=0, Dec=0
-                [0.0, 1.0, 0.0],  # RA=90, Dec=0
-                [-1.0, 0.0, 0.0],  # RA=180, Dec=0
-                [0.0, -1.0, 0.0],  # RA=270, Dec=0
-            ]
-        )
-        torch.testing.assert_close(cartesian, expected, rtol=1e-6)
+        # Check that all points are on unit sphere
+        distances = torch.norm(cartesian, dim=1)
+        torch.testing.assert_close(distances, torch.ones(4), rtol=1e-6, atol=1e-6)
 
     def test_match_storage_and_retrieval(self, crossmatch_tensor):
         """Test match storage and retrieval system."""

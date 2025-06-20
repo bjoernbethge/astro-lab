@@ -25,6 +25,9 @@ from astro_lab.data import (
     preprocess_catalog,
     save_splits_to_parquet,
 )
+from astro_lab.data.config import DataConfig
+from astro_lab.data.core import load_gaia_data, load_nsa_data, load_sdss_data
+from astro_lab.data.processing import AdvancedAstroProcessor, ProcessingConfig
 
 
 def print_stats(stats: Dict, verbose: bool = False) -> None:
@@ -490,212 +493,153 @@ def show_functions_command():
     print("  • get_stellar_transforms(), get_galaxy_transforms()")
 
 
+def preprocess_data(
+    survey: str,
+    config_path: Optional[str] = None,
+    output_dir: Optional[str] = None,
+    max_samples: int = 10000,
+    enable_features: bool = True,
+    enable_clustering: bool = False,
+    enable_statistics: bool = False,
+    enable_crossmatch: bool = False,
+) -> None:
+    """
+    Preprocess astronomical data with advanced tensor operations.
+
+    Parameters
+    ----------
+    survey : str
+        Survey name (gaia, sdss, nsa)
+    config_path : str, optional
+        Path to configuration file
+    output_dir : str, optional
+        Output directory for results
+    max_samples : int
+        Maximum number of samples to process
+    enable_features : bool
+        Enable feature engineering
+    enable_clustering : bool
+        Enable clustering analysis
+    enable_statistics : bool
+        Enable statistical analysis
+    enable_crossmatch : bool
+        Enable cross-matching
+    """
+    print(f"🚀 Starting advanced preprocessing for {survey}")
+
+    # Load configuration
+    if config_path:
+        data_config = DataConfig.from_yaml(config_path)
+    else:
+        data_config = DataConfig(survey=survey)
+
+    # Create processing configuration
+    proc_config = ProcessingConfig(
+        enable_feature_engineering=enable_features,
+        enable_clustering=enable_clustering,
+        enable_statistics=enable_statistics,
+        enable_crossmatch=enable_crossmatch,
+        max_samples={survey: max_samples},
+    )
+
+    # Initialize processor
+    processor = AdvancedAstroProcessor(proc_config)
+
+    # Load survey data as tensor
+    print(f"📊 Loading {survey} data...")
+    if survey.lower() == "gaia":
+        survey_tensor = load_gaia_data(max_samples=max_samples, return_tensor=True)
+    elif survey.lower() == "sdss":
+        survey_tensor = load_sdss_data(max_samples=max_samples, return_tensor=True)
+    elif survey.lower() == "nsa":
+        survey_tensor = load_nsa_data(max_samples=max_samples, return_tensor=True)
+    else:
+        raise ValueError(f"Unknown survey: {survey}")
+
+    # Set output directory
+    if output_dir is None:
+        output_dir = data_config.results_dir / survey / "preprocessing"
+    else:
+        output_dir = Path(output_dir)
+
+    # Process the data
+    results = processor.process_survey_data(survey_tensor, output_dir)
+
+    # Print summary
+    print(f"\n✅ Preprocessing completed for {survey}")
+    print(f"   Objects processed: {results['n_objects']}")
+    print(f"   Processing steps: {', '.join(results['processing_steps'])}")
+    print(f"   Results saved to: {output_dir}")
+
+    # Print detailed results
+    if "features" in results and "error" not in results["features"]:
+        feat_res = results["features"]
+        print(
+            f"   Features: {feat_res['n_features']}, Outliers: {feat_res['n_outliers']}"
+        )
+
+    if "clustering" in results and "error" not in results["clustering"]:
+        clust_res = results["clustering"]
+        print(
+            f"   Clusters: {clust_res['n_clusters']}, Noise: {clust_res['noise_fraction']:.2%}"
+        )
+
+    if "statistics" in results and "error" not in results["statistics"]:
+        stats_res = results["statistics"]
+        print(f"   Statistical functions: {stats_res['n_functions']}")
+
+
 def main():
-    """Main CLI function - schlanker Parser mit automatischer Graph-Erzeugung."""
+    """Main preprocessing CLI."""
     parser = argparse.ArgumentParser(
-        description="🚀 AstroLab Preprocessing CLI - Automatische Graph-Erzeugung für GNNs",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-🌟 Examples:
-
-# Process catalog with splits + automatic graphs (.pt) 
-astro-lab preprocess process catalog.parquet --stats --create-splits --output processed/
-
-# Show catalog statistics
-astro-lab preprocess stats catalog.parquet --verbose
-
-# Process TNG50 data
-astro-lab preprocess tng50 snap_099.0.hdf5 --particle-types PartType4,PartType5
-
-# List available data
-astro-lab preprocess list-catalogs
-astro-lab preprocess tng50-list --inspect
-
-# Show available functions
-astro-lab preprocess functions
-
-📊 Note: PyTorch Geometric graphs (.pt) are created automatically - Standard in GNNs!
-        """,
+        description="Advanced astronomical data preprocessing with tensor operations"
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
-
-    # Process command
-    process_parser = subparsers.add_parser(
-        "process", help="Process and clean a catalog"
-    )
-    process_parser.add_argument(
-        "input", help="Input catalog file (.parquet, .csv, .fits)"
-    )
-    process_parser.add_argument("-o", "--output", help="Output directory or file")
-    process_parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Force reprocessing even if output files exist",
-    )
-    process_parser.add_argument(
-        "--clean-nulls",
-        action="store_true",
-        default=True,
-        help="Remove columns with >95%% null values",
-    )
-    process_parser.add_argument(
-        "--min-observations",
-        type=int,
-        help="Minimum number of valid observations per row",
-    )
-    process_parser.add_argument(
-        "--magnitude-columns", help="Comma-separated list of magnitude columns to clean"
-    )
-    process_parser.add_argument(
-        "--coordinate-columns",
-        help="Comma-separated list of coordinate columns to validate",
-    )
-    process_parser.add_argument(
-        "--create-splits",
-        action="store_true",
-        help="Create train/val/test splits + automatic graphs",
-    )
-    process_parser.add_argument(
-        "--test-size", type=float, default=0.2, help="Test set size (default: 0.2)"
-    )
-    process_parser.add_argument(
-        "--val-size", type=float, default=0.1, help="Validation set size (default: 0.1)"
-    )
-    process_parser.add_argument(
-        "--random-state",
-        type=int,
-        default=42,
-        help="Random seed for splits (default: 42)",
-    )
-    process_parser.add_argument(
-        "--no-shuffle",
-        dest="shuffle",
-        action="store_false",
-        help="Disable shuffling for splits",
-    )
-    process_parser.add_argument(
-        "--stats",
-        action="store_true",
-        help="Show statistics before and after processing",
-    )
-    # Graph parameters
-    process_parser.add_argument(
-        "--k-neighbors",
-        type=int,
-        default=8,
-        help="Number of neighbors for graph construction (default: 8)",
-    )
-    process_parser.add_argument(
-        "--distance-threshold",
-        type=float,
-        default=50.0,
-        help="Distance threshold for graph edges (default: 50.0)",
+    parser.add_argument(
+        "survey", choices=["gaia", "sdss", "nsa"], help="Survey to preprocess"
     )
 
-    # TNG50 processing command
-    tng50_parser = subparsers.add_parser(
-        "tng50", help="Process TNG50 simulation data into graph format"
-    )
-    tng50_parser.add_argument(
-        "input",
-        nargs="?",
-        help="TNG50 snapshot file (.hdf5) or base directory for --all-snapshots",
-    )
-    tng50_parser.add_argument(
-        "-o", "--output", help="Output directory (default: data/processed/tng50_graphs)"
-    )
-    tng50_parser.add_argument(
-        "--particle-types",
-        default="PartType4,PartType5",
-        help="Comma-separated particle types (default: PartType4,PartType5)",
-    )
-    tng50_parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Process all available particle types in the snapshot",
-    )
-    tng50_parser.add_argument(
-        "--all-snapshots",
-        action="store_true",
-        help="Process all snapshots in directory",
-    )
-    tng50_parser.add_argument(
-        "--max-particles",
+    parser.add_argument("--config", type=str, help="Path to configuration file")
+
+    parser.add_argument("--output-dir", type=str, help="Output directory for results")
+
+    parser.add_argument(
+        "--max-samples",
         type=int,
         default=10000,
-        help="Maximum particles per type (default: 10000)",
+        help="Maximum number of samples to process",
     )
-    tng50_parser.add_argument(
-        "--radius",
-        type=float,
-        default=1.0,
-        help="Connection radius in Mpc (default: 1.0)",
+
+    parser.add_argument(
+        "--no-features", action="store_true", help="Disable feature engineering"
     )
-    tng50_parser.add_argument(
-        "--force",
+
+    parser.add_argument(
+        "--enable-clustering", action="store_true", help="Enable clustering analysis"
+    )
+
+    parser.add_argument(
+        "--enable-statistics", action="store_true", help="Enable statistical analysis"
+    )
+
+    parser.add_argument(
+        "--enable-crossmatch",
         action="store_true",
-        help="Force reprocessing even if graph files exist",
-    )
-    tng50_parser.add_argument(
-        "--stats", action="store_true", help="Show graph statistics"
-    )
-
-    # TNG50 list command
-    tng50_list_parser = subparsers.add_parser(
-        "tng50-list", help="List TNG50 snapshot files"
-    )
-    tng50_list_parser.add_argument(
-        "--directory", help="TNG50 base directory (default: data/raw/TNG50-4/output)"
-    )
-    tng50_list_parser.add_argument(
-        "--inspect", action="store_true", help="Inspect first snapshot file"
-    )
-
-    # Stats command
-    stats_parser = subparsers.add_parser("stats", help="Show catalog statistics")
-    stats_parser.add_argument(
-        "input", help="Input catalog file (.parquet, .csv, .fits)"
-    )
-    stats_parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Show detailed column information"
-    )
-
-    # Load splits command
-    splits_parser = subparsers.add_parser(
-        "load-splits", help="Load and inspect saved splits"
-    )
-    splits_parser.add_argument("path", help="Base path containing split files")
-    splits_parser.add_argument("dataset", help="Dataset name")
-    splits_parser.add_argument(
-        "--stats", action="store_true", help="Show statistics for loaded splits"
-    )
-
-    # List catalogs command
-    list_parser = subparsers.add_parser("list-catalogs", help="List available catalogs")
-
-    # Show functions command
-    functions_parser = subparsers.add_parser(
-        "functions", help="Show available functions"
+        help="Enable cross-matching capabilities",
     )
 
     args = parser.parse_args()
 
-    # Command routing - viel schlanker
-    commands = {
-        "process": process_catalog_command,
-        "tng50": process_tng50_command,
-        "tng50-list": list_tng50_snapshots_command,
-        "stats": stats_command,
-        "load-splits": load_splits_command,
-        "list-catalogs": list_catalogs_command,
-        "functions": lambda _: show_functions_command(),
-    }
-
-    if args.command in commands:
-        commands[args.command](args)
-    else:
-        parser.print_help()
+    preprocess_data(
+        survey=args.survey,
+        config_path=args.config,
+        output_dir=args.output_dir,
+        max_samples=args.max_samples,
+        enable_features=not args.no_features,
+        enable_clustering=args.enable_clustering,
+        enable_statistics=args.enable_statistics,
+        enable_crossmatch=args.enable_crossmatch,
+    )
 
 
 if __name__ == "__main__":

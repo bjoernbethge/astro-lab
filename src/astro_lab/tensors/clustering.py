@@ -396,7 +396,11 @@ class ClusteringTensor(AstroTensorBase):
 
         # Calculate cluster properties
         cluster_props = self._calculate_cluster_properties(labels)
-        self.update_metadata({f"{algorithm_name}_properties": cluster_props})
+
+        # Update metadata with cluster properties using keyword arguments
+        metadata_key = f"{algorithm_name}_properties"
+        metadata_update = {metadata_key: cluster_props}
+        self.update_metadata(**metadata_update)
 
         return labels
 

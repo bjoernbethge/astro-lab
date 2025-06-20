@@ -69,54 +69,52 @@ class CrossMatchTensor(AstroTensorBase):
             catalog_names: Names of catalogs ("catalog_a", "catalog_b")
             coordinate_columns: Column indices for coordinates {"a": [ra_col, dec_col], "b": [...]}
         """
-        # Handle input formats
+        # Handle catalog_a
         if isinstance(catalog_a, dict):
-            cat_a_data = torch.stack(
-                [catalog_a[key] for key in sorted(catalog_a.keys())], dim=1
-            )
-            cat_a_columns = sorted(catalog_a.keys())
+            # Convert numpy arrays to tensors if needed
+            cat_a_tensors = []
+            for key in sorted(catalog_a.keys()):
+                data = catalog_a[key]
+                if isinstance(data, np.ndarray):
+                    data = torch.from_numpy(data).float()
+                elif not isinstance(data, torch.Tensor):
+                    data = torch.tensor(data, dtype=torch.float32)
+                cat_a_tensors.append(data)
+            cat_a_data = torch.stack(cat_a_tensors, dim=1)
         else:
-            cat_a_data = torch.as_tensor(catalog_a, dtype=torch.float32)
-            cat_a_columns = [f"col_{i}" for i in range(cat_a_data.shape[1])]
+            # Direct tensor input
+            if isinstance(catalog_a, np.ndarray):
+                cat_a_data = torch.from_numpy(catalog_a).float()
+            else:
+                cat_a_data = (
+                    catalog_a.float() if catalog_a.dtype != torch.float32 else catalog_a
+                )
 
+        # Handle catalog_b
         if catalog_b is not None:
             if isinstance(catalog_b, dict):
-                cat_b_data = torch.stack(
-                    [catalog_b[key] for key in sorted(catalog_b.keys())], dim=1
-                )
-                cat_b_columns = sorted(catalog_b.keys())
+                # Convert numpy arrays to tensors if needed
+                cat_b_tensors = []
+                for key in sorted(catalog_b.keys()):
+                    data = catalog_b[key]
+                    if isinstance(data, np.ndarray):
+                        data = torch.from_numpy(data).float()
+                    elif not isinstance(data, torch.Tensor):
+                        data = torch.tensor(data, dtype=torch.float32)
+                    cat_b_tensors.append(data)
+                cat_b_data = torch.stack(cat_b_tensors, dim=1)
             else:
-                cat_b_data = torch.as_tensor(catalog_b, dtype=torch.float32)
-                cat_b_columns = [f"col_{i}" for i in range(cat_b_data.shape[1])]
+                # Direct tensor input
+                if isinstance(catalog_b, np.ndarray):
+                    cat_b_data = torch.from_numpy(catalog_b).float()
+                else:
+                    cat_b_data = (
+                        catalog_b.float()
+                        if catalog_b.dtype != torch.float32
+                        else catalog_b
+                    )
         else:
             cat_b_data = None
-            cat_b_columns = []
-
-        # Combine catalogs for storage
-        if cat_b_data is not None:
-            # Add catalog identifier column
-            cat_a_ids = torch.zeros(len(cat_a_data), 1)
-            cat_b_ids = torch.ones(len(cat_b_data), 1)
-
-            # Pad to same number of columns
-            max_cols = max(cat_a_data.shape[1], cat_b_data.shape[1])
-            if cat_a_data.shape[1] < max_cols:
-                padding = torch.zeros(len(cat_a_data), max_cols - cat_a_data.shape[1])
-                cat_a_data = torch.cat([cat_a_data, padding], dim=1)
-            if cat_b_data.shape[1] < max_cols:
-                padding = torch.zeros(len(cat_b_data), max_cols - cat_b_data.shape[1])
-                cat_b_data = torch.cat([cat_b_data, padding], dim=1)
-
-            # Combine with catalog IDs
-            combined_data = torch.cat(
-                [
-                    torch.cat([cat_a_data, cat_a_ids], dim=1),
-                    torch.cat([cat_b_data, cat_b_ids], dim=1),
-                ],
-                dim=0,
-            )
-        else:
-            combined_data = cat_a_data
 
         # Set default coordinate columns
         if coordinate_columns is None:
@@ -138,13 +136,13 @@ class CrossMatchTensor(AstroTensorBase):
                 "catalog_a": {
                     "name": catalog_names[0],
                     "n_objects": len(cat_a_data),
-                    "columns": cat_a_columns,
+                    "columns": [f"col_{i}" for i in range(cat_a_data.shape[1])],
                     "coordinate_columns": coordinate_columns["a"],
                 },
                 "catalog_b": {
                     "name": catalog_names[1],
                     "n_objects": len(cat_b_data) if cat_b_data is not None else 0,
-                    "columns": cat_b_columns,
+                    "columns": [f"col_{i}" for i in range(cat_b_data.shape[1])],
                     "coordinate_columns": coordinate_columns.get("b", []),
                 }
                 if cat_b_data is not None
@@ -161,7 +159,12 @@ class CrossMatchTensor(AstroTensorBase):
         }
         metadata.update(kwargs)
 
-        super().__init__(combined_data, **metadata)
+        super().__init__(
+            torch.cat([cat_a_data, cat_b_data])
+            if cat_b_data is not None
+            else cat_a_data,
+            **metadata,
+        )
 
     @property
     def catalog_a_data(self) -> torch.Tensor:
