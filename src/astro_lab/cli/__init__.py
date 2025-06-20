@@ -47,21 +47,21 @@ astro-lab config         Konfigurationsverwaltung
 # Download Gaia DR3 bright stars
 astro-lab download gaia --magnitude-limit 12.0
 
-# Catalog mit Survey-Config vorverarbeiten
+# Preprocess catalog with survey config
 astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits --output data/processed/
 
-# Catalog-Statistiken anzeigen
+# Show catalog statistics
 astro-lab preprocess stats data/gaia_catalog.parquet
 
-# TNG50 Simulation verarbeiten (verwendet vollständiges CLI)
+# Process TNG50 simulation (uses full CLI)
 astro-lab preprocess tng50 data/snap_099.0.hdf5 --particle-types PartType4 --output data/tng50/
 
-# Default-Config erstellen und bearbeiten
+# Create and edit default config
 astro-lab config create --output my_config.yaml
-# Dann bearbeiten und trainieren:
+# Then edit and train:
 astro-lab train --config my_config.yaml
 
-# Quick Training ohne Config
+# Quick training without config
 astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 
 # Survey-spezifische Configs anzeigen

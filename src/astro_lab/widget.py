@@ -209,19 +209,19 @@ class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object)
         samples: int = 64,
     ):
         """
-        Zeige ein Bild aus einer Datei an.
+        Display an image from a file.
 
         Args:
-            image_path: Pfad zur Bilddatei
-            render_time: Renderzeit in Sekunden
-            resolution: Auflösung als String (z.B. "1920x1080")
-            engine: Render-Engine Name
-            samples: Anzahl der Samples
+            image_path: Path to the image file
+            render_time: Render time in seconds
+            resolution: Resolution as string (e.g. "1920x1080")
+            engine: Render engine name
+            samples: Number of samples
         """
         image_path = Path(image_path)
 
         if image_path.exists():
-            # Konvertiere zu Base64 für bessere Kompatibilität
+            # Convert to Base64 for better compatibility
             with open(image_path, "rb") as f:
                 image_data = base64.b64encode(f.read()).decode("utf-8")
 
@@ -232,7 +232,7 @@ class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object)
             self.render_engine = engine
             self.samples = samples
         else:
-            print(f"⚠️ Bilddatei nicht gefunden: {image_path}")
+            print(f"⚠️ Image file not found: {image_path}")
 
     def display_image_from_data(
         self,
@@ -243,14 +243,14 @@ class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object)
         samples: int = 64,
     ):
         """
-        Zeige ein Bild aus Binärdaten an.
+        Display an image from binary data.
 
         Args:
-            image_data: Bilddaten als Bytes
-            render_time: Renderzeit in Sekunden
-            resolution: Auflösung als String
-            engine: Render-Engine Name
-            samples: Anzahl der Samples
+            image_data: Image data as bytes
+            render_time: Render time in seconds
+            resolution: Resolution as string
+            engine: Render engine name
+            samples: Number of samples
         """
         encoded_data = base64.b64encode(image_data).decode("utf-8")
 
@@ -262,7 +262,7 @@ class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object)
         self.samples = samples
 
     def clear_image(self):
-        """Lösche das angezeigte Bild."""
+        """Clear the displayed image."""
         self.image_data = ""
         self.image_path = ""
         self.render_time = 0.0
@@ -318,7 +318,7 @@ class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object)
                     print("⚠️ PIL nicht verfügbar für Bildkonvertierung")
 
         except Exception as e:
-            print(f"⚠️ Live Viewport Capture Fehler: {e}")
+            print(f"⚠️ Live Viewport Capture Error: {e}")
 
         return None, {}
 
@@ -375,17 +375,17 @@ class BlenderImageWidget(anywidget.AnyWidget if ANYWIDGET_AVAILABLE else object)
                     print("⚠️ PIL nicht verfügbar für Bildkonvertierung")
 
         except Exception as e:
-            print(f"⚠️ Live Render Capture Fehler: {e}")
+            print(f"⚠️ Live Render Capture Error: {e}")
 
         return {}
 
 
-# Stub-Klasse für den Fall, dass anywidget nicht verfügbar ist
+# Stub class for when anywidget is not available
 class BlenderImageWidgetStub:
-    """Stub-Klasse wenn anywidget nicht verfügbar ist."""
+    """Stub class when anywidget is not available."""
 
     def __init__(self, **kwargs):
-        print("⚠️ anywidget nicht verfügbar - BlenderImageWidget deaktiviert")
+        print("⚠️ anywidget not available - BlenderImageWidget disabled")
 
     def display_image_from_path(self, *args, **kwargs):
         print("⚠️ BlenderImageWidget nicht verfügbar")

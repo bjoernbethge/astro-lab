@@ -64,7 +64,7 @@ class BaseEncoder(nn.Module):
 
 
 class PhotometryEncoder(BaseEncoder):
-    """Encoder für photometric tensor features."""
+    """Encoder for photometric tensor features."""
 
     def __init__(self, output_dim: int):
         super().__init__(output_dim, expected_input_dim=32)
@@ -150,7 +150,7 @@ class PhotometryEncoder(BaseEncoder):
 
 
 class AstrometryEncoder(nn.Module):
-    """Encoder für astrometric/spatial tensor features."""
+    """Encoder for astrometric/spatial tensor features."""
 
     def __init__(self, output_dim: int):
         super().__init__()
@@ -212,7 +212,7 @@ class AstrometryEncoder(nn.Module):
 
 
 class SpectroscopyEncoder(nn.Module):
-    """Encoder für spectroscopic tensor features."""
+    """Encoder for spectroscopic tensor features."""
 
     def __init__(self, output_dim: int):
         super().__init__()

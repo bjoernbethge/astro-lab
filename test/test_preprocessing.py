@@ -156,7 +156,7 @@ def get_data_dir() -> Path:
 
 
 class TestPreprocessingUtils:
-    """Tests für Preprocessing-Utility-Funktionen."""
+    """Tests for preprocessing utility functions."""
 
     def test_create_training_splits_basic(self):
         """Test basic train/val/test splitting."""
@@ -280,7 +280,7 @@ class TestPreprocessingUtils:
 
 
 class TestPreprocessCatalog:
-    """Tests für Katalog-Preprocessing."""
+    """Tests for catalog preprocessing."""
 
     def test_preprocess_catalog_basic(self):
         """Test basic catalog preprocessing."""
@@ -366,7 +366,7 @@ class TestPreprocessCatalog:
 
 
 class TestSplitPersistence:
-    """Tests für das Speichern und Laden von Splits."""
+    """Tests for saving and loading splits."""
 
     def test_save_and_load_splits(self, tmp_path):
         """Test saving and loading splits to/from Parquet."""
@@ -425,7 +425,7 @@ class TestSplitPersistence:
 
 
 class TestDataStatistics:
-    """Tests für Datenstatistiken."""
+    """Tests for data statistics."""
 
     def test_get_data_statistics_basic(self):
         """Test basic data statistics computation."""
@@ -492,7 +492,7 @@ class TestDataStatistics:
 
 
 class TestIntegrationTests:
-    """Integrationstests für das komplette Preprocessing-System."""
+    """Integration tests for the complete preprocessing system."""
 
     def test_end_to_end_preprocessing(self, tmp_path):
         """Test complete preprocessing workflow."""
