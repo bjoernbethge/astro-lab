@@ -583,12 +583,16 @@ class AstroDataModule(L.LightningDataModule):
         max_samples: Optional[int] = None,
         train_ratio: float = 0.7,
         val_ratio: float = 0.15,
-        num_workers: int = 0,
+        num_workers: int = 4,  # Better default for performance
         force_reload: bool = False,
         **kwargs,
     ):
         super().__init__()
         self.save_hyperparameters()
+
+        # Store attributes for easy access
+        self.num_workers = num_workers
+        self.batch_size = batch_size
 
         # Create dataset
         self.dataset = AstroDataset(
@@ -631,13 +635,13 @@ class AstroDataModule(L.LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader([self.dataset[0]], batch_size=1, num_workers=0)
+        return DataLoader([self.dataset[0]], batch_size=1, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return DataLoader([self.dataset[0]], batch_size=1, num_workers=0)
+        return DataLoader([self.dataset[0]], batch_size=1, num_workers=self.num_workers)
 
     def test_dataloader(self):
-        return DataLoader([self.dataset[0]], batch_size=1, num_workers=0)
+        return DataLoader([self.dataset[0]], batch_size=1, num_workers=self.num_workers)
 
 
 # Factory function - replaces all the individual create_* functions

@@ -167,13 +167,20 @@ class AstroTrainer(Trainer):
         callbacks = []
 
         # Model checkpointing - save best model in specified directory
+        # Create descriptive filename with experiment name and timestamp
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        experiment_short = self.experiment_name.replace("_", "-")[:20]  # Limit length
+
+        # Single optimized checkpoint callback - only best model
         checkpoint_callback = ModelCheckpoint(
             dirpath=str(checkpoint_dir),
             monitor=monitor,
             mode=mode,
-            save_top_k=1,
-            save_last=True,  # Always save last checkpoint
-            filename="best-{epoch:02d}-{val_loss:.2f}",
+            save_top_k=1,  # Keep only the best model
+            save_last=True,  # Save last checkpoint as 'last.ckpt'
+            filename=f"{experiment_short}_best_{{epoch:02d}}_{{val_loss:.3f}}_{timestamp}",
             auto_insert_metric_name=False,
             verbose=True,
         )

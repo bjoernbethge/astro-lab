@@ -261,9 +261,26 @@ class AstroLightningModule(LightningModule):
         """Training step."""
         results = self._compute_step(batch, "train")
 
-        # Log metrics
+        # Get batch size for proper logging
+        if hasattr(batch, "x"):
+            batch_size = batch.x.size(0)
+        elif isinstance(batch, dict):
+            batch_size = batch["x"].size(0)
+        elif isinstance(batch, list) and hasattr(batch[0], "x"):
+            batch_size = batch[0].x.size(0)
+        else:
+            batch_size = 1  # fallback
+
+        # Log metrics with explicit batch_size
         for key, value in results.items():
-            self.log(f"train_{key}", value, on_step=True, on_epoch=True, prog_bar=True)
+            self.log(
+                f"train_{key}",
+                value,
+                on_step=True,
+                on_epoch=True,
+                prog_bar=True,
+                batch_size=batch_size,
+            )
 
         return results["loss"]
 
@@ -271,9 +288,26 @@ class AstroLightningModule(LightningModule):
         """Validation step."""
         results = self._compute_step(batch, "val")
 
-        # Log metrics
+        # Get batch size for proper logging
+        if hasattr(batch, "x"):
+            batch_size = batch.x.size(0)
+        elif isinstance(batch, dict):
+            batch_size = batch["x"].size(0)
+        elif isinstance(batch, list) and hasattr(batch[0], "x"):
+            batch_size = batch[0].x.size(0)
+        else:
+            batch_size = 1  # fallback
+
+        # Log metrics with explicit batch_size
         for key, value in results.items():
-            self.log(f"val_{key}", value, on_step=False, on_epoch=True, prog_bar=True)
+            self.log(
+                f"val_{key}",
+                value,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                batch_size=batch_size,
+            )
 
         return results["loss"]
 
