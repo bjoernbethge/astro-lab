@@ -76,6 +76,8 @@ from astro_lab.tensors import (
 - **3D Point Cloud Models**: Stellar cluster analysis
 - **Temporal Models**: Variable star classification
 - **Multi-modal Learning**: Combined photometry, spectroscopy, and astrometry
+- **2025 System Metrics**: Real-time hardware monitoring (CPU, GPU, memory, disk)
+- **Automatic Hardware Detection**: GPU optimization, precision selection, device management
 
 ## 🚀 Quick Start
 
@@ -109,6 +111,24 @@ uv run mlflow ui
 ## 🔧 CLI Tools
 
 AstroLab provides a comprehensive command-line interface for all major operations:
+
+### 📋 Available Commands
+
+```bash
+astro-lab download       # Download astronomical datasets
+astro-lab preprocess     # Data preprocessing and graph creation  
+astro-lab train          # Single ML model training
+astro-lab optimize       # Hyperparameter optimization with Optuna
+astro-lab config         # Configuration management
+```
+
+**Get help for any command:**
+```bash
+astro-lab --help                    # Main help
+astro-lab train --help              # Training options
+astro-lab optimize --help           # Optimization options
+astro-lab config --help             # Configuration management
+```
 
 ### 📥 Data Download & Management
 
@@ -145,16 +165,37 @@ astro-lab preprocess browse data/processed/  # Browse processed data
 
 ```bash
 # Create default configuration
-astro-lab train create-config --output configs/my_experiment.yaml
+astro-lab config create --output configs/my_experiment.yaml
 
-# Train with configuration
+# Single training run with fixed parameters
 astro-lab train --config configs/gaia_classification.yaml
 
-# Hyperparameter optimization
-astro-lab train --config configs/gaia_optimization.yaml --optimize
+# Hyperparameter optimization with multiple trials
+astro-lab optimize configs/gaia_optimization.yaml --trials 50
 
 # Quick training (without config file)
 astro-lab train --dataset gaia --model gaia_classifier --epochs 50
+```
+
+#### 🎯 Train vs Optimize - When to Use What?
+
+**`astro-lab train`** - Single Training Run
+- ✅ Train **one** model with **fixed** hyperparameters
+- ✅ Use exact parameters from config file
+- ✅ Fast and direct (1-2 minutes)
+- ✅ Good for: Final models, known parameters, quick tests
+
+**`astro-lab optimize`** - Hyperparameter Search  
+- ✅ Run **multiple** trainings with **different** parameters
+- ✅ Use Optuna to find optimal hyperparameters
+- ✅ Longer but finds best settings (10-60 minutes)
+- ✅ Good for: New datasets, unknown parameters, model tuning
+
+```bash
+# Examples:
+astro-lab train --config gaia.yaml              # Single training
+astro-lab optimize gaia.yaml --trials 50        # 50 optimization trials
+astro-lab optimize gaia.yaml --trials 10 --experiment-name "quick_test"
 ```
 
 #### Configuration Management
@@ -209,6 +250,11 @@ mlflow:
 3. **Compare trials**: Sort by `val_loss` to see best results
 4. **View parameters**: See which hyperparameters worked best
 5. **Download models**: Access trained model artifacts
+6. **📊 System Metrics**: View real-time hardware performance:
+   - `system/cpu/utilization_percent` - CPU usage during training
+   - `system/gpu_0/memory_allocated_gb` - GPU memory consumption
+   - `system/memory/utilization_percent` - RAM usage
+   - `system/disk/utilization_percent` - Storage usage
 
 ## ⚙️ Configuration System
 
@@ -332,11 +378,11 @@ AstroLab automatically distributes configuration parameters to the correct compo
 # Download Gaia data
 astro-lab download gaia --magnitude-limit 12.0
 
-# Create stellar classification experiment
+# Single training run
 astro-lab train --config configs/surveys/gaia.yaml
 
-# Optimize hyperparameters
-astro-lab train --config configs/gaia_optimization.yaml --optimize
+# Hyperparameter optimization
+astro-lab optimize configs/gaia_optimization.yaml --trials 50
 ```
 
 #### 🌌 Galaxy Analysis (SDSS)
@@ -398,10 +444,10 @@ astro-lab preprocess gaia data/gaia/ --create-graphs
 # 2. Train a stellar classifier
 astro-lab train --config configs/surveys/gaia.yaml
 
-# 3. Optimize hyperparameters
-astro-lab train --config configs/gaia_optimization.yaml --optimize
+# 3. Optimize hyperparameters (NEW!)
+astro-lab optimize configs/gaia_optimization.yaml --trials 50
 
-# 4. View results
+# 4. View results with system metrics
 mlflow ui --backend-store-uri ./mlruns
 # Open: http://localhost:5000
 ```
@@ -414,6 +460,30 @@ mlflow ui --backend-store-uri ./mlruns
 | Galaxy Analysis | `configs/surveys/sdss.yaml` | SDSS galaxy photometry |
 | Hyperparameter Tuning | `configs/gaia_optimization.yaml` | Optuna-based optimization |
 | Custom Experiment | `configs/default.yaml` | Basic template |
+
+### 🖥️ System Monitoring (NEW in 2025!)
+
+AstroLab automatically logs comprehensive system metrics during training:
+
+```bash
+# System metrics logged every 30 seconds:
+# ├── system/cpu/utilization_percent      # CPU usage
+# ├── system/memory/utilization_percent   # RAM usage  
+# ├── system/gpu_0/memory_allocated_gb    # GPU VRAM
+# ├── system/gpu_0/utilization_percent    # GPU usage
+# ├── system/disk/utilization_percent     # Storage usage
+# └── system/network/bytes_sent_mb        # Network I/O
+
+# View in MLflow UI under "Metrics" tab with hierarchical grouping
+# Automatic hardware detection: GPU, CUDA, precision optimization
+```
+
+**System Requirements Monitoring:**
+- **CPU**: Multi-core utilization tracking
+- **GPU**: VRAM, temperature, utilization (NVIDIA RTX/Tesla)
+- **Memory**: RAM consumption and availability
+- **Storage**: Disk usage and I/O patterns
+- **Network**: Data transfer monitoring
 
 ### Troubleshooting
 
