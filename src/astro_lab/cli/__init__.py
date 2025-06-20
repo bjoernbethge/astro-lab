@@ -500,6 +500,32 @@ def handle_train(args):
             Path(temp_config_path).unlink(missing_ok=True)
 
 
+def handle_optimize(args):
+    """Handle optimize command for hyperparameter optimization."""
+    from .train import optimize_from_config
+
+    if not Path(args.config).exists():
+        print(f"❌ Configuration file not found: {args.config}")
+        return
+
+    try:
+        print(f"🎯 Starting hyperparameter optimization with: {args.config}")
+        print(f"🔄 Running {args.trials} trials...")
+
+        # Override experiment name if provided
+        if args.experiment_name:
+            print(f"📝 Using experiment name: {args.experiment_name}")
+
+        optimize_from_config(config_path=args.config)
+
+    except Exception as e:
+        print(f"❌ Optimization failed: {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
 def handle_config(args):
     """Handle config command."""
     if not args.config_action:

@@ -247,6 +247,7 @@ dependencies = [
     { name = "bpy" },
     { name = "bvh" },
     { name = "cosmograph" },
+    { name = "gputil" },
     { name = "h5py" },
     { name = "lightning" },
     { name = "marimo-flow" },
@@ -254,6 +255,7 @@ dependencies = [
     { name = "numba" },
     { name = "optuna" },
     { name = "optuna-integration", extra = ["pytorch-lightning"] },
+    { name = "psutil" },
     { name = "pydantic" },
     { name = "pyvista" },
     { name = "pyyaml" },
@@ -336,6 +338,7 @@ requires-dist = [
     { name = "bpy", specifier = ">=4.4.0" },
     { name = "bvh", specifier = ">=0.3" },
     { name = "cosmograph", specifier = ">=0.0.47" },
+    { name = "gputil", specifier = ">=1.4.0" },
     { name = "h5py", specifier = ">=3.8.0" },
     { name = "ipykernel", marker = "extra == 'jupyter'", specifier = ">=6.0.0" },
     { name = "jupyter", marker = "extra == 'jupyter'", specifier = ">=1.0.0" },
@@ -348,6 +351,7 @@ requires-dist = [
     { name = "optuna", marker = "extra == 'optim'", specifier = ">=4.4.0" },
     { name = "optuna-integration", extras = ["pytorch-lightning"], specifier = ">=4.4.0" },
     { name = "photutils", marker = "extra == 'astro-extra'", specifier = ">=1.8.0" },
+    { name = "psutil", specifier = ">=6.1.0" },
     { name = "pydantic", specifier = ">=2.11.6" },
     { name = "pyvista", specifier = ">=0.45.2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -1567,6 +1571,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/9e/9b/e92ef23b84fa10a64
 wheels = [
     { url = "https://files.pythonhosted.org/packages/17/63/b19553b658a1692443c62bd07e5868adaa0ad746a0751ba62c59568cd45b/google_auth-2.40.3-py2.py3-none-any.whl", hash = "sha256:1370d4593e86213563547f97a92752fc658456fe4514c809544f330fed45a7ca", size = 216137, upload-time = "2025-06-04T18:04:55.573Z" },
 ]
+
+[[package]]
+name = "gputil"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/0e/5c61eedde9f6c87713e89d794f01e378cfd9565847d4576fa627d758c554/GPUtil-1.4.0.tar.gz", hash = "sha256:099e52c65e512cdfa8c8763fca67f5a5c2afb63469602d5dcb4d296b3661efb9", size = 5545, upload-time = "2018-12-18T09:12:13.63Z" }
 
 [[package]]
 name = "graphene"

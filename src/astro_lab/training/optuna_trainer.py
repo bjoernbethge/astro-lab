@@ -211,8 +211,15 @@ class OptunaTrainer:
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             json.dump(study_summary, f, indent=2)
+            f.flush()  # Ensure data is written
             mlflow.log_artifact(f.name, "study_summary.json")
-            Path(f.name).unlink()  # Clean up
+
+        # Clean up with Windows-safe approach
+        try:
+            Path(f.name).unlink()
+        except (PermissionError, FileNotFoundError):
+            # File might be locked on Windows, skip cleanup
+            pass
 
     def _log_optuna_plots(self):
         """Log Optuna visualization plots using built-in functions."""
