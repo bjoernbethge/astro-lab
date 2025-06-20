@@ -58,7 +58,6 @@ optim = [
 
 # Jupyter and interactive development
 jupyter = [
-    "jupyter>=1.0.0",
     "ipykernel>=6.0.0",
     "marimo-flow>=0.1.1",
 ]
