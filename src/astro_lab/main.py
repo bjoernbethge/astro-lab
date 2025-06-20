@@ -9,7 +9,6 @@ with app.setup:
     import astro_lab as al
 
 
-
 @app.cell
 def _(silent):
     import mlflow as ml
@@ -28,7 +27,7 @@ def _(silent):
 
 @app.cell
 def _():
-    mo.doc(al)
+    mo.md(r""" """)
     return
 
 
@@ -38,28 +37,33 @@ def _():
     train_button = mo.ui.button(label="Train")
     train_ui = mo.vstack([silent,train_button])
     dir_browser = mo.ui.file_browser(initial_path="data",selection_mode="directory")
-    return dir_browser, silent, train_ui
+    return dir_browser, silent
 
 
 @app.cell(hide_code=True)
-def _(dir_browser, train_ui):
+def _(dir_browser):
 
-    file_browser = mo.ui.file_browser(filetypes=[".parquet"], initial_path=dir_browser.path())
-    accordion = mo.ui.tabs({
-        "Data": mo.hstack([dir_browser,file_browser]),
-        "Train": train_ui
+    file_browser = mo.ui.file_browser(filetypes=[".parquet",".pt"], initial_path=dir_browser.path())
+    menu = mo.accordion({
+        "Data": mo.callout(mo.hstack([dir_browser,file_browser])),
+        "Train": mo.hstack([dir_browser,file_browser])
     })
-    panel = mo.callout(accordion)
-    panel
-    return (file_browser,)
+    menu
+    return
 
 
 @app.cell
-def _(file_browser):
+def _():
+    dataset_file = mo.ui.file(filetypes=[".parquet"], kind="area")
+    dataset_file
+    return (dataset_file,)
 
-    pl_df = pl.read_parquet(file_browser.path())
-    mo_df = mo.ui.dataframe(pl_df)
-    mo_df
+
+@app.cell
+def _(dataset_file):
+    mo.stop(dataset_file.value is None)
+    df = pl.read_parquet(dataset_file.contents())
+    mo.ui.dataframe(df)
     return
 
 

@@ -38,6 +38,8 @@ from .core import (
     load_lightcurve_data,  # Variable stars/lightcurves
     load_nsa_data,  # NASA Sloan Atlas galaxies
     load_sdss_data,  # Galaxy photometry & spectroscopy
+    load_tng50_data,
+    load_tng50_temporal_data,  # 🌟 NEW: TNG50 Temporal loader
 )
 
 # 🔧 LEGACY MANAGER SUPPORT (for CLI compatibility)
@@ -81,6 +83,8 @@ __all__ = [
     "load_sdss_data",  # One-liner for SDSS
     "load_nsa_data",  # One-liner for NSA
     "load_lightcurve_data",  # One-liner for lightcurves
+    "load_tng50_data",
+    "load_tng50_temporal_data",  # 🌟 NEW: TNG50 Temporal loader
     # 🔗 GRAPH CREATION FUNCTIONS - NEW!
     "create_graph_from_dataframe",  # Create graph from DataFrame
     "create_graph_datasets_from_splits",  # Create graphs from splits

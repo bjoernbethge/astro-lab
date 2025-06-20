@@ -216,3 +216,80 @@ class AdvancedAstroProcessor:
 
 # For backward compatibility
 ProcessingConfig = SimpleProcessingConfig
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+    from pathlib import Path
+
+    import polars as pl
+    import torch
+
+    parser = argparse.ArgumentParser(description="AstroLab Data Processing CLI")
+    parser.add_argument(
+        "--survey",
+        type=str,
+        required=True,
+        help="Survey name: gaia, sdss, tng50, tng50_temporal",
+    )
+    parser.add_argument(
+        "--output", type=str, required=True, help="Output file path (.parquet or .pt)"
+    )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Maximum number of samples/particles",
+    )
+    parser.add_argument(
+        "--snapshot-id",
+        type=int,
+        default=None,
+        help="Snapshot ID (for temporal datasets)",
+    )
+    args = parser.parse_args()
+
+    print(f"🚀 Processing survey: {args.survey}")
+    print(f"   Output: {args.output}")
+    print(f"   Max samples: {args.max_samples}")
+    if args.snapshot_id is not None:
+        print(f"   Snapshot ID: {args.snapshot_id}")
+
+    # Loader mapping
+    from .core import (
+        load_gaia_data,
+        load_sdss_data,
+        load_tng50_data,
+        load_tng50_temporal_data,
+    )
+
+    survey_loaders = {
+        "gaia": load_gaia_data,
+        "sdss": load_sdss_data,
+        "tng50": load_tng50_data,
+        "tng50_temporal": load_tng50_temporal_data,
+    }
+    if args.survey not in survey_loaders:
+        print(f"❌ Unknown survey: {args.survey}")
+        sys.exit(1)
+
+    # Load data
+    loader = survey_loaders[args.survey]
+    loader_kwargs = {"max_samples": args.max_samples}
+    if args.survey == "tng50_temporal" and args.snapshot_id is not None:
+        loader_kwargs["snapshot_id"] = args.snapshot_id
+    dataset = loader(**loader_kwargs)
+
+    # Save output
+    output_path = Path(args.output)
+    if output_path.suffix == ".parquet":
+        print(f"💾 Saving as Parquet: {output_path}")
+        dataset.data.write_parquet(str(output_path))
+        print(f"✅ Done: {output_path}")
+    elif output_path.suffix == ".pt":
+        print(f"💾 Saving as PyTorch tensor: {output_path}")
+        torch.save(dataset.data.to_pandas(), str(output_path))
+        print(f"✅ Done: {output_path}")
+    else:
+        print(f"❌ Unknown output file type: {output_path.suffix}")
+        sys.exit(2)

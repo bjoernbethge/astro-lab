@@ -369,7 +369,7 @@ def list_tng50_snapshots_command(args):
                     print(f"  - Available particle types: {', '.join(particle_types)}")
                 else:
                     print("  - No particle types found in snapshot.")
-            except Exception as e:
+        except Exception as e:
                 print(f"  - Could not read particle types: {e}")
         else:
             print("  - No HDF5 files found.")
@@ -848,7 +848,7 @@ def main():
             type=float,
             default=50.0,
             help="Maximum distance for graph connections.",
-        )
+    )
 
     args = parser.parse_args()
 

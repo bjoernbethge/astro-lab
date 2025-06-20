@@ -312,12 +312,19 @@ class AstroDataManager:
                         if indices is not slice(None):
                             data = data[indices]  # type: ignore
 
+                        # Sanitize field name for column
+                        col_name = field.lower()
+                        if col_name.endswith("es"):
+                            col_name = col_name[:-2]
+                        elif col_name.endswith("s"):
+                            col_name = col_name[:-1]
+
                         if data.ndim > 1:  # type: ignore
                             # Vector quantities
                             for i in range(data.shape[1]):  # type: ignore
-                                data_dict[f"{field.lower()}_{i}"] = data[:, i]  # type: ignore
+                                data_dict[f"{col_name}_{i}"] = data[:, i]  # type: ignore
                         else:
-                            data_dict[field.lower()] = data  # type: ignore
+                            data_dict[col_name] = data  # type: ignore
 
                 # Convert to Polars
                 df = pl.DataFrame(data_dict)

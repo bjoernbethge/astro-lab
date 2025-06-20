@@ -186,6 +186,55 @@ SURVEY_CONFIGS = {
             "cosmology": "Planck2018",
         },
     },
+    # 🌟 NEW: TNG50-Temporal als vollwertiger Survey
+    "tng50_temporal": {
+        "name": "TNG50 Temporal Simulation",
+        "coord_cols": ["x", "y", "z"],
+        "mag_cols": [],  # Keine Magnituden für Simulation
+        "extra_cols": [
+            "mass",
+            "velocity_0",
+            "velocity_1",
+            "velocity_2",
+            "particle_type",
+            "snapshot_id",
+            "redshift",
+            "time_gyr",
+            "scale_factor",
+        ],
+        "color_pairs": [],
+        "default_limit": None,  # Keine Magnitude-Limits
+        "url": "tng50_temporal",
+        # 🌟 TENSOR METADATA für temporale Simulation
+        "filter_system": "none",
+        "data_release": "TNG50-4-Temporal",
+        "coordinate_system": "cartesian",
+        "photometric_bands": [],
+        "particle_types": ["PartType0", "PartType1", "PartType4", "PartType5"],
+        "tensor_column_mapping": {
+            "x": 0,
+            "y": 1,
+            "z": 2,
+            "mass": 3,
+            "velocity_0": 4,
+            "velocity_1": 5,
+            "velocity_2": 6,
+            "particle_type": 7,
+            "snapshot_id": 8,
+            "redshift": 9,
+            "time_gyr": 10,
+            "scale_factor": 11,
+        },
+        # Temporale Simulation-spezifische Metadaten
+        "simulation_metadata": {
+            "box_size": 35.0,  # Mpc/h
+            "num_snapshots": 11,
+            "redshift_range": [0.0, 1.0],
+            "time_range": [0.0, 7.8],  # Gyr
+            "cosmology": "Planck2018",
+            "temporal_evolution": True,
+        },
+    },
 }
 
 
@@ -797,23 +846,24 @@ def load_gaia_data(
         SurveyTensor with Gaia data or AstroDataset for legacy use
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
-        # Direct tensor loading - bypass PyG overhead for pure tensor usage
-        dataset = AstroDataset(
+        # Create temporary dataset to get DataFrame
+        temp_dataset = AstroDataset(
             survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
         )
-        dataset.download()  # Ensure data is generated
-
-        # Get DataFrame and convert to tensor
-        df = dataset._load_polars_dataframe()
+        temp_dataset.download()  # Ensure data is generated
+        df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "gaia", {"max_samples": max_samples})
 
-    return AstroDataset(
-        survey="gaia",
-        k_neighbors=8,
-        max_samples=max_samples,
-        return_tensor=return_tensor,
-        **kwargs,
+    # Create AstroDataset with survey parameter and set DataFrame
+    dataset = AstroDataset(
+        survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
     )
+    dataset.download()  # Ensure data is generated
+
+    # Set the DataFrame as the data attribute
+    dataset.data = dataset._load_polars_dataframe()
+
+    return dataset
 
 
 def load_sdss_data(
@@ -833,20 +883,24 @@ def load_sdss_data(
         SurveyTensor with SDSS data or AstroDataset for legacy use
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
-        dataset = AstroDataset(
+        # Create temporary dataset to get DataFrame
+        temp_dataset = AstroDataset(
             survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
         )
-        dataset.download()
-        df = dataset._load_polars_dataframe()
+        temp_dataset.download()
+        df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "sdss", {"max_samples": max_samples})
 
-    return AstroDataset(
-        survey="sdss",
-        k_neighbors=5,
-        max_samples=max_samples,
-        return_tensor=return_tensor,
-        **kwargs,
+    # Create AstroDataset with survey parameter and set DataFrame
+    dataset = AstroDataset(
+        survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
     )
+    dataset.download()
+
+    # Set the DataFrame as the data attribute
+    dataset.data = dataset._load_polars_dataframe()
+
+    return dataset
 
 
 def load_nsa_data(
@@ -927,102 +981,441 @@ def load_lightcurve_data(
     )
 
 
-def load_tng50_data(
-    max_samples: int = 5000,
-    particle_type: str = "PartType0",
-    return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs,
-) -> Union[AstroDataset, "SimulationTensor"]:
-    """
-    Load TNG50 simulation data.
+def load_tng50_data(max_samples: Optional[int] = None) -> AstroDataset:
+    """Load TNG50 simulation data as a survey-like dataset.
 
     Args:
-        max_samples: Maximum number of particles to load
-        particle_type: Particle type to load (PartType0, PartType1, PartType4, PartType5)
-        return_tensor: Return SimulationTensor instead of dataset (recommended!)
-        **kwargs: Additional arguments
+        max_samples: Maximum number of particles to load (None = all)
 
     Returns:
-        SimulationTensor with TNG50 simulation data or AstroDataset for legacy use
+        AstroDataset with TNG50 simulation data
     """
-    if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
-        # Load existing TNG50 parquet files
-        data_dir = Path("data/raw/tng50")
+    config = SURVEY_CONFIGS["tng50"]
 
-        # Map particle types to file names
-        particle_file_map = {
-            "PartType0": "tng50_parttype0.parquet",
-            "PartType1": "tng50_parttype1.parquet",
-            "PartType4": "tng50_parttype4.parquet",
-            "PartType5": "tng50_parttype5.parquet",
-        }
+    # Load TNG50 data from processed files
+    data_path = Path("data/processed/tng50_combined.parquet")
+    if not data_path.exists():
+        print(f"⚠️ TNG50 data not found at {data_path}. Generating demo data...")
+        # Create AstroDataset with survey parameter and generate demo data
+        dataset = AstroDataset(
+            survey="tng50", max_samples=max_samples, return_tensor=False
+        )
+        dataset.download()  # Generate demo data
+        dataset.data = dataset._load_polars_dataframe()
+        return dataset
 
-        if particle_type not in particle_file_map:
-            raise ValueError(
-                f"Unknown particle type: {particle_type}. Available: {list(particle_file_map.keys())}"
-            )
+    # Load with Polars
+    df = pl.read_parquet(data_path)
 
-        parquet_file = data_dir / particle_file_map[particle_type]
+    # Apply sampling if requested
+    if max_samples and len(df) > max_samples:
+        df = df.sample(n=max_samples, seed=42)
 
-        if not parquet_file.exists():
-            raise FileNotFoundError(f"TNG50 data not found: {parquet_file}")
+    # Create AstroDataset
+    dataset = AstroDataset(
+        name=config["name"],
+        data=df,
+        coord_cols=config["coord_cols"],
+        mag_cols=config["mag_cols"],
+        extra_cols=config["extra_cols"],
+        color_pairs=config["color_pairs"],
+        tensor_metadata=config,
+    )
 
-        print(f"🌌 Loading TNG50 {particle_type} data from {parquet_file}")
+    return dataset
 
-        # Load with Polars
-        df = pl.read_parquet(parquet_file)
 
-        # Limit samples if requested
-        if max_samples and len(df) > max_samples:
-            df = df.sample(max_samples, seed=42)
+def load_tng50_temporal_data(
+    max_samples: Optional[int] = None, snapshot_id: Optional[int] = None
+) -> AstroDataset:
+    """Load TNG50 temporal simulation data as a survey-like dataset.
 
-        print(f"   📊 Loaded {len(df):,} particles with {len(df.columns)} features")
+    Args:
+        max_samples: Maximum number of particles to load (None = all)
+        snapshot_id: Specific snapshot to load (None = all snapshots)
 
-        # Convert to SimulationTensor
-        tensor_data = torch.tensor(df.to_numpy(), dtype=torch.float32)
+    Returns:
+        AstroDataset with TNG50 temporal simulation data
+    """
+    config = SURVEY_CONFIGS["tng50_temporal"]
 
-        # Simulation-specific metadata
-        config = SURVEY_CONFIGS["tng50"]
-
-        simulation_metadata = {
-            "survey_name": "tng50",
-            "particle_type": particle_type,
-            "n_particles": len(df),
-            "data_shape": df.shape,
-            "columns": df.columns,
-            "coordinate_system": "cartesian",
-            "box_size": 35.0,  # Mpc/h
-            "redshift": 0.0,
-            "snapshot": 99,
-            "cosmology": "Planck2018",
-        }
-
-        # Extract positions (first 3 columns: x, y, z)
-        positions = tensor_data[:, :3]
-
-        # Extract features (all columns including positions)
-        features = tensor_data
-
-        return SimulationTensor(
-            positions=positions,
-            features=features,
-            simulation_name="tng50",
-            particle_type=particle_type,
-            box_size=35.0,  # Mpc/h
-            redshift=0.0,
-            cosmology={"H0": 70.0, "Omega_m": 0.3, "Omega_Lambda": 0.7},
-            simulation_metadata=simulation_metadata,
+    # Load TNG50 temporal data from processed files
+    data_path = Path(
+        "data/processed/tng50_temporal_100mb/processed/tng50_temporal_graphs_r1.0.pt"
+    )
+    if not data_path.exists():
+        raise FileNotFoundError(
+            f"TNG50 temporal data not found at {data_path}. Run preprocessing first."
         )
 
-    # Fallback to dataset mode (less efficient but compatible)
-    return AstroDataset(
-        survey="tng50",
+    # Load PyTorch tensors
+    import torch
+
+    temporal_data = torch.load(data_path, map_location="cpu", weights_only=False)
+
+    # Extract data from temporal structure
+    if snapshot_id is not None:
+        # Load specific snapshot
+        if snapshot_id >= len(temporal_data):
+            raise ValueError(
+                f"Snapshot {snapshot_id} not available. Max: {len(temporal_data) - 1}"
+            )
+
+        graph_data = temporal_data[snapshot_id]
+
+        # Handle dict format (actual format of the data)
+        if isinstance(graph_data, dict):
+            positions = graph_data["x"][:, :3].numpy()  # x, y, z
+            masses = graph_data["x"][:, 3].numpy()  # mass
+            velocities = graph_data["x"][:, 4:7].numpy()  # vx, vy, vz
+            particle_types = graph_data["x"][:, 7].numpy()  # particle_type
+
+            # Get cosmological parameters
+            redshifts = graph_data.get("redshift", 0.0)
+            if hasattr(redshifts, "item"):
+                redshifts = redshifts.item()
+            elif hasattr(redshifts, "__len__") and len(redshifts) > 0:
+                redshifts = (
+                    redshifts[0].item()
+                    if hasattr(redshifts[0], "item")
+                    else float(redshifts[0])
+                )
+            else:
+                redshifts = 0.0
+
+            time_gyr = graph_data.get("time_gyr", 0.0)
+            if hasattr(time_gyr, "item"):
+                time_gyr = time_gyr.item()
+            elif hasattr(time_gyr, "__len__") and len(time_gyr) > 0:
+                time_gyr = (
+                    time_gyr[0].item()
+                    if hasattr(time_gyr[0], "item")
+                    else float(time_gyr[0])
+                )
+            else:
+                time_gyr = 0.0
+
+            scale_factor = graph_data.get("scale_factor", 1.0)
+            if hasattr(scale_factor, "item"):
+                scale_factor = scale_factor.item()
+            elif hasattr(scale_factor, "__len__") and len(scale_factor) > 0:
+                scale_factor = (
+                    scale_factor[0].item()
+                    if hasattr(scale_factor[0], "item")
+                    else float(scale_factor[0])
+                )
+            else:
+                scale_factor = 1.0
+
+        elif hasattr(graph_data, "x"):
+            # Standard PyTorch Geometric format
+            positions = graph_data.x[:, :3].numpy()  # x, y, z
+            masses = graph_data.x[:, 3].numpy()  # mass
+            velocities = graph_data.x[:, 4:7].numpy()  # vx, vy, vz
+            particle_types = graph_data.x[:, 7].numpy()  # particle_type
+
+            # Get cosmological parameters
+            redshifts = getattr(graph_data, "redshift", 0.0)
+            if hasattr(redshifts, "item"):
+                redshifts = redshifts.item()
+            elif hasattr(redshifts, "__len__") and len(redshifts) > 0:
+                redshifts = (
+                    redshifts[0].item()
+                    if hasattr(redshifts[0], "item")
+                    else float(redshifts[0])
+                )
+            else:
+                redshifts = 0.0
+
+            time_gyr = getattr(graph_data, "time_gyr", 0.0)
+            if hasattr(time_gyr, "item"):
+                time_gyr = time_gyr.item()
+            elif hasattr(time_gyr, "__len__") and len(time_gyr) > 0:
+                time_gyr = (
+                    time_gyr[0].item()
+                    if hasattr(time_gyr[0], "item")
+                    else float(time_gyr[0])
+                )
+            else:
+                time_gyr = 0.0
+
+            scale_factor = getattr(graph_data, "scale_factor", 1.0)
+            if hasattr(scale_factor, "item"):
+                scale_factor = scale_factor.item()
+            elif hasattr(scale_factor, "__len__") and len(scale_factor) > 0:
+                scale_factor = (
+                    scale_factor[0].item()
+                    if hasattr(scale_factor[0], "item")
+                    else float(scale_factor[0])
+                )
+            else:
+                scale_factor = 1.0
+
+        elif hasattr(graph_data, "pos"):
+            # Alternative format with pos attribute
+            positions = graph_data.pos[:, :3].numpy()
+            masses = (
+                graph_data.mass.numpy()
+                if hasattr(graph_data, "mass")
+                else np.ones(len(positions))
+            )
+            velocities = (
+                graph_data.vel.numpy()
+                if hasattr(graph_data, "vel")
+                else np.zeros((len(positions), 3))
+            )
+            particle_types = (
+                graph_data.particle_type.numpy()
+                if hasattr(graph_data, "particle_type")
+                else np.zeros(len(positions))
+            )
+
+            # Get cosmological parameters
+            redshifts = getattr(graph_data, "redshift", 0.0)
+            if hasattr(redshifts, "item"):
+                redshifts = redshifts.item()
+            elif hasattr(redshifts, "__len__") and len(redshifts) > 0:
+                redshifts = (
+                    redshifts[0].item()
+                    if hasattr(redshifts[0], "item")
+                    else float(redshifts[0])
+                )
+            else:
+                redshifts = 0.0
+
+            time_gyr = getattr(graph_data, "time_gyr", 0.0)
+            if hasattr(time_gyr, "item"):
+                time_gyr = time_gyr.item()
+            elif hasattr(time_gyr, "__len__") and len(time_gyr) > 0:
+                time_gyr = (
+                    time_gyr[0].item()
+                    if hasattr(time_gyr[0], "item")
+                    else float(time_gyr[0])
+                )
+            else:
+                time_gyr = 0.0
+
+            scale_factor = getattr(graph_data, "scale_factor", 1.0)
+            if hasattr(scale_factor, "item"):
+                scale_factor = scale_factor.item()
+            elif hasattr(scale_factor, "__len__") and len(scale_factor) > 0:
+                scale_factor = (
+                    scale_factor[0].item()
+                    if hasattr(scale_factor[0], "item")
+                    else float(scale_factor[0])
+                )
+            else:
+                scale_factor = 1.0
+
+        else:
+            # Fallback: assume it's a dictionary or other format
+            raise ValueError(
+                f"Unknown TNG50 temporal data format for snapshot {snapshot_id}"
+            )
+
+        # Create DataFrame for single snapshot
+        df_data = {
+            "x": positions[:, 0],
+            "y": positions[:, 1],
+            "z": positions[:, 2],
+            "mass": masses,
+            "velocity_0": velocities[:, 0],
+            "velocity_1": velocities[:, 1],
+            "velocity_2": velocities[:, 2],
+            "particle_type": particle_types,
+            "snapshot_id": snapshot_id,
+            "redshift": redshifts,
+            "time_gyr": time_gyr,
+            "scale_factor": scale_factor,
+        }
+        df = pl.DataFrame(df_data)
+
+    else:
+        # Load all snapshots combined
+        all_data = []
+        for i, graph_data in enumerate(temporal_data):
+            # Handle dict format (actual format of the data)
+            if isinstance(graph_data, dict):
+                positions = graph_data["x"][:, :3].numpy()
+                masses = graph_data["x"][:, 3].numpy()
+                velocities = graph_data["x"][:, 4:7].numpy()
+                particle_types = graph_data["x"][:, 7].numpy()
+
+                # Get cosmological parameters
+                redshifts = graph_data.get("redshift", 0.0)
+                if hasattr(redshifts, "item"):
+                    redshifts = redshifts.item()
+                elif hasattr(redshifts, "__len__") and len(redshifts) > 0:
+                    redshifts = (
+                        redshifts[0].item()
+                        if hasattr(redshifts[0], "item")
+                        else float(redshifts[0])
+                    )
+                else:
+                    redshifts = 0.0
+
+                time_gyr = graph_data.get("time_gyr", 0.0)
+                if hasattr(time_gyr, "item"):
+                    time_gyr = time_gyr.item()
+                elif hasattr(time_gyr, "__len__") and len(time_gyr) > 0:
+                    time_gyr = (
+                        time_gyr[0].item()
+                        if hasattr(time_gyr[0], "item")
+                        else float(time_gyr[0])
+                    )
+                else:
+                    time_gyr = 0.0
+
+                scale_factor = graph_data.get("scale_factor", 1.0)
+                if hasattr(scale_factor, "item"):
+                    scale_factor = scale_factor.item()
+                elif hasattr(scale_factor, "__len__") and len(scale_factor) > 0:
+                    scale_factor = (
+                        scale_factor[0].item()
+                        if hasattr(scale_factor[0], "item")
+                        else float(scale_factor[0])
+                    )
+                else:
+                    scale_factor = 1.0
+
+            elif hasattr(graph_data, "x"):
+                positions = graph_data.x[:, :3].numpy()
+                masses = graph_data.x[:, 3].numpy()
+                velocities = graph_data.x[:, 4:7].numpy()
+                particle_types = graph_data.x[:, 7].numpy()
+
+                # Get cosmological parameters
+                redshifts = getattr(graph_data, "redshift", 0.0)
+                if hasattr(redshifts, "item"):
+                    redshifts = redshifts.item()
+                elif hasattr(redshifts, "__len__") and len(redshifts) > 0:
+                    redshifts = (
+                        redshifts[0].item()
+                        if hasattr(redshifts[0], "item")
+                        else float(redshifts[0])
+                    )
+                else:
+                    redshifts = 0.0
+
+                time_gyr = getattr(graph_data, "time_gyr", 0.0)
+                if hasattr(time_gyr, "item"):
+                    time_gyr = time_gyr.item()
+                elif hasattr(time_gyr, "__len__") and len(time_gyr) > 0:
+                    time_gyr = (
+                        time_gyr[0].item()
+                        if hasattr(time_gyr[0], "item")
+                        else float(time_gyr[0])
+                    )
+                else:
+                    time_gyr = 0.0
+
+                scale_factor = getattr(graph_data, "scale_factor", 1.0)
+                if hasattr(scale_factor, "item"):
+                    scale_factor = scale_factor.item()
+                elif hasattr(scale_factor, "__len__") and len(scale_factor) > 0:
+                    scale_factor = (
+                        scale_factor[0].item()
+                        if hasattr(scale_factor[0], "item")
+                        else float(scale_factor[0])
+                    )
+                else:
+                    scale_factor = 1.0
+
+            elif hasattr(graph_data, "pos"):
+                positions = graph_data.pos[:, :3].numpy()
+                masses = (
+                    graph_data.mass.numpy()
+                    if hasattr(graph_data, "mass")
+                    else np.ones(len(positions))
+                )
+                velocities = (
+                    graph_data.vel.numpy()
+                    if hasattr(graph_data, "vel")
+                    else np.zeros((len(positions), 3))
+                )
+                particle_types = (
+                    graph_data.particle_type.numpy()
+                    if hasattr(graph_data, "particle_type")
+                    else np.zeros(len(positions))
+                )
+
+                # Get cosmological parameters
+                redshifts = getattr(graph_data, "redshift", 0.0)
+                if hasattr(redshifts, "item"):
+                    redshifts = redshifts.item()
+                elif hasattr(redshifts, "__len__") and len(redshifts) > 0:
+                    redshifts = (
+                        redshifts[0].item()
+                        if hasattr(redshifts[0], "item")
+                        else float(redshifts[0])
+                    )
+                else:
+                    redshifts = 0.0
+
+                time_gyr = getattr(graph_data, "time_gyr", 0.0)
+                if hasattr(time_gyr, "item"):
+                    time_gyr = time_gyr.item()
+                elif hasattr(time_gyr, "__len__") and len(time_gyr) > 0:
+                    time_gyr = (
+                        time_gyr[0].item()
+                        if hasattr(time_gyr[0], "item")
+                        else float(time_gyr[0])
+                    )
+                else:
+                    time_gyr = 0.0
+
+                scale_factor = getattr(graph_data, "scale_factor", 1.0)
+                if hasattr(scale_factor, "item"):
+                    scale_factor = scale_factor.item()
+                elif hasattr(scale_factor, "__len__") and len(scale_factor) > 0:
+                    scale_factor = (
+                        scale_factor[0].item()
+                        if hasattr(scale_factor[0], "item")
+                        else float(scale_factor[0])
+                    )
+                else:
+                    scale_factor = 1.0
+
+            else:
+                continue  # Skip unknown format
+
+            snapshot_data = {
+                "x": positions[:, 0],
+                "y": positions[:, 1],
+                "z": positions[:, 2],
+                "mass": masses,
+                "velocity_0": velocities[:, 0],
+                "velocity_1": velocities[:, 1],
+                "velocity_2": velocities[:, 2],
+                "particle_type": particle_types,
+                "snapshot_id": i,
+                "redshift": redshifts,
+                "time_gyr": time_gyr,
+                "scale_factor": scale_factor,
+            }
+            all_data.append(pl.DataFrame(snapshot_data))
+
+        df = pl.concat(all_data)
+
+    # Apply sampling if requested
+    if max_samples and len(df) > max_samples:
+        df = df.sample(n=max_samples, seed=42)
+
+    # Create AstroDataset
+    dataset = AstroDataset(
+        survey="tng50_temporal",
+        data_path=None,  # We already have the data
         k_neighbors=8,
         max_samples=max_samples,
-        return_tensor=return_tensor,
-        data_path=f"data/raw/tng50/tng50_{particle_type.lower()}.parquet",
-        **kwargs,
+        force_reload=False,
+        return_tensor=True,  # Return as SurveyTensor
     )
+
+    # Set the processed data directly
+    dataset._df_cache = df
+    dataset._processed_data = [df]  # Ensure it's treated as processed
+
+    return dataset
 
 
 def detect_survey_type(dataset_name: str, df: pl.DataFrame) -> str:
