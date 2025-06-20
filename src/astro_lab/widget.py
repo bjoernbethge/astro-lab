@@ -1,8 +1,8 @@
 """
-AnyWidget für die direkte Anzeige von Blender-Renderings in Jupyter Notebooks.
+AnyWidget for direct display of Blender renderings in Jupyter notebooks.
 
-Dieses Widget zeigt gerenderte Bilder direkt im Notebook an und ermöglicht
-interaktive Kontrollen für verschiedene Rendering-Parameter. Es kann sowohl
+This widget displays rendered images directly in the notebook and enables
+interactive controls for various rendering parameters. It can handle both
 Render-Ergebnisse als auch Live-Viewport-Daten anzeigen.
 """
 
@@ -388,13 +388,13 @@ class BlenderImageWidgetStub:
         print("⚠️ anywidget not available - BlenderImageWidget disabled")
 
     def display_image_from_path(self, *args, **kwargs):
-        print("⚠️ BlenderImageWidget nicht verfügbar")
+        print("⚠️ BlenderImageWidget not available")
 
     def display_image_from_data(self, *args, **kwargs):
-        print("⚠️ BlenderImageWidget nicht verfügbar")
+        print("⚠️ BlenderImageWidget not available")
 
     def clear_image(self):
-        print("⚠️ BlenderImageWidget nicht verfügbar")
+        print("⚠️ BlenderImageWidget not available")
 
 
 # Export der entsprechenden Klasse

@@ -907,7 +907,7 @@ def create_graph_datasets_from_splits(
         print("⚠️  PyTorch Geometric not available - skipping graph creation")
         return {"train": None, "val": None, "test": None}
 
-    print("\n🔗 Creating PyTorch Geometric Graphs (.pt) - Standard für GNNs")
+    print("\n🔗 Creating PyTorch Geometric Graphs (.pt) - Standard for GNNs")
 
     # Detect survey type
     survey_type = detect_survey_type(dataset_name, train_df)

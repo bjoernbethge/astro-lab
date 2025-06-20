@@ -34,9 +34,9 @@ def main():
         description="AstroLab - Astronomical Machine Learning Laboratory",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-🚀 Verfügbare Commands:
+🚀 Available Commands:
 
-astro-lab download       Download astronomischer Datensätze
+astro-lab download       Download astronomical datasets
 astro-lab preprocess     Datenvorverarbeitung und Graph-Erstellung
 astro-lab train          ML-Model Training mit Lightning + MLflow
 astro-lab optimize       Hyperparameter-Optimierung mit Optuna

@@ -23,6 +23,7 @@ warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 # NumPy import with fallback
 try:
     import numpy as np
+
     NUMPY_AVAILABLE = True
 except ImportError:
     np = None
@@ -118,7 +119,7 @@ def normalize_scene(
 
         bpy.context.view_layer.update()
         return scale, tuple(offset)
-        
+
     except Exception as e:
         warnings.warn(f"Failed to normalize scene: {e}", UserWarning)
         return 1.0, (0.0, 0.0, 0.0)
@@ -150,11 +151,13 @@ def setup_scene(
 
         # Output
         output_node = world.node_tree.nodes.new("ShaderNodeOutputWorld")
-        world.node_tree.links.new(bg_node.outputs["Background"], output_node.inputs["Surface"])
+        world.node_tree.links.new(
+            bg_node.outputs["Background"], output_node.inputs["Surface"]
+        )
 
         scene.world = world
         return True
-        
+
     except Exception as e:
         warnings.warn(f"Failed to setup scene: {e}", UserWarning)
         return False
@@ -215,7 +218,7 @@ def create_material(  # type: ignore
             links.new(emission.outputs["Emission"], output.inputs["Surface"])
 
         return mat
-        
+
     except Exception as e:
         warnings.warn(f"Failed to create material: {e}", UserWarning)
         return None
@@ -225,7 +228,7 @@ def _temperature_to_color(temperature: float) -> Tuple[float, float, float]:
     """Convert temperature to RGB color using black-body radiation approximation."""
     # Simplified temperature to color conversion
     temp = max(1000, min(temperature, 40000))  # Clamp to reasonable range
-    
+
     if temp < 3700:
         red = 1.0
         green = (temp - 1000) / 2700
@@ -238,7 +241,7 @@ def _temperature_to_color(temperature: float) -> Tuple[float, float, float]:
         red = 1.0 - 0.3 * (temp - 5500) / 34500
         green = 0.9 + 0.1 * (temp - 5500) / 34500
         blue = 1.0
-    
+
     return (max(0, min(1, red)), max(0, min(1, green)), max(0, min(1, blue)))
 
 
@@ -277,7 +280,7 @@ def create_light(
             light.data.spot_size = kwargs.get("spot_size", math.radians(45))
 
         return light
-        
+
     except Exception as e:
         warnings.warn(f"Failed to create light: {e}", UserWarning)
         return None
@@ -296,12 +299,16 @@ def setup_lighting_preset(
     try:
         if preset == "three_point":
             # Key light
-            key_light = create_light("SUN", [5, -5, 8], intensity * 1.5, name="KeyLight")
+            key_light = create_light(
+                "SUN", [5, -5, 8], intensity * 1.5, name="KeyLight"
+            )
             if key_light:
                 lights.append(key_light)
 
             # Fill light
-            fill_light = create_light("SUN", [-3, 3, 5], intensity * 0.5, name="FillLight")
+            fill_light = create_light(
+                "SUN", [-3, 3, 5], intensity * 0.5, name="FillLight"
+            )
             if fill_light:
                 lights.append(fill_light)
 
@@ -312,12 +319,16 @@ def setup_lighting_preset(
 
         elif preset == "astronomical":
             # Simulate distant star illumination
-            star_light = create_light("SUN", [10, 10, 10], intensity * 0.1, name="StarLight")
+            star_light = create_light(
+                "SUN", [10, 10, 10], intensity * 0.1, name="StarLight"
+            )
             if star_light:
                 lights.append(star_light)
 
             # Ambient cosmic background
-            ambient_light = create_light("SUN", [0, 0, 20], intensity * 0.05, name="CosmicBackground")
+            ambient_light = create_light(
+                "SUN", [0, 0, 20], intensity * 0.05, name="CosmicBackground"
+            )
             if ambient_light:
                 lights.append(ambient_light)
 
@@ -361,7 +372,7 @@ def create_camera(
         bpy.context.scene.camera = camera
 
         return camera
-        
+
     except Exception as e:
         warnings.warn(f"Failed to create camera: {e}", UserWarning)
         return None
@@ -395,7 +406,7 @@ def animate_camera(
             camera.keyframe_insert(data_path="rotation_euler")
 
         return True
-        
+
     except Exception as e:
         warnings.warn(f"Failed to animate camera: {e}", UserWarning)
         return False
@@ -430,7 +441,7 @@ def create_camera_path(
         bpy.context.collection.objects.link(curve_obj)
 
         return curve_obj
-        
+
     except Exception as e:
         warnings.warn(f"Failed to create camera path: {e}", UserWarning)
         return None
@@ -467,7 +478,7 @@ def create_astro_object(
                     f"{name}_StarMat",
                     "star",
                     temperature=temp,
-                    brightness=10**(-0.4 * brightness)
+                    brightness=10 ** (-0.4 * brightness),
                 )
                 if mat:
                     obj.data.materials.append(mat)
@@ -482,7 +493,7 @@ def create_astro_object(
                 f"{name}_GalaxyMat",
                 "emission",
                 base_color=[0.8, 0.6, 0.4],
-                emission_strength=0.5
+                emission_strength=0.5,
             )
             if mat:
                 obj.data.materials.append(mat)
@@ -498,7 +509,7 @@ def create_astro_object(
                 "emission",
                 base_color=[0.4, 0.8, 1.0],
                 emission_strength=0.3,
-                alpha=0.3
+                alpha=0.3,
             )
             if mat:
                 obj.data.materials.append(mat)
@@ -509,7 +520,7 @@ def create_astro_object(
                 obj[key] = value
 
         return obj
-        
+
     except Exception as e:
         warnings.warn(f"Failed to create astro object: {e}", UserWarning)
         return None
@@ -529,7 +540,7 @@ def setup_astronomical_scene(
     objects = []
     try:
         # Convert to list of dicts if DataFrame
-        if hasattr(data, 'to_dicts'):
+        if hasattr(data, "to_dicts"):
             data_list = data.to_dicts()
         else:
             data_list = data
@@ -537,22 +548,18 @@ def setup_astronomical_scene(
         for i, row in enumerate(data_list):
             position = [row.get(col, 0.0) for col in position_cols]
             scale = row.get(scale_col, 1.0) if scale_col else 1.0
-            
+
             properties = {k: v for k, v in row.items() if k not in position_cols}
-            
+
             obj = create_astro_object(
-                object_type,
-                position,
-                scale,
-                properties,
-                f"{object_type}_{i:04d}"
+                object_type, position, scale, properties, f"{object_type}_{i:04d}"
             )
-            
+
             if obj:
                 objects.append(obj)
 
         return objects
-        
+
     except Exception as e:
         warnings.warn(f"Failed to setup astronomical scene: {e}", UserWarning)
         return []
@@ -564,10 +571,10 @@ def setup_astronomical_scene(
 
 
 def setup_render_settings(
-    engine: str = "EEVEE",
+    engine: str = "BLENDER_EEVEE_NEXT",
     resolution: Tuple[int, int] = (1920, 1080),
     samples: int = 64,
-    output_path: str = "/tmp/render.png",
+    output_path: str = "results/render.png",
 ) -> bool:
     """Setup render settings."""
     if not BLENDER_AVAILABLE:
@@ -588,32 +595,43 @@ def setup_render_settings(
         if engine.upper() == "CYCLES":
             scene.cycles.samples = samples
 
-        # Output
+        # Output - ensure absolute path
+        import os
+
+        if not os.path.isabs(output_path):
+            output_path = str(Path.cwd() / output_path)
+
+        # Ensure directory exists
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         render.filepath = output_path
         render.image_settings.file_format = Path(output_path).suffix[1:].upper()
 
         return True
-        
+
     except Exception as e:
         warnings.warn(f"Failed to setup render settings: {e}", UserWarning)
         return False
 
 
-def render_scene(output_path: str = "/tmp/render.png", animation: bool = False) -> bool:
+def render_scene(
+    output_path: str = "results/render.png", animation: bool = False
+) -> bool:
     """Render scene or animation."""
     if not BLENDER_AVAILABLE:
         return False
 
     try:
         bpy.context.scene.render.filepath = output_path
-        
+
         if animation:
             bpy.ops.render.render(animation=True)
         else:
             bpy.ops.render.render(write_still=True)
-            
+
         return True
-        
+
     except Exception as e:
         warnings.warn(f"Failed to render scene: {e}", UserWarning)
         return False
@@ -633,7 +651,7 @@ class AstroPlotter:
         self.objects = []
         self.lights = []
         self.camera = None
-        
+
         if BLENDER_AVAILABLE:
             self.setup_scene()
 
@@ -641,7 +659,7 @@ class AstroPlotter:
         """Setup the Blender scene."""
         if not BLENDER_AVAILABLE:
             return False
-            
+
         try:
             reset_scene()
             setup_scene(self.scene_name)
@@ -656,12 +674,12 @@ class AstroPlotter:
         self,
         data: Union[pl.DataFrame, List[Dict[str, Any]]],
         object_type: str = "star",
-        **kwargs
+        **kwargs,
     ) -> List[Any]:
         """Plot astronomical data."""
         if not BLENDER_AVAILABLE:
             return []
-            
+
         try:
             objects = setup_astronomical_scene(data, object_type, **kwargs)
             self.objects.extend(objects)
@@ -670,11 +688,11 @@ class AstroPlotter:
             warnings.warn(f"Failed to plot data: {e}", UserWarning)
             return []
 
-    def render(self, output_path: str = "/tmp/astro_render.png") -> bool:
+    def render(self, output_path: str = "results/astro_render.png") -> bool:
         """Render the scene."""
         if not BLENDER_AVAILABLE:
             return False
-            
+
         try:
             setup_render_settings(output_path=output_path)
             return render_scene(output_path)
@@ -690,7 +708,7 @@ class FuturisticAstroPlotter(AstroPlotter):
         """Setup futuristic scene."""
         if not BLENDER_AVAILABLE:
             return False
-            
+
         try:
             reset_scene()
             setup_scene(self.scene_name, world_color=[0.0, 0.05, 0.1])
@@ -708,12 +726,12 @@ class GeometryNodesVisualizer:
     def __init__(self):
         """Initialize geometry nodes visualizer."""
         self.node_groups = []
-        
+
     def create_procedural_galaxy(self, name: str = "ProceduralGalaxy") -> Optional[Any]:
         """Create procedural galaxy using geometry nodes."""
         if not BLENDER_AVAILABLE:
             return None
-            
+
         try:
             # This would require extensive geometry nodes setup
             # For now, return a placeholder
@@ -733,38 +751,40 @@ class GreasePencilPlotter:
         """Initialize Grease Pencil plotter."""
         self.gp_objects = []
 
-    def create_constellation_lines(self, star_positions: List[List[float]], connections: List[Tuple[int, int]]) -> Optional[Any]:
+    def create_constellation_lines(
+        self, star_positions: List[List[float]], connections: List[Tuple[int, int]]
+    ) -> Optional[Any]:
         """Create constellation lines using Grease Pencil."""
         if not BLENDER_AVAILABLE:
             return None
-            
+
         try:
             # Create grease pencil object
             bpy.ops.object.gpencil_add(location=(0, 0, 0))
             gp_obj = bpy.context.active_object
             gp_obj.name = "ConstellationLines"
-            
+
             # Get grease pencil data
             gp_data = gp_obj.data
-            
+
             # Create layer
             layer = gp_data.layers.new("Constellation")
-            
+
             # Create frame
             frame = layer.frames.new(1)
-            
+
             # Create strokes for connections
             for start_idx, end_idx in connections:
                 if start_idx < len(star_positions) and end_idx < len(star_positions):
                     stroke = frame.strokes.new()
                     stroke.points.add(2)
-                    
+
                     # Set points
                     stroke.points[0].co = star_positions[start_idx]
                     stroke.points[1].co = star_positions[end_idx]
-            
+
             return gp_obj
-            
+
         except Exception as e:
             warnings.warn(f"Failed to create constellation lines: {e}", UserWarning)
             return None

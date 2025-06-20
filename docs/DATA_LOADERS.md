@@ -1,110 +1,110 @@
-# Astronomische Daten laden & verarbeiten
+# Loading & Processing Astronomical Data
 
-## 🎯 Was macht dieses Modul?
+## 🎯 What does this module do?
 
-Das `astro_lab.data` Modul lädt astronomische Kataloge (Sterne, Galaxien) und macht sie bereit für Machine Learning. **Einfach, schnell, ohne Komplexität.**
+The `astro_lab.data` module loads astronomical catalogs (stars, galaxies) and prepares them for machine learning. **Simple, fast, without complexity.**
 
-## 📋 Kompletter Workflow
+## 📋 Complete Workflow
 
-### 1️⃣ Daten laden (30 Sekunden)
+### 1️⃣ Load Data (30 seconds)
 
 ```python
 from astro_lab.data import load_gaia_data, load_sdss_data
 
-# Gaia Sterne laden
-sterne = load_gaia_data(max_samples=5000)
-print(f"✅ {sterne.shape[0]} Sterne geladen")
+# Load Gaia stars
+stars = load_gaia_data(max_samples=5000)
+print(f"✅ {stars.shape[0]} stars loaded")
 
-# SDSS Galaxien laden  
-galaxien = load_sdss_data(max_samples=2000)
-print(f"✅ {galaxien.shape[0]} Galaxien geladen")
+# Load SDSS galaxies  
+galaxies = load_sdss_data(max_samples=2000)
+print(f"✅ {galaxies.shape[0]} galaxies loaded")
 ```
 
-### 2️⃣ Daten anschauen
+### 2️⃣ Inspect Data
 
 ```python
-# Was ist drin?
-print(f"Gaia Features: {sterne.photometric_bands}")  # ['G', 'BP', 'RP']
-print(f"SDSS Features: {galaxien.photometric_bands}")  # ['u', 'g', 'r', 'i', 'z']
+# What's inside?
+print(f"Gaia Features: {stars.photometric_bands}")  # ['G', 'BP', 'RP']
+print(f"SDSS Features: {galaxies.photometric_bands}")  # ['u', 'g', 'r', 'i', 'z']
 
-# Erste Zeilen
-print(sterne.data[:3])  # Erste 3 Sterne
-print(galaxien.data[:3])  # Erste 3 Galaxien
+# First rows
+print(stars.data[:3])  # First 3 stars
+print(galaxies.data[:3])  # First 3 galaxies
 ```
 
-### 3️⃣ Weiterverarbeitung für ML
+### 3️⃣ Processing for ML
 
 ```python
-# Für PyTorch Training
+# For PyTorch training
 import torch
 from torch.utils.data import DataLoader
 
-# Als normaler PyTorch Tensor
-X = sterne.data  # [5000, 8] - 5000 Sterne, 8 Features
-y = torch.randint(0, 3, (5000,))  # Dummy Labels
+# As regular PyTorch tensor
+X = stars.data  # [5000, 8] - 5000 stars, 8 features
+y = torch.randint(0, 3, (5000,))  # Dummy labels
 
-# DataLoader für Training
+# DataLoader for training
 loader = DataLoader(
     list(zip(X, y)), 
     batch_size=32, 
     shuffle=True
 )
 
-# Training Loop
+# Training loop
 for batch_x, batch_y in loader:
-    # Hier kommt dein ML Model
+    # Your ML model goes here
     pass
 ```
 
-### 4️⃣ Für Graph Neural Networks
+### 4️⃣ For Graph Neural Networks
 
 ```python
 from astro_lab.data import AstroDataset
 
-# Graph Dataset erstellen
+# Create graph dataset
 dataset = AstroDataset(
     survey="gaia",
     max_samples=1000,
-    k_neighbors=8  # 8 nächste Nachbarn
+    k_neighbors=8  # 8 nearest neighbors
 )
 
-# Graph anschauen
+# Inspect graph
 graph = dataset[0]
-print(f"Graph: {graph.num_nodes} Knoten, {graph.num_edges} Kanten")
+print(f"Graph: {graph.num_nodes} nodes, {graph.num_edges} edges")
 
-# Für PyTorch Geometric
+# For PyTorch Geometric
 from torch_geometric.loader import DataLoader
 graph_loader = DataLoader([graph], batch_size=1)
 ```
 
-## 🗂️ Verfügbare Daten
+## 🗂️ Available Data
 
-| Survey | Was | Anzahl | Features | Verwendung |
+| Survey | What | Count | Features | Usage |
 |--------|-----|--------|----------|------------|
-| **Gaia** | Sterne | 5k-50k | Position, Helligkeit, Bewegung | Stellar Classification |
-| **SDSS** | Galaxien | 1k-10k | Farben, Redshift, Morphologie | Galaxy Classification |
-| **NSA** | Galaxien | 1k-5k | Sérsic Profile, Masse | Galaxy Evolution |
-| **LINEAR** | Asteroiden | 500-2k | Lichtkurven, Perioden | Variable Stars |
+| **Gaia** | Stars | 5k-50k | Position, brightness, motion | Stellar Classification |
+| **SDSS** | Galaxies | 1k-10k | Colors, redshift, morphology | Galaxy Classification |
+| **NSA** | Galaxies | 1k-5k | Sérsic profiles, mass | Galaxy Evolution |
+| **LINEAR** | Asteroids | 500-2k | Light curves, periods | Variable Stars |
 
-## 🚀 Schnellstart-Rezepte
+## 🚀 Quick Start Recipes
 
-### Rezept 1: Stellar Classification
+### Recipe 1: Stellar Classification
 
 ```python
-# 1. Daten laden
+# 1. Load data
 from astro_lab.data import load_gaia_data
-sterne = load_gaia_data(max_samples=10000)
+stars = load_gaia_data(max_samples=10000)
 
-# 2. Features extrahieren (G, BP, RP Magnitudes)
-magnitudes = sterne.data[:, 5:8]  # Spalten 5,6,7 sind G,BP,RP
-farben = magnitudes[:, 1] - magnitudes[:, 2]  # BP-RP Farbe
+# 2. Extract features (G, BP, RP magnitudes)
+magnitudes = stars.data[:, 5:8]  # Columns 5,6,7 are G,BP,RP
+colors = magnitudes[:, 1] - magnitudes[:, 2]  # BP-RP color
 
-# 3. Einfache Klassifikation
+# 3. Simple classification
 import numpy as np
-# Rote Riesen (BP-RP > 1.0), Hauptreihe (0.5-1.0), Blaue Sterne (<0.5)
-labels = np.where(farben > 1.0, 2, np.where(farben > 0.5, 1, 0))
+# Red giants (BP-RP > 1.0), main sequence (0.5-1.0), blue stars (<0.5)
+labels = np.where(colors > 1.0, 2, np.where(colors > 0.5, 1, 0))
 
-# 4. Training/Test Split
+# 4. Training/test split
 from sklearn.model_selection import train_test_split
 X_train, X_test, y_train, y_test = train_test_split(
     magnitudes, labels, test_size=0.2
@@ -113,32 +113,32 @@ X_train, X_test, y_train, y_test = train_test_split(
 print(f"Training: {len(X_train)}, Test: {len(X_test)}")
 ```
 
-### Rezept 2: Galaxy Morphology
+### Recipe 2: Galaxy Morphology
 
 ```python
-# 1. Galaxien laden
+# 1. Load galaxies
 from astro_lab.data import load_sdss_data
-galaxien = load_sdss_data(max_samples=5000)
+galaxies = load_sdss_data(max_samples=5000)
 
-# 2. Farben berechnen (g-r, r-i)
-mags = galaxien.data[:, 4:7]  # g,r,i Magnitudes
+# 2. Calculate colors (g-r, r-i)
+mags = galaxies.data[:, 4:7]  # g,r,i magnitudes
 g_r = mags[:, 0] - mags[:, 1]  # g-r
 r_i = mags[:, 1] - mags[:, 2]  # r-i
 
-# 3. Morphologie-Features
-features = np.column_stack([g_r, r_i, galaxien.data[:, 2]])  # + Redshift
+# 3. Morphology features
+features = np.column_stack([g_r, r_i, galaxies.data[:, 2]])  # + redshift
 
-# 4. Elliptical (rot), Spiral (blau) Trennung
+# 4. Elliptical (red), spiral (blue) separation
 # Ellipticals: g-r > 0.7, Spirals: g-r < 0.7
 morphology = (g_r > 0.7).astype(int)
 
 print(f"Ellipticals: {np.sum(morphology)}, Spirals: {len(morphology) - np.sum(morphology)}")
 ```
 
-### Rezept 3: Lightning Training
+### Recipe 3: Lightning Training
 
 ```python
-# 1. DataModule erstellen
+# 1. Create DataModule
 from astro_lab.data import AstroDataModule
 import lightning as L
 
@@ -150,21 +150,21 @@ datamodule = AstroDataModule(
     val_ratio=0.15
 )
 
-# 2. Einfaches Model
+# 2. Simple model
 class StellarClassifier(L.LightningModule):
     def __init__(self):
         super().__init__()
         self.net = torch.nn.Sequential(
-            torch.nn.Linear(8, 64),  # 8 Gaia Features
+            torch.nn.Linear(8, 64),  # 8 Gaia features
             torch.nn.ReLU(),
-            torch.nn.Linear(64, 3)   # 3 Stellar Classes
+            torch.nn.Linear(64, 3)   # 3 stellar classes
         )
     
     def forward(self, x):
         return self.net(x)
     
     def training_step(self, batch, batch_idx):
-        # Hier deine Loss Function
+        # Your loss function here
         pass
 
 # 3. Training
@@ -173,124 +173,101 @@ trainer = L.Trainer(max_epochs=10)
 trainer.fit(model, datamodule)
 ```
 
-## 🔧 Häufige Probleme & Lösungen
+## 🔧 Common Problems & Solutions
 
-### Problem: "Keine echten Daten gefunden"
+### Problem: "No real data found"
 ```python
-# Lösung: Demo-Daten werden automatisch generiert
+# Solution: Demo data is automatically generated
 dataset = load_gaia_data(max_samples=1000)
-# ✅ Funktioniert immer, auch ohne Internet
+# ✅ Always works, even without internet
 ```
 
-### Problem: "Zu langsam bei großen Datasets"
+### Problem: "Too slow with large datasets"
 ```python
-# Lösung: Weniger Samples verwenden
-quick_data = load_gaia_data(max_samples=1000)  # Statt 50000
+# Solution: Use fewer samples
+quick_data = load_gaia_data(max_samples=1000)  # Instead of 50000
 ```
 
-### Problem: "Falsche Feature-Dimensionen"
+### Problem: "Wrong feature dimensions"
 ```python
-# Lösung: Shape checken
+# Solution: Check shape
 data = load_gaia_data(max_samples=100)
 print(f"Shape: {data.shape}")  # [100, 8]
-print(f"Features: {data.column_mapping}")  # Welche Spalte ist was
+print(f"Features: {data.column_mapping}")  # Which column is what
 ```
 
-## 📊 Was passiert intern?
+## 📊 What happens internally?
 
-### Demo-Daten Generation
-Wenn keine echten Kataloge da sind:
+1. **Auto-Download**: If no data exists, synthetic astronomical data is generated
+2. **Preprocessing**: Coordinates are converted, missing values handled
+3. **Graph Creation**: k-NN graphs are built for spatial relationships
+4. **Tensor Integration**: Native AstroLab tensor support for advanced workflows
+5. **Caching**: Processed data is cached for faster subsequent loads
+
+## 🎓 Next Steps
+
+Once you have your data loaded:
 
 ```python
-# Gaia Demo-Daten (realistisch)
-ra = np.random.uniform(0, 360, n_stars)      # Himmelskoordinaten
-dec = np.random.uniform(-90, 90, n_stars)
-g_mag = np.random.normal(12, 2, n_stars)     # G Magnitude ~12±2
-bp_rp = np.random.normal(0.8, 0.3, n_stars) # BP-RP Farbe
-parallax = np.random.exponential(2, n_stars) # Parallaxe
+# → Create PyTorch datasets
+dataset = torch.utils.data.TensorDataset(X, y)
+
+# → Build k-NN graphs
+from astro_lab.data import create_knn_graph
+graph = create_knn_graph(coordinates, k=8)
+
+# → Edge list for PyTorch Geometric
+edge_index = graph.edge_index
 ```
 
-### Graph Construction
-Für GNN Training:
+## 🔄 Data Flow Architecture
+
+```
+Raw Catalogs → Preprocessing → Feature Engineering → Graph Building → ML Ready
+     ↓              ↓              ↓                ↓            ↓
+   Parquet     Polars/Pandas    AstroLab Tensors   PyG Data    Training
+```
+
+## 💡 Pro Tips
+
+- **Start small**: Use `max_samples=1000` for testing
+- **Check dimensions**: Always verify tensor shapes before training
+- **Use caching**: Processed data is automatically cached
+- **Graph building**: k-NN graphs work best with k=8-16 for astronomical data
+- **Memory usage**: Large datasets (>100k objects) may need chunked processing
+
+## 🧪 Advanced Usage
+
+### Custom Data Loading
 
 ```python
-# k-NN Graph aus Himmelskoordinaten
-from sklearn.neighbors import NearestNeighbors
-coords = np.column_stack([ra, dec])
-nbrs = NearestNeighbors(n_neighbors=8)
-distances, indices = nbrs.fit(coords).kneighbors(coords)
-# → Edge List für PyTorch Geometric
+# Load with custom parameters
+data = load_gaia_data(
+    max_samples=50000,
+    magnitude_limit=18.0,  # Fainter limit
+    coordinate_range={"ra": [0, 90], "dec": [-30, 30]},  # Sky region
+    cache_dir="./my_cache"
+)
 ```
 
-## 🎓 Nächste Schritte
-
-### Nach dem Laden → ML Pipeline
+### Tensor Integration
 
 ```python
-# 1. Daten geladen ✅
-data = load_gaia_data(max_samples=5000)
+# Use native AstroLab tensors
+from astro_lab.tensors import SurveyTensor
 
-# 2. Feature Engineering
-def create_features(tensor_data):
-    # Farben berechnen
-    g = tensor_data[:, 5]
-    bp = tensor_data[:, 6] 
-    rp = tensor_data[:, 7]
-    
-    features = {
-        'colors': bp - rp,
-        'absolute_mag': g - 5 * np.log10(tensor_data[:, 2]) + 5,  # Mit Parallaxe
-        'proper_motion': np.sqrt(tensor_data[:, 3]**2 + tensor_data[:, 4]**2)
-    }
-    return np.column_stack(list(features.values()))
+survey_data = SurveyTensor.from_survey_data(
+    data=data,
+    survey_name="gaia",
+    coordinate_system="icrs"
+)
 
-features = create_features(data.data)
-
-# 3. Model Training
-from sklearn.ensemble import RandomForestClassifier
-model = RandomForestClassifier()
-# model.fit(features, labels)  # Deine Labels
+# → Automatically compatible model for Gaia data
+model = create_gaia_classifier(survey_data)
 ```
 
-### Integration mit anderen Modulen
+## 📖 Related Documentation
 
-```python
-# Mit astro_lab.models
-from astro_lab.models import ModelFactory
-
-data = load_gaia_data(max_samples=5000)
-model = ModelFactory.create_model("stellar_classification", survey="gaia")
-# → Automatisch passendes Model für Gaia Daten
-
-# Mit astro_lab.training  
-from astro_lab.training import LightningModule
-trainer = LightningModule(model, data)
-trainer.fit()
-```
-
-## 📝 Development Commands
-
-```bash
-# Schnelltest
-uv run python -c "from astro_lab.data import load_gaia_data; print('✅ Works')"
-
-# Alle Surveys testen
-uv run python -c "
-from astro_lab.data import SURVEY_CONFIGS
-for survey in SURVEY_CONFIGS.keys():
-    print(f'✅ {survey} available')
-"
-
-# Performance Test
-uv run python -c "
-import time
-from astro_lab.data import load_gaia_data
-start = time.time()
-data = load_gaia_data(max_samples=1000)
-print(f'⚡ Loaded in {time.time()-start:.2f}s')
-"
-```
-
----
-
-**TL;DR**: `load_gaia_data()` → Features extrahieren → ML Model trainieren → Fertig! 🚀 
+- [Training Guide](TRAINING.md) - Model training workflows
+- [Tensor System](TENSORS.md) - Advanced tensor operations
+- [Graph Networks](GRAPHS.md) - Graph neural network specifics 

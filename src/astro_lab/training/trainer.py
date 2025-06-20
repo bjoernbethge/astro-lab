@@ -476,7 +476,9 @@ class AstroTrainer(Trainer):
 
     def save_model(self, path: str) -> None:
         """Save model to specified path."""
-        self.astro_module.save_pretrained(path)
+        import torch
+
+        torch.save(self.astro_module.state_dict(), path)
 
     def list_checkpoints(self) -> List[Path]:
         """List all available checkpoints in the checkpoint directory."""
