@@ -13,50 +13,61 @@ data:
   dataset: gaia
   data_dir: data/processed
   batch_size: 64
-  num_workers: 0 # Windows multiprocessing fix
-  max_samples: 50000
+  num_workers: 4 # Improved for better performance
+  persistent_workers: true # Speed up dataloader worker initialization
+  max_samples: 100000 # More training data
   return_tensor: true
-  split_ratios: [0.7, 0.15, 0.15]
+  split_ratios: [0.8, 0.1, 0.1] # More training data
+
+  # Data augmentation and preprocessing
+  normalize: true
+  standardize: true
 
 training:
-  max_epochs: 50 # Reduced for optimization
-  learning_rate: 0.001 # Will be optimized
+  max_epochs: 10 # Quick test epochs
+  learning_rate: 0.01 # Will be optimized
   weight_decay: 0.0001
 
   # Early stopping for faster trials
-  patience: 15 # More patient for better convergence
+  patience: 5 # Faster stopping for testing
 
 # 🎯 Optuna Optimization Configuration
 optimization:
-  n_trials: 50
-  timeout: 7200 # 2 hours
-  study_name: gaia_stellar_classification
-  direction: maximize # Maximize validation accuracy
+  n_trials: 30 # Reduced for faster completion
+  timeout: 3600 # 1 hour
+  study_name: gaia_stellar_classification_v2
+  direction: minimize # Minimize validation loss instead
 
-  # Hyperparameter search space
+  # Less aggressive pruning
+  pruner:
+    type: median
+    n_startup_trials: 5
+    n_warmup_steps: 10
+
+  # Hyperparameter search space - focused ranges
   search_space:
     learning_rate:
       type: loguniform
-      low: 0.00001
-      high: 0.1
+      low: 0.001
+      high: 0.1 # Better range based on results
 
     hidden_dim:
       type: categorical
-      choices: [64, 128, 256, 512, 768]
+      choices: [64, 128, 256] # Focus on working sizes
 
     dropout:
       type: uniform
-      low: 0.05
-      high: 0.3
+      low: 0.1
+      high: 0.25 # Narrower range
 
     weight_decay:
       type: loguniform
-      low: 0.000001
+      low: 0.00001
       high: 0.001
 
     batch_size:
       type: categorical
-      choices: [32, 64, 128]
+      choices: [64, 128] # Stable batch sizes
 
 mlflow:
   tracking_uri: ./mlruns
@@ -71,4 +82,16 @@ mlflow:
 
 callbacks:
   early_stopping:
-    patience: 15
+    patience: 20
+    min_delta: 0.001
+    monitor: val_loss
+    mode: min
+
+  model_checkpoint:
+    monitor: val_loss
+    mode: min
+    save_top_k: 1
+    save_last: true
+
+  learning_rate_monitor:
+    logging_interval: epoch
