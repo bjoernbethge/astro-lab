@@ -159,7 +159,7 @@ SURVEY_CONFIGS = {
 
 def _polars_to_survey_tensor(
     df: pl.DataFrame, survey: str, survey_metadata: Optional[Dict[str, Any]] = None
-) -> "SurveyTensor":
+) -> Any:
     """
     Convert Polars DataFrame to SurveyTensor with survey-specific metadata.
 
@@ -960,42 +960,47 @@ def create_graph_datasets_from_splits(
 def _create_nsa_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create NSA galaxy graph."""
-    # Convert redshift to distance and create 3D coordinates
-    # Handle both uppercase and lowercase column names
-    z_col = "Z" if "Z" in df.columns else "z"
-    ra_col = "RA" if "RA" in df.columns else "ra"
-    dec_col = "DEC" if "DEC" in df.columns else "dec"
+    """Create NSA galaxy graph using SurveyTensor spatial integration."""
+    # 🌟 Create SurveyTensor first
+    survey_tensor = _polars_to_survey_tensor(df, "nsa")
 
-    z = df[z_col].to_numpy()
-    ra = df[ra_col].to_numpy()
-    dec = df[dec_col].to_numpy()
+    # 🌟 Get spatial tensor with 3D coordinates
+    try:
+        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
+        coords_3d = spatial_tensor.cartesian.numpy()  # [N, 3] Cartesian coordinates
 
-    # Simple redshift to distance conversion (Hubble flow)
-    c = 299792.458  # km/s
-    H0 = 70.0  # km/s/Mpc
-    distance = c * z / H0  # Mpc
+        print(
+            f"✅ Created NSA spatial tensor: {spatial_tensor.coordinate_system}, {coords_3d.shape}"
+        )
+    except Exception as e:
+        print(f"⚠️ NSA spatial tensor failed, falling back to manual coordinates: {e}")
+        # Fallback to manual 3D calculation from z (redshift)
+        coords = df.select(["ra", "dec"]).to_numpy()
+        z_values = (
+            df.select("z").to_numpy().flatten()
+            if "z" in df.columns
+            else np.ones(len(coords)) * 0.1
+        )
 
-    # Convert to 3D Cartesian coordinates
-    ra_rad = np.radians(ra)
-    dec_rad = np.radians(dec)
+        # Convert to 3D using simple cosmology (c*z/H0 approximation)
+        c_over_H0 = 3000.0  # Mpc, rough approximation
+        distances = c_over_H0 * z_values
 
-    x = distance * np.cos(dec_rad) * np.cos(ra_rad)
-    y = distance * np.cos(dec_rad) * np.sin(ra_rad)
-    z_coord = distance * np.sin(dec_rad)
+        # Convert spherical to Cartesian
+        ra_rad = np.radians(coords[:, 0])
+        dec_rad = np.radians(coords[:, 1])
 
-    coords_3d = np.column_stack([x, y, z_coord])
+        x = distances * np.cos(dec_rad) * np.cos(ra_rad)
+        y = distances * np.cos(dec_rad) * np.sin(ra_rad)
+        z = distances * np.sin(dec_rad)
 
-    # Create feature matrix - handle both uppercase and lowercase
-    feature_cols = [ra_col, dec_col, z_col]
-    available_cols = [col for col in feature_cols if col in df.columns]
+        coords_3d = np.column_stack([x, y, z])
 
-    # Add photometry if available (try both cases)
-    photo_cols = [
-        "petromag_r",
-        "petromag_g",
-        "petromag_i",
-        "mass",
+    # Create feature matrix with NSA-specific columns
+    feature_cols = ["ra", "dec", "z"]
+
+    # Add NSA photometry and morphology
+    nsa_cols = [
         "PETROMAG_R",
         "PETROMAG_G",
         "PETROMAG_I",
@@ -1003,7 +1008,7 @@ def _create_nsa_graph(
         "ELPETRO_MASS",
         "SERSIC_MASS",
     ]
-    available_cols.extend([col for col in photo_cols if col in df.columns])
+    available_cols = feature_cols + [col for col in nsa_cols if col in df.columns]
 
     features = df.select(available_cols).to_numpy()
     features = np.nan_to_num(features, nan=0.0)
@@ -1011,7 +1016,7 @@ def _create_nsa_graph(
     # Add 3D coordinates to features
     features = np.column_stack([features, coords_3d])
 
-    # Create k-nearest neighbor graph
+    # Create k-nearest neighbor graph using 3D coordinates
     nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
     nbrs.fit(coords_3d)
 
@@ -1044,9 +1049,23 @@ def _create_nsa_graph(
 def _create_gaia_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create Gaia stellar graph."""
-    # Use sky coordinates for Gaia
-    coords = df.select(["ra", "dec"]).to_numpy()
+    """Create Gaia stellar graph using SurveyTensor spatial integration."""
+    # 🌟 Create SurveyTensor first
+    survey_tensor = _polars_to_survey_tensor(df, "gaia")
+
+    # 🌟 Get spatial tensor with 3D coordinates
+    try:
+        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
+        coords_3d = spatial_tensor.cartesian.numpy()  # [N, 3] Cartesian coordinates
+
+        print(
+            f"✅ Created spatial tensor: {spatial_tensor.coordinate_system}, {coords_3d.shape}"
+        )
+    except Exception as e:
+        print(f"⚠️ Spatial tensor failed, falling back to manual coordinates: {e}")
+        # Fallback to manual calculation
+        coords = df.select(["ra", "dec"]).to_numpy()
+        coords_3d = coords  # Just use 2D for fallback
 
     # Create feature matrix
     feature_cols = ["ra", "dec", "phot_g_mean_mag", "bp_rp", "parallax"]
@@ -1055,23 +1074,33 @@ def _create_gaia_graph(
     features = df.select(available_cols).to_numpy()
     features = np.nan_to_num(features, nan=0.0)
 
-    # Create k-nearest neighbor graph on sky
-    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
-    nbrs.fit(np.radians(coords))
+    # Add 3D coordinates to features if available
+    if coords_3d.shape[1] == 3:
+        features = np.column_stack([features, coords_3d])
 
-    distances, indices = nbrs.kneighbors(np.radians(coords))
+    # Create k-nearest neighbor graph using 3D coordinates
+    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
+
+    if coords_3d.shape[1] == 3:
+        # Use 3D Cartesian coordinates
+        nbrs.fit(coords_3d)
+        distances, indices = nbrs.kneighbors(coords_3d)
+        distance_threshold_3d = distance_threshold  # Already in proper units
+    else:
+        # Fallback to sky coordinates
+        coords_sky = df.select(["ra", "dec"]).to_numpy()
+        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
+        nbrs.fit(np.radians(coords_sky))
+        distances, indices = nbrs.kneighbors(np.radians(coords_sky))
+        distance_threshold_3d = np.radians(distance_threshold / 3600.0)
 
     # Convert to edge list
     edge_list = []
     edge_weights = []
 
-    max_distance_rad = np.radians(
-        distance_threshold / 3600.0
-    )  # Convert arcsec to radians
-
     for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
         for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
-            if dist <= max_distance_rad:
+            if dist <= distance_threshold_3d:
                 edge_list.append([i, idx])
                 edge_weights.append(float(dist))
 
@@ -1098,11 +1127,17 @@ def _create_gaia_graph(
         # Fallback: random labels for demo
         y = torch.randint(0, 8, (len(features),), dtype=torch.long)
 
+    # Use proper 3D positions if available
+    pos_tensor = (
+        torch.tensor(coords_3d, dtype=torch.float) if coords_3d.shape[1] == 3 else None
+    )
+
     return Data(
         x=node_features,
         edge_index=edge_index,
         edge_attr=edge_attr,
         y=y,
+        pos=pos_tensor,
         num_nodes=len(features),
     )
 
@@ -1110,9 +1145,24 @@ def _create_gaia_graph(
 def _create_sdss_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create SDSS galaxy graph."""
-    # Similar to NSA but with SDSS-specific columns
-    coords = df.select(["ra", "dec"]).to_numpy()
+    """Create SDSS galaxy graph using SurveyTensor spatial integration."""
+    # 🌟 Create SurveyTensor first
+    survey_tensor = _polars_to_survey_tensor(df, "sdss")
+
+    # 🌟 Get spatial tensor with 3D coordinates
+    try:
+        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
+        coords_3d = spatial_tensor.cartesian.numpy()  # [N, 3] Cartesian coordinates
+        use_3d = True
+
+        print(
+            f"✅ Created SDSS spatial tensor: {spatial_tensor.coordinate_system}, {coords_3d.shape}"
+        )
+    except Exception as e:
+        print(f"⚠️ SDSS spatial tensor failed, using sky coordinates: {e}")
+        # Use sky coordinates for SDSS
+        coords_3d = df.select(["ra", "dec"]).to_numpy()
+        use_3d = False
 
     # Create feature matrix
     feature_cols = ["ra", "dec"]
@@ -1126,23 +1176,33 @@ def _create_sdss_graph(
     features = df.select(available_cols).to_numpy()
     features = np.nan_to_num(features, nan=0.0)
 
-    # Create k-nearest neighbor graph
-    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
-    nbrs.fit(np.radians(coords))
+    # Add coordinates to features if 3D
+    if use_3d and coords_3d.shape[1] == 3:
+        features = np.column_stack([features, coords_3d])
 
-    distances, indices = nbrs.kneighbors(np.radians(coords))
+    # Create k-nearest neighbor graph
+    if use_3d and coords_3d.shape[1] == 3:
+        # Use 3D Cartesian coordinates
+        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
+        nbrs.fit(coords_3d)
+        distances, indices = nbrs.kneighbors(coords_3d)
+        max_distance = distance_threshold
+    else:
+        # Use sky coordinates with haversine metric
+        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
+        nbrs.fit(np.radians(coords_3d))
+        distances, indices = nbrs.kneighbors(np.radians(coords_3d))
+        max_distance = np.radians(
+            distance_threshold / 3600.0
+        )  # Convert arcsec to radians
 
     # Convert to edge list
     edge_list = []
     edge_weights = []
 
-    max_distance_rad = np.radians(
-        distance_threshold / 3600.0
-    )  # Convert arcsec to radians
-
     for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
         for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
-            if dist <= max_distance_rad:
+            if dist <= max_distance:
                 edge_list.append([i, idx])
                 edge_weights.append(float(dist))
 
@@ -1151,10 +1211,18 @@ def _create_sdss_graph(
     edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
     node_features = torch.tensor(features, dtype=torch.float)
 
+    # Use proper positions
+    pos_tensor = (
+        torch.tensor(coords_3d, dtype=torch.float)
+        if use_3d and coords_3d.shape[1] == 3
+        else None
+    )
+
     return Data(
         x=node_features,
         edge_index=edge_index,
         edge_attr=edge_attr,
+        pos=pos_tensor,
         num_nodes=len(features),
     )
 

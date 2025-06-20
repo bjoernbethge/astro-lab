@@ -450,7 +450,7 @@ class Spatial3DTensor(AstroTensorBase):
         """Convert to PyTorch Geometric Data object for GNN processing."""
         if not TORCH_GEOMETRIC_AVAILABLE:
             raise ImportError("torch-geometric required")
-        
+
         if not SKLEARN_AVAILABLE:
             raise ImportError("sklearn required for graph construction")
 
@@ -476,53 +476,53 @@ class Spatial3DTensor(AstroTensorBase):
         x = torch.cat([pos, spherical_features], dim=-1)  # [N, 6]
 
         return Data(x=x, edge_index=edge_index, pos=pos)
-    
+
     def _create_knn_graph(self, pos: torch.Tensor, k: int) -> torch.Tensor:
         """Create k-NN graph using sklearn."""
         pos_np = pos.detach().cpu().numpy()
-        
+
         # Use BallTree for better performance with astronomical data
-        tree = BallTree(pos_np, metric='euclidean')
-        
+        tree = BallTree(pos_np, metric="euclidean")
+
         edge_list = []
         for i in range(len(pos_np)):
             # Find k+1 neighbors (including self), then exclude self
-            distances, indices = tree.query([pos_np[i]], k=k+1)
+            distances, indices = tree.query([pos_np[i]], k=k + 1)
             neighbors = indices[0][1:]  # Exclude self (first element)
-            
+
             for neighbor in neighbors:
                 edge_list.append([i, neighbor])
-        
+
         if edge_list:
             edge_index = torch.tensor(edge_list, dtype=torch.long).t()
         else:
             # Empty graph
             edge_index = torch.zeros((2, 0), dtype=torch.long)
-        
+
         return edge_index
-    
+
     def _create_radius_graph(self, pos: torch.Tensor, radius: float) -> torch.Tensor:
         """Create radius graph using sklearn."""
         pos_np = pos.detach().cpu().numpy()
-        
+
         # Use BallTree for radius queries
-        tree = BallTree(pos_np, metric='euclidean')
-        
+        tree = BallTree(pos_np, metric="euclidean")
+
         edge_list = []
         for i in range(len(pos_np)):
             # Find all neighbors within radius
             indices = tree.query_radius([pos_np[i]], r=radius)[0]
             neighbors = indices[indices != i]  # Exclude self
-            
+
             for neighbor in neighbors:
                 edge_list.append([i, neighbor])
-        
+
         if edge_list:
             edge_index = torch.tensor(edge_list, dtype=torch.long).t()
         else:
             # Empty graph
             edge_index = torch.zeros((2, 0), dtype=torch.long)
-        
+
         return edge_index
 
     def transform_coordinates(self, target_system: str) -> "Spatial3DTensor":
@@ -549,6 +549,10 @@ class Spatial3DTensor(AstroTensorBase):
             raise ValueError(f"Unsupported coordinate system: {target_system}")
 
         return self.from_astropy(transformed, unit=self.unit)
+
+    def distance_to_origin(self) -> torch.Tensor:
+        """Calculate distance from each point to the origin."""
+        return torch.sqrt(torch.sum(self.cartesian**2, dim=1))
 
     def __len__(self) -> int:
         """Number of spatial points."""

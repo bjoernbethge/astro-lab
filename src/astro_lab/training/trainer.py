@@ -75,6 +75,7 @@ class AstroTrainer(Trainer):
         enable_swa: bool = False,
         patience: int = 10,
         experiment_name: str = "astro_experiment",
+        survey: str = "gaia",
         checkpoint_dir: Optional[Union[str, Path]] = None,
         **kwargs,
     ):
@@ -89,6 +90,7 @@ class AstroTrainer(Trainer):
 
         self.astro_module = lightning_module
         self.experiment_name = experiment_name
+        self.survey = survey
 
         # Automatic hardware detection
         accelerator = "gpu" if torch.cuda.is_available() else "cpu"
@@ -100,6 +102,11 @@ class AstroTrainer(Trainer):
         mode = "min"
         gradient_clip_val = 1.0
         accumulate_grad_batches = 1
+
+        # Setup results structure
+        self.results_structure = data_config.ensure_results_directories(
+            survey, experiment_name
+        )
 
         # Setup checkpoint directory using data_config
         self.checkpoint_dir = self._setup_checkpoint_dir(
@@ -141,9 +148,12 @@ class AstroTrainer(Trainer):
         )
 
         print("🚀 AstroTrainer initialized:")
+        print(f"   - Survey: {survey}")
+        print(f"   - Experiment: {experiment_name}")
         print(f"   - Acceleration: {accelerator}")
         print(f"   - Precision: {precision}")
         print(f"   - Checkpoints: {self.checkpoint_dir}")
+        print(f"   - Results: {self.results_structure['base']}")
 
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str
@@ -508,6 +518,112 @@ class AstroTrainer(Trainer):
             if checkpoint not in protected_files:
                 checkpoint.unlink()
                 print(f"🗑️  Removed old checkpoint: {checkpoint.name}")
+
+    def save_best_models_to_results(self, top_k: int = 3) -> Dict[str, Path]:
+        """Save top K best models to organized results structure."""
+        import shutil
+        from datetime import datetime
+
+        if not self.results_structure:
+            print("❌ No results structure available")
+            return {}
+
+        models_dir = self.results_structure["models"]
+
+        # Get all checkpoints sorted by validation loss (best first)
+        checkpoints = []
+        for checkpoint_file in self.list_checkpoints():
+            # Extract validation loss from filename if available
+            name = checkpoint_file.name
+            if "best_" in name and "_" in name:
+                try:
+                    # Pattern: experiment_best_epoch_loss_timestamp.ckpt
+                    parts = name.split("_")
+                    for i, part in enumerate(parts):
+                        if part == "best" and i + 2 < len(parts):
+                            loss_str = parts[i + 2].replace(".ckpt", "").split("_")[0]
+                            loss = float(loss_str)
+                            checkpoints.append((loss, checkpoint_file))
+                            break
+                except (ValueError, IndexError):
+                    continue
+
+        # Sort by loss (best first) and take top K
+        checkpoints.sort(key=lambda x: x[0])
+        best_checkpoints = checkpoints[:top_k]
+
+        saved_models = {}
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        for rank, (loss, checkpoint_file) in enumerate(best_checkpoints):
+            # Create clean, descriptive filename
+            if rank == 0:
+                target_name = "best_model.ckpt"
+            else:
+                target_name = f"model_rank_{rank + 1}.ckpt"
+            target_path = models_dir / target_name
+
+            # Copy checkpoint to results
+            shutil.copy2(checkpoint_file, target_path)
+            saved_models[f"rank_{rank}"] = target_path
+
+            print(f"💾 Saved {target_name}: val_loss={loss:.3f}")
+
+        # Create README for models
+        self._create_models_readme(saved_models, best_checkpoints)
+
+        return saved_models
+
+    def _create_models_readme(
+        self, saved_models: Dict[str, Path], checkpoints_info: List
+    ):
+        """Create README for saved models."""
+        readme_path = self.results_structure["models"] / "README.md"
+        from datetime import datetime
+
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write(f"# Best Models - {self.survey.upper()} {self.experiment_name}\n\n")
+            f.write(f"**Survey**: {self.survey}\n")
+            f.write(f"**Experiment**: {self.experiment_name}\n")
+            f.write(
+                f"**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+            )
+            f.write("## Models\n\n")
+
+            for rank, (loss, original_path) in enumerate(checkpoints_info):
+                if f"rank_{rank}" in saved_models:
+                    model_path = saved_models[f"rank_{rank}"]
+                    f.write(f"### Rank {rank} - {model_path.name}\n")
+                    f.write(f"- **Validation Loss**: {loss:.6f}\n")
+                    f.write(f"- **Original**: {original_path.name}\n")
+                    f.write(
+                        f"- **Size**: {model_path.stat().st_size / 1024:.1f} KB\n\n"
+                    )
+
+            f.write("## Usage\n\n")
+            f.write("```python\n")
+            f.write("from astro_lab.training.trainer import AstroTrainer\n\n")
+            f.write("# Load best model\n")
+            f.write(
+                f'model = AstroTrainer.load_from_checkpoint("{saved_models.get("rank_0", "")}")\n'
+            )
+            f.write("```\n")
+
+        print(f"📄 Created models README: {readme_path}")
+
+    def get_results_summary(self) -> Dict[str, Any]:
+        """Get comprehensive results summary."""
+        from datetime import datetime
+
+        return {
+            "survey": self.survey,
+            "experiment": self.experiment_name,
+            "timestamp": datetime.now().isoformat(),
+            "results_structure": {k: str(v) for k, v in self.results_structure.items()},
+            "best_model_path": self.best_model_path,
+            "last_model_path": self.last_model_path,
+            "total_checkpoints": len(self.list_checkpoints()),
+        }
 
     @classmethod
     def from_config(

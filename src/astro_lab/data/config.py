@@ -48,6 +48,11 @@ class DataConfig:
         return self.experiments_dir / "checkpoints"
 
     @property
+    def results_dir(self) -> Path:
+        """Results directory for organized model outputs."""
+        return self.base_dir / "results"
+
+    @property
     def configs_dir(self) -> Path:
         """Configuration files directory."""
         return self.base_dir / "configs"
@@ -85,6 +90,7 @@ class DataConfig:
             self.processed_dir,
             self.cache_dir,
             self.experiments_dir,
+            self.results_dir,
             self.configs_dir,
         ]
 
@@ -115,6 +121,30 @@ class DataConfig:
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"🧪 Created experiment directories for {experiment_name}")
+
+    def get_results_structure(
+        self, survey: str, experiment_name: str
+    ) -> Dict[str, Path]:
+        """Get organized results directory structure for survey/experiment."""
+        base_results = self.results_dir / survey / experiment_name
+
+        return {
+            "base": base_results,
+            "models": base_results / "models",
+            "plots": base_results / "plots",
+            "optuna_plots": base_results / "plots" / "optuna",
+        }
+
+    def ensure_results_directories(self, survey: str, experiment_name: str):
+        """Create organized results directory structure."""
+        structure = self.get_results_structure(survey, experiment_name)
+
+        # Create all directories
+        for dir_name, dir_path in structure.items():
+            dir_path.mkdir(parents=True, exist_ok=True)
+
+        print(f"📊 Created results structure for {survey}/{experiment_name}")
+        return structure
 
     def get_experiment_paths(self, experiment_name: str) -> Dict[str, Path]:
         """Get all paths for an experiment."""

@@ -4,9 +4,9 @@
 model:
   type: gaia_classifier
   params:
-    hidden_dim: 128 # Will be optimized
+    hidden_dim: 64 # 🏆 OPTIMIZED from Trial 7 (best: 1.596 loss)
     num_classes: 8
-    dropout: 0.1 # Will be optimized
+    dropout: 0.10 # 🏆 OPTIMIZED from Trial 7 (minimal overfitting)
     use_batch_norm: true
 
 data:
@@ -24,12 +24,12 @@ data:
   standardize: true
 
 training:
-  max_epochs: 10 # Quick test epochs
-  learning_rate: 0.01 # Will be optimized
+  max_epochs: 50 # Production epochs
+  learning_rate: 0.0142 # 🏆 OPTIMIZED from Trial 7 (best: 1.596 loss)
   weight_decay: 0.0001
 
-  # Early stopping for faster trials
-  patience: 5 # Faster stopping for testing
+  # Early stopping for production
+  patience: 15 # More patient for final training
 
 # 🎯 Optuna Optimization Configuration
 optimization:

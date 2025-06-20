@@ -313,19 +313,46 @@ class SurveyTensor(AstroTensorBase, ValidationMixin):
         if not coord_columns:
             raise ValueError("No spatial coordinate columns found")
 
-        coord_indices = [
-            self.column_mapping[col]
-            for col in coord_columns
-            if col in self.column_mapping
-        ]
+        # Get RA and Dec (required)
+        if "ra" not in coord_columns or "dec" not in coord_columns:
+            raise ValueError("RA and Dec columns required for spatial tensor")
 
-        spatial_data = self._data[:, coord_indices]
+        ra = self.get_column("ra")
+        dec = self.get_column("dec")
 
-        # Use astronomical constants for coordinate systems
-        spatial_tensor = Spatial3DTensor(
-            data=spatial_data,
-            coordinate_system="icrs",  # Default to ICRS
-            unit="degree" if "ra" in coord_columns else "radian",
+        # Get distance information if available
+        distance = None
+        distance_unit = "Mpc"
+
+        if "parallax" in coord_columns:
+            parallax = self.get_column("parallax")
+            # Convert parallax (mas) to distance (pc), then to Mpc
+            # distance = 1000 / parallax_mas, but handle invalid parallax
+            valid_parallax = torch.clamp(parallax, min=0.001)  # Avoid division by zero
+            distance = 1000.0 / valid_parallax / 1000.0  # Convert mas -> pc -> Mpc
+            distance_unit = "Mpc"
+        elif "distance" in coord_columns:
+            distance = self.get_column("distance")
+            distance_unit = "Mpc"  # Assume Mpc for surveys
+        elif "z" in coord_columns:
+            # Convert redshift to distance using Hubble law
+            z = self.get_column("z")
+            c_over_H0 = 3000.0  # Mpc, rough approximation for c/H0
+            distance = c_over_H0 * z
+            distance_unit = "Mpc"
+        else:
+            # No distance information, use unit distance
+            distance = torch.ones_like(ra)
+            distance_unit = "dimensionless"
+
+        # Create Spatial3DTensor from spherical coordinates
+        spatial_tensor = Spatial3DTensor.from_spherical(
+            ra=ra,
+            dec=dec,
+            distance=distance,
+            coordinate_system="icrs",
+            unit=distance_unit,
+            angular_unit="deg",
             survey_name=self.survey_name,
         )
 

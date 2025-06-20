@@ -153,6 +153,10 @@ def train_from_config(config_path: str) -> None:
         else:
             lightning_module = model
 
+        # Extract survey from data config for organized results
+        survey = enhanced_data_config.get("dataset", "gaia")
+        trainer_config["survey"] = survey
+
         trainer = AstroTrainer(lightning_module=lightning_module, **trainer_config)
 
         # Train
@@ -160,6 +164,19 @@ def train_from_config(config_path: str) -> None:
         trainer.fit(datamodule=datamodule)
 
         logger.info("🎉 Training completed!")
+
+        # Automatically organize results
+        logger.info("📊 Organizing results...")
+        try:
+            saved_models = trainer.save_best_models_to_results(top_k=3)
+
+            results_summary = trainer.get_results_summary()
+            logger.info(
+                f"📁 Results saved to: {results_summary['results_structure']['base']}"
+            )
+
+        except Exception as e:
+            logger.warning(f"⚠️ Could not organize results: {e}")
 
     except Exception as e:
         logger.error(f"❌ Training failed: {e}")
@@ -253,14 +270,37 @@ def optimize_from_config(
             mlflow_params["experiment_name"] = experiment_name
             logger.info(f"🔧 Overriding experiment name from CLI: {experiment_name}")
 
-        best_params = trainer.optimize_hyperparameters(
+        # Extract survey for organized results
+        survey = enhanced_data_config.get("dataset", "gaia")
+        trainer_config["survey"] = survey
+
+        # Import OptunaTrainer with new structure
+        from astro_lab.training.optuna_trainer import OptunaTrainer
+
+        # Create model factory for Optuna
+        def model_factory(trial):
+            """Create model with trial suggestions."""
+            return create_model_from_config(model_config)
+
+        # Create OptunaTrainer with organized results
+        optuna_trainer = OptunaTrainer(
+            model_factory=model_factory,
             train_dataloader=datamodule.train_dataloader(),
             val_dataloader=datamodule.val_dataloader(),
-            search_space=search_space,
-            **optuna_params,
+            mlflow_experiment=f"{mlflow_params['experiment_name']}_optuna",
+            survey=survey,
+            experiment_name=mlflow_params["experiment_name"],
         )
 
-        logger.info(f"✨ Best parameters: {best_params}")
+        # Run optimization
+        study = optuna_trainer.optimize(**optuna_params)
+
+        logger.info(f"✨ Best parameters: {study.best_params}")
+        logger.info(f"✨ Best validation loss: {study.best_value}")
+
+        # Get results location
+        results_dir = optuna_trainer.results_structure["base"]
+        logger.info(f"📊 Optuna results saved to: {results_dir}")
 
     except Exception as e:
         logger.error(f"❌ Optimization failed: {e}")
