@@ -11,7 +11,9 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import h5py
 import torch
+from astro_torch.data.datasets import TNG50GraphDataset, TNG50TemporalDataset
 
 from astro_lab.data import (
     create_graph_datasets_from_splits,
@@ -184,7 +186,6 @@ def stats_command(args):
         sys.exit(1)
 
     print(f"📂 Analyzing: {input_path}")
-
     try:
         df = load_catalog(input_path)
         stats = get_data_statistics(df)
@@ -245,254 +246,257 @@ def list_catalogs_command(args):
 
 
 def get_available_particle_types(hdf5_file: Path) -> List[str]:
-    """Get available particle types from TNG50 HDF5 file."""
-    try:
-        import h5py
-
-        particle_types = []
-        with h5py.File(hdf5_file, "r") as f:
-            for key in f.keys():
-                if key.startswith("PartType"):
-                    try:
-                        coords = f[key]["Coordinates"]  # type: ignore
-                        n_particles = len(coords)  # type: ignore
-                        if n_particles > 0:
-                            particle_types.append(key)
-                    except:
-                        pass  # Skip particle types without proper structure
-
-        return sorted(particle_types)
-    except ImportError:
-        print("❌ h5py required to scan particle types")
+    """Scans an HDF5 file and returns a list of found particle type keys."""
+    if not hdf5_file.exists():
+        print(f"❌ HDF5 file not found: {hdf5_file}")
         return []
+    try:
+        with h5py.File(hdf5_file, "r") as f:
+            return [key for key in f.keys() if key.startswith("PartType")]
     except Exception as e:
-        print(f"❌ Error scanning particle types: {e}")
+        print(f"Could not read HDF5 file {hdf5_file.name}: {e}")
         return []
 
 
 def process_tng50_command(args):
-    """Process TNG50 data - spezialisierte Funktion."""
-    try:
-        from astro_torch.data.datasets import TNG50GraphDataset
+    """
+    Process TNG50 simulation data by creating a single combined graph dataset.
+    This function now leverages the updated TNG50GraphDataset class,
+    which processes ALL particle types from ALL snapshots into one large graph.
+    """
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Handle --all-snapshots mode
-        if args.all_snapshots:
-            base_dir = (
-                Path(args.input) if args.input else Path("data/raw/TNG50-4/output")
-            )
+    print(f"📂 Output directory: {output_dir}")
+    print("🌌 Processing ALL particle types from ALL snapshots into a single graph...")
 
-            if not base_dir.exists():
-                print(f"❌ Base directory not found: {base_dir}")
-                sys.exit(1)
+    # Define file paths for the combined dataset
+    raw_parquet_file = Path("data/raw/tng50") / "tng50_combined.parquet"
 
-            # Find all snapshots
-            snap_files = []
-            for snapdir in base_dir.glob("snapdir_*"):
-                if snapdir.is_dir():
-                    snap_files.extend(snapdir.glob("snap_*.hdf5"))
+    # The processed file name for the combined dataset
+    temp_dataset_for_naming = TNG50GraphDataset(
+        root=str(output_dir),
+        radius=args.distance_threshold,
+    )
+    processed_graph_file = Path(temp_dataset_for_naming.processed_paths[0])
 
-            if not snap_files:
-                print(f"❌ No snapshot files found in: {base_dir}")
-                sys.exit(1)
-
-            snap_files.sort()
-            print(f"🌌 Processing {len(snap_files)} TNG50 snapshots into graphs")
-
-            success_count = 0
-            for i, snap_file in enumerate(snap_files, 1):
-                print(f"\n📊 Snapshot {i}/{len(snap_files)}: {snap_file.name}")
-                try:
-                    process_single_tng50_snapshot(snap_file, args)
-                    success_count += 1
-                except Exception as e:
-                    print(f"❌ Error processing {snap_file.name}: {e}")
-
+    # Handle --force flag: remove existing files
+    if args.force:
+        if raw_parquet_file.exists():
+            raw_parquet_file.unlink()
+            print(f"🗑️  Deleted existing combined raw file: {raw_parquet_file.name}")
+        if processed_graph_file.exists():
+            processed_graph_file.unlink()
             print(
-                f"\n✅ Batch processing complete: {success_count}/{len(snap_files)} snapshots processed"
+                f"🗑️  Deleted existing combined graph file: {processed_graph_file.name}"
             )
-            return
 
-        # Single snapshot mode
-        if not args.input:
-            print("❌ Input snapshot file required (or use --all-snapshots)")
-            sys.exit(1)
+    print("⏳ Initializing combined dataset...")
+    print(f"   - Max samples: {args.max_samples}")
+    print(f"   - Distance threshold (radius): {args.distance_threshold}")
+    print(f"   - Expecting raw file at: {raw_parquet_file}")
+    print(f"   - Expecting processed file at: {processed_graph_file}")
 
-        snap_file = Path(args.input)
-        if not snap_file.exists():
-            print(f"❌ Snapshot file not found: {snap_file}")
-            sys.exit(1)
+    # The TNG50GraphDataset will handle everything:
+    # 1. __init__ is called.
+    # 2. It checks for processed files.
+    # 3. If not found, it calls process().
+    # 4. process() checks for raw files.
+    # 5. If not found, it calls download().
+    # 6. download() extracts from ALL HDF5 snapshots and combines ALL particle types.
+    try:
+        dataset = TNG50GraphDataset(
+            root=str(output_dir),
+            radius=args.distance_threshold,
+            max_particles=args.max_samples,
+        )
 
-        print(f"🌌 Processing TNG50 snapshot into graphs: {snap_file.name}")
-        process_single_tng50_snapshot(snap_file, args)
+        if len(dataset) > 0:
+            print("✅ Successfully processed ALL particle types from ALL snapshots.")
+            print(f"   Graph saved to: {dataset.processed_paths[0]}")
+            print(f"   Total particles: {dataset[0].num_nodes:,}")
+            print(f"   Total edges: {dataset[0].num_edges:,}")
+        else:
+            print("⚠️ Warning: Processing resulted in an empty dataset.")
 
-    except ImportError as e:
-        print(f"❌ Missing dependencies: {e}")
-        print("   Please install: uv add torch torch-geometric")
-        sys.exit(1)
+    except FileNotFoundError as e:
+        print(f"❌ Error during processing: {e}")
+        print(
+            "   Please ensure raw TNG50 HDF5 snapshot files are available in 'data/raw/TNG50-4/output/snapdir_099/'."
+        )
     except Exception as e:
-        print(f"❌ Error processing TNG50 graphs: {e}")
-        sys.exit(1)
+        print(f"❌ An unexpected error occurred during processing: {e}")
+
+    print("\n✅ TNG50 processing complete.")
 
 
 def process_single_tng50_snapshot(snap_file: Path, args):
-    """Process a single TNG50 snapshot."""
-    from astro_torch.data.datasets import TNG50GraphDataset
-
-    # Determine particle types to process
-    if args.all:
-        print("🔍 Scanning snapshot for all available particle types...")
-        all_particle_types = get_available_particle_types(snap_file)
-        if not all_particle_types:
-            print("❌ No particle types found in snapshot")
-            sys.exit(1)
-        particle_types = all_particle_types
-        print(f"📋 Found particle types: {', '.join(particle_types)}")
-    else:
-        particle_types = [p.strip() for p in args.particle_types.split(",")]
-
-    # English particle type names
-    particle_names = {
-        "PartType0": "gas",
-        "PartType1": "dark_matter",
-        "PartType4": "stars",
-        "PartType5": "black_holes",
-    }
-
-    for ptype in particle_types:
-        if ptype not in particle_names:
-            print(f"⚠️  Unknown particle type: {ptype}")
-            continue
-
-        english_name = particle_names[ptype]
-        print(f"  🔄 {english_name.title()} ({ptype})")
-
-        # Create output directory
-        if args.output:
-            output_dir = Path(args.output) / english_name
-        else:
-            output_dir = Path("data/processed/tng50_graphs") / english_name
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Force mode: delete existing processed files
-        if args.force:
-            processed_dir = output_dir / "processed"
-            if processed_dir.exists():
-                for pt_file in processed_dir.glob("*.pt"):
-                    pt_file.unlink()
-                    print(f"🗑️  Deleted existing graph: {pt_file.name}")
-
-        # Create TNG50 graph dataset
-        dataset = TNG50GraphDataset(
-            root=str(output_dir),
-            snapshot_file=str(snap_file),
-            particle_type=ptype,
-            radius=args.radius,
-            max_particles=args.max_particles,
-        )
-
-        print(f"    ✅ Graph saved to: {output_dir}")
-
-        if args.stats and len(dataset) > 0:
-            data = dataset[0]
-            print(f"    📊 Nodes: {data.num_nodes:,}")  # type: ignore
-            print(f"    📊 Edges: {data.num_edges:,}")  # type: ignore
-            print(f"    📊 Features: {data.x.shape[1] if data.x is not None else 0}")  # type: ignore
-
-    print("✅ TNG50 graph processing complete!")
+    """
+    DEPRECATED: This function is no longer used. The logic is now
+    encapsulated within the TNG50GraphDataset class.
+    """
+    raise DeprecationWarning(
+        "process_single_tng50_snapshot is deprecated and should not be used. "
+        "Logic is now in TNG50GraphDataset."
+    )
 
 
 def list_tng50_snapshots_command(args):
-    """List available TNG50 snapshot files."""
-    tng50_dir = (
+    """List available snapshots and particle types in the TNG50 directory."""
+    base_dir = (
         Path(args.directory) if args.directory else Path("data/raw/TNG50-4/output")
     )
 
-    if not tng50_dir.exists():
-        print(f"❌ TNG50 directory not found: {tng50_dir}")
+    if not base_dir.exists():
+        print(f"❌ Directory not found: {base_dir}")
         sys.exit(1)
 
-    print(f"📂 TNG50 snapshots in: {tng50_dir}")
-
-    # Search recursively for snapshot files
-    snap_files = []
-    for snapdir in tng50_dir.glob("snapdir_*"):
-        if snapdir.is_dir():
-            snap_files.extend(snapdir.glob("snap_*.hdf5"))
-
-    if not snap_files:
-        print("❌ No TNG50 snapshot files found")
-        print("💡 Tried searching in snapdir_* subdirectories")
+    snap_dirs = sorted([d for d in base_dir.glob("snapdir_*") if d.is_dir()])
+    if not snap_dirs:
+        print(f"🤷 No 'snapdir_*' directories found in {base_dir}")
         return
 
-    snap_files.sort()
-
-    print(f"\n🌌 Found {len(snap_files)} snapshot files:")
-    for snap_file in snap_files:
-        size_mb = snap_file.stat().st_size / (1024 * 1024)
-        print(f"  • {snap_file.name} ({size_mb:.0f} MB)")
-
-    if args.inspect:
-        print(f"\n🔍 Inspecting first snapshot: {snap_files[0].name}")
-        try:
-            import h5py
-
-            with h5py.File(snap_files[0], "r") as f:
-                # Show header information if available
-                if "Header" in f:
-                    print("  📊 Simulation info: Header available")
-
-                # Show available particle types
-                print("  📋 Available particle types:")
-                for key in f.keys():
-                    if key.startswith("PartType"):
-                        try:
-                            coords = f[key]["Coordinates"]  # type: ignore
-                            n_particles = len(coords)  # type: ignore
-                            print(f"    • {key}: {n_particles:,} particles")
-                        except:
-                            print(f"    • {key}: (structure varies)")
-
-        except ImportError:
-            print("  ⚠️  h5py not available for inspection")
-        except Exception as e:
-            print(f"  ❌ Error inspecting snapshot: {e}")
+    print(f"Found {len(snap_dirs)} snapshot directories in {base_dir}:")
+    for snap_dir in snap_dirs:
+        print(f"\n📁 {snap_dir.name}")
+        snap_files = sorted(snap_dir.glob("snap_*.hdf5"))
+        if snap_files:
+            print(f"  - Found {len(snap_files)} HDF5 files.")
+            # Show particle types from the first file
+            try:
+                particle_types = get_available_particle_types(snap_files[0])
+                if particle_types:
+                    print(f"  - Available particle types: {', '.join(particle_types)}")
+                else:
+                    print("  - No particle types found in snapshot.")
+            except Exception as e:
+                print(f"  - Could not read particle types: {e}")
+        else:
+            print("  - No HDF5 files found.")
 
 
 def show_functions_command():
-    """Show available astro_lab.data functions."""
+    """Show available functions in the data module."""
     print("📦 Available astro_lab.data Functions:")
     print()
-    print("🔧 Preprocessing:")
-    print("  • preprocess_catalog(df)")
-    print("  • create_training_splits(df)")
-    print("  • save_splits_to_parquet(train, val, test, path, name)")
-    print("  • load_splits_from_parquet(path, name)")
-    print("  • get_data_statistics(df)")
-    print()
-    print("🌌 TNG50 Simulation:")
-    print("  • TNG50GraphDataset (optimized graph processing)")
-    print("  • create_tng50_dataloader()")
-    print("  • AstroDataManager.import_tng50_hdf5() (low-level)")
-    print("  • import_tng50() (legacy support)")
-    print()
-    print("📊 Data Management:")
-    print("  • AstroDataManager()")
-    print("  • list_catalogs()")
-    print("  • load_catalog(path)")
-    print("  • download_gaia(region, magnitude_limit)")
-    print("  • download_bright_all_sky(magnitude_limit)")
-    print()
-    print("📈 PyTorch Geometric Datasets:")
-    print("  • GaiaGraphDataset, NSAGraphDataset")
-    print("  • ExoplanetGraphDataset, RRLyraeDataset")
-    print("  • SatelliteOrbitDataset, SDSSSpectralDataset")
-    print("  • create_*_dataloader() functions")
-    print()
-    print("🔬 Transformations:")
-    print("  • AddAstronomicalColors, AddDistanceFeatures")
-    print("  • CoordinateSystemTransform")
-    print("  • get_stellar_transforms(), get_galaxy_transforms()")
+    # List key functions from the data module
+    funcs = [
+        "load_catalog",
+        "preprocess_catalog",
+        "create_training_splits",
+        "save_splits_to_parquet",
+        "load_splits_from_parquet",
+        "create_graph_from_dataframe",
+        "create_graph_datasets_from_splits",
+        "get_data_statistics",
+        "list_catalogs",
+        "load_gaia_data",
+        "load_nsa_data",
+        "load_sdss_data",
+    ]
+    for func in sorted(funcs):
+        print(f"  • {func}")
+
+
+def process_tng50_temporal_command(args):
+    """
+    Process TNG50 simulation data as temporal graphs with cosmological evolution.
+    This function leverages the TNG50TemporalDataset class to create a sequence
+    of spatial graphs from ALL particle types across ALL snapshots, preserving
+    the temporal evolution and cosmological redshift information.
+    """
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"📂 Output directory: {output_dir}")
+    print("🌌 Processing TNG50 as temporal graphs with cosmological evolution...")
+    print(
+        f"   - Temporal edges: {'Enabled' if args.enable_temporal_edges else 'Disabled'}"
+    )
+    print(f"   - Temporal edge weight: {args.temporal_edge_weight}")
+
+    # Define file paths for the temporal dataset
+    raw_parquet_file = Path("data/raw/tng50") / "tng50_temporal_combined.parquet"
+
+    # The processed file name for the temporal dataset
+    temp_dataset_for_naming = TNG50TemporalDataset(
+        root=str(output_dir),
+        radius=args.distance_threshold,
+        enable_temporal_edges=args.enable_temporal_edges,
+        temporal_edge_weight=args.temporal_edge_weight,
+    )
+    processed_graph_file = Path(temp_dataset_for_naming.processed_paths[0])
+
+    # Handle --force flag: remove existing files
+    if args.force:
+        if raw_parquet_file.exists():
+            raw_parquet_file.unlink()
+            print(f"🗑️  Deleted existing temporal raw file: {raw_parquet_file.name}")
+        if processed_graph_file.exists():
+            processed_graph_file.unlink()
+            print(
+                f"🗑️  Deleted existing temporal graph file: {processed_graph_file.name}"
+            )
+
+    print("⏳ Initializing temporal dataset...")
+    print(f"   - Max samples per snapshot: {args.max_samples}")
+    print(f"   - Distance threshold (radius): {args.distance_threshold}")
+    print(f"   - Expecting raw file at: {raw_parquet_file}")
+    print(f"   - Expecting processed file at: {processed_graph_file}")
+
+    # The TNG50TemporalDataset will handle everything:
+    # 1. __init__ is called.
+    # 2. It checks for processed files.
+    # 3. If not found, it calls process().
+    # 4. process() checks for raw files.
+    # 5. If not found, it calls download().
+    # 6. download() extracts from ALL HDF5 snapshots with temporal info.
+    # 7. process() creates separate graphs for each snapshot with temporal edges.
+    try:
+        dataset = TNG50TemporalDataset(
+            root=str(output_dir),
+            radius=args.distance_threshold,
+            max_particles=args.max_samples,
+            enable_temporal_edges=args.enable_temporal_edges,
+            temporal_edge_weight=args.temporal_edge_weight,
+        )
+
+        if len(dataset) > 0:
+            print("✅ Successfully processed TNG50 as temporal graphs.")
+            print(f"   Temporal graphs saved to: {dataset.processed_paths[0]}")
+            print(f"   Number of temporal graphs: {len(dataset)}")
+
+            # Show info about each temporal graph
+            total_particles = 0
+            total_edges = 0
+            for i, graph in enumerate(dataset):
+                particles = graph.num_nodes
+                edges = graph.num_edges
+                redshift = graph.redshift.item()
+                time_gyr = graph.time_gyr.item()
+                total_particles += particles
+                total_edges += edges
+                print(
+                    f"   Graph {i}: {particles:,} particles, {edges:,} edges, z={redshift:.2f}, {time_gyr:.1f} Gyr ago"
+                )
+
+            print(f"   Total particles across all snapshots: {total_particles:,}")
+            print(f"   Total edges across all snapshots: {total_edges:,}")
+
+            if args.enable_temporal_edges:
+                print("   Temporal edges enabled between consecutive snapshots")
+        else:
+            print("⚠️ Warning: Processing resulted in an empty temporal dataset.")
+
+    except FileNotFoundError as e:
+        print(f"❌ Error during processing: {e}")
+        print(
+            "   Please ensure raw TNG50 HDF5 snapshot files are available in 'data/raw/TNG50-4/output/snapdir_099/'."
+        )
+    except Exception as e:
+        print(f"❌ An unexpected error occurred during processing: {e}")
+
+    print("\n✅ TNG50 temporal processing complete.")
 
 
 def preprocess_data(
@@ -504,232 +508,363 @@ def preprocess_data(
     enable_clustering: bool = False,
     enable_statistics: bool = False,
     enable_crossmatch: bool = False,
+    k_neighbors: int = 8,
+    distance_threshold: float = 50.0,
+    force: bool = False,
+    particle_type: Optional[str] = None,
+    all_snapshots: bool = False,
 ) -> None:
     """
-    Preprocess astronomical data with advanced tensor operations.
-
-    Parameters
-    ----------
-    survey : str
-        Survey name (gaia, sdss, nsa)
-    config_path : str, optional
-        Path to configuration file
-    output_dir : str, optional
-        Output directory for results
-    max_samples : int
-        Maximum number of samples to process
-    enable_features : bool
-        Enable feature engineering
-    enable_clustering : bool
-        Enable clustering analysis
-    enable_statistics : bool
-        Enable statistical analysis
-    enable_crossmatch : bool
-        Enable cross-matching
+    Hauptfunktion für das Preprocessing von verschiedenen astronomischen Surveys.
+    Diese Funktion automatisiert das Laden, Verarbeiten und Speichern von Daten
+    für Surveys wie Gaia, NSA, SDSS und TNG50.
     """
-    print(f"🚀 Starting advanced preprocessing for {survey}")
+    print(f"🚀 Starting preprocessing for survey: {survey.upper()}")
 
-    # Use simplified processing
-    from ..data.processing import SimpleAstroProcessor, SimpleProcessingConfig
+    # Lade Konfiguration
+    if config_path:
+        data_config = DataConfig.from_yaml(config_path)
+    else:
+        # Fallback auf eine Standardkonfiguration, falls kein Pfad angegeben ist
+        data_config = DataConfig()
+        print("⚠️ No config path provided, using default DataConfig.")
 
-    # Create processing config
-    processing_config = SimpleProcessingConfig(
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        batch_size=1000,
-        enable_feature_engineering=enable_features,
-        enable_clustering=enable_clustering,
-        enable_statistics=enable_statistics,
-    )
+    # Setze das Output-Verzeichnis
+    if output_dir:
+        data_config.set_output_dir(output_dir)
+    output_path = Path(data_config.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    print(f"📂 Output directory set to: {output_path}")
 
-    # Create processor
-    processor = SimpleAstroProcessor(processing_config)
-
-    # Load survey data as tensor
-    print(f"📊 Loading {survey} data...")
-    try:
-        if survey.lower() == "gaia":
-            survey_tensor = load_gaia_data(max_samples=max_samples, return_tensor=True)
-        elif survey.lower() == "sdss":
-            survey_tensor = load_sdss_data(max_samples=max_samples, return_tensor=True)
-        elif survey.lower() == "nsa":
-            survey_tensor = load_nsa_data(max_samples=max_samples, return_tensor=True)
-        elif survey.lower() == "exoplanet":
-            print("🪐 Exoplanet cosmic web analysis - use direct script:")
-            print("   python process_exoplanet_cosmic_web.py")
-            return
-        elif survey.lower() == "tng50":
-            print("🌌 TNG50 simulation processing - using integrated tensor system:")
-            # Use the new integrated TNG50 tensor loading
-            from astro_lab.data.core import load_tng50_data
-
-            # Set output directory for TNG50 first
-            if output_dir is None:
-                output_dir_path = Path("results") / survey / "preprocessing"
-            else:
-                output_dir_path = Path(output_dir)
-
-            output_dir_path.mkdir(parents=True, exist_ok=True)
-
-            # Process all available particle types
-            particle_types = ["PartType0", "PartType1", "PartType4", "PartType5"]
-            all_results = {}
-
-            for particle_type in particle_types:
-                try:
-                    print(f"\n🔄 Processing {particle_type}...")
-                    survey_tensor = load_tng50_data(
-                        max_samples=max_samples,
-                        particle_type=particle_type,
-                        return_tensor=True,
-                    )
-
-                    # Process with tensor operations
-                    results = processor.process(survey_tensor)
-                    all_results[particle_type] = results
-
-                    print(
-                        f"   ✅ {particle_type}: {len(survey_tensor):,} particles processed"
-                    )
-
-                except FileNotFoundError:
-                    print(f"   ⚠️ {particle_type}: Data not found, skipping")
-                    continue
-                except Exception as e:
-                    print(f"   ❌ {particle_type}: Error - {e}")
-                    continue
-
-            if all_results:
-                print(
-                    f"\n✅ TNG50 processing complete: {len(all_results)} particle types processed"
-                )
-
-                # Save combined results
-                results_file = output_dir_path / "tng50_preprocessing_results.txt"
-                with open(results_file, "w") as f:
-                    f.write("TNG50 Preprocessing Results\n")
-                    f.write("=" * 30 + "\n\n")
-                    for ptype, results in all_results.items():
-                        f.write(f"{ptype}:\n")
-                        if "feature_tensor" in results:
-                            f.write(f"  Features: {results['n_features']}\n")
-                        if "cluster_tensor" in results:
-                            f.write(f"  Clusters: {results['n_clusters']}\n")
-                        if "stats_tensor" in results:
-                            f.write(f"  Statistics: {results['n_functions']}\n")
-                        f.write("\n")
-
-                print(f"   📄 Results saved to: {results_file}")
-            else:
-                print("❌ No TNG50 data could be processed")
-            return
-        else:
-            raise ValueError(f"Unknown survey: {survey}")
-    except Exception as e:
-        print(f"❌ Failed to load {survey} data: {e}")
+    # Survey-spezifische Logik
+    if survey == "tng50":
+        # Hier wird direkt die neue, refaktorisierte TNG50-Logik genutzt
+        # Wir erstellen ein "args"-ähnliches Objekt, um die Funktion wiederzuverwenden
+        tng50_args = argparse.Namespace(
+            output_dir=str(output_path),
+            particle_type=particle_type,
+            max_samples=max_samples,
+            k_neighbors=k_neighbors,
+            distance_threshold=distance_threshold,
+            force=force,
+            all_snapshots=all_snapshots,
+        )
+        process_tng50_command(tng50_args)
         return
 
-    # Set output directory
-    if output_dir is None:
-        output_dir_path = Path("results") / survey / "preprocessing"
-    else:
-        output_dir_path = Path(output_dir)
+    # Lade Daten für andere Surveys
+    try:
+        if survey == "gaia":
+            df = load_gaia_data(max_g_mag=18, max_rows=max_samples)
+        elif survey == "nsa":
+            df = load_nsa_data(max_rows=max_samples)
+        elif survey == "sdss":
+            df = load_sdss_data(max_rows=max_samples)
+        else:
+            print(f"❌ Unknown survey: {survey}")
+            return
+        print(f"✅ Loaded {len(df):,} rows for {survey.upper()} survey.")
+    except Exception as e:
+        print(f"❌ Failed to load data for {survey.upper()}: {e}")
+        return
 
-    output_dir_path.mkdir(parents=True, exist_ok=True)
+    # Datenverarbeitung
+    processor_config = SimpleProcessingConfig(
+        k_neighbors=k_neighbors, distance_threshold=distance_threshold
+    )
+    processor = SimpleAstroProcessor(config=processor_config)
+    processed_data = processor.process(
+        dataframe=df,
+        enable_features=enable_features,
+        enable_clustering=enable_clustering,
+        enable_statistics=enable_statistics,
+        enable_crossmatch=enable_crossmatch,
+    )
+    print("✅ Data processing complete.")
 
-    # Process the data
-    print("🔬 Processing tensor data...")
-    results = processor.process(survey_tensor)
+    # Speichere die Ergebnisse
+    # Der Prozessor gibt ein Dictionary mit den Ergebnissen zurück.
+    # Wir speichern jedes Ergebnis als separate Parquet-Datei.
+    for key, result_df in processed_data.items():
+        if result_df is None or result_df.is_empty():
+            continue
 
-    # Print summary
-    print(f"\n✅ Preprocessing completed for {survey}")
-    print(f"   Survey: {survey_tensor.survey_name}")
-    print(f"   Objects processed: {len(survey_tensor)}")
-    print(f"   Data shape: {survey_tensor._data.shape}")
-    print(f"   Results saved to: {output_dir}")
+        file_name = f"{survey}_{key}.parquet"
+        file_path = output_path / file_name
 
-    # Print detailed results
-    if "feature_tensor" in results:
-        print(f"   ✅ Feature engineering: {results['n_features']} features")
-    if "feature_error" in results:
-        print(f"   ⚠️ Feature engineering failed: {results['feature_error']}")
+        if force and file_path.exists():
+            file_path.unlink()
+            print(f"🗑️  Deleted existing file: {file_path.name}")
 
-    if "cluster_tensor" in results:
-        print(
-            f"   ✅ Clustering: {results['n_clusters']} clusters, {results['n_noise']} noise points"
-        )
-    if "clustering_error" in results:
-        print(f"   ⚠️ Clustering failed: {results['clustering_error']}")
+        result_df.write_parquet(file_path)
+        print(f"💾 Saved '{key}' data to {file_path}")
 
-    if "stats_tensor" in results:
-        print(f"   ✅ Statistics: {results['n_functions']} functions computed")
-    if "statistics_error" in results:
-        print(f"   ⚠️ Statistics failed: {results['statistics_error']}")
-
-    # Save basic results
-    results_file = output_dir / f"{survey}_preprocessing_results.txt"
-    with open(results_file, "w") as f:
-        f.write(f"Preprocessing Results for {survey}\n")
-        f.write(f"Survey: {survey_tensor.survey_name}\n")
-        f.write(f"Objects: {len(survey_tensor)}\n")
-        f.write(f"Shape: {survey_tensor._data.shape}\n")
-        f.write(f"Device: {survey_tensor._data.device}\n")
-
-    print(f"   📄 Summary saved to: {results_file}")
+    print("\n🎉 Preprocessing finished successfully!")
 
 
 def main():
-    """Main preprocessing CLI."""
-    parser = argparse.ArgumentParser(
-        description="Advanced astronomical data preprocessing with tensor operations"
+    """Main CLI entry point."""
+    parser = argparse.ArgumentParser(description="AstroLab Data Preprocessing CLI")
+    parser.add_argument(
+        "-v", "--version", action="version", version="AstroLab CLI 0.1.0"
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # process command
+    process_parser = subparsers.add_parser(
+        "process",
+        help="Load, preprocess, and save a catalog file, including graph generation.",
+    )
+    process_parser.add_argument("input", help="Path to the input catalog file")
+    process_parser.add_argument("--output", help="Path to the output file or directory")
+    process_parser.add_argument(
+        "--stats", action="store_true", help="Show statistics of the original data"
+    )
+    process_parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing output files"
+    )
+    process_parser.add_argument(
+        "--clean-nulls",
+        type=float,
+        default=0.9,
+        help="Threshold for dropping columns with nulls",
+    )
+    process_parser.add_argument(
+        "--min-observations", type=int, default=10, help="Minimum observations filter"
+    )
+    process_parser.add_argument(
+        "--magnitude-columns", help="Comma-separated magnitude column names"
+    )
+    process_parser.add_argument(
+        "--coordinate-columns", help="Comma-separated coordinate column names"
+    )
+    process_parser.add_argument(
+        "--create-splits", action="store_true", help="Create train/val/test splits"
+    )
+    process_parser.add_argument("--test-size", type=float, default=0.2)
+    process_parser.add_argument("--val-size", type=float, default=0.2)
+    process_parser.add_argument("--random-state", type=int, default=42)
+    process_parser.add_argument(
+        "--shuffle", action="store_true", help="Shuffle data before splitting"
+    )
+    process_parser.set_defaults(func=process_catalog_command)
+
+    # stats command
+    stats_parser = subparsers.add_parser(
+        "stats", help="Show detailed statistics for a catalog file"
+    )
+    stats_parser.add_argument("input", help="Path to the catalog file to analyze")
+    stats_parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show detailed column info"
+    )
+    stats_parser.set_defaults(func=stats_command)
+
+    # load-splits command
+    load_splits_parser = subparsers.add_parser(
+        "load-splits", help="Load and display information about saved splits"
+    )
+    load_splits_parser.add_argument("path", help="Path to the directory with splits")
+    load_splits_parser.add_argument("dataset", help="Base name of the dataset")
+    load_splits_parser.add_argument(
+        "--stats", action="store_true", help="Show stats for the training split"
+    )
+    load_splits_parser.set_defaults(func=load_splits_command)
+
+    # list-catalogs command
+    list_catalogs_parser = subparsers.add_parser(
+        "list-catalogs", help="List available raw catalogs"
+    )
+    list_catalogs_parser.set_defaults(func=list_catalogs_command)
+
+    # Unified 'run' command for different surveys
+    run_parser = subparsers.add_parser(
+        "run", help="Run preprocessing for a specific survey (e.g., gaia, nsa, tng50)"
+    )
+    run_parser.add_argument("survey", choices=["gaia", "nsa", "sdss", "tng50"])
+    run_parser.add_argument(
+        "--config-path", help="Path to the data configuration YAML."
+    )
+    run_parser.add_argument("--output-dir", help="Directory to save processed data.")
+    run_parser.add_argument(
+        "--max-samples", type=int, default=10000, help="Max rows to load."
+    )
+    run_parser.add_argument(
+        "--k-neighbors",
+        type=int,
+        default=8,
+        help="Number of nearest neighbors for graph construction.",
+    )
+    run_parser.add_argument(
+        "--distance-threshold",
+        type=float,
+        default=50.0,
+        help="Max distance for graph connections.",
+    )
+    run_parser.add_argument("--force", action="store_true", help="Force reprocessing.")
+    # TNG50 specific args for the 'run' command
+    run_parser.add_argument(
+        "--particle-type",
+        default="PartType4",
+        help="TNG50 particle type to process.",
+    )
+    run_parser.add_argument(
+        "--all-snapshots",
+        action="store_true",
+        help="Process all TNG50 particle types.",
+    )
+    run_parser.set_defaults(
+        func=lambda args: preprocess_data(
+            survey=args.survey,
+            config_path=args.config_path,
+            output_dir=args.output_dir,
+            max_samples=args.max_samples,
+            k_neighbors=args.k_neighbors,
+            distance_threshold=args.distance_threshold,
+            force=args.force,
+            particle_type=args.particle_type,
+            all_snapshots=args.all_snapshots,
+        )
     )
 
-    parser.add_argument(
-        "survey",
-        choices=["gaia", "sdss", "nsa", "exoplanet", "tng50"],
-        help="Survey to preprocess",
+    # Legacy survey-specific commands (will be deprecated later)
+    gaia_parser = subparsers.add_parser("gaia", help="Process Gaia data.")
+    nsa_parser = subparsers.add_parser("nsa", help="Process NSA catalog data.")
+    sdss_parser = subparsers.add_parser("sdss", help="Process SDSS spectral data.")
+    exoplanet_parser = subparsers.add_parser(
+        "exoplanet", help="Process NASA exoplanet data."
     )
 
-    parser.add_argument("--config", type=str, help="Path to configuration file")
-
-    parser.add_argument("--output-dir", type=str, help="Output directory for results")
-
-    parser.add_argument(
+    # tng50 (legacy, but now refactored)
+    tng50_parser = subparsers.add_parser(
+        "tng50", help="Process TNG50 simulation data into a single combined graph."
+    )
+    tng50_parser.add_argument(
+        "--output-dir",
+        default="data/results/tng50",
+        help="Directory to save processed data.",
+    )
+    tng50_parser.add_argument(
         "--max-samples",
         type=int,
         default=10000,
-        help="Maximum number of samples to process",
+        help="Maximum number of particles to sample (total across all types/snapshots).",
     )
-
-    parser.add_argument(
-        "--no-features", action="store_true", help="Disable feature engineering"
+    tng50_parser.add_argument(
+        "-k",
+        "--k-neighbors",
+        type=int,
+        default=8,
+        help="Number of nearest neighbors (not used for TNG50 radius search).",
     )
-
-    parser.add_argument(
-        "--enable-clustering", action="store_true", help="Enable clustering analysis"
+    tng50_parser.add_argument(
+        "--distance-threshold",
+        type=float,
+        default=1.0,  # Default radius for TNG50
+        help="Connection radius for graph construction (in simulation units).",
     )
-
-    parser.add_argument(
-        "--enable-statistics", action="store_true", help="Enable statistical analysis"
-    )
-
-    parser.add_argument(
-        "--enable-crossmatch",
+    tng50_parser.add_argument(
+        "--force",
         action="store_true",
-        help="Enable cross-matching capabilities",
+        help="Force reprocessing and overwrite existing files.",
     )
+    tng50_parser.set_defaults(func=process_tng50_command)
+
+    # tng50-temporal (new temporal graph version)
+    tng50_temporal_parser = subparsers.add_parser(
+        "tng50-temporal",
+        help="Process TNG50 simulation data as temporal graphs with cosmological evolution.",
+    )
+    tng50_temporal_parser.add_argument(
+        "--output-dir",
+        default="data/processed/tng50_temporal",
+        help="Directory to save processed temporal data.",
+    )
+    tng50_temporal_parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=10000,
+        help="Maximum number of particles per snapshot (total across all types).",
+    )
+    tng50_temporal_parser.add_argument(
+        "--distance-threshold",
+        type=float,
+        default=1.0,  # Default radius for TNG50
+        help="Connection radius for graph construction (in simulation units).",
+    )
+    tng50_temporal_parser.add_argument(
+        "--enable-temporal-edges",
+        action="store_true",
+        default=True,
+        help="Enable temporal edges between consecutive snapshots.",
+    )
+    tng50_temporal_parser.add_argument(
+        "--temporal-edge-weight",
+        type=float,
+        default=1.0,
+        help="Weight for temporal edges between snapshots.",
+    )
+    tng50_temporal_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force reprocessing and overwrite existing files.",
+    )
+    tng50_temporal_parser.set_defaults(func=process_tng50_temporal_command)
+
+    # list-tng50-snapshots
+    list_tng50_parser = subparsers.add_parser(
+        "list-tng50-snapshots",
+        help="List available TNG50 snapshot files and particle types.",
+    )
+    list_tng50_parser.add_argument(
+        "-d",
+        "--directory",
+        help="Directory to search for TNG50 snapshots (default: data/raw/TNG50-4/output).",
+    )
+    list_tng50_parser.set_defaults(func=list_tng50_snapshots_command)
+
+    # show-functions
+    show_functions_parser = subparsers.add_parser(
+        "show-functions", help="Show available data processing functions."
+    )
+    show_functions_parser.set_defaults(func=show_functions_command)
+
+    # Add shared arguments to relevant subparsers
+    for p in [
+        process_parser,
+        gaia_parser,
+        nsa_parser,
+        sdss_parser,
+        exoplanet_parser,
+    ]:
+        p.add_argument(
+            "-k",
+            "--k-neighbors",
+            type=int,
+            default=8,
+            help="Number of nearest neighbors for graph construction.",
+        )
+        p.add_argument(
+            "--distance-threshold",
+            type=float,
+            default=50.0,
+            help="Maximum distance for graph connections.",
+        )
 
     args = parser.parse_args()
 
-    preprocess_data(
-        survey=args.survey,
-        config_path=args.config,
-        output_dir=args.output_dir,
-        max_samples=args.max_samples,
-        enable_features=not args.no_features,
-        enable_clustering=args.enable_clustering,
-        enable_statistics=args.enable_statistics,
-        enable_crossmatch=args.enable_crossmatch,
-    )
+    # Check for dependencies before running any command
+    try:
+        import astro_torch  # noqa: F401
+        import torch_geometric  # noqa: F401
+    except ImportError:
+        print("❌ Missing essential dependencies.")
+        print("   Please install them by running: uv pip install torch torch-geometric")
+        sys.exit(1)
+
+    if hasattr(args, "func"):
+        args.func(args)
+    else:
+        parser.print_help()
 
 
 if __name__ == "__main__":

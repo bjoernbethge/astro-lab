@@ -176,13 +176,12 @@ class TNG50GraphDataset(InMemoryDataset):
     """
     PyTorch Geometric InMemoryDataset for TNG50 simulation data.
 
-    Creates spatial graphs from particle data with radius-based connections.
+    Creates a single large spatial graph from ALL particle types across ALL snapshots.
     """
 
     def __init__(
         self,
         root: Optional[str] = None,
-        particle_type: str = "PartType0",
         radius: float = 1.0,
         max_particles: int = 10000,
         transform=None,
@@ -196,12 +195,10 @@ class TNG50GraphDataset(InMemoryDataset):
         ----------
         root : str, optional
             Root directory for dataset files
-        particle_type : str, default "PartType0"
-            Type of particles to load
         radius : float, default 1.0
             Connection radius in simulation units
         max_particles : int, default 10000
-            Maximum number of particles to load
+            Maximum number of particles to load (total across all types/snapshots)
         transform : callable, optional
             Transform to apply to each graph
         pre_transform : callable, optional
@@ -209,7 +206,6 @@ class TNG50GraphDataset(InMemoryDataset):
         pre_filter : callable, optional
             Filter to apply before saving
         """
-        self.particle_type = particle_type
         self.radius = radius
         self.max_particles = max_particles
 
@@ -226,20 +222,164 @@ class TNG50GraphDataset(InMemoryDataset):
     @property
     def raw_file_names(self) -> List[str]:
         """Names of raw files to download."""
-        return [f"tng50_{self.particle_type.lower()}.parquet"]
+        return ["tng50_combined.parquet"]
 
     @property
     def processed_file_names(self) -> List[str]:
         """Names of processed files."""
-        return [f"tng50_graph_{self.particle_type.lower()}_r{self.radius:.1f}.pt"]
+        return [f"tng50_graph_all_particles_r{self.radius:.1f}.pt"]
 
     def download(self):
-        """Download raw data if needed."""
-        # Data should already be available from data manager
+        """Ensure raw Parquet data is available, else extract from ALL HDF5 snapshots."""
         raw_path = Path("data/raw/tng50") / self.raw_file_names[0]
         if not raw_path.exists():
             print(f"⚠️  Raw data not found: {raw_path}")
-            print("   Please download using the datasets tab first.")
+            print("   Trying to extract from ALL HDF5 snapshots...")
+            try:
+                from astro_torch.data.manager import AstroDataManager
+
+                manager = AstroDataManager()
+
+                # Find all snapshots (snap_099.0.hdf5 to snap_099.10.hdf5)
+                snapdir = Path("data/raw/TNG50-4/output/snapdir_099")
+                hdf5_files = sorted(snapdir.glob("snap_099.*.hdf5"))
+
+                if not hdf5_files:
+                    raise FileNotFoundError(f"No HDF5 files found in {snapdir}")
+
+                print(f"🌌 Found {len(hdf5_files)} snapshots to process")
+
+                # Process all snapshots and all particle types
+                all_particle_types = [
+                    "PartType0",
+                    "PartType1",
+                    "PartType4",
+                    "PartType5",
+                ]
+                combined_data = []
+
+                # Define the complete set of columns we want in the final dataset
+                # This ensures all particle types have the same structure
+                all_columns = [
+                    "x",
+                    "y",
+                    "z",  # Coordinates (always present)
+                    "mass",  # Mass (normalized from 'masses')
+                    "velocity_0",
+                    "velocity_1",
+                    "velocity_2",  # Velocities (normalized from 'velocities_*')
+                    "density",  # Density (only in gas)
+                    "temperature",  # Temperature (only in gas)
+                    "metallicity",  # Metallicity (only in gas/stars)
+                    "particle_type",  # Particle type identifier
+                    "snapshot_id",  # Snapshot identifier
+                ]
+
+                for snap_idx, hdf5_file in enumerate(hdf5_files):
+                    print(
+                        f"📊 Processing snapshot {snap_idx + 1}/{len(hdf5_files)}: {hdf5_file.name}"
+                    )
+
+                    for p_type in all_particle_types:
+                        try:
+                            # Import this particle type from this snapshot
+                            temp_parquet = manager.import_tng50_hdf5(
+                                hdf5_file,
+                                dataset_name=p_type,
+                                max_particles=2000000,  # 2,000,000 particles per snapshot per particle type for ~100MB
+                            )
+
+                            # Load the temporary parquet and normalize columns
+                            df = pl.read_parquet(temp_parquet)
+
+                            # Normalize column names to match our standard format
+                            column_mapping = {}
+                            for col in df.columns:
+                                if col == "masses":
+                                    column_mapping[col] = "mass"
+                                elif col.startswith("velocities_"):
+                                    # velocities_0 -> velocity_0
+                                    new_name = col.replace("velocities_", "velocity_")
+                                    column_mapping[col] = new_name
+                                else:
+                                    # Keep other columns as is
+                                    column_mapping[col] = col
+
+                            # Rename columns
+                            df = df.rename(column_mapping)
+
+                            # Add particle type and snapshot info
+                            df = df.with_columns(
+                                [
+                                    pl.lit(p_type).alias("particle_type"),
+                                    pl.lit(snap_idx).alias("snapshot_id"),
+                                ]
+                            )
+
+                            # Add missing columns with default values
+                            missing_columns = [
+                                col for col in all_columns if col not in df.columns
+                            ]
+                            for col in missing_columns:
+                                if col in ["density", "temperature", "metallicity"]:
+                                    # Use 0.0 for missing physical properties
+                                    df = df.with_columns(pl.lit(0.0).alias(col))
+                                elif col == "mass":
+                                    # Use 1.0 for missing mass (normalized)
+                                    df = df.with_columns(pl.lit(1.0).alias(col))
+                                elif col.startswith("velocity_"):
+                                    # Use 0.0 for missing velocities
+                                    df = df.with_columns(pl.lit(0.0).alias(col))
+
+                            # Ensure all columns are in the correct order
+                            df = df.select(all_columns)
+
+                            # Normalize data types to Float32 for all numeric columns
+                            # except particle_type (string) and snapshot_id (integer)
+                            numeric_columns = [
+                                col
+                                for col in all_columns
+                                if col not in ["particle_type", "snapshot_id"]
+                            ]
+                            for col in numeric_columns:
+                                df = df.with_columns(pl.col(col).cast(pl.Float32))
+
+                            # Ensure snapshot_id is Int32
+                            df = df.with_columns(pl.col("snapshot_id").cast(pl.Int32))
+
+                            combined_data.append(df)
+                            print(
+                                f"   ✅ {p_type}: {len(df)} particles, {len(df.columns)} columns"
+                            )
+
+                        except Exception as e:
+                            print(f"   ⚠️ {p_type}: {e}")
+                            continue
+
+                if not combined_data:
+                    raise FileNotFoundError(
+                        "No particle data could be extracted from snapshots!"
+                    )
+
+                # Combine all data
+                print("🔄 Combining all particle data...")
+                combined_df = pl.concat(combined_data)
+
+                # Save combined data
+                raw_path.parent.mkdir(parents=True, exist_ok=True)
+                combined_df.write_parquet(raw_path)
+
+                print(f"✅ Combined data saved: {len(combined_df):,} total particles")
+
+                # Clean up temporary files
+                for temp_file in Path("data/raw/tng50").glob("tng50_parttype*.parquet"):
+                    temp_file.unlink()
+
+            except Exception as e:
+                print(f"❌ TNG50 HDF5→Parquet-Import fehlgeschlagen: {e}")
+                raise
+        else:
+            print(f"✅ Raw data found: {raw_path}")
 
     def process(self):
         """Process raw data into graph format."""
@@ -249,20 +389,38 @@ class TNG50GraphDataset(InMemoryDataset):
         if not raw_path.exists():
             raise FileNotFoundError(f"Raw data not found: {raw_path}")
 
-        print(f"🔄 Processing TNG50 data: {raw_path.name}")
+        print(f"🔄 Processing TNG50 combined data: {raw_path.name}")
 
         # Load catalog with Polars
         df = pl.read_parquet(raw_path)
 
         # Limit number of particles
         if len(df) > self.max_particles:
-            df = df.sample(self.max_particles)
+            df = df.sample(n=self.max_particles, shuffle=True)
 
-        # Extract coordinates and features
+        # Extract coordinates and features dynamically
         coords = df.select(["x", "y", "z"]).to_numpy()
-        features = df.select(
-            ["x", "y", "z", "mass", "density", "temperature"]
-        ).to_numpy()
+
+        # Define potential features and select only those present in the dataframe
+        potential_features = [
+            "x",
+            "y",
+            "z",
+            "mass",
+            "density",
+            "temperature",
+            "velocity_0",
+            "velocity_1",
+            "velocity_2",
+            "metallicity",
+        ]
+        available_features = [f for f in potential_features if f in df.columns]
+
+        if not available_features:
+            raise ValueError("No feature columns found in the processed Parquet file.")
+
+        print(f"   Found available features: {available_features}")
+        features = df.select(available_features).to_numpy()
 
         # Handle missing values
         features = np.nan_to_num(features, nan=0.0)
@@ -306,6 +464,425 @@ class TNG50GraphDataset(InMemoryDataset):
 
         # Save processed data
         self.save([data], self.processed_paths[0])
+
+
+class TNG50TemporalDataset(InMemoryDataset):
+    """
+    PyTorch Geometric InMemoryDataset for TNG50 simulation data as temporal graphs.
+
+    Creates a sequence of spatial graphs from ALL particle types across ALL snapshots,
+    preserving the temporal evolution and cosmological redshift information.
+    """
+
+    def __init__(
+        self,
+        root: Optional[str] = None,
+        radius: float = 1.0,
+        max_particles: int = 10000,
+        enable_temporal_edges: bool = True,
+        temporal_edge_weight: float = 1.0,
+        transform=None,
+        pre_transform=None,
+        pre_filter=None,
+    ):
+        """
+        Initialize TNG50 temporal graph dataset.
+
+        Parameters
+        ----------
+        root : str, optional
+            Root directory for dataset files
+        radius : float, default 1.0
+            Connection radius in simulation units
+        max_particles : int, default 10000
+            Maximum number of particles per snapshot (total across all types)
+        enable_temporal_edges : bool, default True
+            Whether to add temporal edges between consecutive snapshots
+        temporal_edge_weight : float, default 1.0
+            Weight for temporal edges
+        transform : callable, optional
+            Transform to apply to each graph
+        pre_transform : callable, optional
+            Transform to apply before saving
+        pre_filter : callable, optional
+            Filter to apply before saving
+        """
+        self.radius = radius
+        self.max_particles = max_particles
+        self.enable_temporal_edges = enable_temporal_edges
+        self.temporal_edge_weight = temporal_edge_weight
+
+        # Set default root if not provided
+        if root is None:
+            root = "data/processed/tng50_temporal"
+
+        super().__init__(root, transform, pre_transform, pre_filter)
+
+        # Load processed data
+        if len(self.processed_file_names) > 0:
+            self.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self) -> List[str]:
+        """Names of raw files to download."""
+        return ["tng50_temporal_combined.parquet"]
+
+    @property
+    def processed_file_names(self) -> List[str]:
+        """Names of processed files."""
+        return [f"tng50_temporal_graphs_r{self.radius:.1f}.pt"]
+
+    def download(self):
+        """Ensure raw Parquet data is available, else extract from ALL HDF5 snapshots."""
+        raw_path = Path("data/raw/tng50") / self.raw_file_names[0]
+        if not raw_path.exists():
+            print(f"⚠️  Raw data not found: {raw_path}")
+            print("   Trying to extract from ALL HDF5 snapshots with temporal info...")
+            try:
+                from astro_torch.data.manager import AstroDataManager
+
+                manager = AstroDataManager()
+
+                # Find all snapshots (snap_099.0.hdf5 to snap_099.10.hdf5)
+                snapdir = Path("data/raw/TNG50-4/output/snapdir_099")
+                hdf5_files = sorted(snapdir.glob("snap_099.*.hdf5"))
+
+                if not hdf5_files:
+                    raise FileNotFoundError(f"No HDF5 files found in {snapdir}")
+
+                print(
+                    f"🌌 Found {len(hdf5_files)} snapshots to process as temporal sequence"
+                )
+
+                # Define redshift values for each snapshot (approximate)
+                # These are approximate redshifts for TNG50 snapshots
+                redshift_map = {
+                    "snap_099.0.hdf5": 0.0,  # Today
+                    "snap_099.1.hdf5": 0.1,  # ~1.3 Gyr ago
+                    "snap_099.2.hdf5": 0.2,  # ~2.5 Gyr ago
+                    "snap_099.3.hdf5": 0.3,  # ~3.4 Gyr ago
+                    "snap_099.4.hdf5": 0.4,  # ~4.2 Gyr ago
+                    "snap_099.5.hdf5": 0.5,  # ~5.0 Gyr ago
+                    "snap_099.6.hdf5": 0.6,  # ~5.7 Gyr ago
+                    "snap_099.7.hdf5": 0.7,  # ~6.4 Gyr ago
+                    "snap_099.8.hdf5": 0.8,  # ~7.0 Gyr ago
+                    "snap_099.9.hdf5": 0.9,  # ~7.5 Gyr ago
+                    "snap_099.10.hdf5": 1.0,  # ~7.8 Gyr ago
+                }
+
+                # Process all snapshots and all particle types
+                all_particle_types = [
+                    "PartType0",
+                    "PartType1",
+                    "PartType4",
+                    "PartType5",
+                ]
+                combined_data = []
+
+                # Define the complete set of columns we want in the final dataset
+                all_columns = [
+                    "x",
+                    "y",
+                    "z",  # Coordinates (always present)
+                    "mass",  # Mass (normalized from 'masses')
+                    "velocity_0",
+                    "velocity_1",
+                    "velocity_2",  # Velocities (normalized from 'velocities_*')
+                    "density",  # Density (only in gas)
+                    "temperature",  # Temperature (only in gas)
+                    "metallicity",  # Metallicity (only in gas/stars)
+                    "particle_type",  # Particle type identifier
+                    "snapshot_id",  # Snapshot identifier
+                    "redshift",  # Cosmological redshift
+                    "time_gyr",  # Time in Gyr ago
+                    "scale_factor",  # Cosmological scale factor
+                ]
+
+                for snap_idx, hdf5_file in enumerate(hdf5_files):
+                    redshift = redshift_map.get(hdf5_file.name, 0.0)
+                    time_gyr = self._redshift_to_time(redshift)
+                    scale_factor = 1.0 / (1.0 + redshift)
+
+                    print(
+                        f"📊 Processing snapshot {snap_idx + 1}/{len(hdf5_files)}: {hdf5_file.name} (z={redshift:.2f}, {time_gyr:.1f} Gyr ago)"
+                    )
+
+                    for p_type in all_particle_types:
+                        try:
+                            # Import this particle type from this snapshot
+                            temp_parquet = manager.import_tng50_hdf5(
+                                hdf5_file,
+                                dataset_name=p_type,
+                                max_particles=2000000,  # 2,000,000 particles per snapshot per particle type for ~100MB
+                            )
+
+                            # Load the temporary parquet and normalize columns
+                            df = pl.read_parquet(temp_parquet)
+
+                            # Normalize column names to match our standard format
+                            column_mapping = {}
+                            for col in df.columns:
+                                if col == "masses":
+                                    column_mapping[col] = "mass"
+                                elif col.startswith("velocities_"):
+                                    # velocities_0 -> velocity_0
+                                    new_name = col.replace("velocities_", "velocity_")
+                                    column_mapping[col] = new_name
+                                else:
+                                    # Keep other columns as is
+                                    column_mapping[col] = col
+
+                            # Rename columns
+                            df = df.rename(column_mapping)
+
+                            # Add temporal and particle type info
+                            df = df.with_columns(
+                                [
+                                    pl.lit(p_type).alias("particle_type"),
+                                    pl.lit(snap_idx).alias("snapshot_id"),
+                                    pl.lit(redshift).alias("redshift"),
+                                    pl.lit(time_gyr).alias("time_gyr"),
+                                    pl.lit(scale_factor).alias("scale_factor"),
+                                ]
+                            )
+
+                            # Add missing columns with default values
+                            missing_columns = [
+                                col for col in all_columns if col not in df.columns
+                            ]
+                            for col in missing_columns:
+                                if col in ["density", "temperature", "metallicity"]:
+                                    # Use 0.0 for missing physical properties
+                                    df = df.with_columns(pl.lit(0.0).alias(col))
+                                elif col == "mass":
+                                    # Use 1.0 for missing mass (normalized)
+                                    df = df.with_columns(pl.lit(1.0).alias(col))
+                                elif col.startswith("velocity_"):
+                                    # Use 0.0 for missing velocities
+                                    df = df.with_columns(pl.lit(0.0).alias(col))
+
+                            # Ensure all columns are in the correct order
+                            df = df.select(all_columns)
+
+                            # Normalize data types to Float32 for all numeric columns
+                            # except particle_type (string) and snapshot_id (integer)
+                            numeric_columns = [
+                                col
+                                for col in all_columns
+                                if col not in ["particle_type", "snapshot_id"]
+                            ]
+                            for col in numeric_columns:
+                                df = df.with_columns(pl.col(col).cast(pl.Float32))
+
+                            # Ensure snapshot_id is Int32
+                            df = df.with_columns(pl.col("snapshot_id").cast(pl.Int32))
+
+                            combined_data.append(df)
+                            print(
+                                f"   ✅ {p_type}: {len(df)} particles, {len(df.columns)} columns"
+                            )
+
+                        except Exception as e:
+                            print(f"   ⚠️ {p_type}: {e}")
+                            continue
+
+                if not combined_data:
+                    raise FileNotFoundError(
+                        "No particle data could be extracted from snapshots!"
+                    )
+
+                # Combine all data
+                print("🔄 Combining all particle data with temporal information...")
+                combined_df = pl.concat(combined_data)
+
+                # Save combined data
+                raw_path.parent.mkdir(parents=True, exist_ok=True)
+                combined_df.write_parquet(raw_path)
+
+                print(
+                    f"✅ Combined temporal data saved: {len(combined_df):,} total particles"
+                )
+
+                # Clean up temporary files
+                for temp_file in Path("data/raw/tng50").glob("tng50_parttype*.parquet"):
+                    temp_file.unlink()
+
+            except Exception as e:
+                print(f"❌ TNG50 HDF5→Parquet-Import fehlgeschlagen: {e}")
+                raise
+        else:
+            print(f"✅ Raw temporal data found: {raw_path}")
+
+    def _redshift_to_time(self, redshift: float) -> float:
+        """
+        Convert redshift to time in Gyr ago.
+
+        This is an approximation using a simple cosmology.
+        """
+        if redshift == 0:
+            return 0.0
+
+        # Simple approximation: t ≈ 13.8 * (1 - 1/(1+z)^1.5) Gyr
+        # This is a rough estimate for a flat universe with Ωm=0.3
+        return 13.8 * (1.0 - 1.0 / ((1.0 + redshift) ** 1.5))
+
+    def process(self):
+        """Process raw data into temporal graph format."""
+        # Load raw catalog
+        raw_path = Path("data/raw/tng50") / self.raw_file_names[0]
+
+        if not raw_path.exists():
+            raise FileNotFoundError(f"Raw data not found: {raw_path}")
+
+        print(f"🔄 Processing TNG50 temporal data: {raw_path.name}")
+
+        # Load catalog with Polars
+        df = pl.read_parquet(raw_path)
+
+        # Get unique snapshot IDs and sort them
+        snapshot_ids = sorted(df["snapshot_id"].unique().to_list())
+        print(f"   Creating {len(snapshot_ids)} temporal graphs...")
+
+        temporal_graphs = []
+
+        for snap_idx in snapshot_ids:
+            # Filter data for this snapshot
+            snap_df = df.filter(pl.col("snapshot_id") == snap_idx)
+
+            # Limit number of particles per snapshot
+            if len(snap_df) > self.max_particles:
+                snap_df = snap_df.sample(n=self.max_particles, shuffle=True)
+
+            # Extract coordinates and features
+            coords = snap_df.select(["x", "y", "z"]).to_numpy()
+
+            # Define potential features and select only those present in the dataframe
+            potential_features = [
+                "x",
+                "y",
+                "z",
+                "mass",
+                "density",
+                "temperature",
+                "velocity_0",
+                "velocity_1",
+                "velocity_2",
+                "metallicity",
+                "redshift",
+                "time_gyr",
+                "scale_factor",
+            ]
+            available_features = [f for f in potential_features if f in snap_df.columns]
+
+            if not available_features:
+                raise ValueError(
+                    "No feature columns found in the processed Parquet file."
+                )
+
+            print(
+                f"   Snapshot {snap_idx}: {len(snap_df)} particles, {len(available_features)} features"
+            )
+            features = snap_df.select(available_features).to_numpy()
+
+            # Handle missing values
+            features = np.nan_to_num(features, nan=0.0)
+
+            # Create radius-based graph for this snapshot
+            from sklearn.neighbors import radius_neighbors_graph
+
+            # Use radius neighbors
+            adjacency = radius_neighbors_graph(
+                coords, radius=self.radius, mode="connectivity"
+            )
+
+            # Convert to edge list
+            edge_list = np.array(adjacency.nonzero()).T
+            edge_index = torch.tensor(edge_list.T, dtype=torch.long)
+
+            # Calculate edge distances
+            edge_distances = []
+            for i, j in edge_list:
+                dist = np.linalg.norm(coords[i] - coords[j])
+                edge_distances.append(dist)
+
+            edge_attr = torch.tensor(edge_distances, dtype=torch.float).unsqueeze(1)
+            node_features = torch.tensor(features, dtype=torch.float)
+
+            # Create graph for this snapshot
+            data = Data(
+                x=node_features,
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+                num_nodes=len(features),
+                # Add temporal metadata
+                snapshot_id=torch.tensor([snap_idx], dtype=torch.long),
+                redshift=torch.tensor([snap_df["redshift"][0]], dtype=torch.float),
+                time_gyr=torch.tensor([snap_df["time_gyr"][0]], dtype=torch.float),
+                scale_factor=torch.tensor(
+                    [snap_df["scale_factor"][0]], dtype=torch.float
+                ),
+            )
+
+            temporal_graphs.append(data)
+
+        # Add temporal edges between consecutive snapshots if enabled
+        if self.enable_temporal_edges and len(temporal_graphs) > 1:
+            print(
+                f"   Adding temporal edges between {len(temporal_graphs)} snapshots..."
+            )
+
+            for i in range(len(temporal_graphs) - 1):
+                current_graph = temporal_graphs[i]
+                next_graph = temporal_graphs[i + 1]
+
+                # Create temporal edges: connect each node to itself in the next snapshot
+                # This is a simple approach; more sophisticated methods could use particle tracking
+                current_nodes = current_graph.num_nodes
+                next_nodes = next_graph.num_nodes
+
+                # Create temporal edge indices
+                temporal_edge_index = torch.zeros(
+                    (2, min(current_nodes, next_nodes)), dtype=torch.long
+                )
+                temporal_edge_index[0] = torch.arange(
+                    min(current_nodes, next_nodes)
+                )  # Current snapshot
+                temporal_edge_index[1] = torch.arange(
+                    min(current_nodes, next_nodes)
+                )  # Next snapshot
+
+                # Add temporal edge weights
+                temporal_edge_attr = torch.full(
+                    (min(current_nodes, next_nodes), 1),
+                    self.temporal_edge_weight,
+                    dtype=torch.float,
+                )
+
+                # Store temporal edges in the current graph
+                current_graph.temporal_edge_index = temporal_edge_index
+                current_graph.temporal_edge_attr = temporal_edge_attr
+                current_graph.next_snapshot_id = torch.tensor([i + 1], dtype=torch.long)
+
+        # Ensure all graphs have the same attributes for collation
+        for i, graph in enumerate(temporal_graphs):
+            if not hasattr(graph, "temporal_edge_index"):
+                # Add empty temporal edges for graphs without them
+                graph.temporal_edge_index = torch.zeros((2, 0), dtype=torch.long)
+                graph.temporal_edge_attr = torch.zeros((0, 1), dtype=torch.float)
+                graph.next_snapshot_id = torch.tensor(
+                    [-1], dtype=torch.long
+                )  # -1 indicates no next snapshot
+
+        print(
+            f"   Created {len(temporal_graphs)} temporal graphs with temporal evolution"
+        )
+
+        # Apply pre-transform if provided
+        if self.pre_transform is not None:
+            temporal_graphs = [self.pre_transform(graph) for graph in temporal_graphs]
+
+        # Save processed data
+        self.save(temporal_graphs, self.processed_paths[0])
 
 
 class AstroPhotDataset(InMemoryDataset):
@@ -1397,13 +1974,13 @@ class SatelliteOrbitDataset(InMemoryDataset):
         nbrs = NearestNeighbors(n_neighbors=self.k_neighbors + 1, metric="euclidean")
         nbrs.fit(coords_3d)
 
-        distances, indices = nbrs.kneighbors(coords_3d)
+        distances_3d, indices = nbrs.kneighbors(coords_3d)
 
         # Convert to edge list (exclude self-connections)
         edge_list = []
         edge_weights = []
 
-        for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
+        for i, (dist_row, idx_row) in enumerate(zip(distances_3d, indices)):
             for j, (dist, idx) in enumerate(
                 zip(dist_row[1:], idx_row[1:])
             ):  # Skip self
