@@ -1,5 +1,7 @@
 """
 Advanced tensor processing for astronomical data.
+
+Enhanced with ML feature engineering, clustering, statistics, and cross-matching.
 """
 
 from pathlib import Path
@@ -9,6 +11,15 @@ import numpy as np
 import polars as pl
 import torch
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Import the new data processing tensors
+from astro_lab.tensors import (
+    ClusteringTensor,
+    CrossMatchTensor,
+    FeatureTensor,
+    StatisticsTensor,
+    SurveyTensor,
+)
 
 
 class ProcessingConfig(BaseModel):
@@ -27,6 +38,47 @@ class ProcessingConfig(BaseModel):
     )
     surveys: Optional[List[str]] = Field(
         default=None, description="List of surveys to process"
+    )
+
+    # New processing options
+    enable_feature_engineering: bool = Field(
+        default=True, description="Enable ML feature engineering"
+    )
+    enable_clustering: bool = Field(
+        default=False, description="Enable clustering analysis"
+    )
+    enable_statistics: bool = Field(
+        default=False, description="Enable statistical analysis"
+    )
+    enable_crossmatch: bool = Field(default=False, description="Enable cross-matching")
+
+    # Feature engineering options
+    feature_scaling_method: str = Field(
+        default="astronomical", description="Feature scaling method"
+    )
+    feature_imputation_method: str = Field(
+        default="astronomical", description="Missing value imputation method"
+    )
+    outlier_detection_method: str = Field(
+        default="astronomical", description="Outlier detection method"
+    )
+
+    # Clustering options
+    clustering_method: str = Field(default="dbscan", description="Clustering algorithm")
+    clustering_eps: float = Field(default=1.0, description="DBSCAN eps parameter")
+    clustering_min_samples: int = Field(
+        default=5, description="DBSCAN min_samples parameter"
+    )
+
+    # Statistics options
+    compute_luminosity_functions: bool = Field(
+        default=True, description="Compute luminosity functions"
+    )
+    compute_correlation_functions: bool = Field(
+        default=False, description="Compute correlation functions"
+    )
+    bootstrap_errors: bool = Field(
+        default=False, description="Compute bootstrap errors"
     )
 
     @field_validator("device")
@@ -70,16 +122,17 @@ class ProcessingConfig(BaseModel):
         super().__init__(**data)
 
 
-class AstroTensorProcessor:
+class AdvancedAstroProcessor:
     """
-    Simplified processor for astronomical tensors.
+    Advanced astronomical data processor with ML capabilities.
 
-    Focuses on core tensor operations without complex batch processing.
+    Integrates feature engineering, clustering, statistics, and cross-matching
+    for comprehensive astronomical data analysis.
     """
 
     def __init__(self, config: Optional[ProcessingConfig] = None):
         """
-        Initialize the tensor processor.
+        Initialize the advanced processor.
 
         Parameters
         ----------
@@ -94,290 +147,420 @@ class AstroTensorProcessor:
         else:
             self.device = torch.device(self.config.device)
 
-        print(f"🚀 AstroTensorProcessor initialized on {self.device}")
+        print(f"🚀 AdvancedAstroProcessor initialized on {self.device}")
+        print(f"   Features: {self.config.enable_feature_engineering}")
+        print(f"   Clustering: {self.config.enable_clustering}")
+        print(f"   Statistics: {self.config.enable_statistics}")
+        print(f"   CrossMatch: {self.config.enable_crossmatch}")
 
-    def to_device(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Move tensor to processing device."""
-        return tensor.to(self.device)
-
-    def create_spatial_data(
-        self,
-        coordinates: torch.Tensor,
-        ra: Optional[torch.Tensor] = None,
-        dec: Optional[torch.Tensor] = None,
-        distance: Optional[torch.Tensor] = None,
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Create spatial data dictionary from coordinate data.
-
-        Parameters
-        ----------
-        coordinates : torch.Tensor
-            Coordinate tensor [N, 3]
-        ra : torch.Tensor, optional
-            Right ascension
-        dec : torch.Tensor, optional
-            Declination
-        distance : torch.Tensor, optional
-            Distance values
-
-        Returns
-        -------
-        Dict[str, torch.Tensor]
-            Dictionary with spatial data
-        """
-        try:
-            # Move to device
-            coordinates = self.to_device(coordinates)
-
-            spatial_data = {
-                "coordinates": coordinates,
-                "coordinate_system": "icrs",
-                "unit": "Mpc",
-            }
-
-            if ra is not None:
-                spatial_data["ra"] = self.to_device(ra)
-            if dec is not None:
-                spatial_data["dec"] = self.to_device(dec)
-            if distance is not None:
-                spatial_data["distance"] = self.to_device(distance)
-
-            print(f"✅ Created spatial data: {coordinates.shape}")
-            return spatial_data
-
-        except Exception as e:
-            print(f"❌ Error creating spatial data: {e}")
-            return {}
-
-    def create_survey_data(
-        self,
-        features: torch.Tensor,
-        survey_name: str,
-        metadata: Optional[Dict[str, Any]] = None,
+    def process_survey_data(
+        self, survey_tensor: SurveyTensor, output_dir: Optional[Path] = None
     ) -> Dict[str, Any]:
         """
-        Create survey data dictionary from feature data.
+        Process survey data with advanced tensor operations.
 
         Parameters
         ----------
-        features : torch.Tensor
-            Feature tensor
-        survey_name : str
-            Name of the survey
-        metadata : Dict[str, Any], optional
-            Additional metadata
+        survey_tensor : SurveyTensor
+            Input survey tensor
+        output_dir : Path, optional
+            Output directory for results
 
         Returns
         -------
         Dict[str, Any]
-            Dictionary with survey data
+            Processing results
         """
-        try:
-            # Move to device
-            features = self.to_device(features)
+        results = {
+            "survey_name": survey_tensor.survey_name,
+            "n_objects": len(survey_tensor),
+            "processing_steps": [],
+        }
 
-            # Create data dictionary
-            survey_data = {
-                "features": features,
-                "survey_name": survey_name,
-                "shape": features.shape,
-                "device": str(features.device),
-                **(metadata or {}),
+        print(
+            f"\n🌟 Processing {survey_tensor.survey_name} data ({len(survey_tensor)} objects)"
+        )
+
+        # Step 1: Feature Engineering
+        if self.config.enable_feature_engineering:
+            feature_results = self._process_features(survey_tensor)
+            results["features"] = feature_results
+            results["processing_steps"].append("feature_engineering")
+
+        # Step 2: Clustering Analysis
+        if self.config.enable_clustering:
+            clustering_results = self._process_clustering(survey_tensor)
+            results["clustering"] = clustering_results
+            results["processing_steps"].append("clustering")
+
+        # Step 3: Statistical Analysis
+        if self.config.enable_statistics:
+            stats_results = self._process_statistics(survey_tensor)
+            results["statistics"] = stats_results
+            results["processing_steps"].append("statistics")
+
+        # Save results if output directory specified
+        if output_dir:
+            self._save_processing_results(results, output_dir)
+
+        return results
+
+    def _process_features(self, survey_tensor: SurveyTensor) -> Dict[str, Any]:
+        """Process features using FeatureTensor."""
+        print("  🔧 Feature Engineering...")
+
+        try:
+            # Convert survey data to feature matrix
+            data_matrix = survey_tensor._data.cpu().numpy()
+            feature_names = survey_tensor.column_names
+
+            # Create FeatureTensor
+            feature_tensor = FeatureTensor(
+                data_matrix,
+                feature_names=feature_names,
+                survey_flags={"survey": survey_tensor.survey_name},
+            )
+
+            # Apply preprocessing pipeline
+            processed_tensor = feature_tensor
+
+            if self.config.feature_imputation_method:
+                processed_tensor = processed_tensor.impute_missing_values(
+                    method=self.config.feature_imputation_method
+                )
+
+            if self.config.feature_scaling_method:
+                processed_tensor = processed_tensor.scale_features(
+                    method=self.config.feature_scaling_method
+                )
+
+            # Detect outliers
+            outliers = processed_tensor.detect_outliers(
+                method=self.config.outlier_detection_method
+            )
+
+            # Compute colors if magnitude data available
+            mag_bands = [name for name in feature_names if "mag" in name.lower()]
+            if len(mag_bands) >= 2:
+                try:
+                    processed_tensor = processed_tensor.compute_colors(mag_bands[:3])
+                except Exception as e:
+                    print(f"    ⚠️ Color computation failed: {e}")
+
+            # Get feature statistics
+            stats = processed_tensor.get_feature_statistics()
+
+            results = {
+                "n_features": processed_tensor.n_features,
+                "n_outliers": int(outliers.sum()),
+                "outlier_fraction": float(outliers.sum()) / len(outliers),
+                "feature_statistics": stats,
+                "preprocessing_history": processed_tensor.get_metadata(
+                    "preprocessing_history", []
+                ),
+                "processed_tensor": processed_tensor,
             }
 
-            print(f"✅ Created survey data for {survey_name}: {features.shape}")
-            return survey_data
+            print(
+                f"    ✅ Features: {processed_tensor.n_features}, Outliers: {results['n_outliers']}"
+            )
+            return results
 
         except Exception as e:
-            print(f"❌ Error creating survey data for {survey_name}: {e}")
-            return {}
+            print(f"    ❌ Feature processing failed: {e}")
+            return {"error": str(e)}
 
-    def process_coordinate_data(
-        self, data: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Process astronomical coordinate data.
+    def _process_clustering(self, survey_tensor: SurveyTensor) -> Dict[str, Any]:
+        """Process clustering using ClusteringTensor."""
+        print("  🔍 Clustering Analysis...")
 
-        Parameters
-        ----------
-        data : Dict[str, torch.Tensor]
-            Dictionary containing coordinate tensors
+        try:
+            # Get spatial coordinates
+            spatial_tensor = survey_tensor.get_spatial_tensor()
+            positions = spatial_tensor.cartesian.cpu().numpy()
 
-        Returns
-        -------
-        Dict[str, torch.Tensor]
-            Processed coordinate data
-        """
-        processed = {}
+            # Get additional features if available
+            features = None
+            if hasattr(survey_tensor, "_data"):
+                # Use magnitude and color features
+                feature_cols = []
+                for i, name in enumerate(survey_tensor.column_names):
+                    if any(
+                        keyword in name.lower() for keyword in ["mag", "color", "mass"]
+                    ):
+                        feature_cols.append(i)
 
-        for key, tensor in data.items():
-            # Move to device
-            tensor = self.to_device(tensor)
+                if feature_cols:
+                    features = survey_tensor._data[:, feature_cols].cpu().numpy()
 
-            # Basic processing
-            if "ra" in key.lower():
-                # Ensure RA is in [0, 360] range
-                processed[key] = torch.fmod(tensor, 360.0)
-            elif "dec" in key.lower():
-                # Ensure Dec is in [-90, 90] range
-                processed[key] = torch.clamp(tensor, -90.0, 90.0)
-            elif "distance" in key.lower() or "dist" in key.lower():
-                # Ensure distances are positive
-                processed[key] = torch.abs(tensor)
+            # Create ClusteringTensor
+            clustering_tensor = ClusteringTensor(
+                positions,
+                features=features,
+                coordinate_system="cartesian",
+                astronomical_context=self._get_astronomical_context(
+                    survey_tensor.survey_name
+                ),
+            )
+
+            # Apply clustering algorithm
+            if self.config.clustering_method == "dbscan":
+                labels = clustering_tensor.dbscan_clustering(
+                    eps=self.config.clustering_eps,
+                    min_samples=self.config.clustering_min_samples,
+                )
+            elif self.config.clustering_method == "galaxy_clusters":
+                labels = clustering_tensor.galaxy_cluster_detection(
+                    richness_threshold=self.config.clustering_min_samples,
+                    radius_mpc=self.config.clustering_eps,
+                )
+            elif self.config.clustering_method == "stellar_associations":
+                labels = clustering_tensor.stellar_association_detection(
+                    max_separation_pc=self.config.clustering_eps
+                    * 1000,  # Convert to pc
+                    min_members=self.config.clustering_min_samples,
+                )
             else:
-                processed[key] = tensor
+                raise ValueError(
+                    f"Unknown clustering method: {self.config.clustering_method}"
+                )
 
-        return processed
+            # Get clustering statistics
+            stats = clustering_tensor.get_cluster_statistics(
+                self.config.clustering_method
+            )
 
-    def normalize_magnitudes(
-        self, magnitudes: torch.Tensor, mag_zero: float = 0.0, mag_range: float = 30.0
-    ) -> torch.Tensor:
-        """
-        Normalize magnitude values for ML processing.
+            results = {
+                "method": self.config.clustering_method,
+                "n_clusters": stats["n_clusters"],
+                "n_noise": stats["n_noise"],
+                "noise_fraction": stats["noise_fraction"],
+                "cluster_labels": labels,
+                "cluster_statistics": stats,
+                "clustering_tensor": clustering_tensor,
+            }
 
-        Parameters
-        ----------
-        magnitudes : torch.Tensor
-            Magnitude tensor
-        mag_zero : float
-            Zero point for normalization
-        mag_range : float
-            Magnitude range for scaling
+            print(
+                f"    ✅ Clusters: {stats['n_clusters']}, Noise: {stats['noise_fraction']:.2%}"
+            )
+            return results
 
-        Returns
-        -------
-        torch.Tensor
-            Normalized magnitudes
-        """
-        magnitudes = self.to_device(magnitudes)
+        except Exception as e:
+            print(f"    ❌ Clustering failed: {e}")
+            return {"error": str(e)}
 
-        # Handle missing values (typically 99.0 in astronomical data)
-        mask = magnitudes < 90.0
-        normalized = torch.zeros_like(magnitudes)
+    def _process_statistics(self, survey_tensor: SurveyTensor) -> Dict[str, Any]:
+        """Process statistics using StatisticsTensor."""
+        print("  📊 Statistical Analysis...")
 
-        # Normalize valid magnitudes to [0, 1]
-        valid_mags = magnitudes[mask]
-        if len(valid_mags) > 0:
-            normalized[mask] = (valid_mags - mag_zero) / mag_range
+        try:
+            # Extract observables (magnitudes, colors, etc.)
+            data_matrix = survey_tensor._data.cpu().numpy()
 
-        return torch.clamp(normalized, 0.0, 1.0)
+            # Get coordinates if available
+            coordinates = None
+            try:
+                spatial_tensor = survey_tensor.get_spatial_tensor()
+                ra_dec = spatial_tensor._data[:, :2].cpu().numpy()  # RA, Dec
+                coordinates = ra_dec
+            except:
+                pass
 
-    def compute_colors(
-        self, magnitudes: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Compute astronomical colors from magnitudes.
+            # Create StatisticsTensor
+            stats_tensor = StatisticsTensor(data_matrix, coordinates=coordinates)
 
-        Parameters
-        ----------
-        magnitudes : Dict[str, torch.Tensor]
-            Dictionary of magnitude tensors
+            results = {}
 
-        Returns
-        -------
-        Dict[str, torch.Tensor]
-            Dictionary of color tensors
-        """
-        colors = {}
+            # Compute luminosity functions
+            if self.config.compute_luminosity_functions:
+                # Find magnitude columns
+                mag_columns = []
+                for i, name in enumerate(survey_tensor.column_names):
+                    if "mag" in name.lower():
+                        mag_columns.append(i)
 
-        # Common color combinations
-        color_pairs = [
-            ("u", "g"),
-            ("g", "r"),
-            ("r", "i"),
-            ("i", "z"),
-            ("g", "i"),
-            ("r", "z"),
-            ("u", "r"),
-        ]
+                for mag_col in mag_columns[:3]:  # Limit to first 3 magnitude bands
+                    try:
+                        bin_centers, phi = stats_tensor.luminosity_function(
+                            magnitude_column=mag_col,
+                            bins=20,
+                            function_name=f"lf_{survey_tensor.column_names[mag_col]}",
+                        )
+                        results[f"luminosity_function_{mag_col}"] = {
+                            "bin_centers": bin_centers,
+                            "phi": phi,
+                        }
+                    except Exception as e:
+                        print(f"    ⚠️ LF computation failed for column {mag_col}: {e}")
 
-        for mag1, mag2 in color_pairs:
-            if mag1 in magnitudes and mag2 in magnitudes:
-                color_name = f"{mag1}_{mag2}"
-                m1 = self.to_device(magnitudes[mag1])
-                m2 = self.to_device(magnitudes[mag2])
+            # Compute correlation functions
+            if self.config.compute_correlation_functions and coordinates is not None:
+                try:
+                    r_centers, xi_r = stats_tensor.two_point_correlation(
+                        r_bins=10,
+                        estimator="davis_peebles",  # Use simple estimator
+                    )
+                    results["correlation_function"] = {
+                        "r_centers": r_centers,
+                        "xi_r": xi_r,
+                    }
+                except Exception as e:
+                    print(f"    ⚠️ Correlation function failed: {e}")
 
-                # Only compute colors for valid magnitudes
-                mask = (m1 < 90.0) & (m2 < 90.0)
-                color = torch.zeros_like(m1)
-                color[mask] = m1[mask] - m2[mask]
-                colors[color_name] = color
+            # Compute bootstrap errors
+            if self.config.bootstrap_errors:
+                function_names = stats_tensor.list_functions()
+                for func_name in function_names[:2]:  # Limit to first 2 functions
+                    try:
+                        errors = stats_tensor.bootstrap_errors(
+                            func_name,
+                            n_bootstrap=50,  # Reduced for speed
+                        )
+                        results[f"bootstrap_errors_{func_name}"] = {
+                            "std_error": errors["std_error"],
+                            "confidence_intervals": {
+                                "lower": errors["lower_ci"],
+                                "upper": errors["upper_ci"],
+                            },
+                        }
+                    except Exception as e:
+                        print(f"    ⚠️ Bootstrap errors failed for {func_name}: {e}")
 
-        return colors
+            results["statistics_tensor"] = stats_tensor
+            results["n_functions"] = len(stats_tensor.list_functions())
 
-    def save_tensors(
-        self, tensors: Dict[str, Any], output_dir: Union[str, Path]
-    ) -> Path:
-        """
-        Save processed tensors to disk.
+            print(f"    ✅ Statistics: {results['n_functions']} functions computed")
+            return results
 
-        Parameters
-        ----------
-        tensors : Dict[str, Any]
-            Tensor dictionary to save
-        output_dir : Union[str, Path]
-            Output directory
+        except Exception as e:
+            print(f"    ❌ Statistical analysis failed: {e}")
+            return {"error": str(e)}
 
-        Returns
-        -------
-        Path
-            Path to saved tensors
-        """
+    def cross_match_catalogs(
+        self,
+        catalog_a: SurveyTensor,
+        catalog_b: SurveyTensor,
+        tolerance_arcsec: float = 2.0,
+        method: str = "nearest_neighbor",
+    ) -> Dict[str, Any]:
+        """Cross-match two catalogs using CrossMatchTensor."""
+        print(
+            f"  🎯 Cross-matching {catalog_a.survey_name} vs {catalog_b.survey_name}..."
+        )
+
+        try:
+            # Extract coordinate data
+            coords_a = self._extract_coordinates(catalog_a)
+            coords_b = self._extract_coordinates(catalog_b)
+
+            # Create CrossMatchTensor
+            crossmatch_tensor = CrossMatchTensor(
+                coords_a,
+                coords_b,
+                catalog_names=(catalog_a.survey_name, catalog_b.survey_name),
+                coordinate_columns={"a": [0, 1], "b": [0, 1]},
+            )
+
+            # Perform cross-matching
+            results = crossmatch_tensor.sky_coordinate_matching(
+                tolerance_arcsec=tolerance_arcsec, method=method
+            )
+
+            # Add Bayesian matching for comparison
+            try:
+                bayesian_results = crossmatch_tensor.bayesian_matching(
+                    tolerance_arcsec=tolerance_arcsec * 2, prior_density=1e-6
+                )
+                results["bayesian_matches"] = bayesian_results
+            except Exception as e:
+                print(f"    ⚠️ Bayesian matching failed: {e}")
+
+            print(
+                f"    ✅ Matches: {len(results['matches'])}, Rate: {results['statistics']['match_rate_a']:.2%}"
+            )
+            return results
+
+        except Exception as e:
+            print(f"    ❌ Cross-matching failed: {e}")
+            return {"error": str(e)}
+
+    def _extract_coordinates(self, survey_tensor: SurveyTensor) -> np.ndarray:
+        """Extract RA/Dec coordinates from survey tensor."""
+        # Look for RA/Dec columns
+        ra_col = dec_col = None
+        for i, name in enumerate(survey_tensor.column_names):
+            if name.lower() in ["ra", "right_ascension"]:
+                ra_col = i
+            elif name.lower() in ["dec", "declination"]:
+                dec_col = i
+
+        if ra_col is not None and dec_col is not None:
+            coords = survey_tensor._data[:, [ra_col, dec_col]].cpu().numpy()
+        else:
+            # Fallback: use first two columns
+            coords = survey_tensor._data[:, :2].cpu().numpy()
+
+        return coords
+
+    def _get_astronomical_context(self, survey_name: str) -> str:
+        """Get astronomical context based on survey name."""
+        if any(
+            keyword in survey_name.lower() for keyword in ["gaia", "star", "stellar"]
+        ):
+            return "stars"
+        elif any(
+            keyword in survey_name.lower() for keyword in ["nsa", "sdss", "galaxy"]
+        ):
+            return "galaxies"
+        elif any(
+            keyword in survey_name.lower() for keyword in ["tng", "simulation", "lss"]
+        ):
+            return "lss"
+        else:
+            return "general"
+
+    def _save_processing_results(self, results: Dict[str, Any], output_dir: Path):
+        """Save processing results to disk."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        tensor_file = output_dir / "astro_tensors.pt"
+        # Save summary
+        summary_file = output_dir / "processing_summary.json"
+        summary = {
+            "survey_name": results["survey_name"],
+            "n_objects": results["n_objects"],
+            "processing_steps": results["processing_steps"],
+        }
 
-        # Convert complex objects to regular tensors for saving
-        save_dict = {}
-        for name, tensor_obj in tensors.items():
-            if isinstance(tensor_obj, dict) and "features" in tensor_obj:
-                # Save the features tensor from survey data
-                save_dict[name] = tensor_obj["features"]
-            elif isinstance(tensor_obj, dict) and "coordinates" in tensor_obj:
-                # Save the coordinates tensor from spatial data
-                save_dict[name] = tensor_obj["coordinates"]
-            elif isinstance(tensor_obj, torch.Tensor):
-                save_dict[name] = tensor_obj
-            else:
-                # Skip non-tensor objects
-                continue
+        # Add summaries from each step
+        for step in results["processing_steps"]:
+            if step in results and isinstance(results[step], dict):
+                step_summary = {
+                    k: v
+                    for k, v in results[step].items()
+                    if not k.endswith("_tensor") and k != "error"
+                }
+                summary[step] = step_summary
 
-        if save_dict:
-            torch.save(save_dict, tensor_file)
-            print(f"💾 Tensors saved to {tensor_file}")
-            print(f"   - {len(save_dict)} tensor objects")
-        else:
-            print("⚠️  No tensors to save")
+        import json
 
-        return tensor_file
+        with open(summary_file, "w") as f:
+            json.dump(summary, f, indent=2, default=str)
 
-    def load_tensors(self, tensor_file: Union[str, Path]) -> Dict[str, torch.Tensor]:
-        """
-        Load processed tensors from disk.
+        print(f"    💾 Results saved to {output_dir}")
 
-        Parameters
-        ----------
-        tensor_file : Union[str, Path]
-            Path to tensor file
 
-        Returns
-        -------
-        Dict[str, torch.Tensor]
-            Loaded tensors
-        """
-        tensor_file = Path(tensor_file)
+# Legacy processor for backward compatibility
+class AstroTensorProcessor(AdvancedAstroProcessor):
+    """Legacy tensor processor - now redirects to AdvancedAstroProcessor."""
 
-        if not tensor_file.exists():
-            raise FileNotFoundError(f"Tensor file not found: {tensor_file}")
+    def __init__(self, config: Optional[ProcessingConfig] = None):
+        # Create config with feature engineering enabled by default
+        if config is None:
+            config = ProcessingConfig(enable_feature_engineering=True)
+        super().__init__(config)
 
-        tensors = torch.load(tensor_file, map_location=self.device)
-
-        print(f"📂 Loaded tensors from {tensor_file}")
-        print(f"   - {len(tensors)} tensor objects")
-
-        return tensors
+    # ... existing code ...
 
 
 # Convenience functions
