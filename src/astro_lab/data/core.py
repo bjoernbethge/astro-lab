@@ -154,6 +154,38 @@ SURVEY_CONFIGS = {
             "period_error": 5,
         },
     },
+    # 🌟 NEW: TNG50 als vollwertiger Survey
+    "tng50": {
+        "name": "TNG50 Simulation",
+        "coord_cols": ["x", "y", "z"],
+        "mag_cols": [],  # Keine Magnituden für Simulation
+        "extra_cols": ["masses", "velocities_0", "velocities_1", "velocities_2"],
+        "color_pairs": [],
+        "default_limit": None,  # Keine Magnitude-Limits
+        "url": "tng50",
+        # 🌟 TENSOR METADATA für Simulation
+        "filter_system": "none",
+        "data_release": "TNG50-4",
+        "coordinate_system": "cartesian",
+        "photometric_bands": [],
+        "particle_types": ["PartType0", "PartType1", "PartType4", "PartType5"],
+        "tensor_column_mapping": {
+            "x": 0,
+            "y": 1,
+            "z": 2,
+            "masses": 3,
+            "velocities_0": 4,
+            "velocities_1": 5,
+            "velocities_2": 6,
+        },
+        # Simulation-spezifische Metadaten
+        "simulation_metadata": {
+            "box_size": 35.0,  # Mpc/h
+            "redshift": 0.0,
+            "snapshot": 99,
+            "cosmology": "Planck2018",
+        },
+    },
 }
 
 
@@ -401,6 +433,72 @@ class AstroDataset(InMemoryDataset):
                     "period_error": period_error.astype(np.float32),
                     "mag_mean": mag_mean.astype(np.float32),
                     "mag_amp": mag_amp.astype(np.float32),
+                }
+            )
+
+        elif self.survey == "tng50":
+            # TNG50 simulation data - load existing parquet files if available
+            if hasattr(self, "data_path") and self.data_path:
+                # Use provided data path
+                parquet_path = Path(self.data_path)
+                if parquet_path.exists():
+                    print(f"📊 Loading existing TNG50 data from {parquet_path}")
+                    df = pl.read_parquet(parquet_path)
+                    if self.max_samples and len(df) > self.max_samples:
+                        df = df.sample(self.max_samples, seed=42)
+                    self._df_cache = df
+                    return
+
+            # Try to load from standard locations
+            data_dir = Path("data/raw/tng50")
+            particle_files = {
+                "PartType0": "tng50_parttype0.parquet",
+                "PartType1": "tng50_parttype1.parquet",
+                "PartType4": "tng50_parttype4.parquet",
+                "PartType5": "tng50_parttype5.parquet",
+            }
+
+            # Use PartType0 (gas) as default
+            default_file = data_dir / particle_files["PartType0"]
+
+            if default_file.exists():
+                print(f"📊 Loading TNG50 PartType0 data from {default_file}")
+                df = pl.read_parquet(default_file)
+                if self.max_samples and len(df) > self.max_samples:
+                    df = df.sample(self.max_samples, seed=42)
+                self._df_cache = df
+                return
+
+            # Fallback: generate synthetic TNG50-like data
+            print("⚠️ No TNG50 data found, generating synthetic simulation data")
+
+            # 3D coordinates in a box (Mpc/h units)
+            box_size = 35.0  # TNG50 box size
+            x = np.random.uniform(0, box_size, n_objects)
+            y = np.random.uniform(0, box_size, n_objects)
+            z = np.random.uniform(0, box_size, n_objects)
+
+            # Masses (log-normal distribution)
+            masses = np.random.lognormal(8, 2, n_objects)
+
+            # Velocities (Gaussian with cosmic expansion)
+            velocities_0 = np.random.normal(0, 100, n_objects)  # km/s
+            velocities_1 = np.random.normal(0, 100, n_objects)
+            velocities_2 = np.random.normal(0, 100, n_objects)
+
+            # Density for gas particles
+            density = np.random.lognormal(-2, 3, n_objects)
+
+            df = pl.DataFrame(
+                {
+                    "x": x.astype(np.float32),
+                    "y": y.astype(np.float32),
+                    "z": z.astype(np.float32),
+                    "masses": masses.astype(np.float32),
+                    "velocities_0": velocities_0.astype(np.float32),
+                    "velocities_1": velocities_1.astype(np.float32),
+                    "velocities_2": velocities_2.astype(np.float32),
+                    "density": density.astype(np.float32),
                 }
             )
 
@@ -829,6 +927,104 @@ def load_lightcurve_data(
     )
 
 
+def load_tng50_data(
+    max_samples: int = 5000,
+    particle_type: str = "PartType0",
+    return_tensor: bool = True,  # 🌟 Default to tensor!
+    **kwargs,
+) -> Union[AstroDataset, "SimulationTensor"]:
+    """
+    Load TNG50 simulation data.
+
+    Args:
+        max_samples: Maximum number of particles to load
+        particle_type: Particle type to load (PartType0, PartType1, PartType4, PartType5)
+        return_tensor: Return SimulationTensor instead of dataset (recommended!)
+        **kwargs: Additional arguments
+
+    Returns:
+        SimulationTensor with TNG50 simulation data or AstroDataset for legacy use
+    """
+    if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
+        # Load existing TNG50 parquet files
+        data_dir = Path("data/raw/tng50")
+
+        # Map particle types to file names
+        particle_file_map = {
+            "PartType0": "tng50_parttype0.parquet",
+            "PartType1": "tng50_parttype1.parquet",
+            "PartType4": "tng50_parttype4.parquet",
+            "PartType5": "tng50_parttype5.parquet",
+        }
+
+        if particle_type not in particle_file_map:
+            raise ValueError(
+                f"Unknown particle type: {particle_type}. Available: {list(particle_file_map.keys())}"
+            )
+
+        parquet_file = data_dir / particle_file_map[particle_type]
+
+        if not parquet_file.exists():
+            raise FileNotFoundError(f"TNG50 data not found: {parquet_file}")
+
+        print(f"🌌 Loading TNG50 {particle_type} data from {parquet_file}")
+
+        # Load with Polars
+        df = pl.read_parquet(parquet_file)
+
+        # Limit samples if requested
+        if max_samples and len(df) > max_samples:
+            df = df.sample(max_samples, seed=42)
+
+        print(f"   📊 Loaded {len(df):,} particles with {len(df.columns)} features")
+
+        # Convert to SimulationTensor
+        tensor_data = torch.tensor(df.to_numpy(), dtype=torch.float32)
+
+        # Simulation-specific metadata
+        config = SURVEY_CONFIGS["tng50"]
+
+        simulation_metadata = {
+            "survey_name": "tng50",
+            "particle_type": particle_type,
+            "n_particles": len(df),
+            "data_shape": df.shape,
+            "columns": df.columns,
+            "coordinate_system": "cartesian",
+            "box_size": 35.0,  # Mpc/h
+            "redshift": 0.0,
+            "snapshot": 99,
+            "cosmology": "Planck2018",
+        }
+
+        # Extract positions (first 3 columns: x, y, z)
+        positions = tensor_data[:, :3]
+
+        # Extract features (all columns including positions)
+        features = tensor_data
+
+        return SimulationTensor(
+            positions=positions,
+            features=features,
+            simulation_name="tng50",
+            particle_type=particle_type,
+            box_size=35.0,  # Mpc/h
+            redshift=0.0,
+            cosmology={"H0": 70.0, "Omega_m": 0.3, "Omega_Lambda": 0.7},
+            simulation_metadata=simulation_metadata,
+        )
+
+    # Fallback to dataset mode (less efficient but compatible)
+    return AstroDataset(
+        survey="tng50",
+        k_neighbors=8,
+        max_samples=max_samples,
+        return_tensor=return_tensor,
+        data_path=f"data/raw/tng50/tng50_{particle_type.lower()}.parquet",
+        **kwargs,
+    )
+
+
 def detect_survey_type(dataset_name: str, df: pl.DataFrame) -> str:
     """
     Detect survey type from filename and columns.
@@ -843,7 +1039,18 @@ def detect_survey_type(dataset_name: str, df: pl.DataFrame) -> str:
     name_lower = dataset_name.lower()
     columns = [col.lower() for col in df.columns]
 
-    if "nsa" in name_lower or any("petromag" in col for col in columns):
+    # TNG50 simulation data
+    if "tng50" in name_lower or "parttype" in name_lower:
+        return "tng50"
+    elif (
+        "x" in columns
+        and "y" in columns
+        and "z" in columns
+        and any("velocities" in col for col in columns)
+    ):
+        return "tng50"
+    # Observational surveys
+    elif "nsa" in name_lower or any("petromag" in col for col in columns):
         return "nsa"
     elif "gaia" in name_lower or "phot_g_mean_mag" in columns:
         return "gaia"
@@ -886,6 +1093,8 @@ def create_graph_from_dataframe(
             return _create_gaia_graph(df, k_neighbors, distance_threshold, **kwargs)
         elif survey_type == "sdss":
             return _create_sdss_graph(df, k_neighbors, distance_threshold, **kwargs)
+        elif survey_type == "tng50":
+            return _create_tng50_graph(df, k_neighbors, distance_threshold, **kwargs)
         else:
             return _create_generic_graph(df, k_neighbors, distance_threshold, **kwargs)
 
@@ -1262,4 +1471,92 @@ def _create_generic_graph(
         edge_index=edge_index,
         edge_attr=edge_attr,
         num_nodes=len(features),
+    )
+
+
+def _create_tng50_graph(
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+) -> Data:
+    """Create TNG50 simulation graph from DataFrame with 3D coordinates."""
+    print(f"🌌 Creating TNG50 graph: {len(df):,} particles, k={k_neighbors}")
+
+    # Extract 3D coordinates (x, y, z)
+    coord_cols = ["x", "y", "z"]
+    missing_coords = [col for col in coord_cols if col not in df.columns]
+    if missing_coords:
+        raise ValueError(f"Missing coordinate columns for TNG50: {missing_coords}")
+
+    coords = df.select(coord_cols).to_numpy()
+    all_features = df.to_numpy()
+
+    print(
+        f"   📊 Coordinate range: X[{coords[:, 0].min():.2f}, {coords[:, 0].max():.2f}]"
+    )
+    print(
+        f"   📊 Coordinate range: Y[{coords[:, 1].min():.2f}, {coords[:, 1].max():.2f}]"
+    )
+    print(
+        f"   📊 Coordinate range: Z[{coords[:, 2].min():.2f}, {coords[:, 2].max():.2f}]"
+    )
+
+    # For TNG50, use 3D distance in comoving coordinates
+    # Distance threshold is in simulation units (Mpc/h)
+    nn = NearestNeighbors(n_neighbors=min(k_neighbors + 1, len(df)), metric="euclidean")
+    nn.fit(coords)
+    distances, indices = nn.kneighbors(coords)
+
+    # Create edge list (exclude self-connections)
+    edge_list = []
+    edge_distances = []
+    edge_velocities = []  # Store relative velocities as edge features
+
+    # Extract velocity columns if available
+    vel_cols = ["velocities_0", "velocities_1", "velocities_2"]
+    has_velocities = all(col in df.columns for col in vel_cols)
+
+    if has_velocities:
+        velocities = df.select(vel_cols).to_numpy()
+
+    for i, (dists, neighs) in enumerate(zip(distances, indices)):
+        for dist, neigh in zip(dists[1:], neighs[1:]):  # Skip self
+            if dist <= distance_threshold:
+                edge_list.append([i, neigh])
+                edge_distances.append(dist)
+
+                # Add relative velocity as edge feature if available
+                if has_velocities:
+                    rel_velocity = np.linalg.norm(velocities[i] - velocities[neigh])
+                    edge_velocities.append(rel_velocity)
+
+    if not edge_list:
+        print(f"   ⚠️ No edges found with distance threshold {distance_threshold}")
+        # Create a minimal graph with self-loops
+        edge_list = [[i, i] for i in range(min(10, len(df)))]
+        edge_distances = [0.0] * len(edge_list)
+        edge_velocities = [0.0] * len(edge_list) if has_velocities else []
+
+    edge_index = torch.tensor(np.array(edge_list).T, dtype=torch.long)
+
+    # Create edge attributes (distance + relative velocity if available)
+    if has_velocities and edge_velocities:
+        edge_attr = torch.tensor(
+            np.column_stack([edge_distances, edge_velocities]), dtype=torch.float
+        )
+    else:
+        edge_attr = torch.tensor(edge_distances, dtype=torch.float).unsqueeze(1)
+
+    node_features = torch.tensor(all_features, dtype=torch.float)
+
+    print(f"   ✅ TNG50 Graph: {len(all_features):,} nodes, {len(edge_list):,} edges")
+    if has_velocities:
+        print("   📊 Edge features: distance + relative velocity")
+    else:
+        print("   📊 Edge features: distance only")
+
+    return Data(
+        x=node_features,
+        edge_index=edge_index,
+        edge_attr=edge_attr,
+        pos=torch.tensor(coords, dtype=torch.float),  # 3D positions
+        num_nodes=len(all_features),
     )

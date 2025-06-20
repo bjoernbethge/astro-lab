@@ -565,3 +565,183 @@ class Spatial3DTensor(AstroTensorBase):
         return (
             f"Spatial3DTensor(n_points={n_points}, system='{coord_sys}', unit='{unit}')"
         )
+
+    def cosmic_web_clustering(
+        self, eps_pc: float = 10.0, min_samples: int = 5, algorithm: str = "dbscan"
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Perform cosmic web clustering analysis in 3D space.
+
+        Args:
+            eps_pc: Clustering radius in parsecs
+            min_samples: Minimum samples for core points
+            algorithm: 'dbscan' or 'hierarchical'
+
+        Returns:
+            Dictionary with cluster labels, statistics, and cosmic web features
+        """
+        if not SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn required for cosmic web clustering")
+
+        from sklearn.cluster import DBSCAN, AgglomerativeClustering
+
+        # Get 3D coordinates in parsecs
+        coords_pc = self._data.numpy()
+
+        # Convert units if needed
+        if self.unit == "kpc":
+            coords_pc *= 1000  # kpc to pc
+        elif self.unit == "Mpc":
+            coords_pc *= 1_000_000  # Mpc to pc
+
+        print(
+            f"🌌 Cosmic web clustering: {len(coords_pc):,} stars in {eps_pc} pc radius"
+        )
+
+        # Perform clustering
+        if algorithm == "dbscan":
+            clusterer = DBSCAN(eps=eps_pc, min_samples=min_samples)
+        else:
+            clusterer = AgglomerativeClustering(
+                n_clusters=None, distance_threshold=eps_pc, linkage="ward"
+            )
+
+        labels = clusterer.fit_predict(coords_pc)
+        labels_tensor = torch.from_numpy(labels)
+
+        # Analyze results
+        unique_labels = set(labels)
+        n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+        n_noise = sum(1 for label in labels if label == -1)
+
+        # Calculate cluster properties
+        cluster_stats = {}
+        if n_clusters > 0:
+            for cluster_id in unique_labels:
+                if cluster_id == -1:  # Skip noise
+                    continue
+
+                cluster_mask = labels == cluster_id
+                cluster_coords = coords_pc[cluster_mask]
+
+                # Cluster center and size
+                center = cluster_coords.mean(axis=0)
+                distances = np.linalg.norm(cluster_coords - center, axis=1)
+
+                cluster_stats[cluster_id] = {
+                    "n_stars": int(cluster_mask.sum()),
+                    "center_pc": center,
+                    "radius_pc": float(distances.max()),
+                    "density": float(
+                        cluster_mask.sum() / (4 / 3 * np.pi * distances.max() ** 3)
+                    ),
+                }
+
+        print(f"✅ Found {n_clusters:,} stellar groups")
+        print(
+            f"   Grouped stars: {len(labels) - n_noise:,} ({(len(labels) - n_noise) / len(labels) * 100:.1f}%)"
+        )
+        print(f"   Isolated stars: {n_noise:,} ({n_noise / len(labels) * 100:.1f}%)")
+
+        return {
+            "cluster_labels": labels_tensor,
+            "n_clusters": n_clusters,
+            "n_noise": n_noise,
+            "cluster_stats": cluster_stats,
+            "coords_pc": torch.from_numpy(coords_pc),
+        }
+
+    def analyze_local_density(self, radius_pc: float = 5.0) -> torch.Tensor:
+        """
+        Calculate local stellar density around each star.
+
+        Args:
+            radius_pc: Radius for density calculation in parsecs
+
+        Returns:
+            Local density for each star (stars per cubic parsec)
+        """
+        if not SKLEARN_AVAILABLE:
+            raise ImportError("scikit-learn required for density analysis")
+
+        from sklearn.neighbors import NearestNeighbors
+
+        # Get coordinates in parsecs
+        coords_pc = self._data.numpy()
+        if self.unit == "kpc":
+            coords_pc *= 1000
+        elif self.unit == "Mpc":
+            coords_pc *= 1_000_000
+
+        # Build neighbor tree
+        nbrs = NearestNeighbors(radius=radius_pc)
+        nbrs.fit(coords_pc)
+
+        # Find neighbors within radius for each star
+        densities = []
+        for i, coord in enumerate(coords_pc):
+            distances, indices = nbrs.radius_neighbors([coord])
+            n_neighbors = len(indices[0]) - 1  # Exclude self
+
+            # Density = neighbors / volume
+            volume = (4 / 3) * np.pi * radius_pc**3
+            density = n_neighbors / volume
+            densities.append(density)
+
+        return torch.tensor(densities, dtype=torch.float32)
+
+    def cosmic_web_structure(self, grid_size_pc: float = 20.0) -> Dict[str, Any]:
+        """
+        Analyze cosmic web structure using density field.
+
+        Args:
+            grid_size_pc: Grid cell size in parsecs
+
+        Returns:
+            Dictionary with density field and structure analysis
+        """
+        coords_pc = self._data.numpy()
+        if self.unit == "kpc":
+            coords_pc *= 1000
+        elif self.unit == "Mpc":
+            coords_pc *= 1_000_000
+
+        # Calculate bounds
+        x_min, x_max = coords_pc[:, 0].min(), coords_pc[:, 0].max()
+        y_min, y_max = coords_pc[:, 1].min(), coords_pc[:, 1].max()
+        z_min, z_max = coords_pc[:, 2].min(), coords_pc[:, 2].max()
+
+        # Create 3D grid
+        x_bins = int((x_max - x_min) / grid_size_pc) + 1
+        y_bins = int((y_max - y_min) / grid_size_pc) + 1
+        z_bins = int((z_max - z_min) / grid_size_pc) + 1
+
+        print(f"🕸️ Creating {x_bins}×{y_bins}×{z_bins} density grid")
+
+        # Calculate 3D histogram (density field)
+        density_field, edges = np.histogramdd(
+            coords_pc,
+            bins=[x_bins, y_bins, z_bins],
+            range=[[x_min, x_max], [y_min, y_max], [z_min, z_max]],
+        )
+
+        # Analyze structure
+        total_volume = (x_max - x_min) * (y_max - y_min) * (z_max - z_min)
+        mean_density = len(coords_pc) / total_volume
+
+        # Find high and low density regions
+        high_density_threshold = mean_density * 2
+        low_density_threshold = mean_density * 0.5
+
+        high_density_cells = (density_field > high_density_threshold).sum()
+        low_density_cells = (density_field < low_density_threshold).sum()
+
+        return {
+            "density_field": torch.from_numpy(density_field),
+            "grid_edges": edges,
+            "mean_density": mean_density,
+            "high_density_cells": high_density_cells,
+            "low_density_cells": low_density_cells,
+            "grid_size_pc": grid_size_pc,
+            "total_volume_pc3": total_volume,
+        }

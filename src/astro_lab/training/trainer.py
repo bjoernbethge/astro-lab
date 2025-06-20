@@ -125,6 +125,13 @@ class AstroTrainer(Trainer):
         # Setup logger
         logger = self._setup_astro_logger()
 
+        # Filter out parameters that might conflict with parent class
+        filtered_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ["accelerator", "devices", "precision", "max_epochs"]
+        }
+
         # Initialize parent Lightning Trainer with optimized defaults
         super().__init__(
             max_epochs=max_epochs,
@@ -144,7 +151,7 @@ class AstroTrainer(Trainer):
             ),  # Set root dir for Lightning
             callbacks=callbacks,
             logger=logger,
-            **kwargs,
+            **filtered_kwargs,
         )
 
         print("🚀 AstroTrainer initialized:")

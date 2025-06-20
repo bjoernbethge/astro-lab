@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 
+import torch
+
 from astro_lab.data import (
     create_graph_datasets_from_splits,
     # 🔗 NEW: Graph creation functions from data module
@@ -27,7 +29,7 @@ from astro_lab.data import (
 )
 from astro_lab.data.config import DataConfig
 from astro_lab.data.core import load_gaia_data, load_nsa_data, load_sdss_data
-from astro_lab.data.processing import AdvancedAstroProcessor, ProcessingConfig
+from astro_lab.data.processing import SimpleAstroProcessor, SimpleProcessingConfig
 
 
 def print_stats(stats: Dict, verbose: bool = False) -> None:
@@ -271,7 +273,7 @@ def get_available_particle_types(hdf5_file: Path) -> List[str]:
 def process_tng50_command(args):
     """Process TNG50 data - spezialisierte Funktion."""
     try:
-        from astro_lab.data.datasets.astronomical import TNG50GraphDataset
+        from astro_torch.data.datasets import TNG50GraphDataset
 
         # Handle --all-snapshots mode
         if args.all_snapshots:
@@ -334,7 +336,7 @@ def process_tng50_command(args):
 
 def process_single_tng50_snapshot(snap_file: Path, args):
     """Process a single TNG50 snapshot."""
-    from astro_lab.data.datasets.astronomical import TNG50GraphDataset
+    from astro_torch.data.datasets import TNG50GraphDataset
 
     # Determine particle types to process
     if args.all:
@@ -527,66 +529,152 @@ def preprocess_data(
     """
     print(f"🚀 Starting advanced preprocessing for {survey}")
 
-    # Load configuration
-    if config_path:
-        data_config = DataConfig.from_yaml(config_path)
-    else:
-        data_config = DataConfig(survey=survey)
+    # Use simplified processing
+    from ..data.processing import SimpleAstroProcessor, SimpleProcessingConfig
 
-    # Create processing configuration
-    proc_config = ProcessingConfig(
+    # Create processing config
+    processing_config = SimpleProcessingConfig(
+        device="cuda" if torch.cuda.is_available() else "cpu",
+        batch_size=1000,
         enable_feature_engineering=enable_features,
         enable_clustering=enable_clustering,
         enable_statistics=enable_statistics,
-        enable_crossmatch=enable_crossmatch,
-        max_samples={survey: max_samples},
     )
 
-    # Initialize processor
-    processor = AdvancedAstroProcessor(proc_config)
+    # Create processor
+    processor = SimpleAstroProcessor(processing_config)
 
     # Load survey data as tensor
     print(f"📊 Loading {survey} data...")
-    if survey.lower() == "gaia":
-        survey_tensor = load_gaia_data(max_samples=max_samples, return_tensor=True)
-    elif survey.lower() == "sdss":
-        survey_tensor = load_sdss_data(max_samples=max_samples, return_tensor=True)
-    elif survey.lower() == "nsa":
-        survey_tensor = load_nsa_data(max_samples=max_samples, return_tensor=True)
-    else:
-        raise ValueError(f"Unknown survey: {survey}")
+    try:
+        if survey.lower() == "gaia":
+            survey_tensor = load_gaia_data(max_samples=max_samples, return_tensor=True)
+        elif survey.lower() == "sdss":
+            survey_tensor = load_sdss_data(max_samples=max_samples, return_tensor=True)
+        elif survey.lower() == "nsa":
+            survey_tensor = load_nsa_data(max_samples=max_samples, return_tensor=True)
+        elif survey.lower() == "exoplanet":
+            print("🪐 Exoplanet cosmic web analysis - use direct script:")
+            print("   python process_exoplanet_cosmic_web.py")
+            return
+        elif survey.lower() == "tng50":
+            print("🌌 TNG50 simulation processing - using integrated tensor system:")
+            # Use the new integrated TNG50 tensor loading
+            from astro_lab.data.core import load_tng50_data
+
+            # Set output directory for TNG50 first
+            if output_dir is None:
+                output_dir_path = Path("results") / survey / "preprocessing"
+            else:
+                output_dir_path = Path(output_dir)
+
+            output_dir_path.mkdir(parents=True, exist_ok=True)
+
+            # Process all available particle types
+            particle_types = ["PartType0", "PartType1", "PartType4", "PartType5"]
+            all_results = {}
+
+            for particle_type in particle_types:
+                try:
+                    print(f"\n🔄 Processing {particle_type}...")
+                    survey_tensor = load_tng50_data(
+                        max_samples=max_samples,
+                        particle_type=particle_type,
+                        return_tensor=True,
+                    )
+
+                    # Process with tensor operations
+                    results = processor.process(survey_tensor)
+                    all_results[particle_type] = results
+
+                    print(
+                        f"   ✅ {particle_type}: {len(survey_tensor):,} particles processed"
+                    )
+
+                except FileNotFoundError:
+                    print(f"   ⚠️ {particle_type}: Data not found, skipping")
+                    continue
+                except Exception as e:
+                    print(f"   ❌ {particle_type}: Error - {e}")
+                    continue
+
+            if all_results:
+                print(
+                    f"\n✅ TNG50 processing complete: {len(all_results)} particle types processed"
+                )
+
+                # Save combined results
+                results_file = output_dir_path / "tng50_preprocessing_results.txt"
+                with open(results_file, "w") as f:
+                    f.write("TNG50 Preprocessing Results\n")
+                    f.write("=" * 30 + "\n\n")
+                    for ptype, results in all_results.items():
+                        f.write(f"{ptype}:\n")
+                        if "feature_tensor" in results:
+                            f.write(f"  Features: {results['n_features']}\n")
+                        if "cluster_tensor" in results:
+                            f.write(f"  Clusters: {results['n_clusters']}\n")
+                        if "stats_tensor" in results:
+                            f.write(f"  Statistics: {results['n_functions']}\n")
+                        f.write("\n")
+
+                print(f"   📄 Results saved to: {results_file}")
+            else:
+                print("❌ No TNG50 data could be processed")
+            return
+        else:
+            raise ValueError(f"Unknown survey: {survey}")
+    except Exception as e:
+        print(f"❌ Failed to load {survey} data: {e}")
+        return
 
     # Set output directory
     if output_dir is None:
-        output_dir = data_config.results_dir / survey / "preprocessing"
+        output_dir_path = Path("results") / survey / "preprocessing"
     else:
-        output_dir = Path(output_dir)
+        output_dir_path = Path(output_dir)
+
+    output_dir_path.mkdir(parents=True, exist_ok=True)
 
     # Process the data
-    results = processor.process_survey_data(survey_tensor, output_dir)
+    print("🔬 Processing tensor data...")
+    results = processor.process(survey_tensor)
 
     # Print summary
     print(f"\n✅ Preprocessing completed for {survey}")
-    print(f"   Objects processed: {results['n_objects']}")
-    print(f"   Processing steps: {', '.join(results['processing_steps'])}")
+    print(f"   Survey: {survey_tensor.survey_name}")
+    print(f"   Objects processed: {len(survey_tensor)}")
+    print(f"   Data shape: {survey_tensor._data.shape}")
     print(f"   Results saved to: {output_dir}")
 
     # Print detailed results
-    if "features" in results and "error" not in results["features"]:
-        feat_res = results["features"]
-        print(
-            f"   Features: {feat_res['n_features']}, Outliers: {feat_res['n_outliers']}"
-        )
+    if "feature_tensor" in results:
+        print(f"   ✅ Feature engineering: {results['n_features']} features")
+    if "feature_error" in results:
+        print(f"   ⚠️ Feature engineering failed: {results['feature_error']}")
 
-    if "clustering" in results and "error" not in results["clustering"]:
-        clust_res = results["clustering"]
+    if "cluster_tensor" in results:
         print(
-            f"   Clusters: {clust_res['n_clusters']}, Noise: {clust_res['noise_fraction']:.2%}"
+            f"   ✅ Clustering: {results['n_clusters']} clusters, {results['n_noise']} noise points"
         )
+    if "clustering_error" in results:
+        print(f"   ⚠️ Clustering failed: {results['clustering_error']}")
 
-    if "statistics" in results and "error" not in results["statistics"]:
-        stats_res = results["statistics"]
-        print(f"   Statistical functions: {stats_res['n_functions']}")
+    if "stats_tensor" in results:
+        print(f"   ✅ Statistics: {results['n_functions']} functions computed")
+    if "statistics_error" in results:
+        print(f"   ⚠️ Statistics failed: {results['statistics_error']}")
+
+    # Save basic results
+    results_file = output_dir / f"{survey}_preprocessing_results.txt"
+    with open(results_file, "w") as f:
+        f.write(f"Preprocessing Results for {survey}\n")
+        f.write(f"Survey: {survey_tensor.survey_name}\n")
+        f.write(f"Objects: {len(survey_tensor)}\n")
+        f.write(f"Shape: {survey_tensor._data.shape}\n")
+        f.write(f"Device: {survey_tensor._data.device}\n")
+
+    print(f"   📄 Summary saved to: {results_file}")
 
 
 def main():
@@ -596,7 +684,9 @@ def main():
     )
 
     parser.add_argument(
-        "survey", choices=["gaia", "sdss", "nsa"], help="Survey to preprocess"
+        "survey",
+        choices=["gaia", "sdss", "nsa", "exoplanet", "tng50"],
+        help="Survey to preprocess",
     )
 
     parser.add_argument("--config", type=str, help="Path to configuration file")

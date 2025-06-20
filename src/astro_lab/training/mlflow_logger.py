@@ -44,14 +44,16 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         system_metrics_interval: int = 30,  # seconds
         **kwargs,
     ):
-        # Set default tracking URI
+        # Set up MLflow tracking URI and artifact location
         if tracking_uri is None:
-            # Try environment variable first, then use local file-based tracking
-            tracking_uri = os.environ.get("MLFLOW_TRACKING_URI")
-            if tracking_uri is None:
-                # Fallback to file-based tracking using data_config
-                data_config.ensure_experiment_directories(experiment_name)
-                tracking_uri = f"file://{data_config.mlruns_dir.absolute()}"
+            # Use proper file URI format for Windows
+            mlruns_path = Path.cwd() / "mlruns"
+            tracking_uri = f"file:///{mlruns_path.as_posix()}"
+
+        if artifact_location is None:
+            # Use proper file URI format for Windows
+            artifacts_path = Path.cwd() / "data" / "experiments" / "mlruns"
+            artifact_location = f"file:///{artifacts_path.as_posix()}"
 
         # Set environment variable for consistency
         os.environ["MLFLOW_TRACKING_URI"] = tracking_uri

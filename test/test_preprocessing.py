@@ -707,3 +707,199 @@ class TestPerformanceAndScaling:
         # Verify results
         assert stats["n_rows"] == n_objects
         assert stats["memory_usage_mb"] > 0
+
+
+class TestTNG50Preprocessing:
+    """Tests für TNG50 simulation preprocessing."""
+
+    def test_load_tng50_data_from_parquet(self):
+        """Test loading of TNG50 data from existing parquet files."""
+        from pathlib import Path
+
+        from astro_lab.data.core import load_tng50_data
+
+        # Check if TNG50 data exists
+        data_dir = Path("data/raw/tng50")
+        parttype0_file = data_dir / "tng50_parttype0.parquet"
+
+        if not parttype0_file.exists():
+            pytest.skip("TNG50 test data not available")
+
+        # Test loading different particle types
+        particle_types = ["PartType0", "PartType1", "PartType4", "PartType5"]
+
+        for particle_type in particle_types:
+            particle_file = data_dir / f"tng50_{particle_type.lower()}.parquet"
+
+            if particle_file.exists():
+                print(f"Testing {particle_type}...")
+
+                # Test tensor loading
+                try:
+                    tensor = load_tng50_data(
+                        max_samples=100, particle_type=particle_type, return_tensor=True
+                    )
+
+                    # Check basic properties
+                    assert hasattr(tensor, "_data")
+                    assert tensor._data.shape[0] <= 100  # Respects max_samples
+                    assert tensor._data.shape[1] >= 3  # At least x,y,z coordinates
+
+                    print(f"   ✅ {particle_type}: {tensor._data.shape}")
+
+                except Exception as e:
+                    pytest.fail(f"Failed to load {particle_type}: {e}")
+
+    def test_tng50_graph_creation(self):
+        """Test TNG50 graph creation from parquet data."""
+        from pathlib import Path
+
+        import polars as pl
+
+        from astro_lab.data.core import create_graph_from_dataframe, detect_survey_type
+
+        # Check if TNG50 data exists
+        data_dir = Path("data/raw/tng50")
+        parttype0_file = data_dir / "tng50_parttype0.parquet"
+
+        if not parttype0_file.exists():
+            pytest.skip("TNG50 test data not available")
+
+        # Load a small sample
+        df = pl.read_parquet(parttype0_file)
+        if len(df) > 50:
+            df = df.sample(50, seed=42)
+
+        # Test survey type detection
+        survey_type = detect_survey_type("tng50_parttype0", df)
+        assert survey_type == "tng50"
+
+        # Test graph creation
+        try:
+            graph = create_graph_from_dataframe(
+                df,
+                survey_type="tng50",
+                k_neighbors=5,
+                distance_threshold=2.0,  # Mpc/h
+            )
+
+            if graph is not None:  # Only test if PyTorch Geometric is available
+                assert graph.num_nodes == len(df)
+                assert graph.x.shape[0] == len(df)
+                assert graph.x.shape[1] == len(df.columns)
+                assert graph.pos is not None  # Should have 3D positions
+                assert graph.pos.shape[1] == 3  # x, y, z coordinates
+
+                print(
+                    f"   ✅ TNG50 Graph: {graph.num_nodes} nodes, {graph.num_edges} edges"
+                )
+            else:
+                print("   ⚠️ PyTorch Geometric not available, skipping graph test")
+
+        except Exception as e:
+            pytest.fail(f"TNG50 graph creation failed: {e}")
+
+    def test_tng50_preprocessing_pipeline(self):
+        """Test end-to-end TNG50 preprocessing pipeline."""
+        from pathlib import Path
+
+        from astro_lab.data.core import load_tng50_data
+        from astro_lab.data.processing import (
+            SimpleAstroProcessor,
+            SimpleProcessingConfig,
+        )
+
+        # Check if TNG50 data exists
+        data_dir = Path("data/raw/tng50")
+        parttype0_file = data_dir / "tng50_parttype0.parquet"
+
+        if not parttype0_file.exists():
+            pytest.skip("TNG50 test data not available")
+
+        # Create processor
+        config = SimpleProcessingConfig(
+            enable_feature_engineering=True,
+            enable_clustering=True,
+            enable_statistics=True,
+        )
+        processor = SimpleAstroProcessor(config)
+
+        # Load TNG50 tensor
+        try:
+            tensor = load_tng50_data(
+                max_samples=100, particle_type="PartType0", return_tensor=True
+            )
+
+            # Process the tensor
+            results = processor.process(tensor)
+
+            # Check results
+            assert "input_tensor" in results
+            assert results["input_tensor"] == tensor
+
+            # Feature engineering results
+            if "feature_tensor" in results:
+                assert "n_features" in results
+                assert results["n_features"] > 0
+                print(f"   ✅ Features: {results['n_features']}")
+
+            # Clustering results
+            if "cluster_tensor" in results:
+                assert "n_clusters" in results
+                assert "n_noise" in results
+                print(f"   ✅ Clustering: {results['n_clusters']} clusters")
+
+            # Statistics results
+            if "stats_tensor" in results:
+                print("   ✅ Statistics computed")
+
+            print("   ✅ TNG50 preprocessing pipeline completed successfully")
+
+        except Exception as e:
+            pytest.fail(f"TNG50 preprocessing pipeline failed: {e}")
+
+    def test_tng50_coordinate_ranges(self):
+        """Test that TNG50 coordinates are in expected ranges."""
+        from pathlib import Path
+
+        from astro_lab.data.core import load_tng50_data
+
+        # Check if TNG50 data exists
+        data_dir = Path("data/raw/tng50")
+        parttype0_file = data_dir / "tng50_parttype0.parquet"
+
+        if not parttype0_file.exists():
+            pytest.skip("TNG50 test data not available")
+
+        # Load TNG50 tensor
+        try:
+            tensor = load_tng50_data(
+                max_samples=1000, particle_type="PartType0", return_tensor=True
+            )
+
+            # Extract coordinates (first 3 columns should be x, y, z)
+            coords = tensor._data[:, :3]
+
+            # Check coordinate ranges (TNG50 coordinates are in ckpc/h: 0-35000 ckpc/h)
+            x_min, x_max = coords[:, 0].min().item(), coords[:, 0].max().item()
+            y_min, y_max = coords[:, 1].min().item(), coords[:, 1].max().item()
+            z_min, z_max = coords[:, 2].min().item(), coords[:, 2].max().item()
+
+            print(f"   📊 X range: [{x_min:.2f}, {x_max:.2f}] ckpc/h")
+            print(f"   📊 Y range: [{y_min:.2f}, {y_max:.2f}] ckpc/h")
+            print(f"   📊 Z range: [{z_min:.2f}, {z_max:.2f}] ckpc/h")
+
+            # Basic sanity checks (TNG50 box is 35000 ckpc/h = 35 Mpc/h)
+            assert 0 <= x_min <= x_max <= 40000  # Allow some margin for 35 Mpc/h
+            assert 0 <= y_min <= y_max <= 40000
+            assert 0 <= z_min <= z_max <= 40000
+
+            # Should span a reasonable fraction of the box
+            assert (x_max - x_min) > 1.0  # At least 1 Mpc/h range
+            assert (y_max - y_min) > 1.0
+            assert (z_max - z_min) > 1.0
+
+            print("   ✅ TNG50 coordinates are in expected ranges")
+
+        except Exception as e:
+            pytest.fail(f"TNG50 coordinate range test failed: {e}")
