@@ -166,12 +166,18 @@ def train_from_config(config_path: str) -> None:
         raise
 
 
-def optimize_from_config(config_path: str) -> None:
+def optimize_from_config(
+    config_path: str,
+    n_trials: Optional[int] = None,
+    experiment_name: Optional[str] = None,
+) -> None:
     """
     Run hyperparameter optimization from configuration file.
 
     Args:
         config_path: Path to YAML configuration file
+        n_trials: Override number of trials from CLI
+        experiment_name: Override experiment name from CLI
     """
     try:
         # Use ConfigLoader for proper config handling
@@ -235,6 +241,17 @@ def optimize_from_config(config_path: str) -> None:
         # Get properly filtered Optuna parameters
         optuna_params = get_optuna_params(optimization_config)
         search_space = optimization_config.get("search_space", None)
+
+        # Override n_trials from CLI if provided
+        if n_trials is not None:
+            optuna_params["n_trials"] = n_trials
+            logger.info(f"🔧 Overriding n_trials from CLI: {n_trials}")
+
+        # Override experiment name if provided
+        if experiment_name is not None:
+            trainer_config["experiment_name"] = experiment_name
+            mlflow_params["experiment_name"] = experiment_name
+            logger.info(f"🔧 Overriding experiment name from CLI: {experiment_name}")
 
         best_params = trainer.optimize_hyperparameters(
             train_dataloader=datamodule.train_dataloader(),

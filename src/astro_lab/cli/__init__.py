@@ -148,11 +148,6 @@ astro-lab config surveys
     # Train subcommand
     train_parser = subparsers.add_parser("train", help="Train ML models")
     train_parser.add_argument("--config", "-c", help="Configuration file path")
-    train_parser.add_argument(
-        "--optimize",
-        action="store_true",
-        help="Run hyperparameter optimization instead of training",
-    )
 
     # Optimize subcommand (dedicated)
     optimize_parser = subparsers.add_parser(
@@ -442,12 +437,8 @@ def handle_train(args):
             return
 
         try:
-            if args.optimize:
-                print(f"🎯 Starting hyperparameter optimization with: {args.config}")
-                optimize_from_config(args.config)
-            else:
-                print(f"🚀 Starting training with: {args.config}")
-                train_from_config(args.config)
+            print(f"🚀 Starting training with: {args.config}")
+            train_from_config(args.config)
         except Exception as e:
             print(f"❌ Training failed: {e}")
             sys.exit(1)
@@ -516,7 +507,11 @@ def handle_optimize(args):
         if args.experiment_name:
             print(f"📝 Using experiment name: {args.experiment_name}")
 
-        optimize_from_config(config_path=args.config)
+        optimize_from_config(
+            config_path=args.config,
+            n_trials=args.trials,
+            experiment_name=args.experiment_name,
+        )
 
     except Exception as e:
         print(f"❌ Optimization failed: {e}")
