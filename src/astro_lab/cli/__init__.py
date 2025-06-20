@@ -39,6 +39,7 @@ def main():
 astro-lab download       Download astronomischer Datensätze
 astro-lab preprocess     Datenvorverarbeitung und Graph-Erstellung
 astro-lab train          ML-Model Training mit Lightning + MLflow
+astro-lab optimize       Hyperparameter-Optimierung mit Optuna
 astro-lab config         Konfigurationsverwaltung
 
 📖 Beispiele:
@@ -152,6 +153,16 @@ astro-lab config surveys
         action="store_true",
         help="Run hyperparameter optimization instead of training",
     )
+
+    # Optimize subcommand (dedicated)
+    optimize_parser = subparsers.add_parser(
+        "optimize", help="Run hyperparameter optimization"
+    )
+    optimize_parser.add_argument("config", help="Configuration file path")
+    optimize_parser.add_argument(
+        "--trials", type=int, default=10, help="Number of optimization trials"
+    )
+    optimize_parser.add_argument("--experiment-name", help="Override experiment name")
     train_parser.add_argument(
         "--dataset", choices=["gaia", "sdss", "nsa"], help="Dataset to use"
     )
@@ -207,6 +218,8 @@ astro-lab config surveys
         handle_preprocess(args)
     elif args.command == "train":
         handle_train(args)
+    elif args.command == "optimize":
+        handle_optimize(args)
     elif args.command == "config":
         handle_config(args)
 
