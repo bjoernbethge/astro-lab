@@ -1,9 +1,9 @@
+#!/usr/bin/env python3
 """
-Configuration Loader for AstroLab
-=================================
+AstroLab Configuration Loader
+============================
 
-Loads YAML configurations and integrates with the data config system.
-Automatically sets up MLflow and checkpoint directories.
+Centralized configuration management with automatic path setup and experiment organization.
 """
 
 import os
@@ -80,8 +80,9 @@ class ConfigLoader:
             )
         # Keep HTTP URIs as-is (like http://localhost:5000)
 
-        # Update checkpoint directory
-        self.config["checkpoints"]["dir"] = str(exp_paths["checkpoints"])
+        # Update checkpoint directory (only if checkpoints section exists)
+        if "checkpoints" in self.config:
+            self.config["checkpoints"]["dir"] = str(exp_paths["checkpoints"])
 
         # Update data base directory
         self.config["data"]["base_dir"] = str(data_config.base_dir)
@@ -95,7 +96,7 @@ class ConfigLoader:
         os.environ["MLFLOW_TRACKING_URI"] = self.config["mlflow"]["tracking_uri"]
 
         # Lightning environment (optional)
-        if "LIGHTNING_LOGS_DIR" not in os.environ:
+        if "LIGHTNING_LOGS_DIR" not in os.environ and "checkpoints" in self.config:
             os.environ["LIGHTNING_LOGS_DIR"] = self.config["checkpoints"]["dir"]
 
     def get_mlflow_config(self) -> Dict[str, Any]:
@@ -206,7 +207,8 @@ def setup_experiment_from_config(config_path: str, experiment_name: str):
     print(f"   - Name: {experiment_name}")
     if config:
         print(f"   - MLflow: {config['mlflow']['tracking_uri']}")
-        print(f"   - Checkpoints: {config['checkpoints']['dir']}")
+        if "checkpoints" in config:
+            print(f"   - Checkpoints: {config['checkpoints']['dir']}")
     print(f"   - Config saved: {data_config.configs_dir / f'{experiment_name}.yaml'}")
 
     return config

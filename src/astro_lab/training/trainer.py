@@ -72,29 +72,34 @@ class AstroTrainer(Trainer):
         self,
         lightning_module: AstroLightningModule,
         max_epochs: int = 100,
-        accelerator: str = "auto",
-        devices: Union[int, str] = "auto",
-        precision: Literal[
-            "bf16-mixed"
-        ] = "bf16-mixed",  # Default to bf16-mixed for stability
-        gradient_clip_val: Optional[float] = 1.0,
-        accumulate_grad_batches: int = 1,
         enable_swa: bool = False,
         patience: int = 10,
-        monitor: str = "val_loss",
-        mode: str = "min",
         experiment_name: str = "astro_experiment",
         checkpoint_dir: Optional[Union[str, Path]] = None,
         **kwargs,
     ):
         """
         Initialize optimized Lightning Trainer with astronomical ML defaults.
+        Automatically detects best hardware configuration.
 
         Args:
             checkpoint_dir: Directory to save checkpoints. If None, uses data_config system
         """
+        import torch
+
         self.astro_module = lightning_module
         self.experiment_name = experiment_name
+
+        # Automatic hardware detection
+        accelerator = "gpu" if torch.cuda.is_available() else "cpu"
+        devices = 1 if torch.cuda.is_available() else "auto"
+        precision = "16-mixed" if torch.cuda.is_available() else "32"
+
+        # Smart defaults
+        monitor = "val_loss"
+        mode = "min"
+        gradient_clip_val = 1.0
+        accumulate_grad_batches = 1
 
         # Setup checkpoint directory using data_config
         self.checkpoint_dir = self._setup_checkpoint_dir(
@@ -508,19 +513,16 @@ class AstroTrainer(Trainer):
     ) -> "AstroTrainer":
         """Create AstroTrainer from configuration dictionary."""
         training_config = config.get("training", {})
+        callbacks_config = config.get("callbacks", {})
+        early_stopping_config = callbacks_config.get("early_stopping", {})
 
         return cls(
             lightning_module=lightning_module,
             max_epochs=training_config.get("max_epochs", 100),
-            accelerator=training_config.get("accelerator", "auto"),
-            devices=training_config.get("devices", "auto"),
-            precision=training_config.get("precision", "bf16-mixed"),
-            gradient_clip_val=training_config.get("gradient_clip_val", 1.0),
-            accumulate_grad_batches=training_config.get("accumulate_grad_batches", 1),
             enable_swa=training_config.get("enable_swa", False),
-            patience=training_config.get("patience", 10),
-            monitor=training_config.get("monitor", "val_loss"),
-            mode=training_config.get("mode", "min"),
+            patience=early_stopping_config.get(
+                "patience", training_config.get("patience", 10)
+            ),
             experiment_name=config.get("mlflow", {}).get(
                 "experiment_name", "astro_experiment"
             ),

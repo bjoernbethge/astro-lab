@@ -151,7 +151,6 @@ def _flatten_config(config: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
             "search_space",
             "tags",
             "model",
-            "checkpoints",
             "callbacks",
         ]:
             # Recursively flatten, except for special dicts

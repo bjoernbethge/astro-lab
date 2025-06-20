@@ -108,28 +108,331 @@ uv run mlflow ui
 
 ## 🔧 CLI Tools
 
-### Data Management
+AstroLab provides a comprehensive command-line interface for all major operations:
+
+### 📥 Data Download & Management
+
 ```bash
-# Download Gaia DR3 data
-astro-lab download gaia --magnitude-limit 12.0
+# Download astronomical survey data
+astro-lab download gaia --magnitude-limit 12.0 --output data/gaia/
+astro-lab download sdss --survey dr17 --max-objects 100000
+astro-lab download nsa --catalog v1_0_1
 
-# Process TNG50 simulations
-astro-lab preprocess tng50 --all-snapshots --all --max-particles 10000
-
-# Create train/validation splits
-astro-lab preprocess process catalog.parquet --create-splits
+# Quick data exploration
+astro-lab download --list-surveys          # Show available surveys
+astro-lab download --status                # Show download progress
 ```
 
-### Machine Learning
-```bash
-# Create configuration
-astro-lab train create-config --output config.yaml
+### 🔄 Data Preprocessing
 
-# Train models
-astro-lab train train --config config.yaml
+```bash
+# Process raw survey data
+astro-lab preprocess gaia data/raw/gaia_dr3.csv --create-graphs --k-neighbors 8
+astro-lab preprocess sdss data/raw/sdss_dr17.fits --normalize --create-splits
+
+# TNG50 cosmological simulations
+astro-lab preprocess tng50 data/tng50/ --all-snapshots --particle-types PartType4
+astro-lab preprocess tng50 data/tng50/ --snapshot 99 --max-particles 10000
+
+# Generic data processing
+astro-lab preprocess process catalog.parquet --create-splits --train-ratio 0.7
+astro-lab preprocess browse data/processed/  # Browse processed data
+```
+
+### 🧠 Machine Learning Training
+
+#### Configuration-Based Training (Recommended)
+
+```bash
+# Create default configuration
+astro-lab train create-config --output configs/my_experiment.yaml
+
+# Train with configuration
+astro-lab train --config configs/gaia_classification.yaml
 
 # Hyperparameter optimization
-astro-lab train optimize --config optuna_config.yaml
+astro-lab train --config configs/gaia_optimization.yaml --optimize
+
+# Quick training (without config file)
+astro-lab train --dataset gaia --model gaia_classifier --epochs 50
+```
+
+#### Configuration Management
+
+```bash
+# List available survey configurations
+astro-lab config surveys
+
+# Show specific survey configuration
+astro-lab config show gaia
+
+# Create custom configuration
+astro-lab config create --output my_config.yaml
+```
+
+### 📊 Experiment Tracking & Results
+
+AstroLab integrates with MLflow for comprehensive experiment tracking:
+
+```bash
+# Local MLflow UI
+mlflow ui --backend-store-uri ./mlruns --host 127.0.0.1 --port 5000
+
+# Docker container setup (recommended)
+# The marimo-flow container automatically includes MLflow
+docker ps  # Check if marimo-flow container is running
+# Access at: http://localhost:5000
+
+# Sync local experiments to container
+robocopy mlruns "D:\marimo-flow\data\mlflow\mlruns" /E /XO
+docker restart marimo-flow
+```
+
+#### MLflow Configuration
+
+```yaml
+mlflow:
+  tracking_uri: ./mlruns                    # Local tracking
+  # tracking_uri: D:/marimo-flow/data/mlflow/mlruns  # Container tracking
+  experiment_name: my_experiment
+  experiment_description: "Detailed experiment description"
+  tags:
+    survey: Gaia
+    task: stellar_classification
+    version: v1.0
+```
+
+#### Viewing Results
+
+1. **Open MLflow UI**: http://localhost:5000
+2. **Navigate to your experiment**: `gaia_optuna_optimization`
+3. **Compare trials**: Sort by `val_loss` to see best results
+4. **View parameters**: See which hyperparameters worked best
+5. **Download models**: Access trained model artifacts
+
+## ⚙️ Configuration System
+
+AstroLab uses YAML configuration files for reproducible experiments:
+
+### Basic Configuration Structure
+
+```yaml
+# configs/gaia_classification.yaml
+model:
+  type: gaia_classifier
+  params:
+    hidden_dim: 128
+    num_classes: 8
+    dropout: 0.1
+    use_batch_norm: true
+
+data:
+  dataset: gaia
+  data_dir: data/processed
+  batch_size: 64
+  max_samples: 50000
+  return_tensor: true
+  split_ratios: [0.7, 0.15, 0.15]
+
+training:
+  max_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  accelerator: auto
+  devices: 1
+  precision: 16-mixed
+
+mlflow:
+  experiment_name: gaia_stellar_classification
+  tracking_uri: ./mlruns
+  tags:
+    survey: Gaia
+    task: stellar_classification
+```
+
+### Hyperparameter Optimization Configuration
+
+```yaml
+# configs/gaia_optimization.yaml
+model:
+  type: gaia_classifier
+  params:
+    hidden_dim: 128  # Will be optimized
+    num_classes: 8
+    dropout: 0.1     # Will be optimized
+
+data:
+  dataset: gaia
+  batch_size: 64
+  max_samples: 50000
+
+training:
+  max_epochs: 50
+  learning_rate: 0.001  # Will be optimized
+  accelerator: auto
+  precision: 16-mixed
+
+optimization:
+  n_trials: 50
+  timeout: 7200  # 2 hours
+  direction: maximize
+  study_name: gaia_stellar_classification
+  
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1e-5
+      high: 1e-1
+    hidden_dim:
+      type: categorical
+      choices: [64, 128, 256, 512, 768]
+    dropout:
+      type: uniform
+      low: 0.05
+      high: 0.3
+    weight_decay:
+      type: loguniform
+      low: 1e-6
+      high: 1e-3
+
+mlflow:
+  experiment_name: gaia_optuna_optimization
+  tracking_uri: ./mlruns
+```
+
+### Available Survey Configurations
+
+```bash
+# View all available surveys
+astro-lab config surveys
+```
+
+**Pre-configured Surveys:**
+- **Gaia DR3**: `configs/surveys/gaia.yaml` - Stellar astrometry and photometry
+- **SDSS DR17**: `configs/surveys/sdss.yaml` - Galaxy photometry and spectra  
+- **NSA**: `configs/surveys/nsa.yaml` - Galaxy catalog with distances
+
+### Parameter Distribution System
+
+AstroLab automatically distributes configuration parameters to the correct components:
+
+```python
+# Automatic parameter routing:
+# training.* → PyTorch Lightning Trainer
+# model.* → Model initialization  
+# optimization.* → Optuna hyperparameter search
+# mlflow.* → Experiment tracking
+# data.* → Data loading and processing
+```
+
+### CLI Examples by Use Case
+
+#### 🌟 Stellar Classification (Gaia)
+```bash
+# Download Gaia data
+astro-lab download gaia --magnitude-limit 12.0
+
+# Create stellar classification experiment
+astro-lab train --config configs/surveys/gaia.yaml
+
+# Optimize hyperparameters
+astro-lab train --config configs/gaia_optimization.yaml --optimize
+```
+
+#### 🌌 Galaxy Analysis (SDSS)
+```bash
+# Download SDSS data
+astro-lab download sdss --survey dr17
+
+# Process and create graphs
+astro-lab preprocess sdss data/sdss/ --create-graphs --k-neighbors 10
+
+# Train galaxy classifier
+astro-lab train --config configs/surveys/sdss.yaml
+```
+
+#### 🪐 Exoplanet Detection
+```bash
+# Download NASA Exoplanet Archive data
+astro-lab download exoplanets --confirmed-only
+
+# Train transit detection model
+astro-lab train --dataset exoplanets --model transit_detector --epochs 100
+```
+
+### Advanced CLI Usage
+
+#### Debugging & Development
+```bash
+# Verbose logging
+astro-lab train --config config.yaml --verbose
+
+# Disable tensor optimizations (for debugging)
+astro-lab train --config config.yaml --disable-tensors
+
+# Test configuration without training
+astro-lab train --config config.yaml --dry-run
+```
+
+#### Resource Management
+```bash
+# Specify GPU device
+astro-lab train --config config.yaml --devices 0
+
+# Use multiple GPUs
+astro-lab train --config config.yaml --devices 2 --accelerator gpu
+
+# CPU-only training
+astro-lab train --config config.yaml --accelerator cpu
+```
+
+## 📋 Quick Reference
+
+### Most Common Commands
+
+```bash
+# 1. Download and setup Gaia data
+astro-lab download gaia --magnitude-limit 12.0
+astro-lab preprocess gaia data/gaia/ --create-graphs
+
+# 2. Train a stellar classifier
+astro-lab train --config configs/surveys/gaia.yaml
+
+# 3. Optimize hyperparameters
+astro-lab train --config configs/gaia_optimization.yaml --optimize
+
+# 4. View results
+mlflow ui --backend-store-uri ./mlruns
+# Open: http://localhost:5000
+```
+
+### Configuration Templates
+
+| Task | Config File | Description |
+|------|-------------|-------------|
+| Stellar Classification | `configs/surveys/gaia.yaml` | Gaia DR3 stellar classification |
+| Galaxy Analysis | `configs/surveys/sdss.yaml` | SDSS galaxy photometry |
+| Hyperparameter Tuning | `configs/gaia_optimization.yaml` | Optuna-based optimization |
+| Custom Experiment | `configs/default.yaml` | Basic template |
+
+### Troubleshooting
+
+```bash
+# Check system status
+astro-lab --version
+uv run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+
+# Debug training issues
+astro-lab train --config config.yaml --verbose --dry-run
+
+# Reset MLflow experiments
+rm -rf mlruns/
+# Or on Windows: rmdir /s mlruns
+
+# Container issues
+docker ps
+docker logs marimo-flow
+docker restart marimo-flow
 ```
 
 ## 💻 Development Examples
