@@ -1,5 +1,7 @@
 """
-Astro Lab - Advanced astronomical tensor operations with PyTorch.
+Comprehensive Astronomical Data Analysis Framework
+
+A modern Python framework for astronomical data analysis, machine learning, and visualization that combines specialized astronomy libraries with cutting-edge ML tools.
 """
 
 import os
@@ -21,8 +23,8 @@ os.environ["ASTROML_DATA"] = str(_data_dir)
 
 # Import main modules
 from astro_lab import data
-from astro_lab.tensors import *
 from astro_lab.models import *
+from astro_lab.tensors import *
 from astro_lab.utils import *
 
 __version__ = "0.1.0"

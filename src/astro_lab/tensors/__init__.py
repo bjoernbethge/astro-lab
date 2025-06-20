@@ -29,14 +29,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Import base class first
 from .base import AstroTensorBase, transfer_direct
+from .clustering import ClusteringTensor
 
 # Import refactored components
 from .constants import ASTRO, CONSTANTS, GRAVITY, PHOTOMETRY, SPECTROSCOPY
+from .crossmatch import CrossMatchTensor
 
 # Import simple tensor classes (no dependencies)
 # Import complex tensors that depend on others (after their dependencies)
 from .earth_satellite import EarthSatelliteTensor
 from .factory import TensorFactory
+
+# Import data processing tensors
+from .feature import FeatureTensor
 from .lightcurve import LightcurveTensor
 from .orbital import ManeuverTensor, OrbitTensor
 from .photometric import PhotometricTensor
@@ -45,6 +50,7 @@ from .simulation import CosmologyCalculator, SimulationTensor
 # Import spatial tensors (minimal dependencies)
 from .spatial_3d import Spatial3DTensor
 from .spectral import SpectralTensor
+from .statistics import StatisticsTensor
 
 # Import coordinator tensor last (depends on most others)
 from .survey import SurveyTensor
@@ -142,6 +148,11 @@ __all__ = [
     "SurveyTensor",
     "SimulationTensor",
     "CosmologyCalculator",
+    # Data processing tensors
+    "FeatureTensor",
+    "ClusteringTensor",
+    "StatisticsTensor",
+    "CrossMatchTensor",
     # Pydantic configuration classes
     "SpatialTensorConfig",
     "PhotometricTensorConfig",
