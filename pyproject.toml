@@ -20,7 +20,7 @@ dependencies = [
     "pyvista>=0.45.2",
     "vtk>=9.3.0",
     # Machine Learning
-    "torch>=2.0.0",
+    "torch>=2.7.1",
     "torch-geometric>=2.6.1",
     "scipy>=1.10.0",
     # MLflow and tracking
@@ -36,7 +36,8 @@ dependencies = [
     "astropy>=7.1.0",
     "astro-pack",
     "pyyaml>=6.0.2",
-    "lightning>=2.5.1.post0",
+    "lightning==2.5.1.post0",
+    "torchmetrics==1.6.3", # Compatible with lightning-utilities 0.14.3
     "optuna>=4.4.0",
     "optuna-integration[pytorch-lightning]>=4.4.0",
     # System monitoring for MLflow
@@ -44,6 +45,8 @@ dependencies = [
     "gputil>=1.4.0",
     "plotly>=6.1.2",
     "astro-viz",
+    "lightning-utilities==0.14.3",
+    "markupsafe>=3.0.2",
 ]
 
 # Optional dependencies for different use cases
