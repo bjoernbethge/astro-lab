@@ -10,7 +10,6 @@ import argparse
 import sys
 from pathlib import Path
 
-
 from astro_lab.data import (
     AstroDataManager,
     data_manager,
@@ -36,7 +35,7 @@ download_bright_all_sky(magnitude_limit=12.0)
 from astro_lab.data import create_exoplanet_dataloader
 loader = create_exoplanet_dataloader()  # Download passiert automatisch!
 
-# Alle verfügbaren Datasets:
+# All available datasets:
 from astro_lab.data import list_catalogs
 catalogs = list_catalogs()
 
@@ -72,7 +71,7 @@ catalogs = list_catalogs()
         except Exception as e:
             print(f"❌ Error: {e}")
             sys.exit(1)
-            
+
     elif args.command == "list":
         print("📋 Available datasets:")
         try:

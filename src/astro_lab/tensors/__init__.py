@@ -29,22 +29,38 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Import base class first
 from .base import AstroTensorBase, transfer_direct
+from .clustering import ClusteringTensor
+
+# Import refactored components
+from .constants import ASTRO, CONSTANTS, GRAVITY, PHOTOMETRY, SPECTROSCOPY
+from .crossmatch import CrossMatchTensor
 
 # Import simple tensor classes (no dependencies)
-from .photometric import PhotometricTensor
-from .spectral import SpectralTensor
+# Import complex tensors that depend on others (after their dependencies)
+from .earth_satellite import EarthSatelliteTensor
+from .factory import TensorFactory
+
+# Import data processing tensors
+from .feature import FeatureTensor
 from .lightcurve import LightcurveTensor
 from .orbital import ManeuverTensor, OrbitTensor
-from .simulation import SimulationTensor, CosmologyCalculator
+from .photometric import PhotometricTensor
+from .simulation import CosmologyCalculator, SimulationTensor
 
 # Import spatial tensors (minimal dependencies)
 from .spatial_3d import Spatial3DTensor
-
-# Import complex tensors that depend on others (after their dependencies)
-from .earth_satellite import EarthSatelliteTensor
+from .spectral import SpectralTensor
+from .statistics import StatisticsTensor
 
 # Import coordinator tensor last (depends on most others)
 from .survey import SurveyTensor
+from .tensor_types import (
+    PhotometricTensorProtocol,
+    Spatial3DTensorProtocol,
+    SurveyTensorProtocol,
+    TensorProtocol,
+)
+from .transformations import TransformationRegistry, apply_transformation
 
 
 class SpatialTensorConfig(BaseModel):
@@ -132,6 +148,11 @@ __all__ = [
     "SurveyTensor",
     "SimulationTensor",
     "CosmologyCalculator",
+    # Data processing tensors
+    "FeatureTensor",
+    "ClusteringTensor",
+    "StatisticsTensor",
+    "CrossMatchTensor",
     # Pydantic configuration classes
     "SpatialTensorConfig",
     "PhotometricTensorConfig",
@@ -144,6 +165,28 @@ __all__ = [
     "from_lightcurve_data",
     "from_orbital_elements",
 ]
+
+# Add refactored modules
+__all__.extend(
+    [
+        # Constants
+        "ASTRO",
+        "CONSTANTS",
+        "GRAVITY",
+        "PHOTOMETRY",
+        "SPECTROSCOPY",
+        # Protocols
+        "PhotometricTensorProtocol",
+        "Spatial3DTensorProtocol",
+        "SurveyTensorProtocol",
+        "TensorProtocol",
+        # Transformations
+        "TransformationRegistry",
+        "apply_transformation",
+        # Factory
+        "TensorFactory",
+    ]
+)
 
 # Version info
 __version__ = "0.3.0"
@@ -163,7 +206,7 @@ TENSOR_ARCHITECTURE = {
 }
 
 
-# Convenience factory functions  
+# Convenience factory functions
 def create_spatial_tensor(*args, **kwargs):
     """Create spatial tensor."""
     return Spatial3DTensor(*args, **kwargs)
@@ -222,5 +265,6 @@ def from_orbital_elements(elements, element_type="keplerian", **kwargs):
 # Removed migration helpers - prototyping phase
 
 import logging
+
 logger = logging.getLogger(__name__)
 logger.info("🧭 Astronomical tensors loaded with integrated visualization support")

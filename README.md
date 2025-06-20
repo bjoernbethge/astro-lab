@@ -1,191 +1,648 @@
-# Astro-Lab: Astronomical Tensor Library
+# AstroLab: Comprehensive Astronomical Data Analysis Framework
 
-A specialized Python library for astronomical data processing with PyTorch-based tensors optimized for astronomical coordinate systems, photometry, spectroscopy, and 3D spatial analysis.
+A modern Python framework for astronomical data analysis, machine learning, and visualization that combines specialized astronomy libraries with cutting-edge ML tools.
+
+## 🚀 Project Overview
+
+AstroLab is designed as a comprehensive ecosystem for astronomical research, featuring:
+
+- **Interactive Development**: Marimo reactive notebooks and Jupyter integration
+- **ML Experiment Tracking**: MLflow for reproducible research
+- **Specialized Data Types**: Astronomy-specific tensor implementations
+- **3D Visualization**: Blender and PyVista integration
+- **GPU Acceleration**: CUDA-optimized PyTorch workflows
+- **Graph Neural Networks**: For spatial astronomical data structures
+
+## 📦 Architecture
+
+### Core Package Structure
+
+```
+astro-lab/
+├── astro-viz/          # 3D Visualization & Blender Integration
+├── astro-torch/        # PyTorch & ML for Astronomy  
+├── astro-pack/         # Astronomy Libraries & Data Access
+├── astro-lab/          # Main Framework
+└── astro-lab-ml/       # ML-specific Extensions
+```
+
+### Key Components
+
+#### 🎯 Interactive Development Stack
+- **Marimo v0.14.0**: Reactive notebook system for interactive development
+- **MLflow v3.1.0**: Experiment tracking and model management
+- **Jupyter**: Traditional notebook support
+
+#### 🔬 Astronomy-Specific Libraries
+- **AstroPy v7.1.0**: Core astronomy computations
+- **AstroML v1.0.2**: Machine learning for astronomy
+- **AstroQuery v0.4.10**: Database queries (Gaia, SDSS, etc.)
+- **AstroPhot v0.16.13**: Advanced photometry with PyTorch backend
+
+#### 🧠 Machine Learning Stack
+- **PyTorch v2.7.1+cu128**: GPU-accelerated deep learning
+- **Lightning v2.5.1**: Training framework
+- **Torch Geometric v2.6.1**: Graph neural networks
+- **Optuna v4.4.0**: Hyperparameter optimization
+
+#### 📊 Data Processing
+- **Polars v1.31.0**: High-performance dataframes (10-100x faster than Pandas)
+- **PyArrow v20.0.0**: Columnar data processing
+- **NumPy v1.26.4** + **SciPy v1.15.3**: Scientific computing
 
 ## 🌟 Key Features
 
-### 3D Spatial Coordinates
-- **Direct Distance Measurements**: Support for precise distance values (e.g., NSA ZDIST)
-- **Spatial3DTensor**: Complete 3D coordinate processing (Spherical ↔ Cartesian)
-- **Neighbor Search**: Efficient algorithms for galaxy clustering
-- **Density Fields**: 3D grid-based structure analysis
-- **Volume Calculations**: Cosmological volumes and number densities
+### Specialized Tensor Types
+```python
+from astro_lab.tensors import (
+    Spatial3DTensor,      # 3D coordinates & transformations
+    PhotometricTensor,    # Multi-band photometry
+    SpectralTensor,       # Spectroscopy data
+    LightcurveTensor,     # Time-series observations
+    OrbitalTensor         # Satellite & planetary orbits
+)
+```
 
-### Data Sources
-- **NSA (NASA Sloan Atlas)**: Galaxy catalog with distance measurements
-- **Exoplanets**: Confirmed exoplanets from NASA Exoplanet Archive
-- **AstroML Integration**: LINEAR light curves, SDSS spectra
-- **Satellite Data**: TLE-based orbital mechanics
-- **Simulation Bridge**: Connection to cosmological simulations (TNG50)
+### Data Sources Integration
+- **Gaia DR3**: Stellar catalogs with proper motions
+- **SDSS**: Galaxy surveys and spectra
+- **TNG50**: Cosmological simulations
+- **NASA Exoplanet Archive**: Confirmed exoplanets
+- **LINEAR**: Asteroid light curves
+- **NSA**: Galaxy catalogs with distances
 
-### Tensor-based Processing
-- **PyTorch Integration**: Full GPU acceleration support
-- **Polars Backend**: High-performance data processing
-- **Multiple Tensor Types**: Spatial, Photometric, Spectral, Temporal
-- **ML-Ready**: Direct usage for deep learning applications
+### Advanced ML Capabilities
+- **Graph Neural Networks**: For spatial astronomical structures
+- **3D Point Cloud Models**: Stellar cluster analysis
+- **Temporal Models**: Variable star classification
+- **Multi-modal Learning**: Combined photometry, spectroscopy, and astrometry
+- **2025 System Metrics**: Real-time hardware monitoring (CPU, GPU, memory, disk)
+- **Automatic Hardware Detection**: GPU optimization, precision selection, device management
 
 ## 🚀 Quick Start
 
 ### Installation
+
 ```bash
 # Clone repository
-git clone https://github.com/bjoernbethge/astro-lab.git
+git clone https://github.com/your-username/astro-lab.git
 cd astro-lab
 
 # Install with uv (recommended)
 uv sync
+
+# Verify installation
+uv run pytest -v
 ```
 
-## 🔧 AstroLab CLI
+### Interactive Development
 
-The `astro-lab` command provides powerful tools for data processing and machine learning:
-
-### 📥 Download Data
 ```bash
-# Download Gaia DR3 bright stars (magnitude < 12.0)
-astro-lab download gaia --magnitude-limit 12.0
+# Start Marimo reactive notebook
+uv run marimo edit
 
-# List all available datasets
-astro-lab download list
+# Start Jupyter Lab
+uv run jupyter lab
+
+# Launch MLflow UI
+uv run mlflow ui
+```
+
+## 🔧 CLI Tools
+
+AstroLab provides a comprehensive command-line interface for all major operations:
+
+### 📋 Available Commands
+
+```bash
+astro-lab download       # Download astronomical datasets
+astro-lab preprocess     # Data preprocessing and graph creation  
+astro-lab train          # Single ML model training
+astro-lab optimize       # Hyperparameter optimization with Optuna
+astro-lab config         # Configuration management
+```
+
+**Get help for any command:**
+```bash
+astro-lab --help                    # Main help
+astro-lab train --help              # Training options
+astro-lab optimize --help           # Optimization options
+astro-lab config --help             # Configuration management
+```
+
+### 📥 Data Download & Management
+
+```bash
+# Download astronomical survey data
+astro-lab download gaia --magnitude-limit 12.0 --output data/gaia/
+astro-lab download sdss --survey dr17 --max-objects 100000
+astro-lab download nsa --catalog v1_0_1
+
+# Quick data exploration
+astro-lab download --list-surveys          # Show available surveys
+astro-lab download --status                # Show download progress
 ```
 
 ### 🔄 Data Preprocessing
+
 ```bash
-# Show available preprocessing functions
-astro-lab preprocess --show-functions
+# Process raw survey data
+astro-lab preprocess gaia data/raw/gaia_dr3.csv --create-graphs --k-neighbors 8
+astro-lab preprocess sdss data/raw/sdss_dr17.fits --normalize --create-splits
 
-# Process a catalog with statistics and train/val/test splits
-astro-lab preprocess process catalog.parquet --stats --create-splits --output processed/
+# TNG50 cosmological simulations
+astro-lab preprocess tng50 data/tng50/ --all-snapshots --particle-types PartType4
+astro-lab preprocess tng50 data/tng50/ --snapshot 99 --max-particles 10000
 
-# Process TNG50 simulation data
-astro-lab preprocess tng50 data/raw/snap_099.0.hdf5 --particle-types PartType4,PartType5 --max-particles 5000
-
-# List TNG50 snapshots with inspection
-astro-lab preprocess tng50-list --inspect
+# Generic data processing
+astro-lab preprocess process catalog.parquet --create-splits --train-ratio 0.7
+astro-lab preprocess browse data/processed/  # Browse processed data
 ```
 
-### 🎯 Machine Learning Training
+### 🧠 Machine Learning Training
+
+#### Configuration-Based Training (Recommended)
+
 ```bash
-# Create a default configuration file
-astro-lab train create-config --output my_config.yaml
+# Create default configuration
+astro-lab config create --output configs/my_experiment.yaml
 
-# Train with configuration file
-astro-lab train train --config my_config.yaml
+# Single training run with fixed parameters
+astro-lab train --config configs/gaia_classification.yaml
 
-# Quick training without config
-astro-lab train train --dataset gaia --model gaia_classifier --epochs 50 --batch-size 64
+# Hyperparameter optimization with multiple trials
+astro-lab optimize configs/gaia_optimization.yaml --trials 50
+
+# Quick training (without config file)
+astro-lab train --dataset gaia --model gaia_classifier --epochs 50
+```
+
+#### 🎯 Train vs Optimize - When to Use What?
+
+**`astro-lab train`** - Single Training Run
+- ✅ Train **one** model with **fixed** hyperparameters
+- ✅ Use exact parameters from config file
+- ✅ Fast and direct (1-2 minutes)
+- ✅ Good for: Final models, known parameters, quick tests
+
+**`astro-lab optimize`** - Hyperparameter Search  
+- ✅ Run **multiple** trainings with **different** parameters
+- ✅ Use Optuna to find optimal hyperparameters
+- ✅ Longer but finds best settings (10-60 minutes)
+- ✅ Good for: New datasets, unknown parameters, model tuning
+
+```bash
+# Examples:
+astro-lab train --config gaia.yaml              # Single training
+astro-lab optimize gaia.yaml --trials 50        # 50 optimization trials
+astro-lab optimize gaia.yaml --trials 10 --experiment-name "quick_test"
+```
+
+#### Configuration Management
+
+```bash
+# List available survey configurations
+astro-lab config surveys
+
+# Show specific survey configuration
+astro-lab config show gaia
+
+# Create custom configuration
+astro-lab config create --output my_config.yaml
+```
+
+### 📊 Experiment Tracking & Results
+
+AstroLab integrates with MLflow for comprehensive experiment tracking:
+
+```bash
+# Local MLflow UI
+mlflow ui --backend-store-uri ./mlruns --host 127.0.0.1 --port 5000
+
+# Docker container setup (recommended)
+# The marimo-flow container automatically includes MLflow
+docker ps  # Check if marimo-flow container is running
+# Access at: http://localhost:5000
+
+# Sync local experiments to container
+robocopy mlruns "D:\marimo-flow\data\mlflow\mlruns" /E /XO
+docker restart marimo-flow
+```
+
+#### MLflow Configuration
+
+```yaml
+mlflow:
+  tracking_uri: ./mlruns                    # Local tracking
+  # tracking_uri: D:/marimo-flow/data/mlflow/mlruns  # Container tracking
+  experiment_name: my_experiment
+  experiment_description: "Detailed experiment description"
+  tags:
+    survey: Gaia
+    task: stellar_classification
+    version: v1.0
+```
+
+#### Viewing Results
+
+1. **Open MLflow UI**: http://localhost:5000
+2. **Navigate to your experiment**: `gaia_optuna_optimization`
+3. **Compare trials**: Sort by `val_loss` to see best results
+4. **View parameters**: See which hyperparameters worked best
+5. **Download models**: Access trained model artifacts
+6. **📊 System Metrics**: View real-time hardware performance:
+   - `system/cpu/utilization_percent` - CPU usage during training
+   - `system/gpu_0/memory_allocated_gb` - GPU memory consumption
+   - `system/memory/utilization_percent` - RAM usage
+   - `system/disk/utilization_percent` - Storage usage
+
+## ⚙️ Configuration System
+
+AstroLab uses YAML configuration files for reproducible experiments:
+
+### Basic Configuration Structure
+
+```yaml
+# configs/gaia_classification.yaml
+model:
+  type: gaia_classifier
+  params:
+    hidden_dim: 128
+    num_classes: 8
+    dropout: 0.1
+    use_batch_norm: true
+
+data:
+  dataset: gaia
+  data_dir: data/processed
+  batch_size: 64
+  max_samples: 50000
+  return_tensor: true
+  split_ratios: [0.7, 0.15, 0.15]
+
+training:
+  max_epochs: 50
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  accelerator: auto
+  devices: 1
+  precision: 16-mixed
+
+mlflow:
+  experiment_name: gaia_stellar_classification
+  tracking_uri: ./mlruns
+  tags:
+    survey: Gaia
+    task: stellar_classification
+```
+
+### Hyperparameter Optimization Configuration
+
+```yaml
+# configs/gaia_optimization.yaml
+model:
+  type: gaia_classifier
+  params:
+    hidden_dim: 128  # Will be optimized
+    num_classes: 8
+    dropout: 0.1     # Will be optimized
+
+data:
+  dataset: gaia
+  batch_size: 64
+  max_samples: 50000
+
+training:
+  max_epochs: 50
+  learning_rate: 0.001  # Will be optimized
+  accelerator: auto
+  precision: 16-mixed
+
+optimization:
+  n_trials: 50
+  timeout: 7200  # 2 hours
+  direction: maximize
+  study_name: gaia_stellar_classification
+  
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 1e-5
+      high: 1e-1
+    hidden_dim:
+      type: categorical
+      choices: [64, 128, 256, 512, 768]
+    dropout:
+      type: uniform
+      low: 0.05
+      high: 0.3
+    weight_decay:
+      type: loguniform
+      low: 1e-6
+      high: 1e-3
+
+mlflow:
+  experiment_name: gaia_optuna_optimization
+  tracking_uri: ./mlruns
+```
+
+### Available Survey Configurations
+
+```bash
+# View all available surveys
+astro-lab config surveys
+```
+
+**Pre-configured Surveys:**
+- **Gaia DR3**: `configs/surveys/gaia.yaml` - Stellar astrometry and photometry
+- **SDSS DR17**: `configs/surveys/sdss.yaml` - Galaxy photometry and spectra  
+- **NSA**: `configs/surveys/nsa.yaml` - Galaxy catalog with distances
+
+### Parameter Distribution System
+
+AstroLab automatically distributes configuration parameters to the correct components:
+
+```python
+# Automatic parameter routing:
+# training.* → PyTorch Lightning Trainer
+# model.* → Model initialization  
+# optimization.* → Optuna hyperparameter search
+# mlflow.* → Experiment tracking
+# data.* → Data loading and processing
+```
+
+### CLI Examples by Use Case
+
+#### 🌟 Stellar Classification (Gaia)
+```bash
+# Download Gaia data
+astro-lab download gaia --magnitude-limit 12.0
+
+# Single training run
+astro-lab train --config configs/surveys/gaia.yaml
 
 # Hyperparameter optimization
-astro-lab train optimize --config optimization_config.yaml
+astro-lab optimize configs/gaia_optimization.yaml --trials 50
 ```
 
-### Basic Data Loading
+#### 🌌 Galaxy Analysis (SDSS)
 ```bash
-# Check available datasets
-python scripts/check_datasets.py
+# Download SDSS data
+astro-lab download sdss --survey dr17
 
-# Process NSA catalog
-python examples/nsa_processing_example.py
+# Process and create graphs
+astro-lab preprocess sdss data/sdss/ --create-graphs --k-neighbors 10
+
+# Train galaxy classifier
+astro-lab train --config configs/surveys/sdss.yaml
 ```
 
-### Basic 3D Coordinate Analysis
+#### 🪐 Exoplanet Detection
+```bash
+# Download NASA Exoplanet Archive data
+astro-lab download exoplanets --confirmed-only
+
+# Train transit detection model
+astro-lab train --dataset exoplanets --model transit_detector --epochs 100
+```
+
+### Advanced CLI Usage
+
+#### Debugging & Development
+```bash
+# Verbose logging
+astro-lab train --config config.yaml --verbose
+
+# Disable tensor optimizations (for debugging)
+astro-lab train --config config.yaml --disable-tensors
+
+# Test configuration without training
+astro-lab train --config config.yaml --dry-run
+```
+
+#### Resource Management
+```bash
+# Specify GPU device
+astro-lab train --config config.yaml --devices 0
+
+# Use multiple GPUs
+astro-lab train --config config.yaml --devices 2 --accelerator gpu
+
+# CPU-only training
+astro-lab train --config config.yaml --accelerator cpu
+```
+
+## 📋 Quick Reference
+
+### Most Common Commands
+
+```bash
+# 1. Download and setup Gaia data
+astro-lab download gaia --magnitude-limit 12.0
+astro-lab preprocess gaia data/gaia/ --create-graphs
+
+# 2. Train a stellar classifier
+astro-lab train --config configs/surveys/gaia.yaml
+
+# 3. Optimize hyperparameters (NEW!)
+astro-lab optimize configs/gaia_optimization.yaml --trials 50
+
+# 4. View results with system metrics
+mlflow ui --backend-store-uri ./mlruns
+# Open: http://localhost:5000
+```
+
+### Configuration Templates
+
+| Task | Config File | Description |
+|------|-------------|-------------|
+| Stellar Classification | `configs/surveys/gaia.yaml` | Gaia DR3 stellar classification |
+| Galaxy Analysis | `configs/surveys/sdss.yaml` | SDSS galaxy photometry |
+| Hyperparameter Tuning | `configs/gaia_optimization.yaml` | Optuna-based optimization |
+| Custom Experiment | `configs/default.yaml` | Basic template |
+
+### 🖥️ System Monitoring (NEW in 2025!)
+
+AstroLab automatically logs comprehensive system metrics during training:
+
+```bash
+# System metrics logged every 30 seconds:
+# ├── system/cpu/utilization_percent      # CPU usage
+# ├── system/memory/utilization_percent   # RAM usage  
+# ├── system/gpu_0/memory_allocated_gb    # GPU VRAM
+# ├── system/gpu_0/utilization_percent    # GPU usage
+# ├── system/disk/utilization_percent     # Storage usage
+# └── system/network/bytes_sent_mb        # Network I/O
+
+# View in MLflow UI under "Metrics" tab with hierarchical grouping
+# Automatic hardware detection: GPU, CUDA, precision optimization
+```
+
+**System Requirements Monitoring:**
+- **CPU**: Multi-core utilization tracking
+- **GPU**: VRAM, temperature, utilization (NVIDIA RTX/Tesla)
+- **Memory**: RAM consumption and availability
+- **Storage**: Disk usage and I/O patterns
+- **Network**: Data transfer monitoring
+
+### Troubleshooting
+
+```bash
+# Check system status
+astro-lab --version
+uv run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+
+# Debug training issues
+astro-lab train --config config.yaml --verbose --dry-run
+
+# Reset MLflow experiments
+rm -rf mlruns/
+# Or on Windows: rmdir /s mlruns
+
+# Container issues
+docker ps
+docker logs marimo-flow
+docker restart marimo-flow
+```
+
+## 💻 Development Examples
+
+### Basic Tensor Usage
 ```python
-from astro_lab.data import load_catalog
-from astro_lab.tensors.spatial_3d import Spatial3DTensor
 import polars as pl
+from astro_lab.tensors import Spatial3DTensor
 
-# Load NSA data
-df = pl.read_parquet("data/processed/nsa/nsa_catalog.parquet").head(1000)
+# Load catalog data
+df = pl.read_parquet("data/gaia_sample.parquet")
 
-# Convert to spatial tensor
-catalog_data = {
-    "RA": df["RA"].to_pandas() if "RA" in df.columns else df["ra"].to_pandas(),
-    "DEC": df["DEC"].to_pandas() if "DEC" in df.columns else df["dec"].to_pandas(),
-    "DISTANCE": df.get_column("zdist").to_pandas() if "zdist" in df.columns else df.get_column("z").to_pandas() * 3000
-}
-
-spatial_tensor = Spatial3DTensor.from_catalog_data(
-    catalog_data,
-    ra_col="RA", 
-    dec_col="DEC",
-    distance_col="DISTANCE"
-)
+# Create spatial tensor
+spatial = Spatial3DTensor.from_catalog_data({
+    "RA": df["ra"].to_pandas(),
+    "DEC": df["dec"].to_pandas(), 
+    "DISTANCE": df["distance"].to_pandas()
+})
 
 # 3D analysis
-ra, dec, distance = spatial_tensor.get_coordinates_spherical()
-x, y, z = spatial_tensor.get_coordinates_cartesian()
-
-# Neighbor search
-neighbors = spatial_tensor.find_neighbors(radius=10.0)  # 10 Mpc radius
+neighbors = spatial.find_neighbors(radius=10.0)  # 10 pc radius
+x, y, z = spatial.get_coordinates_cartesian()
 ```
 
-## 🛠️ Development
+### Machine Learning Pipeline
+```python
+from astro_lab.models import create_gaia_classifier
+from astro_lab.data import AstroDataModule
+from astro_lab.training import AstroTrainer
 
-### Project Structure
-```
-astro-lab/
-├── src/astro_lab/
-│   ├── cli/            # Command Line Interface  
-│   ├── data/           # Data processing (Polars)
-│   ├── tensors/        # Tensor implementations
-│   ├── models/         # ML models
-│   ├── training/       # Lightning training
-│   └── utils/          # Utilities & visualization
-├── examples/           # Usage examples
-├── scripts/           # Utility scripts
-├── test/             # Test suite
-└── docs/             # Documentation
-```
+# Load data
+data_module = AstroDataModule("data/processed/gaia/")
 
-### Available Examples
-```bash
-# NSA galaxy processing
-python examples/nsa_processing_example.py
+# Create model
+model = create_gaia_classifier(
+    input_features=["bp_rp", "g_mag", "parallax"],
+    num_classes=5
+)
 
-# AstroQuery demonstrations  
-python examples/astroquery_demo.py
-
-# FITS optimization
-python examples/fits_optimization_demo.py
-
-# Dataset verification
-python scripts/check_datasets.py
+# Train
+trainer = AstroTrainer(max_epochs=100, accelerator="gpu")
+trainer.fit(model, data_module)
 ```
 
-## 📈 Performance
+### 3D Visualization
+```python
+from astro_lab.utils.blender import create_galaxy_visualization
 
-- **Polars Backend**: 10-100x faster than Pandas
-- **PyTorch Integration**: GPU acceleration available
-- **Lazy Loading**: Memory-efficient processing
-- **Parquet Format**: Optimized data storage
-- **Graph Neural Networks**: Scalable spatial analysis
+# Create 3D scene
+scene = create_galaxy_visualization(
+    positions=galaxy_positions,
+    colors=galaxy_colors,
+    sizes=galaxy_masses
+)
 
-## 🎯 Scientific Applications
+# Render
+scene.render("galaxy_cluster.png")
+```
 
-- **Large-Scale Structure**: 3D galaxy distributions
-- **Exoplanet Analysis**: Classification, habitability, discovery methods
-- **Clustering Analysis**: Neighbor-based studies
-- **Machine Learning**: Tensor-based features for GNNs
-- **Simulation Comparison**: Observation vs. theory (TNG50 integration)
-- **Multi-Survey Analysis**: Cross-matching different catalogs
-
-## 🧪 Testing
+## 🧪 Testing & Development
 
 ```bash
-# Run test suite
-python scripts/run_tests.py
+# Run all tests
+uv run pytest -v
 
-# Check CUDA availability
-python test/test_cuda.py
+# Test specific components
+uv run pytest test/models/ -v
+uv run pytest test/tensors/ -v
 
-# Verify datasets
-python scripts/check_datasets.py
+# Check dependencies
+uv tree
+uv tree --package astro-torch
 ```
+
+## 📁 Project Structure
+
+```
+src/astro_lab/
+├── cli/                    # Command Line Interface
+│   ├── download.py         # Data acquisition
+│   ├── preprocessing.py    # Data processing
+│   └── train.py           # ML training
+├── data/                   # Data Processing & Loading
+│   ├── core.py            # Core data structures
+│   ├── manager.py         # Data management
+│   └── transforms.py      # Data transformations
+├── models/                 # ML Models & Architectures
+│   ├── base_gnn.py        # Base graph neural networks
+│   ├── factory.py         # Model factory
+│   ├── encoders.py        # Feature encoders
+│   ├── output_heads.py    # Task-specific heads
+│   └── point_cloud_models.py  # 3D stellar models
+├── tensors/                # Specialized Tensor Types
+│   ├── spatial_3d.py      # 3D coordinates
+│   ├── photometric.py     # Multi-band photometry
+│   ├── spectral.py        # Spectroscopy
+│   └── lightcurve.py      # Time series
+├── training/               # Training Utilities
+│   ├── lightning_module.py # PyTorch Lightning integration
+│   ├── mlflow_logger.py   # Experiment tracking
+│   └── trainer.py         # Training orchestration
+└── utils/                  # Utility Functions
+    ├── blender/           # 3D visualization
+    ├── graph.py           # Graph utilities
+    └── tensor.py          # Tensor operations
+```
+
+## 🎯 Research Applications
+
+- **Galaxy Classification**: Multi-band photometry analysis
+- **Variable Star Detection**: Time-series classification
+- **Exoplanet Discovery**: Transit detection and characterization
+- **Stellar Cluster Analysis**: 3D spatial clustering
+- **Cosmological Simulations**: Large-scale structure analysis
+- **Asteroid Tracking**: Orbital mechanics and light curves
+
+## 📚 Documentation
+
+- [Development Guide](docs/DEVGUIDE.md) - Detailed setup and architecture
+- [Data Loaders](docs/DATA_LOADERS.md) - Data processing documentation
+- [Exoplanet Pipeline](docs/EXOPLANET_PIPELINE.md) - Specialized workflows
+- [Examples](examples/) - Practical usage examples
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please create issues for bugs or feature requests.
+1. **Setup Development Environment**: `uv sync`
+2. **Run Tests**: `uv run pytest -v`
+3. **Follow Code Style**: Use provided pre-commit hooks
+4. **Add Tests**: Ensure new features have test coverage
+5. **Update Documentation**: Keep docs current with changes
 
 ## 📄 License
 
-MIT License - see LICENSE file for details. 
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🙏 Acknowledgments
+
+Built with modern astronomy and machine learning libraries:
+- AstroPy Collaboration
+- PyTorch Team
+- Polars Development Team
+- MLflow Community
+- Marimo Developers 

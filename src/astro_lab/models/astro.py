@@ -25,39 +25,51 @@ from torch_geometric.nn import (
     global_mean_pool,
 )
 
-from astro_lab.tensors import SurveyTensor
-from astro_lab.models.encoders import AstrometryEncoder, PhotometryEncoder, SpectroscopyEncoder
+from astro_lab.models.base_gnn import BaseAstroGNN, ConvType, FeatureFusion
+from astro_lab.models.encoders import (
+    AstrometryEncoder,
+    PhotometryEncoder,
+    SpectroscopyEncoder,
+)
+from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
 from astro_lab.models.utils import get_activation, initialize_weights
+from astro_lab.tensors import SurveyTensor
 
 
-class AstroSurveyGNN(nn.Module):
+class AstroSurveyGNN(BaseAstroGNN):
     """Graph Neural Network for astronomical survey data with native tensor support."""
 
     def __init__(
         self,
         hidden_dim: int = 128,
         output_dim: int = 1,
-        conv_type: str = "gcn",
+        conv_type: ConvType = "gcn",
         num_layers: int = 3,
         dropout: float = 0.1,
         task: str = "node_classification",
         use_photometry: bool = True,
         use_astrometry: bool = True,
         use_spectroscopy: bool = False,
+        use_3d_stellar_processing: bool = False,
+        stellar_radius: float = 0.1,
         pooling: str = "mean",
         **kwargs,
     ):
-        super().__init__()
+        super().__init__(
+            hidden_dim=hidden_dim,
+            conv_type=conv_type,
+            num_layers=num_layers,
+            dropout=dropout,
+            **kwargs,
+        )
 
-        self.hidden_dim = hidden_dim
         self.output_dim = output_dim
-        self.conv_type = conv_type
-        self.num_layers = num_layers
-        self.dropout = dropout
         self.task = task
         self.use_photometry = use_photometry
         self.use_astrometry = use_astrometry
         self.use_spectroscopy = use_spectroscopy
+        self.use_3d_stellar_processing = use_3d_stellar_processing
+        self.stellar_radius = stellar_radius
         self.pooling = pooling
 
         # Feature encoders

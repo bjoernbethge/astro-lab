@@ -26,17 +26,6 @@ from astro_lab.data import (
     load_fits_table_optimized,
 )
 
-# Check if enhanced features are available
-try:
-    from astro_lab.data import HAS_ENHANCED_FEATURES
-
-    if not HAS_ENHANCED_FEATURES:
-        print(
-            "⚠️  Enhanced FITS features not available - using basic functionality only"
-        )
-except ImportError:
-    print("⚠️  astro_lab.data not available - using basic functionality only")
-
 
 def demo_fits_info():
     """Demonstrate FITS file information extraction."""

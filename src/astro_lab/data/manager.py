@@ -17,52 +17,33 @@ import numpy as np
 import polars as pl
 from astroquery.gaia import Gaia
 
+from .config import DataConfig, data_config
+
 
 class AstroDataManager:
     """Modern astronomical data management with structured storage."""
 
     def __init__(self, base_dir: Union[str, Path] = "data"):
-        self.base_dir = Path(base_dir)
+        self.config = DataConfig(base_dir)
+        self.base_dir = self.config.base_dir
         self.setup_directories()
 
     def setup_directories(self):
-        """Create standardized data directory structure."""
-        dirs = [
-            "raw/gaia",
-            "raw/fits",
-            "raw/tng50",
-            "raw/hdf5",
-            "processed/catalogs",
-            "processed/ml_ready",
-            "processed/features",
-            "cache",
-            "config",
-        ]
-
-        # Check if main structure exists (just check base_dir and one key subdirectory)
-        if (
-            not (self.base_dir / "raw").exists()
-            or not (self.base_dir / "processed").exists()
-        ):
-            for dir_path in dirs:
-                (self.base_dir / dir_path).mkdir(parents=True, exist_ok=True)
-            print(f"📁 Data structure created in: {self.base_dir}")
-        else:
-            # Ensure all directories exist without printing
-            for dir_path in dirs:
-                (self.base_dir / dir_path).mkdir(parents=True, exist_ok=True)
+        """Create standardized data directory structure using new config."""
+        # Use new clean structure from config
+        self.config.setup_directories()
 
     @property
     def raw_dir(self) -> Path:
-        return self.base_dir / "raw"
+        return self.config.raw_dir
 
     @property
     def processed_dir(self) -> Path:
-        return self.base_dir / "processed"
+        return self.config.processed_dir
 
     @property
     def cache_dir(self) -> Path:
-        return self.base_dir / "cache"
+        return self.config.cache_dir
 
     def download_gaia_catalog(
         self,
@@ -85,9 +66,11 @@ class AstroDataManager:
             if response.lower() != "yes":
                 raise ValueError("All-sky download cancelled by user")
 
+        # Ensure gaia directories exist
+        self.config.ensure_survey_directories("gaia")
+
         output_file = (
-            self.raw_dir
-            / "gaia"
+            self.config.get_survey_raw_dir("gaia")
             / f"gaia_dr3_{region}_mag{magnitude_limit:.1f}.parquet"
         )
 
@@ -152,10 +135,8 @@ class AstroDataManager:
 
             # Add derived columns with proper units (step by step to avoid dependency issues)
             # First: Distance in parsecs (1000/parallax)
-            df = df.with_columns(
-                (1000.0 / pl.col("parallax")).alias("distance_pc")
-            )
-            
+            df = df.with_columns((1000.0 / pl.col("parallax")).alias("distance_pc"))
+
             # Second: Add other derived columns that depend on distance_pc
             df = df.with_columns(
                 [
@@ -215,8 +196,10 @@ class AstroDataManager:
         if not fits_file.exists():
             raise FileNotFoundError(f"FITS file not found: {fits_file}")
 
-        output_file = self.raw_dir / "fits" / f"{catalog_name}.parquet"
-        output_file.parent.mkdir(exist_ok=True)
+        # Ensure sdss directories exist (fits -> sdss)
+        self.config.ensure_survey_directories("sdss")
+
+        output_file = self.config.get_survey_raw_dir("sdss") / f"{catalog_name}.parquet"
 
         if output_file.exists():
             print(f"📂 FITS catalog exists: {output_file.name}")
@@ -493,15 +476,32 @@ class AstroDataManager:
         return pl.DataFrame(catalogs).sort("size_mb", descending=True)
 
     def load_catalog(self, catalog_path: Union[str, Path]) -> pl.DataFrame:
-        """Load catalog with metadata info."""
-
+        """Load catalog from file (supports .parquet, .csv, .fits)."""
         catalog_path = Path(catalog_path)
 
         if not catalog_path.exists():
             raise FileNotFoundError(f"Catalog not found: {catalog_path}")
 
         print(f"📂 Loading: {catalog_path.name}")
-        df = pl.read_parquet(catalog_path)
+
+        # Handle different file formats
+        suffix = catalog_path.suffix.lower()
+
+        if suffix == ".parquet":
+            df = pl.read_parquet(catalog_path)
+        elif suffix == ".csv":
+            df = pl.read_csv(catalog_path)
+        elif suffix == ".fits":
+            # Use the optimized FITS loader from utils
+            from .utils import load_fits_table_optimized
+
+            df = load_fits_table_optimized(catalog_path, as_polars=True)
+            if df is None:
+                raise ValueError(f"Failed to load FITS file: {catalog_path}")
+        else:
+            raise ValueError(
+                f"Unsupported file format: {suffix}. Supported: .parquet, .csv, .fits"
+            )
 
         # Load metadata if available
         metadata_file = catalog_path.with_suffix(".json")

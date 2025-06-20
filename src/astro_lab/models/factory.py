@@ -1,0 +1,416 @@
+"""
+Model Factory und Registry für AstroLab Models
+
+Zentrale Factory-Funktionen für konsistente Modell-Erstellung:
+- ModelRegistry: Zentrale Registrierung aller Modelle
+- ModelFactory: Hauptfactory mit Survey-spezifischen Konfigurationen
+- Spezialisierte Factories für verschiedene Anwendungsfälle
+"""
+
+from typing import Any, Dict, List, Optional, Union
+
+import torch.nn as nn
+
+from astro_lab.models.base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel
+from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
+
+
+class ModelRegistry:
+    """Central registry for all available models."""
+
+    _models: Dict[str, type] = {}
+
+    @classmethod
+    def register(cls, name: str):
+        """Decorator to register models."""
+
+        def decorator(model_class):
+            cls._models[name] = model_class
+            return model_class
+
+        return decorator
+
+    @classmethod
+    def create(cls, model_type: str, **kwargs) -> nn.Module:
+        """Create model by type."""
+        if model_type not in cls._models:
+            available = list(cls._models.keys())
+            raise ValueError(
+                f"Unknown model type: {model_type}. Available: {available}"
+            )
+
+        return cls._models[model_type](**kwargs)
+
+    @classmethod
+    def list_available(cls) -> List[str]:
+        """List all available model types."""
+        return list(cls._models.keys())
+
+
+class ModelFactory:
+    """Centralized model factory with survey-specific configurations."""
+
+    # Survey-specific default configurations
+    SURVEY_CONFIGS = {
+        "gaia": {
+            "use_astrometry": True,
+            "use_photometry": True,
+            "use_spectroscopy": False,
+            "conv_type": "gat",
+            "hidden_dim": 128,
+            "num_layers": 3,
+            "dropout": 0.1,
+        },
+        "sdss": {
+            "use_photometry": True,
+            "use_spectroscopy": True,
+            "use_astrometry": False,
+            "conv_type": "transformer",
+            "hidden_dim": 256,
+            "num_layers": 4,
+            "dropout": 0.15,
+        },
+        "lsst": {
+            "use_photometry": True,
+            "use_astrometry": True,
+            "use_spectroscopy": False,
+            "conv_type": "sage",
+            "hidden_dim": 192,
+            "num_layers": 3,
+            "dropout": 0.1,
+        },
+        "euclid": {
+            "use_photometry": True,
+            "use_astrometry": True,
+            "use_spectroscopy": False,
+            "conv_type": "gat",
+            "hidden_dim": 256,
+            "num_layers": 4,
+            "dropout": 0.1,
+        },
+        "des": {
+            "use_photometry": True,
+            "use_astrometry": False,
+            "use_spectroscopy": False,
+            "conv_type": "gcn",
+            "hidden_dim": 128,
+            "num_layers": 3,
+            "dropout": 0.1,
+        },
+    }
+
+    # Task-specific configurations
+    TASK_CONFIGS = {
+        "stellar_classification": {
+            "output_head": "classification",
+            "output_dim": 7,  # Standard stellar classes
+            "pooling": "mean",
+        },
+        "galaxy_property_prediction": {
+            "output_head": "regression",
+            "output_dim": 5,  # Mass, SFR, metallicity, size, morphology
+            "pooling": "attention",
+        },
+        "transient_detection": {
+            "output_head": "classification",
+            "output_dim": 2,  # Transient/non-transient
+            "pooling": "max",
+        },
+        "period_detection": {
+            "output_head": "period_detection",
+            "output_dim": 1,
+            "pooling": "mean",
+        },
+        "shape_modeling": {
+            "output_head": "shape_modeling",
+            "output_dim": 6,
+            "pooling": "mean",
+        },
+        "cosmological_inference": {
+            "output_head": "cosmological",
+            "output_dim": 6,
+            "pooling": "attention",
+        },
+    }
+
+    @classmethod
+    def create_survey_model(
+        cls, survey: str, task: str = "stellar_classification", **kwargs
+    ) -> nn.Module:
+        """Create model optimized for specific survey."""
+
+        # Get survey configuration
+        survey_config = cls.SURVEY_CONFIGS.get(survey, {})
+        if not survey_config:
+            available_surveys = list(cls.SURVEY_CONFIGS.keys())
+            raise ValueError(
+                f"Unknown survey: {survey}. Available: {available_surveys}"
+            )
+
+        # Get task configuration
+        task_config = cls.TASK_CONFIGS.get(task, {})
+        if not task_config:
+            available_tasks = list(cls.TASK_CONFIGS.keys())
+            raise ValueError(f"Unknown task: {task}. Available: {available_tasks}")
+
+        # Merge configurations (kwargs override defaults)
+        config = {**survey_config, **task_config, **kwargs}
+
+        # Import here to avoid circular imports
+        from astro_lab.models.astro import AstroSurveyGNN
+
+        return AstroSurveyGNN(task=task, **config)
+
+    @classmethod
+    def create_temporal_model(
+        cls, model_type: str = "alcdef", task: str = "period_detection", **kwargs
+    ) -> nn.Module:
+        """Create temporal model for time-series analysis."""
+
+        temporal_configs = {
+            "alcdef": {
+                "hidden_dim": 128,
+                "num_layers": 3,
+                "recurrent_type": "lstm",
+                "recurrent_layers": 2,
+            },
+            "lightcurve": {
+                "hidden_dim": 96,
+                "num_layers": 2,
+                "recurrent_type": "gru",
+                "recurrent_layers": 1,
+            },
+            "transient": {
+                "hidden_dim": 256,
+                "num_layers": 4,
+                "recurrent_type": "lstm",
+                "recurrent_layers": 3,
+            },
+        }
+
+        config = temporal_configs.get(model_type, temporal_configs["alcdef"])
+        task_config = cls.TASK_CONFIGS.get(task, {})
+
+        # Merge configurations
+        final_config = {**config, **task_config, **kwargs}
+
+        # Import here to avoid circular imports
+        from astro_lab.models.tgnn import ALCDEFTemporalGNN
+
+        return ALCDEFTemporalGNN(**final_config)
+
+    @classmethod
+    def create_3d_stellar_model(
+        cls,
+        model_type: str = "point_cloud",
+        num_stars: int = 1024,
+        radius: float = 0.1,
+        scales: Optional[List[float]] = None,
+        **kwargs,
+    ) -> nn.Module:
+        """Create specialized model for 3D stellar data."""
+
+        from astro_lab.models.point_cloud_models import create_stellar_point_cloud_model
+
+        return create_stellar_point_cloud_model(
+            model_type=model_type,
+            num_stars=num_stars,
+            radius=radius,
+            scales=scales,
+            **kwargs,
+        )
+
+    @classmethod
+    def create_tng_model(
+        cls, model_type: str = "cosmic_evolution", **kwargs
+    ) -> nn.Module:
+        """Create TNG simulation model."""
+
+        tng_configs = {
+            "cosmic_evolution": {
+                "cosmological_features": True,
+                "redshift_encoding": True,
+                "hidden_dim": 256,
+                "num_layers": 4,
+            },
+            "galaxy_formation": {
+                "cosmological_features": False,
+                "redshift_encoding": True,
+                "hidden_dim": 192,
+                "num_layers": 3,
+            },
+            "halo_merger": {
+                "cosmological_features": True,
+                "redshift_encoding": True,
+                "conv_type": "gat",
+                "hidden_dim": 256,
+                "num_layers": 4,
+            },
+            "environmental_quenching": {
+                "cosmological_features": False,
+                "redshift_encoding": False,
+                "hidden_dim": 128,
+                "num_layers": 3,
+            },
+        }
+
+        config = tng_configs.get(model_type, tng_configs["cosmic_evolution"])
+        final_config = {**config, **kwargs}
+
+        # Import here to avoid circular imports
+        from astro_lab.models.tng_models import (
+            CosmicEvolutionGNN,
+            EnvironmentalQuenchingGNN,
+            GalaxyFormationGNN,
+            HaloMergerGNN,
+        )
+
+        model_classes = {
+            "cosmic_evolution": CosmicEvolutionGNN,
+            "galaxy_formation": GalaxyFormationGNN,
+            "halo_merger": HaloMergerGNN,
+            "environmental_quenching": EnvironmentalQuenchingGNN,
+        }
+
+        model_class = model_classes.get(model_type, CosmicEvolutionGNN)
+        return model_class(**final_config)
+
+    @classmethod
+    def create_multi_survey_model(
+        cls,
+        surveys: List[str],
+        task: str = "stellar_classification",
+        fusion_strategy: str = "attention",
+        **kwargs,
+    ) -> nn.Module:
+        """Create model that can handle multiple surveys."""
+
+        # Combine configurations from multiple surveys
+        combined_config = {}
+        for survey in surveys:
+            survey_config = cls.SURVEY_CONFIGS.get(survey, {})
+            for key, value in survey_config.items():
+                if (
+                    key == "use_photometry"
+                    or key == "use_astrometry"
+                    or key == "use_spectroscopy"
+                ):
+                    combined_config[key] = combined_config.get(key, False) or value
+                elif key == "hidden_dim":
+                    combined_config[key] = max(combined_config.get(key, 0), value)
+                elif key == "num_layers":
+                    combined_config[key] = max(combined_config.get(key, 0), value)
+                else:
+                    combined_config[key] = value
+
+        # Add multi-survey specific configurations
+        combined_config.update(
+            {"fusion_strategy": fusion_strategy, "multi_survey": True, **kwargs}
+        )
+
+        task_config = cls.TASK_CONFIGS.get(task, {})
+        final_config = {**combined_config, **task_config}
+
+        # Import here to avoid circular imports
+        from astro_lab.models.astro import AstroSurveyGNN
+
+        return AstroSurveyGNN(task=task, **final_config)
+
+
+# Convenience functions for common use cases
+def create_gaia_classifier(
+    num_classes: int = 7, hidden_dim: int = 128, **kwargs
+) -> nn.Module:
+    """Create Gaia stellar classifier."""
+    return ModelFactory.create_survey_model(
+        survey="gaia",
+        task="stellar_classification",
+        output_dim=num_classes,
+        hidden_dim=hidden_dim,
+        **kwargs,
+    )
+
+
+def create_sdss_galaxy_model(
+    task: str = "galaxy_property_prediction", **kwargs
+) -> nn.Module:
+    """Create SDSS galaxy model."""
+    return ModelFactory.create_survey_model(survey="sdss", task=task, **kwargs)
+
+
+def create_lsst_transient_detector(**kwargs) -> nn.Module:
+    """Create LSST transient detector."""
+    return ModelFactory.create_survey_model(
+        survey="lsst", task="transient_detection", **kwargs
+    )
+
+
+def create_asteroid_period_detector(**kwargs) -> nn.Module:
+    """Create asteroid period detection model."""
+    return ModelFactory.create_temporal_model(
+        model_type="alcdef", task="period_detection", **kwargs
+    )
+
+
+def create_lightcurve_classifier(num_classes: int = 5, **kwargs) -> nn.Module:
+    """Create lightcurve classification model."""
+    return ModelFactory.create_temporal_model(
+        model_type="lightcurve",
+        task="stellar_classification",
+        output_dim=num_classes,
+        **kwargs,
+    )
+
+
+def create_stellar_cluster_analyzer(**kwargs) -> nn.Module:
+    """Create stellar cluster analysis model."""
+    return ModelFactory.create_3d_stellar_model(model_type="cluster", **kwargs)
+
+
+def create_galactic_structure_model(**kwargs) -> nn.Module:
+    """Create galactic structure analysis model."""
+    return ModelFactory.create_3d_stellar_model(model_type="galactic", **kwargs)
+
+
+# Model compilation utilities
+def compile_astro_model(
+    model: nn.Module,
+    mode: str = "default",
+    dynamic: bool = True,
+) -> nn.Module:
+    """Compile model for optimized inference."""
+    try:
+        import torch
+
+        return torch.compile(model, mode=mode, dynamic=dynamic)
+    except (ImportError, AttributeError):
+        # Fallback if torch.compile not available
+        return model
+
+
+# Model information utilities
+def get_model_info(model: nn.Module) -> Dict[str, Any]:
+    """Get comprehensive model information."""
+    total_params = sum(p.numel() for p in model.parameters())
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    return {
+        "model_class": model.__class__.__name__,
+        "total_parameters": total_params,
+        "trainable_parameters": trainable_params,
+        "model_size_mb": total_params * 4 / (1024 * 1024),  # Assuming float32
+        "has_temporal": hasattr(model, "rnn"),
+        "has_attention": any("GAT" in str(type(m)) for m in model.modules()),
+        "conv_type": getattr(model, "conv_type", "unknown"),
+        "hidden_dim": getattr(model, "hidden_dim", "unknown"),
+    }
+
+
+def list_available_models() -> Dict[str, List[str]]:
+    """List all available models and configurations."""
+    return {
+        "surveys": list(ModelFactory.SURVEY_CONFIGS.keys()),
+        "tasks": list(ModelFactory.TASK_CONFIGS.keys()),
+        "output_heads": OutputHeadRegistry.list_available(),
+        "registered_models": ModelRegistry.list_available(),
+    }

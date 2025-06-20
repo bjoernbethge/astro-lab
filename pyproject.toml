@@ -40,7 +40,11 @@ dependencies = [
     "lightning>=2.5.1.post0",
     "optuna>=4.4.0",
     "optuna-integration[pytorch-lightning]>=4.4.0",
- 
+    # System monitoring for MLflow
+    "psutil>=6.1.0",
+    "gputil>=1.4.0",
+    "plotly>=6.1.2",
+    "astro-viz",
 ]
 
 # Optional dependencies for different use cases
@@ -134,6 +138,7 @@ explicit = true
 torch = [{ index = "pytorch-cuda" }]
 astro-torch = { workspace = true }
 astro-pack = { workspace = true }
+astro-viz = { workspace = true }
 
 [tool.uv.workspace]
 members = [

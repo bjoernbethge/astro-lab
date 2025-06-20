@@ -1,0 +1,45 @@
+# AstroLab Default Configuration
+# =============================
+
+# Data Configuration
+data:
+  dataset: gaia # Specify dataset
+  data_dir: data/processed
+  batch_size: 32
+  num_workers: 0 # Windows multiprocessing fix
+  max_samples: 5000
+  return_tensor: true
+  split_ratios: [0.7, 0.15, 0.15]
+
+# Model Configuration
+model:
+  type: gaia_classifier # Use supported model type
+  params:
+    hidden_dim: 128
+    num_classes: 8
+    dropout: 0.1
+    use_batch_norm: true
+
+# Training Configuration
+training:
+  max_epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+
+  # Early stopping
+  patience: 10
+
+# MLflow Configuration
+mlflow:
+  tracking_uri: ./mlruns
+  experiment_name: astro_lab_default
+  experiment_description: "Default AstroLab experiment"
+
+  tags:
+    survey: gaia
+    task: classification
+    version: v1.0
+
+callbacks:
+  early_stopping:
+    patience: 10

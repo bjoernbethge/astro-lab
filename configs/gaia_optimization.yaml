@@ -1,0 +1,97 @@
+# Gaia Stellar Classification - Hyperparameter Optimization
+# ========================================================
+
+model:
+  type: gaia_classifier
+  params:
+    hidden_dim: 64 # 🏆 OPTIMIZED from Trial 7 (best: 1.596 loss)
+    num_classes: 8
+    dropout: 0.10 # 🏆 OPTIMIZED from Trial 7 (minimal overfitting)
+    use_batch_norm: true
+
+data:
+  dataset: gaia
+  data_dir: data/processed
+  batch_size: 64
+  num_workers: 4 # Improved for better performance
+  persistent_workers: true # Speed up dataloader worker initialization
+  max_samples: 100000 # More training data
+  return_tensor: true
+  split_ratios: [0.8, 0.1, 0.1] # More training data
+
+  # Data augmentation and preprocessing
+  normalize: true
+  standardize: true
+
+training:
+  max_epochs: 50 # Production epochs
+  learning_rate: 0.0142 # 🏆 OPTIMIZED from Trial 7 (best: 1.596 loss)
+  weight_decay: 0.0001
+
+  # Early stopping for production
+  patience: 15 # More patient for final training
+
+# 🎯 Optuna Optimization Configuration
+optimization:
+  n_trials: 30 # Reduced for faster completion
+  timeout: 3600 # 1 hour
+  study_name: gaia_stellar_classification_v2
+  direction: minimize # Minimize validation loss instead
+
+  # Less aggressive pruning
+  pruner:
+    type: median
+    n_startup_trials: 5
+    n_warmup_steps: 10
+
+  # Hyperparameter search space - focused ranges
+  search_space:
+    learning_rate:
+      type: loguniform
+      low: 0.001
+      high: 0.1 # Better range based on results
+
+    hidden_dim:
+      type: categorical
+      choices: [64, 128, 256] # Focus on working sizes
+
+    dropout:
+      type: uniform
+      low: 0.1
+      high: 0.25 # Narrower range
+
+    weight_decay:
+      type: loguniform
+      low: 0.00001
+      high: 0.001
+
+    batch_size:
+      type: categorical
+      choices: [64, 128] # Stable batch sizes
+
+mlflow:
+  tracking_uri: ./mlruns
+  experiment_name: gaia_optuna_optimization
+  experiment_description: "Hyperparameter optimization for Gaia stellar classification"
+
+  tags:
+    survey: Gaia
+    task: stellar_classification
+    optimizer: optuna
+    version: v1.0
+
+callbacks:
+  early_stopping:
+    patience: 20
+    min_delta: 0.001
+    monitor: val_loss
+    mode: min
+
+  model_checkpoint:
+    monitor: val_loss
+    mode: min
+    save_top_k: 1
+    save_last: true
+
+  learning_rate_monitor:
+    logging_interval: epoch

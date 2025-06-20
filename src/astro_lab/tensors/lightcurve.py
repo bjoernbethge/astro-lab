@@ -119,9 +119,9 @@ class LightcurveTensor(AstroTensorBase):
         return self._metadata.get("object_ids")
 
     @property
-    def bands(self) -> Optional[List[str]]:
+    def bands(self) -> List[str]:
         """Band names."""
-        return self._metadata.get("bands")
+        return self._metadata.get("bands", [])
 
     @property
     def time_unit(self) -> str:
@@ -193,6 +193,18 @@ class LightcurveTensor(AstroTensorBase):
             magnitudes=folded_data,
             **{k: v for k, v in new_metadata.items() if k not in ["times"]},
         )
+
+    def phase_fold(self, period: float) -> "LightcurveTensor":
+        """
+        Phase fold the lightcurve with given period (Protocol compatibility).
+
+        Args:
+            period: Folding period
+
+        Returns:
+            Phase-folded LightcurveTensor
+        """
+        return self.compute_period_folded(period)
 
     def compute_statistics(self) -> Dict[str, torch.Tensor]:
         """Compute basic lightcurve statistics."""

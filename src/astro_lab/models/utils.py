@@ -175,7 +175,7 @@ def model_summary(model: nn.Module) -> dict:
 
 # Factory functions for astronomical models
 def create_gaia_classifier(
-    hidden_dim: int = 128, num_classes: int = 7, **kwargs
+    hidden_dim: int = 128, num_classes: int = 7, conv_type: str = "gat", **kwargs
 ) -> Any:
     """Create Gaia stellar classifier."""
     from astro_lab.models.astro import AstroSurveyGNN
@@ -186,7 +186,7 @@ def create_gaia_classifier(
         use_astrometry=True,
         use_photometry=True,
         use_spectroscopy=False,
-        conv_type="gat",  # Attention for high-precision astrometry
+        conv_type=conv_type,  # Allow override from config
         task="node_classification",
         **kwargs,
     )

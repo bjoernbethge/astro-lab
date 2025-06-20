@@ -1,16 +1,13 @@
 import marimo
 
-__generated_with = "0.13.15"
+__generated_with = "0.14.0"
 app = marimo.App(width="medium", sql_output="native")
 
 with app.setup:
     import marimo as mo
-    import astrophot as ap
-    import torch_geometric as pyg
-    import astro_lab as al
     import polars as pl
-    import torch
-    import warnings
+    import astro_lab as al
+
 
 
 @app.cell
@@ -31,12 +28,7 @@ def _(silent):
 
 @app.cell
 def _():
-    from astro_lab.widget import BlenderImageWidget
-    widget = BlenderImageWidget()
-    widget.capture_live_render()
-
-    # Widget im Notebook anzeigen
-    widget
+    mo.doc(al)
     return
 
 
@@ -68,6 +60,11 @@ def _(file_browser):
     pl_df = pl.read_parquet(file_browser.path())
     mo_df = mo.ui.dataframe(pl_df)
     mo_df
+    return
+
+
+@app.cell
+def _():
     return
 
 

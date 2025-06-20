@@ -17,18 +17,58 @@ Factory Functions:
 - create_multi_survey_model()
 """
 
+# Base classes
 # Main models
 from .astro import (
     AstroSurveyGNN,
 )
 from .astrophot_models import AstroPhotGNN, NSAGalaxyModeler
+from .base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel, FeatureFusion
 
 # Encoders
 from .encoders import (
     AstrometryEncoder,
+    BaseEncoder,
     LightcurveEncoder,
     PhotometryEncoder,
     SpectroscopyEncoder,
+)
+
+# Factory and registry
+from .factory import (
+    ModelFactory,
+    ModelRegistry,
+    compile_astro_model,
+    create_asteroid_period_detector,
+    create_gaia_classifier,
+    create_galactic_structure_model,
+    create_lightcurve_classifier,
+    create_lsst_transient_detector,
+    create_sdss_galaxy_model,
+    create_stellar_cluster_analyzer,
+    get_model_info,
+    list_available_models,
+)
+
+# Output heads
+from .output_heads import (
+    ClassificationHead,
+    CosmologicalHead,
+    MultiTaskHead,
+    OutputHeadRegistry,
+    PeriodDetectionHead,
+    RegressionHead,
+    ShapeModelingHead,
+    create_output_head,
+)
+
+# Point cloud models
+from .point_cloud_models import (
+    GalacticStructureGNN,
+    HierarchicalStellarGNN,
+    StellarClusterGNN,
+    StellarPointCloudGNN,
+    create_stellar_point_cloud_model,
 )
 
 # Temporal models
@@ -55,19 +95,50 @@ from .utils import AttentionPooling, get_activation, get_pooling, initialize_wei
 __version__ = "0.3.0"
 
 __all__ = [
+    # Base Classes
+    "BaseAstroGNN",
+    "BaseTemporalGNN",
+    "BaseTNGModel",
+    "FeatureFusion",
     # Main Models
     "AstroSurveyGNN",
     "AstroPhotGNN",
     "ALCDEFTemporalGNN",
     "TemporalGCN",
+    # Point Cloud Models
+    "StellarPointCloudGNN",
+    "HierarchicalStellarGNN",
+    "StellarClusterGNN",
+    "GalacticStructureGNN",
     # Encoders
+    "BaseEncoder",
     "PhotometryEncoder",
     "AstrometryEncoder",
     "SpectroscopyEncoder",
+    "LightcurveEncoder",
     # Output Heads
+    "OutputHeadRegistry",
+    "RegressionHead",
+    "ClassificationHead",
     "PeriodDetectionHead",
     "ShapeModelingHead",
-    "ClassificationHead",
+    "MultiTaskHead",
+    "CosmologicalHead",
+    "create_output_head",
+    # Factory Functions
+    "ModelFactory",
+    "ModelRegistry",
+    "create_gaia_classifier",
+    "create_sdss_galaxy_model",
+    "create_lsst_transient_detector",
+    "create_asteroid_period_detector",
+    "create_lightcurve_classifier",
+    "create_stellar_cluster_analyzer",
+    "create_galactic_structure_model",
+    "create_stellar_point_cloud_model",
+    "compile_astro_model",
+    "get_model_info",
+    "list_available_models",
     # Utilities
     "AttentionPooling",
     "get_activation",
@@ -80,9 +151,6 @@ __all__ = [
     "TemporalGATCNN",
     # ALCDEF temporal models
     "ALCDEFTemporalGNN",
-    "PeriodDetectionHead",
-    "ShapeModelingHead",
-    "ClassificationHead",
     # TNG-specific models
     "CosmicEvolutionGNN",
     "GalaxyFormationGNN",

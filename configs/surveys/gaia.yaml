@@ -1,0 +1,26 @@
+# Gaia Survey Configuration
+# =========================
+
+survey:
+  name: gaia
+  description: "Gaia Data Release 3 - Astrometric and photometric data"
+
+  # Features to use for ML models
+  features:
+    - ra # Right ascension
+    - dec # Declination
+    - phot_g_mean_mag # G-band magnitude
+    - phot_bp_mean_mag # BP-band magnitude
+    - phot_rp_mean_mag # RP-band magnitude
+    - parallax # Parallax
+    - pmra # Proper motion in RA
+    - pmdec # Proper motion in Dec
+
+  # Graph construction parameters
+  graph:
+    k_neighbors: 8 # Number of nearest neighbors
+    distance_metric: euclidean
+
+  # Data processing
+  processing:
+    normalize_features: true

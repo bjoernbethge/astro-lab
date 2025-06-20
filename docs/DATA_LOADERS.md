@@ -1,465 +1,273 @@
-# Data Processing & Loaders Module
+# Loading & Processing Astronomical Data
 
-## Overview
+## 🎯 What does this module do?
 
-The `astro_lab.data` module provides a modern PyTorch Geometric-based infrastructure for astronomical data processing. It combines specialized Dataset classes with efficient DataLoaders and a structured data management system.
+The `astro_lab.data` module loads astronomical catalogs (stars, galaxies) and prepares them for machine learning. **Simple, fast, without complexity.**
 
-## 🚀 Key Features
+## 📋 Complete Workflow
 
-### PyTorch Geometric Datasets
-- **Graph-based data structures** for spatial astronomical data
-- **InMemoryDataset** implementations for various surveys
-- **Automatic k-NN graph construction** with GPU acceleration
-- **Specialized transformations** for different data types
+### 1️⃣ Load Data (30 seconds)
 
-### Modern DataLoaders
-- **GPU-optimized** DataLoaders with automatic configuration
-- **Batch processing** for efficient training
-- **Memory pinning** for fast GPU transfer
-- **Flexible transform pipelines**
-
-### Structured Data Management
-- **Raw/Processed separation** for clean data organization
-- **Automatic downloads** from survey data
-- **Parquet/HDF5 support** for various data formats
-- **Metadata management** with JSON configuration
-
-### Supported Data Sources
-- **Gaia DR3**: Stellar catalogs with proper motion
-- **NSA**: NASA Sloan Atlas Galaxy Survey
-- **TNG50**: IllustrisTNG simulation data
-- **NASA Exoplanet Archive**: Confirmed exoplanets
-- **SDSS**: Spectroscopic data
-- **LINEAR**: Asteroid light curves
-- **RR Lyrae**: Variable star catalogs
-- **Satellite Orbits**: Orbital data
-
-## 📚 Usage
-
-### PyTorch Geometric DataLoaders
-
-#### Gaia DR3 Stellar Data
 ```python
-from astro_lab.data import create_gaia_dataloader
+from astro_lab.data import load_gaia_data, load_sdss_data
 
-# Create DataLoader for Gaia stars
-loader = create_gaia_dataloader(
-    magnitude_limit=12.0,
-    k_neighbors=8,
-    batch_size=1,
-    shuffle=False,
-    use_stellar_transforms=True
-)
+# Load Gaia stars
+stars = load_gaia_data(max_samples=5000)
+print(f"✅ {stars.shape[0]} stars loaded")
 
-# Iterate over graph data
-for data in loader:
-    print(f"Graph with {data.num_nodes} nodes, {data.num_edges} edges")
-    print(f"Node features: {data.x.shape}")
-    print(f"Edge indices: {data.edge_index.shape}")
+# Load SDSS galaxies  
+galaxies = load_sdss_data(max_samples=2000)
+print(f"✅ {galaxies.shape[0]} galaxies loaded")
 ```
 
-#### NSA Galaxy Survey
-```python
-from astro_lab.data import create_nsa_dataloader
+### 2️⃣ Inspect Data
 
-# Create DataLoader for galaxies
-loader = create_nsa_dataloader(
-    max_galaxies=10000,
-    k_neighbors=8,
-    distance_threshold=50.0,  # Mpc
-    batch_size=1,
-    use_galaxy_transforms=True
+```python
+# What's inside?
+print(f"Gaia Features: {stars.photometric_bands}")  # ['G', 'BP', 'RP']
+print(f"SDSS Features: {galaxies.photometric_bands}")  # ['u', 'g', 'r', 'i', 'z']
+
+# First rows
+print(stars.data[:3])  # First 3 stars
+print(galaxies.data[:3])  # First 3 galaxies
+```
+
+### 3️⃣ Processing for ML
+
+```python
+# For PyTorch training
+import torch
+from torch.utils.data import DataLoader
+
+# As regular PyTorch tensor
+X = stars.data  # [5000, 8] - 5000 stars, 8 features
+y = torch.randint(0, 3, (5000,))  # Dummy labels
+
+# DataLoader for training
+loader = DataLoader(
+    list(zip(X, y)), 
+    batch_size=32, 
+    shuffle=True
 )
 
-# Process galaxy graphs
-for data in loader:
-    # data.x contains galaxy features (magnitudes, colors, etc.)
-    # data.edge_index contains spatial connections
-    # data.pos contains 3D positions
+# Training loop
+for batch_x, batch_y in loader:
+    # Your ML model goes here
     pass
 ```
 
-#### Exoplanet Data
-```python
-from astro_lab.data import create_exoplanet_dataloader
-
-# Create DataLoader for exoplanets
-loader = create_exoplanet_dataloader(
-    k_neighbors=5,
-    max_distance=100.0,  # parsecs
-    batch_size=1,
-    use_exoplanet_transforms=True
-)
-```
-
-### Direct Dataset Access
-
-#### Using Dataset Classes
-```python
-from astro_lab.data import GaiaGraphDataset, NSAGraphDataset
-
-# Create Gaia dataset
-gaia_dataset = GaiaGraphDataset(
-    magnitude_limit=12.0,
-    k_neighbors=8,
-    max_distance=1.0
-)
-
-# Access individual graphs
-graph = gaia_dataset[0]
-print(f"Stellar graph: {graph.num_nodes} stars")
-
-# NSA dataset
-nsa_dataset = NSAGraphDataset(
-    max_galaxies=1000,
-    k_neighbors=8
-)
-
-# Convert to SurveyTensor (if available)
-survey_tensor = nsa_dataset.to_survey_tensor()
-```
-
-### Data Management
-
-#### AstroDataManager
-```python
-from astro_lab.data import AstroDataManager, data_manager
-
-# Use global data manager
-manager = data_manager
-
-# Download Gaia data
-gaia_file = manager.download_gaia_catalog(
-    magnitude_limit=12.0,
-    region="bright_all_sky",
-    max_sources=1000000
-)
-
-# List available catalogs
-catalogs = manager.list_catalogs()
-print(catalogs)
-
-# Load catalog
-df = manager.load_catalog(gaia_file)
-print(f"Loaded {len(df)} sources")
-```
-
-#### Convenience Functions
-```python
-from astro_lab.data import (
-    download_gaia,
-    download_bright_all_sky,
-    load_gaia_bright_stars,
-    load_bright_stars
-)
-
-# Download bright all-sky catalog
-bright_file = download_bright_all_sky(magnitude_limit=12.0)
-
-# Load bright stars
-bright_stars = load_gaia_bright_stars(magnitude_limit=12.0)
-print(f"Loaded {len(bright_stars)} bright stars")
-```
-
-### Raw Data Processing
-
-#### Using Core Functions
-```python
-from astro_lab.data import (
-    create_training_splits,
-    preprocess_catalog,
-    save_splits_to_parquet,
-    load_splits_from_parquet,
-    get_data_statistics
-)
-
-# Load raw data
-import polars as pl
-df_raw = pl.read_parquet("data/raw/nsa/nsa_raw.parquet")
-
-# Get statistics
-stats = get_data_statistics(df_raw)
-print(f"Dataset: {stats['n_rows']} rows, {stats['n_columns']} columns")
-
-# Preprocess catalog
-df_clean = preprocess_catalog(
-    df_raw,
-    clean_null_columns=True,
-    min_observations=10
-)
-
-# Create splits
-df_train, df_val, df_test = create_training_splits(
-    df_clean,
-    test_size=0.2,
-    val_size=0.1,
-    random_state=42
-)
-
-# Save splits
-save_splits_to_parquet(df_train, df_val, df_test, "data/processed", "nsa")
-
-# Load splits later
-train, val, test = load_splits_from_parquet("data/processed", "nsa")
-```
-
-## 🔧 Available Datasets
-
-### PyTorch Geometric Dataset Classes
+### 4️⃣ For Graph Neural Networks
 
 ```python
-from astro_lab.data import (
-    GaiaGraphDataset,         # Gaia DR3 stellar data
-    NSAGraphDataset,          # NASA Sloan Atlas galaxies
-    TNG50GraphDataset,        # IllustrisTNG simulation
-    ExoplanetGraphDataset,    # NASA Exoplanet Archive
-    SDSSSpectralDataset,      # SDSS spectroscopic data
-    LINEARLightcurveDataset,  # LINEAR asteroid light curves
-    RRLyraeDataset,           # RR Lyrae variable stars
-    SatelliteOrbitDataset,    # Satellite orbital data
-    AstroPhotDataset,         # AstroPhot galaxy fitting
-    AstroLabDataset,          # Generic astronomical catalog
-)
-```
+from astro_lab.data import AstroDataset
 
-### DataLoader Creation Functions
-
-```python
-from astro_lab.data import (
-    create_gaia_dataloader,
-    create_nsa_dataloader,
-    create_tng50_dataloader,
-    create_exoplanet_dataloader,
-    create_sdss_spectral_dataloader,
-    create_linear_lightcurve_dataloader,
-    create_rrlyrae_dataloader,
-    create_satellite_orbit_dataloader,
-    create_astrophot_dataloader,
-    create_astro_dataloader,  # Generic factory function
-)
-```
-
-### Data Transforms
-
-```python
-from astro_lab.data import (
-    get_default_astro_transforms,
-    get_stellar_transforms,
-    get_galaxy_transforms,
-    get_exoplanet_transforms,
-    AddAstronomicalColors,
-    AddDistanceFeatures,
-    AddRedshiftFeatures,
-    CoordinateSystemTransform,
-    NormalizeAstronomicalFeatures,
-)
-```
-
-## 🎯 Dataset Specifications
-
-### GaiaGraphDataset
-- **Data Source**: Gaia DR3 via astroquery
-- **Graph Construction**: k-NN based on sky coordinates
-- **Features**: Magnitudes, colors, proper motion, parallax
-- **Size**: Configurable via magnitude limit
-- **Default**: G < 12.0 mag (~15M stars)
-
-### NSAGraphDataset
-- **Data Source**: NASA Sloan Atlas
-- **Graph Construction**: Distance-based connections
-- **Features**: Galaxy properties, magnitudes, morphology
-- **Size**: Up to 145,155 galaxies
-- **Connections**: Within 50 Mpc distance
-
-### ExoplanetGraphDataset
-- **Data Source**: NASA Exoplanet Archive
-- **Graph Construction**: Stellar system proximity
-- **Features**: Planet properties, host star data
-- **Size**: ~5,921 confirmed planets
-- **Connections**: Within 100 parsecs
-
-### TNG50GraphDataset
-- **Data Source**: IllustrisTNG-50 simulation
-- **Graph Construction**: Particle-based connections
-- **Features**: Particle properties, velocities
-- **Size**: Configurable particle count
-- **Format**: HDF5 simulation snapshots
-
-## 💾 Data Storage Structure
-
-```
-data/
-├── raw/                    # Original survey data
-│   ├── gaia/              # Gaia DR3 catalogs
-│   ├── fits/              # FITS files
-│   ├── tng50/             # TNG50 simulation data
-│   └── hdf5/              # Large HDF5 datasets
-├── processed/             # Processed datasets
-│   ├── catalogs/          # Cleaned catalogs
-│   ├── ml_ready/          # ML-ready datasets
-│   ├── features/          # Feature engineering
-│   ├── gaia_graphs/       # Processed Gaia graphs
-│   ├── nsa_graphs/        # Processed NSA graphs
-│   └── exoplanet_graphs/  # Processed exoplanet graphs
-├── cache/                 # Temporary cache files
-└── config/                # Configuration files
-```
-
-## 🚀 GPU Optimization
-
-### Automatic GPU Detection
-```python
-# GPU optimization is automatic
-from astro_lab.data import create_gaia_dataloader
-
-# DataLoader automatically optimizes for GPU
-loader = create_gaia_dataloader(
-    batch_size=4,
-    num_workers=4,      # Auto-detected based on GPU
-    pin_memory=True,    # Auto-enabled for GPU
+# Create graph dataset
+dataset = AstroDataset(
+    survey="gaia",
+    max_samples=1000,
+    k_neighbors=8  # 8 nearest neighbors
 )
 
-# GPU settings are printed on first use
-# Output: "🚀 GPU optimization enabled for NVIDIA GeForce RTX 4090"
-```
-
-### Manual GPU Configuration
-```python
-# Override automatic settings
-loader = create_nsa_dataloader(
-    batch_size=1,
-    num_workers=0,      # CPU-only
-    pin_memory=False,   # Disable memory pinning
-)
-```
-
-## 🔄 Graph Construction
-
-### k-NN Graph Creation
-```python
-# All datasets support k-NN graph construction
-dataset = GaiaGraphDataset(
-    k_neighbors=8,           # 8 nearest neighbors
-    max_distance=1.0,        # Maximum 1 degree separation
-)
-
-# GPU-accelerated for smaller datasets
-# CPU sklearn for large datasets (>100k objects)
-```
-
-### Custom Graph Construction
-```python
-# Access raw coordinates for custom graphs
-dataset = NSAGraphDataset(max_galaxies=1000)
+# Inspect graph
 graph = dataset[0]
+print(f"Graph: {graph.num_nodes} nodes, {graph.num_edges} edges")
 
-# Extract coordinates
-coords = graph.pos  # 3D positions
-features = graph.x  # Node features
-edges = graph.edge_index  # Graph connectivity
+# For PyTorch Geometric
+from torch_geometric.loader import DataLoader
+graph_loader = DataLoader([graph], batch_size=1)
 ```
 
-## 🧪 SurveyTensor Integration
+## 🗂️ Available Data
 
-### Convert to SurveyTensor
+| Survey | What | Count | Features | Usage |
+|--------|-----|--------|----------|------------|
+| **Gaia** | Stars | 5k-50k | Position, brightness, motion | Stellar Classification |
+| **SDSS** | Galaxies | 1k-10k | Colors, redshift, morphology | Galaxy Classification |
+| **NSA** | Galaxies | 1k-5k | Sérsic profiles, mass | Galaxy Evolution |
+| **LINEAR** | Asteroids | 500-2k | Light curves, periods | Variable Stars |
+
+## 🚀 Quick Start Recipes
+
+### Recipe 1: Stellar Classification
+
 ```python
-# If astro_lab.tensors is available
-dataset = NSAGraphDataset(max_galaxies=100)
+# 1. Load data
+from astro_lab.data import load_gaia_data
+stars = load_gaia_data(max_samples=10000)
 
-# Convert to SurveyTensor
-survey_tensor = dataset.to_survey_tensor()
+# 2. Extract features (G, BP, RP magnitudes)
+magnitudes = stars.data[:, 5:8]  # Columns 5,6,7 are G,BP,RP
+colors = magnitudes[:, 1] - magnitudes[:, 2]  # BP-RP color
 
-# Extract specialized tensors
-photometric = dataset.get_photometric_tensor()
-spatial = dataset.get_spatial_tensor()
-```
+# 3. Simple classification
+import numpy as np
+# Red giants (BP-RP > 1.0), main sequence (0.5-1.0), blue stars (<0.5)
+labels = np.where(colors > 1.0, 2, np.where(colors > 0.5, 1, 0))
 
-## 📊 Performance Characteristics
-
-### Dataset Loading Times
-| Dataset | Size | First Load | Cached Load | Graph Creation |
-|---------|------|------------|-------------|----------------|
-| Gaia (G<12) | 15M stars | ~30s | ~2s | ~45s |
-| NSA (10k) | 10k galaxies | ~5s | ~0.5s | ~8s |
-| Exoplanets | 5.9k planets | ~10s | ~1s | ~2s |
-| TNG50 (10k) | 10k particles | ~15s | ~1s | ~12s |
-
-### Memory Usage
-| Dataset | RAM Usage | GPU Memory | Storage |
-|---------|-----------|------------|---------|
-| Gaia Graph | ~2GB | ~500MB | ~1GB |
-| NSA Graph | ~100MB | ~50MB | ~200MB |
-| Exoplanet Graph | ~50MB | ~20MB | ~100MB |
-
-## 🔍 Advanced Features
-
-### Custom Transforms
-```python
-from astro_lab.data import CoordinateSystemTransform
-
-# Custom transform pipeline
-transform = CoordinateSystemTransform(
-    input_system='icrs',
-    output_system='galactic'
+# 4. Training/test split
+from sklearn.model_selection import train_test_split
+X_train, X_test, y_train, y_test = train_test_split(
+    magnitudes, labels, test_size=0.2
 )
 
-dataset = GaiaGraphDataset(transform=transform)
+print(f"Training: {len(X_train)}, Test: {len(X_test)}")
 ```
 
-### Batch Processing
+### Recipe 2: Galaxy Morphology
+
 ```python
-# Process multiple graphs in batches
-loader = create_nsa_dataloader(batch_size=4)
+# 1. Load galaxies
+from astro_lab.data import load_sdss_data
+galaxies = load_sdss_data(max_samples=5000)
 
-for batch in loader:
-    # batch contains 4 graphs
-    # Use torch_geometric.data.Batch for processing
-    pass
+# 2. Calculate colors (g-r, r-i)
+mags = galaxies.data[:, 4:7]  # g,r,i magnitudes
+g_r = mags[:, 0] - mags[:, 1]  # g-r
+r_i = mags[:, 1] - mags[:, 2]  # r-i
+
+# 3. Morphology features
+features = np.column_stack([g_r, r_i, galaxies.data[:, 2]])  # + redshift
+
+# 4. Elliptical (red), spiral (blue) separation
+# Ellipticals: g-r > 0.7, Spirals: g-r < 0.7
+morphology = (g_r > 0.7).astype(int)
+
+print(f"Ellipticals: {np.sum(morphology)}, Spirals: {len(morphology) - np.sum(morphology)}")
 ```
 
-### Data Filtering
+### Recipe 3: Lightning Training
+
 ```python
-# Pre-filter data during processing
-def magnitude_filter(data):
-    return data.x[:, 0] < 15.0  # G magnitude < 15
+# 1. Create DataModule
+from astro_lab.data import AstroDataModule
+import lightning as L
 
-dataset = GaiaGraphDataset(pre_filter=magnitude_filter)
+datamodule = AstroDataModule(
+    survey="gaia",
+    batch_size=64,
+    max_samples=20000,
+    train_ratio=0.7,
+    val_ratio=0.15
+)
+
+# 2. Simple model
+class StellarClassifier(L.LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.net = torch.nn.Sequential(
+            torch.nn.Linear(8, 64),  # 8 Gaia features
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 3)   # 3 stellar classes
+        )
+    
+    def forward(self, x):
+        return self.net(x)
+    
+    def training_step(self, batch, batch_idx):
+        # Your loss function here
+        pass
+
+# 3. Training
+model = StellarClassifier()
+trainer = L.Trainer(max_epochs=10)
+trainer.fit(model, datamodule)
 ```
 
-## 🛠️ Development Commands
+## 🔧 Common Problems & Solutions
 
-```bash
-# Test data loading
-uv run python -c "from astro_lab.data import create_gaia_dataloader; loader = create_gaia_dataloader(); print('✅ Gaia loader created')"
-
-# Download data
-uv run python -c "from astro_lab.data import download_bright_all_sky; download_bright_all_sky()"
-
-# List available datasets
-uv run python -c "from astro_lab.data import data_manager; print(data_manager.list_catalogs())"
-
-# Test GPU optimization
-uv run python -c "from astro_lab.data.loaders import optimize_dataloader_for_gpu; optimize_dataloader_for_gpu()"
+### Problem: "No real data found"
+```python
+# Solution: Demo data is automatically generated
+dataset = load_gaia_data(max_samples=1000)
+# ✅ Always works, even without internet
 ```
 
-## 🔮 Future Extensions
+### Problem: "Too slow with large datasets"
+```python
+# Solution: Use fewer samples
+quick_data = load_gaia_data(max_samples=1000)  # Instead of 50000
+```
 
-### Planned Dataset Support
-- **WISE**: Wide-field Infrared Survey Explorer
-- **2MASS**: Two Micron All Sky Survey
-- **LSST**: Legacy Survey of Space and Time
-- **Euclid**: ESA space telescope data
+### Problem: "Wrong feature dimensions"
+```python
+# Solution: Check shape
+data = load_gaia_data(max_samples=100)
+print(f"Shape: {data.shape}")  # [100, 8]
+print(f"Features: {data.column_mapping}")  # Which column is what
+```
 
-### Planned Features
-- **Distributed Loading**: Multi-node data loading
-- **Streaming Datasets**: For datasets too large for memory
-- **Advanced Caching**: Intelligent cache management
-- **Custom Graph Metrics**: Specialized astronomical graph features
+## 📊 What happens internally?
 
----
+1. **Auto-Download**: If no data exists, synthetic astronomical data is generated
+2. **Preprocessing**: Coordinates are converted, missing values handled
+3. **Graph Creation**: k-NN graphs are built for spatial relationships
+4. **Tensor Integration**: Native AstroLab tensor support for advanced workflows
+5. **Caching**: Processed data is cached for faster subsequent loads
 
-**Status:** ✅ Production Ready  
-**PyTorch Geometric:** ✅ Full integration  
-**GPU Support:** ✅ Automatic optimization  
-**Testing:** 123/123 tests passing  
-**Datasets:** 10+ specialized astronomical datasets 
+## 🎓 Next Steps
+
+Once you have your data loaded:
+
+```python
+# → Create PyTorch datasets
+dataset = torch.utils.data.TensorDataset(X, y)
+
+# → Build k-NN graphs
+from astro_lab.data import create_knn_graph
+graph = create_knn_graph(coordinates, k=8)
+
+# → Edge list for PyTorch Geometric
+edge_index = graph.edge_index
+```
+
+## 🔄 Data Flow Architecture
+
+```
+Raw Catalogs → Preprocessing → Feature Engineering → Graph Building → ML Ready
+     ↓              ↓              ↓                ↓            ↓
+   Parquet     Polars/Pandas    AstroLab Tensors   PyG Data    Training
+```
+
+## 💡 Pro Tips
+
+- **Start small**: Use `max_samples=1000` for testing
+- **Check dimensions**: Always verify tensor shapes before training
+- **Use caching**: Processed data is automatically cached
+- **Graph building**: k-NN graphs work best with k=8-16 for astronomical data
+- **Memory usage**: Large datasets (>100k objects) may need chunked processing
+
+## 🧪 Advanced Usage
+
+### Custom Data Loading
+
+```python
+# Load with custom parameters
+data = load_gaia_data(
+    max_samples=50000,
+    magnitude_limit=18.0,  # Fainter limit
+    coordinate_range={"ra": [0, 90], "dec": [-30, 30]},  # Sky region
+    cache_dir="./my_cache"
+)
+```
+
+### Tensor Integration
+
+```python
+# Use native AstroLab tensors
+from astro_lab.tensors import SurveyTensor
+
+survey_data = SurveyTensor.from_survey_data(
+    data=data,
+    survey_name="gaia",
+    coordinate_system="icrs"
+)
+
+# → Automatically compatible model for Gaia data
+model = create_gaia_classifier(survey_data)
+```
+
+## 📖 Related Documentation
+
+- [Training Guide](TRAINING.md) - Model training workflows
+- [Tensor System](TENSORS.md) - Advanced tensor operations
+- [Graph Networks](GRAPHS.md) - Graph neural network specifics 

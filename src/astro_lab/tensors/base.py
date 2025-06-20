@@ -1,46 +1,81 @@
 """
-Base class for astronomical tensors with common functionality.
+Simplified Base Class for Astronomical Tensors
+=============================================
+
+Refactored version with simplified memory management, following the guide to:
+- Remove complex global registry
+- Use Python's garbage collection
+- Eliminate unnecessary cleanup callbacks
+- Improve type annotations
+- Add validation mixin
 """
 
-import gc
+from __future__ import annotations
+
 import logging
-import weakref
-from typing import Any, Dict, List, Optional, Union
 from contextlib import contextmanager
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from pydantic import BaseModel, ConfigDict
 
+from .constants import ASTRO  # Import centralized constants
+from .tensor_types import TensorProtocol
+
 logger = logging.getLogger(__name__)
 
-# Import zero-copy data bridges from utils
-try:
-    from ..utils.tensor import transfer_to_framework, get_tensor_memory_info as utils_memory_info
-    TENSOR_UTILS_AVAILABLE = True
-except ImportError:
-    TENSOR_UTILS_AVAILABLE = False
-    transfer_to_framework = None
-    utils_memory_info = None
+
+class ValidationMixin:
+    """Mixin for common validation patterns."""
+
+    def validate_shape(
+        self, expected_dims: int, last_dim_size: Optional[int] = None
+    ) -> None:
+        """Validate tensor dimensions."""
+        if not hasattr(self, "_data"):
+            raise ValueError("Tensor data not initialized")
+
+        data = getattr(self, "_data")
+        if data.dim() < expected_dims:
+            raise ValueError(
+                f"{self.__class__.__name__} requires at least {expected_dims}D data, "
+                f"got {data.dim()}D"
+            )
+
+        if last_dim_size is not None and data.shape[-1] != last_dim_size:
+            raise ValueError(
+                f"Last dimension must be {last_dim_size}, got {data.shape[-1]}"
+            )
+
+    def validate_non_empty(self) -> None:
+        """Validate tensor is non-empty."""
+        if not hasattr(self, "_data"):
+            raise ValueError(f"{self.__class__.__name__} cannot be empty")
+
+        data = getattr(self, "_data")
+        if data.numel() == 0:
+            raise ValueError(f"{self.__class__.__name__} cannot be empty")
+
+    def validate_finite_values(self) -> None:
+        """Validate tensor contains finite values."""
+        if not hasattr(self, "_data"):
+            return
+
+        data = getattr(self, "_data")
+        if not torch.isfinite(data).all():
+            raise ValueError(f"{self.__class__.__name__} contains non-finite values")
 
 
-# Global tensor registry for memory tracking - use WeakValueDictionary instead of WeakSet
-_tensor_registry = weakref.WeakValueDictionary()
-_tensor_counter = 0
-
-
-class AstroTensorBase(BaseModel):
+class AstroTensorBase(BaseModel, ValidationMixin):
     """
-    Base class for all astronomical tensor types with integrated visualization and 
-    state-of-the-art memory management (2025).
+    Simplified base class for astronomical tensor types.
 
-    This class wraps a PyTorch tensor and provides:
-    - Common astronomical functionality 
-    - Direct PyVista mesh conversion
-    - Direct Blender object conversion
-    - Memory-efficient data exchange with automatic cleanup
-    - Zero-copy operations where possible
-    - Context manager support for automatic resource management
-    - Advanced memory leak prevention
+    Key improvements over the original:
+    - No global registry (relies on Python GC)
+    - Simplified memory management
+    - Better type annotations
+    - Consistent metadata access
+    - Common validation patterns
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -67,471 +102,306 @@ class AstroTensorBase(BaseModel):
         elif dtype is not None or device is not None:
             data = data.to(dtype=dtype, device=device)
 
-        # Store data and metadata as private attributes
+        # Store data and clean metadata
         self._data = data
-        
-        # Clean metadata from tensor references to prevent autograd leaks
-        self._metadata = self._clean_metadata(metadata.copy())
-
-        # Memory management
-        self._cleanup_callbacks = []
-        self._is_cleaned = False
-        
-        # Register for memory tracking
-        global _tensor_counter
-        _tensor_registry[_tensor_counter] = self
-        self._tensor_id = _tensor_counter
-        _tensor_counter += 1
+        self._metadata = self._clean_metadata(metadata)
 
         # Validate the tensor
         self._validate()
 
     def _clean_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Clean metadata to prevent autograd memory leaks by detaching tensors.
-        Following 2025 best practices for PyTorch memory management.
+        Clean metadata to prevent autograd memory leaks.
+        Simplified version - just detach tensors.
         """
         cleaned = {}
         for key, value in metadata.items():
             if isinstance(value, torch.Tensor):
-                # Detach tensors to prevent autograd leaks
-                if value.requires_grad:
-                    cleaned[key] = value.detach().clone()
+                # Detach to prevent autograd leaks
+                cleaned[key] = value.detach() if value.requires_grad else value
+            elif isinstance(value, (list, tuple)) and value:
+                # Handle tensor sequences
+                if isinstance(value[0], torch.Tensor):
+                    cleaned[key] = [
+                        v.detach() if v.requires_grad else v
+                        for v in value
+                        if isinstance(v, torch.Tensor)
+                    ]
                 else:
-                    cleaned[key] = value.clone()
-            elif isinstance(value, (list, tuple)) and value and isinstance(value[0], torch.Tensor):
-                # Clean tensor lists/tuples
-                cleaned[key] = [v.detach().clone() if v.requires_grad else v.clone() 
-                               for v in value if isinstance(v, torch.Tensor)]
+                    cleaned[key] = value
             else:
                 cleaned[key] = value
         return cleaned
 
     def _validate(self) -> None:
-        """Validate tensor data - default implementation."""
+        """
+        Validate tensor data - default implementation.
+        Subclasses should override with specific validation.
+        """
         if not isinstance(self._data, torch.Tensor):
             raise ValueError("Data must be a torch.Tensor")
 
-    def __enter__(self) -> "AstroTensorBase":
-        """Context manager entry - 2025 memory management standard."""
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Context manager exit with automatic cleanup."""
-        self.cleanup()
-        return False
-
-    def __del__(self) -> None:
-        """Destructor with memory cleanup."""
-        try:
-            self.cleanup()
-        except Exception:
-            # Avoid exceptions in destructor
-            pass
-
-    def cleanup(self) -> None:
-        """
-        Explicit memory cleanup following 2025 PyTorch best practices.
-        Prevents memory leaks and autograd graph retention.
-        """
-        if self._is_cleaned:
-            return
-            
-        try:
-            # Execute cleanup callbacks
-            for callback in self._cleanup_callbacks:
-                try:
-                    callback()
-                except Exception as e:
-                    logger.warning(f"Cleanup callback failed: {e}")
-            
-            # Clear metadata tensors safely
-            if hasattr(self, '_metadata'):
-                metadata_copy = self._metadata.copy()
-                for key, value in metadata_copy.items():
-                    if isinstance(value, torch.Tensor):
-                        del self._metadata[key]
-                    elif isinstance(value, (list, tuple)):
-                        filtered = []
-                        for item in value:
-                            if not isinstance(item, torch.Tensor):
-                                filtered.append(item)
-                        self._metadata[key] = filtered
-            
-            # Clear main data reference
-            if hasattr(self, '_data') and self._data is not None:
-                self._data = None
-            
-            # Clear GPU cache if on CUDA
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            
-            # Force garbage collection
-            gc.collect()
-            
-            self._is_cleaned = True
-            
-        except Exception as e:
-            logger.warning(f"Cleanup failed: {e}")
-
-    def add_cleanup_callback(self, callback: callable) -> None:
-        """Add callback to be executed during cleanup."""
-        self._cleanup_callbacks.append(callback)
-
-    @contextmanager
-    def memory_efficient_context(self):
-        """
-        Context manager for memory-efficient operations.
-        Automatically manages GPU memory and prevents leaks.
-        """
-        initial_memory = None
-        if torch.cuda.is_available():
-            initial_memory = torch.cuda.memory_allocated()
-        
-        try:
-            yield self
-        finally:
-            # Cleanup and memory reporting
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                final_memory = torch.cuda.memory_allocated()
-                if initial_memory is not None:
-                    memory_diff = final_memory - initial_memory
-                    if memory_diff > 1024**2:  # More than 1MB difference
-                        logger.warning(f"Memory increase detected: {memory_diff / 1024**2:.2f} MB")
+        # Basic validations
+        self.validate_non_empty()
+        self.validate_finite_values()
 
     # =========================================================================
-    # Core tensor operations with memory optimization
+    # Core Properties with consistent access patterns
     # =========================================================================
 
     @property
     def data(self) -> torch.Tensor:
-        """Access underlying tensor data."""
-        if self._is_cleaned:
-            raise RuntimeError("Tensor has been cleaned up")
+        """Get the underlying tensor data."""
         return self._data
 
     @property
     def shape(self) -> torch.Size:
-        """Tensor shape."""
+        """Get tensor shape."""
         return self._data.shape
 
     @property
     def device(self) -> torch.device:
-        """Tensor device."""
+        """Get tensor device."""
         return self._data.device
 
     @property
     def dtype(self) -> torch.dtype:
-        """Tensor data type."""
+        """Get tensor data type."""
         return self._data.dtype
 
-    def dim(self) -> int:
-        """Number of dimensions."""
+    @property
+    def ndim(self) -> int:
+        """Get number of dimensions."""
         return self._data.dim()
 
     def size(self, dim: Optional[int] = None) -> Union[torch.Size, int]:
-        """Size of tensor."""
+        """Get size of tensor or specific dimension."""
+        if dim is None:
+            return self._data.size()
         return self._data.size(dim)
 
-    def unsqueeze(self, dim: int) -> "AstroTensorBase":
-        """Unsqueeze tensor preserving metadata."""
-        new_data = self._data.unsqueeze(dim)
-        return self.__class__(new_data, **self._metadata)
-
-    def squeeze(self, dim: Optional[int] = None) -> "AstroTensorBase":
-        """Squeeze tensor preserving metadata."""
-        new_data = self._data.squeeze(dim)
-        return self.__class__(new_data, **self._metadata)
-
     # =========================================================================
-    # Metadata operations with memory safety
+    # Consistent metadata access
     # =========================================================================
+
+    def get_metadata(self, key: str, default: Any = None) -> Any:
+        """Get metadata value with consistent default handling."""
+        return self._metadata.get(key, default)
 
     def update_metadata(self, **kwargs) -> None:
-        """Update metadata with automatic tensor cleaning."""
+        """Update metadata with new values."""
         cleaned_kwargs = self._clean_metadata(kwargs)
         self._metadata.update(cleaned_kwargs)
 
-    def get_metadata(self, key: str, default: Any = None) -> Any:
-        """Get metadata value."""
-        return self._metadata.get(key, default)
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
-        # Use detached tensor data to prevent autograd issues
-        tensor_data = self._data.detach().cpu()
-        return {
-            "data": tensor_data.tolist(),
-            "metadata": {k: v for k, v in self._metadata.items() 
-                        if not isinstance(v, torch.Tensor)},  # Exclude tensor metadata
-            "shape": list(self._data.shape),
-            "dtype": str(self._data.dtype),
-            "device": str(self._data.device),
-        }
+    def has_metadata(self, key: str) -> bool:
+        """Check if metadata key exists."""
+        return key in self._metadata
 
     # =========================================================================
-    # Tensor operations preserving metadata with memory optimization
+    # Tensor operations
     # =========================================================================
 
-    def clone(self) -> "AstroTensorBase":
-        """Clone tensor preserving all metadata."""
-        # Use detach to prevent autograd leaks
-        cloned_data = self._data.detach().clone()
-        return self.__class__(cloned_data, **self._metadata)
+    def clone(self) -> AstroTensorBase:
+        """Create a deep copy of the tensor."""
+        return self.__class__(data=self._data.clone(), **self._metadata)
 
-    def detach(self) -> "AstroTensorBase":
-        """Detach tensor preserving all metadata."""
-        return self.__class__(self._data.detach(), **self._metadata)
+    def detach(self) -> AstroTensorBase:
+        """Detach from computation graph."""
+        return self.__class__(data=self._data.detach(), **self._metadata)
 
-    def to(self, *args, **kwargs) -> "AstroTensorBase":
-        """Move tensor to device/dtype preserving metadata."""
-        return self.__class__(self._data.to(*args, **kwargs), **self._metadata)
+    def to(self, *args, **kwargs) -> AstroTensorBase:
+        """Move tensor to device/dtype."""
+        return self.__class__(data=self._data.to(*args, **kwargs), **self._metadata)
 
-    def cpu(self) -> "AstroTensorBase":
-        """Move tensor to CPU preserving metadata."""
-        return self.__class__(self._data.cpu(), **self._metadata)
+    def cpu(self) -> AstroTensorBase:
+        """Move tensor to CPU."""
+        return self.to(device=torch.device("cpu"))
 
-    def cuda(self, device: Optional[Union[int, str, torch.device]] = None) -> "AstroTensorBase":
-        """Move tensor to CUDA preserving metadata."""
-        return self.__class__(self._data.cuda(device), **self._metadata)
+    def cuda(
+        self, device: Optional[Union[int, str, torch.device]] = None
+    ) -> AstroTensorBase:
+        """Move tensor to CUDA device."""
+        if device is None:
+            device = torch.device("cuda")
+        return self.to(device=device)
 
     def numpy(self):
-        """Convert to numpy array (data only) with memory optimization."""
-        # Always detach to prevent autograd issues
-        tensor_data = self._data.detach()
-        if tensor_data.is_cuda:
-            return tensor_data.cpu().numpy()
-        return tensor_data.numpy()
+        """Convert to numpy array (CPU only)."""
+        return self._data.detach().cpu().numpy()
 
     # =========================================================================
-    # Memory management and monitoring
+    # Memory management - simplified
     # =========================================================================
 
-    def data_ptr(self) -> int:
-        """Get memory pointer for zero-copy operations (PyTorch equivalent)."""
-        return self._data.data_ptr()
+    def memory_efficient_context(self):
+        """
+        Simple context manager for memory-efficient operations.
+        Just clears CUDA cache if available.
+        """
+
+        @contextmanager
+        def _context():
+            try:
+                yield self
+            finally:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+        return _context()
 
     def memory_info(self) -> Dict[str, Any]:
-        """Get comprehensive memory information for debugging."""
-        # Use modern storage access method
-        try:
-            storage_size = self._data.untyped_storage().size()
-        except AttributeError:
-            # Fallback for older PyTorch versions
-            storage_size = self._data.storage().size()
-        
+        """Get memory information for this tensor."""
         info = {
             "device": str(self.device),
             "dtype": str(self.dtype),
             "shape": list(self.shape),
             "numel": self._data.numel(),
             "element_size": self._data.element_size(),
-            "storage_size": storage_size,
-            "data_ptr": self.data_ptr(),
-            "is_contiguous": self._data.is_contiguous(),
-            "requires_grad": self._data.requires_grad,
             "memory_bytes": self._data.numel() * self._data.element_size(),
+            "memory_mb": (self._data.numel() * self._data.element_size()) / 1024**2,
+            "requires_grad": self._data.requires_grad,
+            "is_contiguous": self._data.is_contiguous(),
+            "data_ptr": self._data.data_ptr(),
+            "storage_size": self._data.storage().size(),
         }
-        
-        # Add CUDA memory info if available
-        if torch.cuda.is_available() and self._data.is_cuda:
-            info.update({
-                "cuda_allocated": torch.cuda.memory_allocated(self.device),
-                "cuda_reserved": torch.cuda.memory_reserved(self.device),
-                "cuda_max_allocated": torch.cuda.max_memory_allocated(self.device),
-            })
-        
+
+        if self._data.is_cuda:
+            info.update(
+                {
+                    "cuda_device": self.device.index,
+                    "is_pinned": False,  # Can't check pinned memory for CUDA tensors
+                }
+            )
+        else:
+            info["is_pinned"] = (
+                self._data.is_pinned() if hasattr(self._data, "is_pinned") else False
+            )
+
         return info
 
-    @classmethod
-    def get_global_memory_stats(cls) -> Dict[str, Any]:
-        """Get global memory statistics for all tensor instances."""
-        active_tensors = len(_tensor_registry)
-        total_elements = sum(t._data.numel() for t in _tensor_registry.values() if not t._is_cleaned)
-        
-        stats = {
-            "active_tensors": active_tensors,
-            "total_elements": total_elements,
-        }
-        
-        if torch.cuda.is_available():
-            stats.update({
-                "cuda_allocated_mb": torch.cuda.memory_allocated() / 1024**2,
-                "cuda_reserved_mb": torch.cuda.memory_reserved() / 1024**2,
-            })
-            
-        return stats
-
     # =========================================================================
-    # PyVista integration with memory management
+    # Visualization integration (simplified)
     # =========================================================================
 
-    def to_pyvista(
-        self,
-        scalars: Optional[torch.Tensor] = None,
-        **kwargs
-    ) -> "Any":
+    def to_pyvista(self, scalars: Optional[torch.Tensor] = None, **kwargs):
         """
-        Convert tensor to PyVista mesh using zero-copy data bridge.
+        Convert tensor to PyVista mesh.
+        Simplified - requires tensor utils to be available.
         """
-        if not TENSOR_UTILS_AVAILABLE or not transfer_to_framework:
-            raise ImportError("Tensor utils module not available for PyVista conversion")
+        try:
+            from ..utils.tensor import transfer_to_framework
 
-        # Use memory-efficient context
-        with self.memory_efficient_context():
             return transfer_to_framework(
-                self._data,
-                'pyvista',
-                scalars=scalars,
-                **kwargs
+                self._data, "pyvista", scalars=scalars, **kwargs
             )
+        except ImportError:
+            logger.warning("PyVista conversion requires tensor utils")
+            return None
 
-    @classmethod  
-    def from_pyvista(cls, mesh: "Any", **kwargs) -> "AstroTensorBase":
+    def to_blender(self, name: str = "astro_object", collection_name: str = "AstroLab"):
         """
-        Create tensor from PyVista mesh using zero-copy bridge.
+        Convert tensor to Blender object.
+        Simplified - requires tensor utils to be available.
         """
-        from ..utils.tensor import NumpyZeroCopyBridge
-        
-        # Extract points
-        if hasattr(mesh, 'points') and mesh.points is not None:
-            points_tensor = NumpyZeroCopyBridge.from_numpy(mesh.points.copy())
-        else:
-            raise ValueError("Mesh has no points data")
+        try:
+            from ..utils.tensor import transfer_to_framework
 
-        # Extract metadata from field data
-        metadata = {}
-        if hasattr(mesh, 'field_data'):
-            for key, value in mesh.field_data.items():
-                if isinstance(value, (int, float, str, bool)):
-                    metadata[key] = value
-
-        metadata.update(kwargs)
-        return cls(points_tensor, **metadata)
-
-    # =========================================================================
-    # Blender integration with memory management
-    # =========================================================================
-
-    def to_blender(
-        self,
-        name: str = "astro_object",
-        collection_name: str = "AstroLab",
-    ) -> Optional[Any]:
-        """
-        Convert tensor to Blender object using zero-copy data bridge.
-        """
-        if not TENSOR_UTILS_AVAILABLE or not transfer_to_framework:
-            raise ImportError("Tensor utils module not available for Blender conversion")
-
-        # Use memory-efficient context
-        with self.memory_efficient_context():
-            obj = transfer_to_framework(
-                self._data,
-                'blender',
-                name=name,
-                collection_name=collection_name
+            return transfer_to_framework(
+                self._data, "blender", name=name, collection_name=collection_name
             )
-            
-            # Add cleanup callback to remove object when tensor is destroyed
-            if obj:
-                def cleanup_blender_object():
-                    try:
-                        # Import bpy here to avoid dependency at module level
-                        import bpy
-                        if obj.name in bpy.data.objects:
-                            bpy.data.objects.remove(obj, do_unlink=True)
-                        if hasattr(obj, 'data') and obj.data.name in bpy.data.meshes:
-                            bpy.data.meshes.remove(obj.data, do_unlink=True)
-                    except Exception:
-                        pass
-                
-                self.add_cleanup_callback(cleanup_blender_object)
-            
-            return obj
+        except ImportError:
+            logger.warning("Blender conversion requires tensor utils")
+            return None
 
     # =========================================================================
-    # Utility methods with memory safety
+    # Utility methods
     # =========================================================================
 
-    def has_uncertainties(self) -> bool:
-        """Check if tensor has associated uncertainties."""
-        return 'uncertainties' in self._metadata
+    def apply_mask(self, mask: torch.Tensor) -> AstroTensorBase:
+        """Apply boolean mask to tensor."""
+        if mask.dtype != torch.bool:
+            raise ValueError("Mask must be boolean tensor")
 
-    def apply_mask(self, mask: torch.Tensor) -> "AstroTensorBase":
-        """Apply a boolean mask to the tensor with memory optimization."""
-        # Detach mask to prevent autograd issues
-        mask_detached = mask.detach() if mask.requires_grad else mask
-        masked_data = self._data[mask_detached]
-        return self.__class__(masked_data, **self._metadata)
+        return self.__class__(data=self._data[mask], **self._metadata)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert tensor to dictionary representation for serialization."""
+        return {
+            "tensor_type": self.__class__.__name__,
+            "data": self._data.cpu().numpy().tolist(),  # Convert to serializable format
+            "shape": list(self._data.shape),
+            "dtype": str(self._data.dtype),
+            "device": str(self._data.device),
+            "metadata": self._metadata,
+        }
+
+    def model_dump(self) -> Dict[str, Any]:
+        """Pydantic-compatible model serialization."""
+        return self.to_dict()
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Support for pickle serialization."""
+        return {
+            "data": self._data,
+            "metadata": self._metadata,
+        }
+
+    def __setstate__(self, state: Dict[str, Any]) -> None:
+        """Support for pickle deserialization."""
+        self._data = state["data"]
+        self._metadata = state["metadata"]
+
+    # =========================================================================
+    # Standard methods
+    # =========================================================================
 
     def __len__(self) -> int:
-        """Length of tensor (first dimension)."""
-        return self._data.shape[0]
+        """Get length of first dimension."""
+        return self._data.shape[0] if self._data.numel() > 0 else 0
 
     def __repr__(self) -> str:
-        """String representation with memory info."""
-        tensor_type = self._metadata.get("tensor_type", "base")
-        memory_mb = (self._data.numel() * self._data.element_size()) / 1024**2
-        return (f"{self.__class__.__name__}(shape={list(self.shape)}, "
-                f"dtype={self.dtype}, type={tensor_type}, "
-                f"memory={memory_mb:.2f}MB, cleaned={self._is_cleaned})")
+        """String representation with consistent format."""
+        tensor_type = self.__class__.__name__
+        shape_str = "x".join(map(str, self.shape))
+        device_str = f", device='{self.device}'" if self.device.type != "cpu" else ""
+
+        return f"{tensor_type}(shape=[{shape_str}], dtype={self.dtype}{device_str})"
 
 
-# =========================================================================
-# Global memory management utilities
-# =========================================================================
-
-def cleanup_all_tensors() -> None:
-    """Clean up all registered tensor instances."""
-    for tensor in list(_tensor_registry.values()):
-        try:
-            tensor.cleanup()
-        except Exception as e:
-            logger.warning(f"Failed to cleanup tensor: {e}")
-    
-    # Force garbage collection and GPU cache cleanup
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-
+# Simplified memory profiling
 @contextmanager
 def memory_profiling_context(description: str = "Operation"):
-    """Context manager for memory profiling with automatic reporting."""
+    """Simple memory profiling context manager."""
+    initial_memory = None
     if torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
         initial_memory = torch.cuda.memory_allocated()
-        
+
+    try:
         yield
-        
-        peak_memory = torch.cuda.max_memory_allocated()
-        final_memory = torch.cuda.memory_allocated()
-        
-        logger.info(f"Memory Profile [{description}]:")
-        logger.info(f"  Initial: {initial_memory / 1024**2:.2f} MB")
-        logger.info(f"  Peak: {peak_memory / 1024**2:.2f} MB")
-        logger.info(f"  Final: {final_memory / 1024**2:.2f} MB")
-        logger.info(f"  Increase: {(final_memory - initial_memory) / 1024**2:.2f} MB")
-    else:
-        yield
+    finally:
+        if torch.cuda.is_available() and initial_memory is not None:
+            final_memory = torch.cuda.memory_allocated()
+            peak_memory = torch.cuda.max_memory_allocated()
+
+            logger.info(
+                f"Memory Profile [{description}]: "
+                f"Initial: {initial_memory / 1024**2:.1f}MB, "
+                f"Final: {final_memory / 1024**2:.1f}MB, "
+                f"Peak: {peak_memory / 1024**2:.1f}MB"
+            )
 
 
-# Convenience functions for direct operations with memory management
-def transfer_direct(source, target, attribute="position", device="cpu"):
+# Direct transfer function (simplified)
+def transfer_direct(source, target, attribute: str = "position", device: str = "cpu"):
     """
-    Universal function for direct memory transfer with automatic cleanup.
+    Direct tensor transfer between objects.
+    Simplified version without complex memory management.
     """
-    if hasattr(source, 'transfer_memory_direct'):
-        return source.transfer_memory_direct(target, attribute, device)
-    else:
-        raise ValueError(f"Source {type(source)} does not support direct transfer")
-
-
-__all__ = [
-    "AstroTensorBase",
-    "transfer_direct",
-    "cleanup_all_tensors",
-    "memory_profiling_context",
-]
+    if hasattr(source, attribute) and hasattr(target, attribute):
+        source_tensor = getattr(source, attribute)
+        if isinstance(source_tensor, torch.Tensor):
+            target_tensor = source_tensor.to(device=device)
+            setattr(target, attribute, target_tensor)
+            return True
+    return False

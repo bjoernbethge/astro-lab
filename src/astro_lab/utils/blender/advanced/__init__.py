@@ -445,6 +445,17 @@ class AdvancedVisualizationSuite:
         Returns:
             True if successful
         """
+        import os
+        from pathlib import Path
+
+        # Convert to absolute path relative to current working directory
+        if not os.path.isabs(output_path):
+            output_path = str(Path.cwd() / output_path)
+
+        # Ensure directory exists
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+
         # Set render settings
         scene = bpy.context.scene
         scene.render.resolution_x = resolution[0]
