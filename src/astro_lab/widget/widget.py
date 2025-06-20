@@ -62,6 +62,12 @@ if ANYWIDGET_AVAILABLE:
         samples = traitlets.Int(64).tag(sync=True)
         trigger_render = traitlets.Int(0).tag(sync=True)
 
+        # Ops Editor Traits
+        request_ops_data = traitlets.Int(0).tag(sync=True)
+        ops_data = traitlets.Unicode("").tag(sync=True)
+        execute_op = traitlets.Unicode("").tag(sync=True)
+        current_action = traitlets.Unicode("").tag(sync=True)
+
         def __init__(self, **kwargs):
             if not ANYWIDGET_AVAILABLE:
                 raise ImportError("anywidget is required for AstroLabWidget")
@@ -69,6 +75,10 @@ if ANYWIDGET_AVAILABLE:
 
             # Initialize Blender integration
             self._init_blender_integration()
+
+            # Set up ops editor observers
+            self.observe(self._on_request_ops_data, names=["request_ops_data"])
+            self.observe(self._on_execute_op, names=["execute_op"])
 
         def _init_blender_integration(self):
             """Initialize Blender integration and bpy.ops access."""
@@ -373,6 +383,257 @@ if ANYWIDGET_AVAILABLE:
                 self.ops.mesh.primitive_plane_add(location=location, size=size)
                 return self.context.active_object
             return None
+
+        def _on_request_ops_data(self, change):
+            """Handle request for ops data."""
+            if not self._bpy_available:
+                self.ops_data = '{"error": "Blender not available"}'
+                return
+
+            try:
+                ops_info = self._get_ops_info()
+                import json
+
+                self.ops_data = json.dumps(ops_info)
+            except Exception as e:
+                self.ops_data = f'{{"error": "Failed to get ops data: {str(e)}"}}'
+
+        def _on_execute_op(self, change):
+            """Handle ops execution request."""
+            if not self._bpy_available or not change["new"]:
+                return
+
+            try:
+                import json
+
+                request = json.loads(change["new"])
+                category = request.get("category", "")
+                operation = request.get("operation", "")
+                parameters = request.get("parameters", {})
+
+                # Execute the operation
+                if hasattr(self.ops, category):
+                    category_ops = getattr(self.ops, category)
+                    if hasattr(category_ops, operation):
+                        op_func = getattr(category_ops, operation)
+                        result = op_func(**parameters)
+                        print(
+                            f"✅ Executed {category}.{operation} with params: {parameters}"
+                        )
+
+                        # Auto-render after execution
+                        self.quick_render()
+                    else:
+                        print(f"❌ Operation {operation} not found in {category}")
+                else:
+                    print(f"❌ Category {category} not found in ops")
+
+            except Exception as e:
+                print(f"❌ Failed to execute operation: {e}")
+
+        def _get_ops_info(self) -> Dict[str, Any]:
+            """Get information about available Blender operations."""
+            if not self._bpy_available:
+                return {}
+
+            ops_info = {}
+
+            # Get common operation categories
+            categories = [
+                "mesh",
+                "object",
+                "material",
+                "scene",
+                "render",
+                "curve",
+                "surface",
+                "text",
+            ]
+
+            for category in categories:
+                if hasattr(self.ops, category):
+                    category_ops = getattr(self.ops, category)
+                    ops_list = []
+
+                    # Get operations in this category
+                    for op_name in dir(category_ops):
+                        if not op_name.startswith("_"):
+                            try:
+                                op_func = getattr(category_ops, op_name)
+                                if callable(op_func):
+                                    # Try to get operation info
+                                    op_info = {
+                                        "name": op_name,
+                                        "parameters": self._get_op_parameters(
+                                            category, op_name
+                                        ),
+                                    }
+                                    ops_list.append(op_info)
+                            except:
+                                continue
+
+                    if ops_list:
+                        ops_info[category] = ops_list
+
+            return ops_info
+
+        def _get_op_parameters(self, category: str, operation: str) -> list:
+            """Get parameter information for a specific operation."""
+            try:
+                # This is a simplified version - in real Blender, you'd use bpy.ops introspection
+                # For now, we'll provide common parameters for popular operations
+                common_params = {
+                    "mesh": {
+                        "primitive_cube_add": [
+                            {
+                                "name": "size",
+                                "type": "float",
+                                "default": 2.0,
+                                "min": 0.0,
+                                "description": "Cube size",
+                            },
+                            {
+                                "name": "location",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Location",
+                            },
+                            {
+                                "name": "rotation",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Rotation",
+                            },
+                        ],
+                        "primitive_uv_sphere_add": [
+                            {
+                                "name": "radius",
+                                "type": "float",
+                                "default": 1.0,
+                                "min": 0.0,
+                                "description": "Sphere radius",
+                            },
+                            {
+                                "name": "location",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Location",
+                            },
+                            {
+                                "name": "rings",
+                                "type": "int",
+                                "default": 32,
+                                "min": 3,
+                                "max": 100,
+                                "description": "Number of rings",
+                            },
+                            {
+                                "name": "segments",
+                                "type": "int",
+                                "default": 16,
+                                "min": 3,
+                                "max": 100,
+                                "description": "Number of segments",
+                            },
+                        ],
+                        "primitive_plane_add": [
+                            {
+                                "name": "size",
+                                "type": "float",
+                                "default": 2.0,
+                                "min": 0.0,
+                                "description": "Plane size",
+                            },
+                            {
+                                "name": "location",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Location",
+                            },
+                        ],
+                    },
+                    "object": {
+                        "select_all": [
+                            {
+                                "name": "action",
+                                "type": "enum",
+                                "default": "TOGGLE",
+                                "items": [
+                                    {"identifier": "TOGGLE", "name": "Toggle"},
+                                    {"identifier": "SELECT", "name": "Select"},
+                                    {"identifier": "DESELECT", "name": "Deselect"},
+                                    {"identifier": "INVERT", "name": "Invert"},
+                                ],
+                                "description": "Selection action",
+                            }
+                        ],
+                        "delete": [
+                            {
+                                "name": "use_global",
+                                "type": "boolean",
+                                "default": False,
+                                "description": "Delete globally",
+                            }
+                        ],
+                        "camera_add": [
+                            {
+                                "name": "location",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Camera location",
+                            },
+                            {
+                                "name": "rotation",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Camera rotation",
+                            },
+                        ],
+                        "light_add": [
+                            {
+                                "name": "type",
+                                "type": "enum",
+                                "default": "POINT",
+                                "items": [
+                                    {"identifier": "POINT", "name": "Point"},
+                                    {"identifier": "SUN", "name": "Sun"},
+                                    {"identifier": "SPOT", "name": "Spot"},
+                                    {"identifier": "AREA", "name": "Area"},
+                                ],
+                                "description": "Light type",
+                            },
+                            {
+                                "name": "location",
+                                "type": "vector",
+                                "default": [0, 0, 0],
+                                "size": 3,
+                                "description": "Light location",
+                            },
+                        ],
+                    },
+                    "render": {
+                        "render": [
+                            {
+                                "name": "write_still",
+                                "type": "boolean",
+                                "default": True,
+                                "description": "Write image to file",
+                            }
+                        ]
+                    },
+                }
+
+                return common_params.get(category, {}).get(operation, [])
+
+            except Exception as e:
+                print(f"⚠️ Could not get parameters for {category}.{operation}: {e}")
+                return []
 
 else:
     # Stub class for when anywidget is not available

@@ -131,3 +131,141 @@
     background: rgba(255, 255, 255, 0.25);
     transform: scale(1.05);
 }
+
+/* Ops Editor Styles */
+.astro-ops-editor {
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 15px;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.astro-ops-editor-header {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    text-align: center;
+    color: #00ff64;
+}
+
+.astro-ops-editor-content {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.astro-ops-category {
+    margin-bottom: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+}
+
+.astro-ops-category-header {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    cursor: pointer;
+    font-weight: bold;
+    border-radius: 8px 8px 0 0;
+    transition: background 0.3s ease;
+}
+
+.astro-ops-category-header:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.astro-ops-category-content {
+    padding: 10px;
+}
+
+.astro-ops-item {
+    margin-bottom: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.astro-ops-item-header {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    border-radius: 6px 6px 0 0;
+    transition: background 0.3s ease;
+}
+
+.astro-ops-item-header:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.astro-ops-params {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.astro-ops-param {
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.astro-ops-param-label {
+    font-size: 12px;
+    font-weight: bold;
+    color: #00d4ff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.astro-ops-param-input {
+    padding: 5px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 14px;
+}
+
+.astro-ops-param-input:focus {
+    outline: none;
+    border-color: #00d4ff;
+    box-shadow: 0 0 5px rgba(0, 212, 255, 0.3);
+}
+
+.astro-ops-param-desc {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.7);
+    font-style: italic;
+}
+
+.astro-ops-vector-input {
+    display: flex;
+    gap: 5px;
+}
+
+.astro-ops-vector-input input {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 14px;
+}
+
+.astro-ops-execute-btn {
+    background: linear-gradient(45deg, #00ff64, #00d4ff);
+    border: none;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: bold;
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.astro-ops-execute-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0, 255, 100, 0.3);
+}
