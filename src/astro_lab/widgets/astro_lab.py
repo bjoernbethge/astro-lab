@@ -1,22 +1,29 @@
 """
-🌌 AstroLab Widget: Simple Interactive Astronomical Visualization
+AstroLab Widget - Main Interactive Widget for Astronomical Data Analysis
+======================================================================
 
-Combines Polars, Astropy, and PyVista for high-performance astronomical
-data analysis and 3D visualization, with a direct Blender API bridge.
+Provides a unified interface for astronomical data visualization, analysis,
+and interactive exploration using various backends (PyVista, Blender, etc.).
 """
+
+import numpy as np
+import torch
+import astropy.units as u
+from astropy.coordinates import SkyCoord
+import polars as pl
+import pyvista as pv
+from typing import Any, Dict, List, Optional, Union, Tuple
+
+from ..data.core import create_cosmic_web_loader
+from ..tensors.spatial_3d import Spatial3DTensor
+from ..utils.viz.bidirectional_bridge import BidirectionalPyVistaBlenderBridge
+from ..utils.blender import bpy, AstroLabApi
 
 from pathlib import Path
 from typing import Optional, Union, Any, Callable
 
-import numpy as np
-import polars as pl
-import pyvista as pv
-
 # Centralized Blender/Astropy availability checks
-from ..utils.blender import BLENDER_AVAILABLE, AstroLabApi, bpy
 try:
-    import astropy.units as u
-    from astropy.coordinates import SkyCoord
     from astropy.cosmology import Planck18 as cosmo
 
     ASTROPY_AVAILABLE = True
@@ -26,7 +33,6 @@ except ImportError:
 # Import bidirectional bridge
 try:
     from ..utils.viz.bidirectional_bridge import (
-        BidirectionalPyVistaBlenderBridge,
         SyncConfig,
         quick_convert_pyvista_to_blender,
         quick_convert_blender_to_pyvista
@@ -60,7 +66,8 @@ class AstroPipeline:
         # Generate base data
         ra = np.random.uniform(130, 230, self.num_galaxies)  # SDSS Stripe 82
         dec = np.random.uniform(-1.25, 1.25, self.num_galaxies)
-        redshift = np.clip(np.random.gamma(2, 0.05, self.num_galaxies), 0.01, 0.5)
+        redshift_raw = np.random.gamma(2, 0.05, self.num_galaxies)
+        redshift = np.array(np.maximum(0.01, np.minimum(0.5, redshift_raw)))
 
         g_mag = 18 + 5 * redshift + np.random.normal(0, 0.5, self.num_galaxies)
         r_mag = g_mag - np.random.normal(0.5, 0.3, self.num_galaxies)
@@ -106,19 +113,17 @@ class AstroPipeline:
         if not ASTROPY_AVAILABLE:
             print("⚠️ Astropy not available - using simplified coordinates.")
             # Fallback without Astropy
-            coords = np.column_stack(
-                [
-                    self.galaxy_df["ra"].to_numpy(),
-                    self.galaxy_df["dec"].to_numpy(),
-                    self.galaxy_df["redshift"].to_numpy() * 1000,  # Scaling
-                ]
-            )
+            ra_array = np.array(self.galaxy_df["ra"].to_numpy())
+            dec_array = np.array(self.galaxy_df["dec"].to_numpy())
+            redshift_array = np.array(self.galaxy_df["redshift"].to_numpy()) * 1000  # Scaling
+            coords = np.vstack([ra_array, dec_array, redshift_array]).T
             return coords, None
 
         print("🔭 Converting to 3D coordinates with Astropy...")
 
         # Convert redshift to distance
-        distance = cosmo.comoving_distance(self.galaxy_df["redshift"].to_numpy())
+        redshift_values = self.galaxy_df["redshift"].to_numpy()
+        distance = cosmo.comoving_distance(redshift_values)  # type: ignore
 
         # Create SkyCoord object
         sky_coords = SkyCoord(
@@ -222,7 +227,7 @@ class AstroLabWidget(AstroPipeline):
         If Blender is available, this method initializes the AstroLab API
         and provides direct access to bpy's core components.
         """
-        if not BLENDER_AVAILABLE:
+        if bpy is None:
             self.al = None
             self.ops = None
             self.data = None
@@ -357,8 +362,8 @@ class AstroLabWidget(AstroPipeline):
             self.bridge.add_callback(callback)
 
     def blender_available(self) -> bool:
-        """Check if the Blender API is available."""
-        return self.al is not None
+        """Check if Blender API is available."""
+        return bpy is not None and self.al is not None
 
     def create_blender_scene(self, clear_existing: bool = True):
         """

@@ -43,6 +43,8 @@ from .graph import (
     TORCH_GEOMETRIC_AVAILABLE,
 )
 
+from .cosmograph_bridge import CosmographBridge, create_cosmograph_visualization
+
 __all__ = [
     # Tensor bridges
     "PyVistaZeroCopyBridge",
@@ -77,4 +79,8 @@ __all__ = [
     "calculate_graph_metrics", 
     "spatial_distance_matrix",
     "TORCH_GEOMETRIC_AVAILABLE",
+    
+    # Cosmograph
+    "CosmographBridge",
+    "create_cosmograph_visualization"
 ] 

@@ -2,36 +2,27 @@
 Bidirectional PyVista-Blender Bridge
 ====================================
 
-Complete bidirectional data exchange between PyVista and Blender with:
-- Mesh synchronization (vertices, faces, normals)
-- Material and texture transfer
-- Live synchronization capabilities
-- Animation support
-- Performance optimization with zero-copy operations
-
-Features:
-- PyVista → Blender: Convert PyVista meshes to Blender objects
-- Blender → PyVista: Convert Blender objects to PyVista meshes
-- Live sync: Real-time synchronization between frameworks
-- Material mapping: Transfer colors, textures, and materials
-- Animation support: Keyframe and animation data transfer
+Provides real-time bidirectional synchronization between PyVista and Blender
+for astronomical data visualization.
 """
 
 import logging
-import time
-import threading
-from typing import Any, Dict, List, Optional, Tuple, Union, Callable
-from dataclasses import dataclass
-from contextlib import contextmanager
-
 import numpy as np
 import torch
+import pyvista as pv
+from typing import Any, Dict, List, Optional, Union, Tuple, Callable
+
+from ..blender import bpy, mathutils
+
+import time
+import threading
+from dataclasses import dataclass
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
 # Optional dependencies
 try:
-    import pyvista as pv
     import vtk
     PYVISTA_AVAILABLE = True
 except ImportError:
@@ -39,8 +30,12 @@ except ImportError:
     pv = None
     vtk = None
 
-# Blender lazy loading
-from ..blender.lazy import get_blender_modules, is_blender_available
+# Blender integration
+try:
+    from ..blender import bpy, mathutils
+except ImportError:
+    bpy = None
+    mathutils = None
 
 
 @dataclass
@@ -79,7 +74,7 @@ class BidirectionalPyVistaBlenderBridge:
         # Validate dependencies
         if not PYVISTA_AVAILABLE:
             raise ImportError("PyVista not available")
-        if not is_blender_available():
+        if bpy is None:
             raise ImportError("Blender not available")
             
         logger.info("🌉 Bidirectional PyVista-Blender Bridge initialized")
@@ -102,15 +97,13 @@ class BidirectionalPyVistaBlenderBridge:
             Blender object or None if conversion failed
         """
         try:
-            bpy_module, mathutils_module = get_blender_modules()
-            
             # Extract mesh data
             vertices = mesh.points
             faces = mesh.faces
             
             # Create Blender mesh
-            blender_mesh = bpy_module.data.meshes.new(name)
-            blender_obj = bpy_module.data.objects.new(name, blender_mesh)
+            blender_mesh = bpy.data.meshes.new(name)
+            blender_obj = bpy.data.objects.new(name, blender_mesh)
             
             # Add vertices
             blender_mesh.vertices.add(len(vertices))
@@ -169,10 +162,10 @@ class BidirectionalPyVistaBlenderBridge:
             
             # Add to collection
             try:
-                collection = bpy_module.data.collections[collection_name]
+                collection = bpy.data.collections[collection_name]
             except KeyError:
-                collection = bpy_module.data.collections.new(collection_name)
-                bpy_module.context.scene.collection.children.link(collection)
+                collection = bpy.data.collections.new(collection_name)
+                bpy.context.scene.collection.children.link(collection)
             
             collection.objects.link(blender_obj)
             
@@ -295,7 +288,6 @@ class BidirectionalPyVistaBlenderBridge:
         sync_materials: bool
     ):
         """Synchronize PyVista mesh to Blender object."""
-        bpy_module, _ = get_blender_modules()
         mesh_data = blender_obj.data
         
         if sync_vertices:
@@ -414,8 +406,7 @@ class BidirectionalPyVistaBlenderBridge:
     
     def _find_blender_object_by_id(self, mesh_id: int) -> Optional[Any]:
         """Find Blender object by PyVista mesh ID."""
-        bpy_module, _ = get_blender_modules()
-        for obj in bpy_module.data.objects:
+        for obj in bpy.data.objects:
             if obj.type == 'MESH' and hasattr(obj, '_pyvista_mesh_id'):
                 if obj._pyvista_mesh_id == mesh_id:
                     return obj
@@ -449,9 +440,7 @@ class MaterialBridge:
     ) -> Optional[Any]:
         """Convert PyVista material data to Blender material."""
         try:
-            bpy_module, _ = get_blender_modules()
-            
-            material = bpy_module.data.materials.new(material_name)
+            material = bpy.data.materials.new(material_name)
             material.use_nodes = True
             
             # Get base color from point data

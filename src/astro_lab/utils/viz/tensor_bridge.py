@@ -1,27 +1,24 @@
 """
-Tensor Data Bridges and Zero-Copy Utilities
-==========================================
+Tensor Bridge - High-Performance Tensor Visualization Bridge
+===========================================================
 
-High-performance zero-copy data exchange between PyTorch tensors and
-visualization frameworks (PyVista, Blender, NumPy) following 2025 best practices.
-
-This module provides:
-- Zero-copy memory mapping where possible
-- Automatic memory layout optimization
-- Device-aware data transfer (CPU/CUDA)
-- Memory profiling and leak detection
-- Context managers for safe operations
+Provides efficient tensor-to-visualization framework bridges with zero-copy
+operations and GPU acceleration support.
 """
+
+import logging
+import numpy as np
+import torch
+import pyvista as pv
+from typing import Any, Dict, List, Optional, Union, Tuple
+
+from ..blender import bpy, mathutils
 
 import ctypes
 import gc
-import logging
 import warnings
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union, Protocol
-
-import numpy as np
-import torch
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +32,12 @@ except ImportError:
     pv = None
     vtk = None
 
-# Use centralized Blender lazy loading
-from ..blender.lazy import get_blender_modules, is_blender_available
+# Blender integration
+try:
+    from ..blender import bpy, mathutils
+except ImportError:
+    bpy = None
+    mathutils = None
 
 
 class TensorProtocol(Protocol):
@@ -229,8 +230,7 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
         collection_name: str = "AstroLab",
     ) -> Optional[Any]:
         """Convert tensor to Blender object with maximum performance."""
-        bpy_module, mathutils_module = get_blender_modules()
-        if bpy_module is None:
+        if bpy is None:
             raise ImportError("Blender (bpy) not available")
         
         with zero_copy_context("Blender conversion"):
@@ -239,7 +239,7 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
             data_optimized = BlenderZeroCopyBridge.ensure_cpu_contiguous(points_tensor)
             
             # Create mesh
-            mesh = bpy_module.data.meshes.new(name)
+            mesh = bpy.data.meshes.new(name)
             num_verts = data_optimized.shape[0]
             mesh.vertices.add(num_verts)
             
@@ -249,13 +249,13 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
             mesh.update()
             
             # Create object and add to collection
-            obj = bpy_module.data.objects.new(name, mesh)
+            obj = bpy.data.objects.new(name, mesh)
             
             try:
-                collection = bpy_module.data.collections[collection_name]
+                collection = bpy.data.collections[collection_name]
             except KeyError:
-                collection = bpy_module.data.collections.new(collection_name)
-                bpy_module.context.scene.collection.children.link(collection)
+                collection = bpy.data.collections.new(collection_name)
+                bpy.context.scene.collection.children.link(collection)
             
             collection.objects.link(obj)
             return obj

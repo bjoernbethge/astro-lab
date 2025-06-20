@@ -1,9 +1,9 @@
 """
-TNG50 Visualization Utilities
-============================
+TNG50 Data Visualizer
+=====================
 
-Direct visualization tools for TNG50 graph data (.pt files).
-No redundant preprocessing - uses existing processed data directly.
+Provides visualization tools for TNG50 cosmological simulation data
+with support for gas, stars, and dark matter components.
 
 Features:
 - Load TNG50 .pt files efficiently
@@ -20,29 +20,16 @@ Typical workflow:
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
-
 import numpy as np
 import torch
+import pyvista as pv
+import h5py
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union, Tuple
+
+from ..blender import bpy, mathutils
 
 logger = logging.getLogger(__name__)
-
-# Optional dependencies
-try:
-    import pyvista as pv
-    PYVISTA_AVAILABLE = True
-except ImportError:
-    PYVISTA_AVAILABLE = False
-
-# Use centralized Blender lazy loading
-from ..blender.lazy import is_blender_available
-
-try:
-    from astro_lab.utils.data_bridge import transfer_direct
-    DATA_BRIDGE_AVAILABLE = True
-except ImportError:
-    DATA_BRIDGE_AVAILABLE = False
 
 
 class TNG50Visualizer:
@@ -63,9 +50,8 @@ class TNG50Visualizer:
         
         logger.info("🌌 TNG50Visualizer initialized")
         logger.info(f"   Data directory: {self.data_dir}")
-        logger.info(f"   PyVista: {'✅' if PYVISTA_AVAILABLE else '❌'}")
-        logger.info(f"   Blender: {'✅' if is_blender_available() else '❌'}")
-        logger.info(f"   DataBridge: {'✅' if DATA_BRIDGE_AVAILABLE else '❌'}")
+        logger.info(f"   PyVista: {'✅' if pv is not None else '❌'}")
+        logger.info(f"   Blender: {'✅' if bpy is not None else '❌'}")
     
     def list_available_graphs(self) -> Dict[str, List[str]]:
         """
@@ -173,7 +159,7 @@ class TNG50Visualizer:
         Returns:
             PyVista PolyData mesh
         """
-        if not PYVISTA_AVAILABLE:
+        if pv is None:
             raise ImportError("PyVista not available")
         
         positions = graph_data['positions']
@@ -233,11 +219,8 @@ class TNG50Visualizer:
         Returns:
             List of created Blender objects
         """
-        if not is_blender_available():
+        if bpy is None:
             raise ImportError("Blender not available")
-        
-        if not DATA_BRIDGE_AVAILABLE:
-            raise ImportError("DataBridge not available")
         
         positions = graph_data['positions']
         features = graph_data['features']
