@@ -1,10 +1,33 @@
 # 🪐 Exoplanet Cosmic Web Analysis
 
-Complete 3D cosmic web analysis of confirmed exoplanet host stars using advanced spatial clustering techniques.
+Complete 3D cosmic web analysis of confirmed exoplanet host stars using advanced spatial clustering techniques and interactive visualization.
 
 ## Overview
 
 The exoplanet cosmic web analysis processes **5,798 confirmed exoplanet systems** with 3D stellar coordinates, revealing the distribution of planetary systems across the local stellar neighborhood up to 8,200 pc distance.
+
+## 🚀 Quick Start
+
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
+
+# Load and analyze exoplanet cosmic web
+results = create_cosmic_web_loader(
+    survey="exoplanet",
+    max_samples=5000,
+    scales_mpc=[10.0, 25.0, 50.0]
+)
+
+# Create interactive visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="exoplanet",
+    radius=2.0,
+    point_color='#ff00ff'  # Magenta for exoplanets
+)
+```
 
 ## Usage
 
@@ -15,6 +38,9 @@ python -m astro_lab.cli.preprocessing exoplanet
 
 # Direct cosmic web script  
 python process_exoplanet_cosmic_web.py
+
+# Cosmic web analysis
+python -m astro_lab.cli.cosmic_web exoplanet --max-samples 5000
 ```
 
 ### Results
@@ -22,6 +48,7 @@ python process_exoplanet_cosmic_web.py
 - Stellar associations to stellar neighborhoods
 - Exoplanet host star distribution mapped
 - Planetary system properties analyzed
+- Interactive 3D visualization with CosmographBridge
 
 ## Dataset: NASA Exoplanet Archive
 
@@ -141,20 +168,50 @@ print(f"Planet names: {len(props['planet_names'])}") # Individual planets
 
 ### Basic Exoplanet Analysis
 ```python
-from src.astro_lab.tensors import Spatial3DTensor
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
+
+# Load and analyze exoplanet cosmic web
+results = create_cosmic_web_loader(
+    survey="exoplanet",
+    max_samples=5000,
+    scales_mpc=[10.0, 25.0, 50.0]
+)
+
+print(f"Found {results['n_objects']} exoplanet systems")
+print(f"Volume: {results['total_volume']:.0f} Mpc³")
+print(f"Clusters: {len(results['clusters'])}")
+```
+
+### Interactive Visualization
+```python
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="exoplanet",
+    radius=2.0,
+    background_color='#000011',
+    point_color='#ff00ff'  # Magenta for exoplanets
+)
+```
+
+### Advanced Analysis
+```python
+from astro_lab.tensors import Spatial3DTensor
 import torch
 import numpy as np
 
-# Load exoplanet coordinates
-coords = torch.load('results/exoplanet_cosmic_web/exoplanet_coords_3d_pc.pt')
-spatial_tensor = Spatial3DTensor(coords, unit='pc')
+# Create spatial tensor from results
+coords_3d = torch.tensor(results['coordinates'], dtype=torch.float32)
+spatial_tensor = Spatial3DTensor(coords_3d, unit='pc')
 
 # Multi-scale stellar clustering
 for scale in [10, 25, 50, 100, 200]:  # pc
-    results = spatial_tensor.cosmic_web_clustering(
+    cluster_results = spatial_tensor.cosmic_web_clustering(
         eps_pc=scale, min_samples=3
     )
-    print(f"{scale} pc: {results['n_clusters']} stellar groups")
+    print(f"{scale} pc: {cluster_results['n_clusters']} stellar groups")
     
 # Analyze planetary properties by stellar group
 props = torch.load('results/exoplanet_cosmic_web/exoplanet_properties.pt')
@@ -186,6 +243,55 @@ if discovery_years is not None:
     print(f"Recent discoveries (>2015): {np.sum(valid_years > 2015):,}")
 ```
 
+### Multi-Survey Comparison
+```python
+# Compare exoplanet distribution with stellar surveys
+surveys = ["exoplanet", "gaia", "sdss"]
+comparison = {}
+
+for survey in surveys:
+    comparison[survey] = create_cosmic_web_loader(
+        survey=survey,
+        max_samples=1000,
+        scales_mpc=[25.0]
+    )
+    print(f"{survey}: {comparison[survey]['n_objects']} objects, "
+          f"{comparison[survey]['n_clusters']} clusters")
+
+# Visualize comparison
+bridge = CosmographBridge()
+widgets = []
+
+for survey in surveys:
+    widget = bridge.from_cosmic_web_results(
+        comparison[survey],
+        survey_name=survey,
+        radius=1.5
+    )
+    widgets.append(widget)
+```
+
+## 🎨 Visualization Features
+
+### CosmographBridge Integration
+- **Magenta color scheme** for exoplanet data
+- **Real-time physics simulation** with gravity and repulsion
+- **Interactive 3D navigation** with click and drag
+- **Hover information** for individual planetary systems
+- **Cluster highlighting** for stellar associations
+
+### Survey-Specific Colors
+```python
+color_map = {
+    'exoplanet': '#ff00ff',  # Magenta for exoplanets
+    'gaia': '#ffd700',       # Gold for stars
+    'sdss': '#4a90e2',       # Blue for galaxies
+    'nsa': '#e24a4a',        # Red for NSA
+    'tng50': '#00ff00',      # Green for simulation
+    'linear': '#ff8800'      # Orange for asteroids
+}
+```
+
 ## Comparison with Other Surveys
 
 ### Exoplanet vs Stellar Surveys
@@ -198,39 +304,94 @@ NSA galaxies     640k gal  <640 Mpc   4e-4/Mpc³    Cosmic web
 
 ### Key Differences
 - **Exoplanets**: Highly biased towards nearby bright stars
-- **Stellar surveys**: More complete but distance-limited
-- **Galaxy surveys**: Large-scale structure but sparse locally
+- **Gaia**: Complete stellar census of local neighborhood
+- **SDSS**: Extragalactic survey with redshift information
+- **NSA**: Galaxy catalog with distance measurements
 
-## Future Applications
+## 🔬 Advanced Analysis
 
-### Exoplanet Science
-- **Host star environments** and planet formation
-- **Galactic chemical evolution** effects on planets
-- **Stellar age gradients** and planetary system evolution
-- **Habitable zone** statistics across stellar populations
+### Planetary System Demographics
+```python
+# Analyze planet properties by spatial location
+from astro_lab.tensors.spatial_3d import analyze_spatial_properties
 
-### Stellar Astrophysics
-- **Local stellar structure** through exoplanet host mapping
-- **Kinematic groups** identified via spatial clustering
-- **Stellar metallicity** gradients in the solar neighborhood
-- **Galactic archaeology** through planet-hosting stars
+properties = {
+    'planet_radius': props['planet_radius'],
+    'orbital_period': props['orbital_period'],
+    'host_star_mass': props['host_star_mass']
+}
 
-### Survey Planning
-- **Target selection** for future exoplanet surveys
-- **Completeness corrections** for current samples
-- **Optimal observing strategies** for different planet types
-- **Statistical studies** of planet occurrence rates
+spatial_analysis = analyze_spatial_properties(
+    coordinates=results['coordinates'],
+    properties=properties,
+    clusters=results['clusters']
+)
 
-## Key Achievements
+print("Planetary system demographics by spatial location:")
+for cluster_id, cluster_data in spatial_analysis.items():
+    print(f"Cluster {cluster_id}: {cluster_data['n_systems']} systems")
+    print(f"  Mean planet radius: {cluster_data['mean_radius']:.2f} R⊕")
+    print(f"  Mean orbital period: {cluster_data['mean_period']:.1f} days")
+```
 
-1. **Largest 3D exoplanet host analysis** of confirmed systems
-2. **Multi-scale stellar structure** from associations to populations
-3. **Complete planetary demographics** across distance ranges
-4. **Host star distribution mapping** in the solar neighborhood
-5. **Selection effect quantification** for future surveys
+### Discovery Bias Analysis
+```python
+# Analyze discovery bias in exoplanet surveys
+discovery_methods = props['discovery_method']
+distances = props['distance_pc']
 
----
+# Group by discovery method
+methods = np.unique(discovery_methods)
+for method in methods:
+    method_mask = discovery_methods == method
+    method_distances = distances[method_mask]
+    print(f"{method}: {method_mask.sum()} planets, "
+          f"mean distance: {np.mean(method_distances):.0f} pc")
+```
 
-**This analysis represents the most comprehensive 3D mapping of exoplanet host star distribution, revealing both stellar structure and planetary system demographics across the local galactic neighborhood.**
+## 📊 Export and Sharing
 
-*Generated by AstroLab Exoplanet Cosmic Web Analysis System* 
+### Save Results
+```python
+import json
+
+# Save exoplanet cosmic web results
+with open('exoplanet_cosmic_web_results.json', 'w') as f:
+    json.dump(results, f, indent=2)
+
+# Save visualization settings
+viz_config = {
+    'survey_name': 'exoplanet',
+    'radius': 2.0,
+    'background_color': '#000011',
+    'point_color': '#ff00ff'
+}
+
+with open('exoplanet_viz_config.json', 'w') as f:
+    json.dump(viz_config, f, indent=2)
+```
+
+### Load and Continue
+```python
+# Load saved results
+with open('exoplanet_cosmic_web_results.json', 'r') as f:
+    results = json.load(f)
+
+# Create visualization from saved results
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name='exoplanet',
+    radius=2.0
+)
+```
+
+## 🌟 Key Insights
+
+1. **Spatial Distribution**: Exoplanet host stars reveal stellar associations and galactic structure
+2. **Discovery Bias**: Strong bias towards nearby bright stars in current surveys
+3. **Multi-scale Structure**: Planetary systems cluster at multiple scales from 10-200 pc
+4. **Interactive Exploration**: CosmographBridge enables 3D exploration of planetary system distribution
+5. **Comparative Analysis**: Framework supports cross-survey analysis with stellar and galactic data
+
+This analysis provides unique insight into the spatial distribution of planetary systems and their relationship to stellar structure in our galactic neighborhood! 🪐✨ 

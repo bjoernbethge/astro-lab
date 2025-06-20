@@ -1,8 +1,8 @@
-# Loading & Processing Astronomical Data
+# 🌌 Loading & Processing Astronomical Data
 
 ## 🎯 What does this module do?
 
-The `astro_lab.data` module loads astronomical catalogs (stars, galaxies) **and cosmological simulations** and prepares them for machine learning. **Simple, fast, without complexity.**
+The `astro_lab.data` module loads astronomical catalogs (stars, galaxies) **and cosmological simulations** and prepares them for machine learning and cosmic web analysis. **Simple, fast, without complexity.**
 
 ## 📋 Complete Workflow
 
@@ -24,7 +24,38 @@ simulation = load_tng50_data(max_samples=10000, particle_type="PartType0")
 print(f"✅ {len(simulation):,} gas particles loaded")
 ```
 
-### 2️⃣ Inspect Data
+### 2️⃣ Cosmic Web Analysis
+
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+
+# Analyze cosmic web structure
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=1000,
+    scales_mpc=[5.0, 10.0, 20.0]
+)
+
+print(f"🌌 Found {results['n_objects']} objects in cosmic web")
+print(f"📊 Volume: {results['total_volume']:.0f} Mpc³")
+print(f"🔗 Clusters: {len(results['clusters'])}")
+```
+
+### 3️⃣ Interactive Visualization
+
+```python
+from astro_lab.utils.viz import CosmographBridge
+
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    radius=3.0
+)
+```
+
+### 4️⃣ Inspect Data
 
 ```python
 # What's inside?
@@ -38,7 +69,7 @@ print(galaxies.data[:3])  # First 3 galaxies
 print(simulation.positions[:3])  # First 3 particle positions
 ```
 
-### 3️⃣ Processing for ML
+### 5️⃣ Processing for ML
 
 ```python
 # For PyTorch training
@@ -66,7 +97,7 @@ for batch_x, batch_y in loader:
     pass
 ```
 
-### 4️⃣ For Graph Neural Networks
+### 6️⃣ For Graph Neural Networks
 
 ```python
 from astro_lab.data import AstroDataset
@@ -98,11 +129,59 @@ graph_loader = DataLoader([graph], batch_size=1)
 
 | Survey | What | Count | Features | Usage |
 |--------|-----|--------|----------|------------|
-| **Gaia** | Stars | 5k-50k | Position, brightness, motion | Stellar Classification |
-| **SDSS** | Galaxies | 1k-10k | Colors, redshift, morphology | Galaxy Classification |
-| **NSA** | Galaxies | 1k-5k | Sérsic profiles, mass | Galaxy Evolution |
+| **Gaia** | Stars | 5k-50k | Position, brightness, motion | Stellar Classification, Cosmic Web |
+| **SDSS** | Galaxies | 1k-10k | Colors, redshift, morphology | Galaxy Classification, Cosmic Web |
+| **NSA** | Galaxies | 1k-5k | Sérsic profiles, mass | Galaxy Evolution, Cosmic Web |
 | **TNG50** | Simulation | 1k-20k per type | 3D positions, masses, velocities | Cosmic Web, Dark Matter |
 | **LINEAR** | Asteroids | 500-2k | Light curves, periods | Variable Stars |
+| **Exoplanet** | Planets | 500-1k | Orbital parameters | Planetary Systems |
+
+## 🌌 Cosmic Web Analysis Examples
+
+### Basic Cosmic Web Analysis
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+
+# Analyze Gaia stellar cosmic web
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=1000,
+    scales_mpc=[5.0, 10.0, 20.0]
+)
+
+print(f"Found {results['n_objects']} objects")
+print(f"Volume: {results['total_volume']:.0f} Mpc³")
+print(f"Clusters: {len(results['clusters'])}")
+```
+
+### Multi-Survey Cosmic Web Comparison
+```python
+# Compare different surveys
+surveys = ["gaia", "sdss", "nsa", "tng50"]
+results = {}
+
+for survey in surveys:
+    results[survey] = create_cosmic_web_loader(
+        survey=survey,
+        max_samples=500,
+        scales_mpc=[5.0, 10.0]
+    )
+    print(f"{survey}: {results[survey]['n_objects']} objects")
+```
+
+### Interactive Visualization
+```python
+from astro_lab.utils.viz import CosmographBridge
+
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    radius=3.0,
+    background_color='#000011'
+)
+```
 
 ## 🚀 Quick Start Recipes
 
@@ -249,6 +328,18 @@ python -m astro_lab.cli.preprocessing tng50 \
   --output-dir results/tng50_full
 ```
 
+## 🌌 Cosmic Web CLI
+
+```bash
+# Perform cosmic web analysis
+python -m astro_lab.cli.cosmic_web gaia --max-samples 1000 --scales 5.0 10.0 20.0
+python -m astro_lab.cli.cosmic_web sdss --output results/sdss_cosmic_web/
+python -m astro_lab.cli.cosmic_web nsa --create-visualization
+
+# Multi-survey analysis
+python -m astro_lab.cli.cosmic_web compare --surveys gaia sdss nsa --output results/comparison/
+```
+
 ## 🔧 Common Problems & Solutions
 
 ### Problem: "No real data found"
@@ -300,9 +391,10 @@ dark_matter = load_tng50_data(particle_type="PartType1", max_samples=15000)
 1. **Auto-Download**: If no data exists, synthetic astronomical data is generated
 2. **Preprocessing**: Coordinates are converted, missing values handled
 3. **Graph Creation**: k-NN graphs are built for spatial relationships
-4. **Tensor Integration**: Native AstroLab tensor support for advanced workflows
-5. **Caching**: Processed data is cached for faster subsequent loads
-6. **Simulation Loading**: TNG50 Parquet files are loaded with simulation metadata
+4. **Cosmic Web Analysis**: Multi-scale clustering and structure detection
+5. **Tensor Integration**: Native AstroLab tensor support for advanced workflows
+6. **Caching**: Processed data is cached for faster subsequent loads
+7. **Simulation Loading**: TNG50 Parquet files are loaded with simulation metadata
 
 ## 🎓 Next Steps
 
@@ -321,18 +413,27 @@ edge_index = graph.edge_index
 
 # → For simulations: 3D cosmic web graphs
 sim_graph = create_knn_graph(simulation.positions, k=16)
+
+# → Cosmic web analysis
+from astro_lab.data.core import create_cosmic_web_loader
+results = create_cosmic_web_loader(survey="gaia", max_samples=1000)
+
+# → Interactive visualization
+from astro_lab.utils.viz import CosmographBridge
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 ```
 
 ## 🔄 Data Flow Architecture
 
 ```
-Raw Catalogs → Preprocessing → Feature Engineering → Graph Building → ML Ready
-     ↓              ↓              ↓                ↓            ↓
-   Parquet     Polars/Pandas    AstroLab Tensors   PyG Data    Training
+Raw Catalogs → Preprocessing → Feature Engineering → Graph Building → Cosmic Web → ML Ready
+     ↓              ↓              ↓                ↓               ↓            ↓
+   Parquet     Polars/Pandas    AstroLab Tensors   PyG Data    Cosmograph    Training
 
-Simulations → HDF5/Parquet → SimulationTensor → 3D Graphs → Cosmic Web ML
-     ↓              ↓              ↓               ↓            ↓
-   TNG50       Load Particles   Positions+Features  Spatial NN   Training
+Simulations → HDF5/Parquet → SimulationTensor → 3D Graphs → Cosmic Web ML → Visualization
+     ↓              ↓              ↓               ↓            ↓              ↓
+   TNG50       Load Particles   Positions+Features  Spatial NN   Analysis      Cosmograph
 ```
 
 ## 💡 Pro Tips
@@ -344,6 +445,8 @@ Simulations → HDF5/Parquet → SimulationTensor → 3D Graphs → Cosmic Web M
 - **Memory usage**: Large datasets (>100k objects) may need chunked processing
 - **TNG50 efficiency**: Process one particle type at a time for large simulations
 - **3D coordinates**: TNG50 uses comoving coordinates in ckpc/h units
+- **Cosmic web**: Use multiple scales for comprehensive structure analysis
+- **Visualization**: CosmographBridge provides interactive 3D exploration
 
 ## 🧪 Advanced Usage
 
@@ -409,4 +512,400 @@ all_positions = [
 
 print("Multi-survey dataset ready for cross-correlation analysis!")
 ```
+
+### Cosmic Web Pipeline
+
+```python
+# Complete cosmic web analysis pipeline
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
+
+# 1. Load and analyze
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=2000,
+    scales_mpc=[5.0, 10.0, 20.0]
+)
+
+# 2. Visualize interactively
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    radius=3.0,
+    background_color='#000011'
+)
+
+# 3. Export results
+import json
+with open('cosmic_web_results.json', 'w') as f:
+    json.dump(results, f, indent=2)
+
+print("🌌 Complete cosmic web analysis pipeline!")
+```
+
+# AstroLab Data Loaders
+
+Modern astronomical data management with clean, efficient APIs for all major surveys.
+
+## Directory Structure Policy
+
+AstroLab follows a **lazy directory creation** policy to avoid cluttering the filesystem:
+
+- **Core directories** (`data/raw`, `data/processed`, `data/cache`, etc.) are only created when explicitly requested
+- **Survey-specific directories** are only created when actually working with that survey
+- **No automatic directory creation** on import - directories are created only when needed
+
+### Directory Structure
+
+```
+data/
+├── raw/                    # Original survey data
+│   ├── gaia/              # Gaia DR3 catalogs
+│   ├── sdss/              # SDSS DR17 data
+│   ├── nsa/               # NASA Sloan Atlas
+│   └── tng50/             # TNG50 simulation data
+├── processed/             # Cleaned, ML-ready data
+│   ├── gaia/              # Processed Gaia data
+│   ├── sdss/              # Processed SDSS data
+│   ├── nsa/               # Processed NSA data
+│   └── tng50/             # Processed TNG50 data
+├── cache/                 # Temporary cache files
+├── experiments/           # MLflow and checkpoints
+│   ├── mlruns/           # MLflow tracking
+│   └── checkpoints/      # Lightning checkpoints
+├── results/              # Organized model outputs
+└── configs/              # Configuration files
+```
+
+## Preprocessing with Automatic Survey Organization
+
+The preprocessing CLI now automatically detects survey types and saves processed data to the appropriate survey subdirectories:
+
+```bash
+# Process any catalog - automatically saves to survey-specific directory
+astro-lab preprocess process data/raw/gaia_catalog.parquet
+
+# This automatically:
+# 1. Detects the survey type (Gaia)
+# 2. Creates data/processed/gaia/ if needed
+# 3. Saves processed data to data/processed/gaia/gaia_catalog_processed.parquet
+# 4. Creates graphs in data/processed/gaia/
+```
+
+### Manual Directory Creation
+
+If you need to create directories explicitly:
+
+```python
+from astro_lab.data.config import data_config
+
+# Create core structure
+data_config.setup_directories()
+
+# Create survey-specific directories
+data_config.ensure_survey_directories("gaia")
+data_config.ensure_survey_directories("nsa")
+```
+
+## Quick Start
+
+### Load Gaia Data
+
+```python
+from astro_lab.data import load_gaia_data
+
+# Load Gaia data with automatic tensor conversion
+dataset = load_gaia_data(max_samples=5000, return_tensor=True)
+print(f"Loaded {len(dataset)} Gaia sources")
+```
+
+### Load SDSS Data
+
+```python
+from astro_lab.data import load_sdss_data
+
+# Load SDSS galaxy data
+dataset = load_sdss_data(max_samples=10000)
+print(f"Loaded {len(dataset)} SDSS galaxies")
+```
+
+### Load NSA Data
+
+```python
+from astro_lab.data import load_nsa_data
+
+# Load NSA galaxy catalog
+dataset = load_nsa_data(max_samples=5000)
+print(f"Loaded {len(dataset)} NSA galaxies")
+```
+
+### Load TNG50 Simulation Data
+
+```python
+from astro_lab.data import load_tng50_data, load_tng50_temporal_data
+
+# Load static TNG50 data
+static_data = load_tng50_data(max_particles=100000)
+
+# Load temporal TNG50 data
+temporal_data = load_tng50_temporal_data(
+    max_particles=50000,
+    time_steps=[0, 1, 2, 3, 4]
+)
+```
+
+## Advanced Usage
+
+### Custom Data Loading
+
+```python
+from astro_lab.data import AstroDataset
+
+# Create custom dataset
+dataset = AstroDataset(
+    survey="gaia",
+    data_path="path/to/custom/gaia_data.parquet",
+    k_neighbors=12,
+    max_samples=10000,
+    return_tensor=True
+)
+```
+
+### Graph Creation
+
+```python
+from astro_lab.data import create_graph_from_dataframe
+import polars as pl
+
+# Create sample data
+df = pl.DataFrame({
+    "ra": [0.0, 1.0, 2.0],
+    "dec": [0.0, 1.0, 2.0],
+    "mag": [10.0, 11.0, 12.0]
+})
+
+# Create graph
+graph = create_graph_from_dataframe(
+    df, 
+    survey_type="gaia",
+    k_neighbors=8,
+    distance_threshold=50.0
+)
+```
+
+### Training Splits
+
+```python
+from astro_lab.data import create_training_splits, save_splits_to_parquet
+
+# Create splits
+train_df, val_df, test_df = create_training_splits(
+    df, 
+    test_size=0.2, 
+    val_size=0.1
+)
+
+# Save splits
+save_splits_to_parquet(
+    train_df, val_df, test_df,
+    output_dir="data/processed/gaia",
+    dataset_name="gaia_stellar"
+)
+```
+
+## Survey-Specific Features
+
+### Gaia DR3
+
+- **Astrometry**: Proper motion, parallax, position
+- **Photometry**: G, BP, RP magnitudes
+- **Spectroscopy**: Teff, logg from GSP-Phot
+- **Graph Features**: Spatial clustering, proper motion groups
+
+### SDSS DR17
+
+- **Photometry**: u, g, r, i, z magnitudes
+- **Spectroscopy**: Redshift, spectral features
+- **Morphology**: Galaxy classification
+- **Graph Features**: Redshift-space clustering
+
+### NSA
+
+- **Photometry**: Multi-band photometry
+- **Distances**: Redshift-independent distances
+- **Morphology**: Galaxy properties
+- **Graph Features**: 3D spatial clustering
+
+### TNG50
+
+- **Particle Data**: Dark matter, gas, stars
+- **Temporal**: Multiple snapshots
+- **Physics**: Hydrodynamics, feedback
+- **Graph Features**: Particle clustering, merger trees
+
+## Performance Optimizations
+
+### Memory Management
+
+```python
+# Use smaller batches for large datasets
+dataset = load_gaia_data(max_samples=100000, batch_size=1000)
+
+# Enable tensor conversion for GPU acceleration
+dataset = load_gaia_data(return_tensor=True)
+```
+
+### Caching
+
+```python
+# Enable caching for repeated access
+from astro_lab.data.config import data_config
+data_config.cache_dir.mkdir(exist_ok=True)
+```
+
+## CLI Commands
+
+### Preprocessing
+
+```bash
+# Process catalog with automatic survey detection
+astro-lab preprocess process data/raw/gaia_catalog.parquet
+
+# Process with specific output location
+astro-lab preprocess process data/raw/gaia_catalog.parquet --output data/processed/gaia/
+
+# Create training splits
+astro-lab preprocess process data/raw/gaia_catalog.parquet --create-splits
+
+# Show statistics
+astro-lab preprocess stats data/raw/gaia_catalog.parquet --verbose
+```
+
+### Data Management
+
+```bash
+# List available catalogs
+astro-lab preprocess list
+
+# Browse data directory
+astro-lab preprocess browse data/processed
+
+# Load and display splits
+astro-lab preprocess splits data/processed/gaia gaia_stellar
+```
+
+### Cosmic Web Analysis
+
+```bash
+# Analyze Gaia cosmic web
+astro-lab preprocess cosmic-web gaia --max-samples 10000
+
+# Analyze with custom scales
+astro-lab preprocess cosmic-web nsa --scales 5.0 10.0 20.0 50.0
+
+# Save results
+astro-lab preprocess cosmic-web linear --output results/cosmic_web/
+```
+
+## Integration with Training
+
+### Lightning DataModule
+
+```python
+from astro_lab.data import create_astro_datamodule
+
+# Create Lightning DataModule
+datamodule = create_astro_datamodule(
+    survey="gaia",
+    batch_size=64,
+    max_samples=50000,
+    return_tensor=True
+)
+
+# Use with Lightning Trainer
+trainer.fit(datamodule=datamodule)
+```
+
+### Custom Training Loop
+
+```python
+from astro_lab.data import create_astro_dataloader
+
+# Create data loaders
+train_loader, val_loader, test_loader = create_astro_dataloader(
+    survey="gaia",
+    batch_size=32,
+    max_samples=10000
+)
+
+# Custom training loop
+for batch in train_loader:
+    # Process batch
+    pass
+```
+
+## Error Handling
+
+### Missing Data
+
+```python
+try:
+    dataset = load_gaia_data()
+except FileNotFoundError:
+    print("Gaia data not found. Download first:")
+    print("astro-lab download gaia")
+```
+
+### Memory Issues
+
+```python
+# Reduce batch size for large datasets
+dataset = load_gaia_data(max_samples=1000000, batch_size=100)
+
+# Use tensor conversion for GPU
+dataset = load_gaia_data(return_tensor=True)
+```
+
+## Best Practices
+
+1. **Use survey-specific loaders** for optimal performance
+2. **Enable tensor conversion** for GPU acceleration
+3. **Create training splits** early in the pipeline
+4. **Save processed data** to avoid reprocessing
+5. **Use appropriate batch sizes** for your hardware
+6. **Monitor memory usage** with large datasets
+7. **Cache frequently used data** in the cache directory
+
+## Troubleshooting
+
+### Common Issues
+
+**Import Errors**: Ensure all dependencies are installed
+```bash
+uv sync
+```
+
+**Memory Issues**: Reduce batch size or max_samples
+```python
+dataset = load_gaia_data(max_samples=1000, batch_size=10)
+```
+
+**Slow Loading**: Enable caching and use tensor conversion
+```python
+dataset = load_gaia_data(return_tensor=True)
+```
+
+**Missing Data**: Download survey data first
+```bash
+astro-lab download gaia
+```
+
+### Performance Tips
+
+1. Use `return_tensor=True` for GPU acceleration
+2. Set appropriate `max_samples` for your use case
+3. Use `batch_size` that fits in memory
+4. Enable caching for repeated access
+5. Use survey-specific optimizations
 
