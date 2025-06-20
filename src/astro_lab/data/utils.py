@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import polars as pl
+import torch
 
 # Try to import astropy for FITS handling
 try:
@@ -583,3 +584,185 @@ def preprocess_catalog(
     )
 
     return df
+
+
+def load_nsa_as_tensors(
+    data_path: Union[str, Path],
+    split: str = "train",
+    max_samples: Optional[int] = None,
+) -> Dict[str, torch.Tensor]:
+    """
+    Load NSA data and convert to tensor format for point cloud models.
+
+    Args:
+        data_path: Path to NSA processed data directory
+        split: Which split to load ('train', 'val', 'test')
+        max_samples: Limit number of samples
+
+    Returns:
+        Dictionary with 'pos', 'x', and 'edge_index' tensors
+    """
+    data_path = Path(data_path)
+
+    # Load parquet data
+    parquet_file = data_path / f"nsa_v1_0_1_{split}.parquet"
+    if not parquet_file.exists():
+        raise FileNotFoundError(f"NSA {split} data not found: {parquet_file}")
+
+    df = pl.read_parquet(parquet_file)
+
+    if max_samples:
+        df = df.head(max_samples)
+
+    # Extract coordinates (RA, DEC, Z) -> 3D positions
+    ra = df["RA"].to_numpy()
+    dec = df["DEC"].to_numpy()
+    z = df["Z"].to_numpy()
+
+    # Convert to 3D Cartesian coordinates (simplified)
+    c = 299792.458  # km/s
+    H0 = 70.0  # km/s/Mpc
+    distance = c * z / H0  # Mpc
+
+    ra_rad = np.radians(ra)
+    dec_rad = np.radians(dec)
+
+    x = distance * np.cos(dec_rad) * np.cos(ra_rad)
+    y = distance * np.cos(dec_rad) * np.sin(ra_rad)
+    z_coord = distance * np.sin(dec_rad)
+
+    pos = torch.tensor(np.column_stack([x, y, z_coord]), dtype=torch.float32)
+
+    # Extract features
+    feature_cols = ["RA", "DEC", "Z"]
+
+    # Add photometric features if available
+    photo_cols = ["ELPETRO_MASS", "SERSIC_MASS", "MAG"]
+    available_photo = [col for col in photo_cols if col in df.columns]
+    feature_cols.extend(available_photo)
+
+    features = df.select(feature_cols).to_numpy()
+    features = np.nan_to_num(features, nan=0.0)
+    x = torch.tensor(features, dtype=torch.float32)
+
+    # Load graph structure if available
+    graph_file = data_path / f"graphs_{split}" / f"nsa_v1_0_1_{split}.pt"
+    edge_index = None
+
+    if graph_file.exists():
+        try:
+            # Load with weights_only=False for PyTorch Geometric compatibility
+            import torch_geometric
+
+            # Add safe globals for PyTorch Geometric
+            torch.serialization.add_safe_globals(
+                [
+                    torch_geometric.data.Data,
+                    torch_geometric.data.data.DataEdgeAttr,
+                    torch_geometric.data.data.DataNodeAttr,
+                ]
+            )
+
+            graph_data = torch.load(graph_file, map_location="cpu", weights_only=False)
+            edge_index = graph_data.edge_index
+        except Exception as e:
+            print(f"Warning: Could not load graph structure: {e}")
+
+    result = {
+        "pos": pos,
+        "x": x,
+    }
+
+    if edge_index is not None:
+        result["edge_index"] = edge_index
+
+    return result
+
+
+def create_nsa_survey_tensor(
+    data_path: Union[str, Path],
+    split: str = "train",
+    max_samples: Optional[int] = None,
+):
+    """
+    Create SurveyTensor from NSA data.
+
+    Args:
+        data_path: Path to NSA processed data
+        split: Which split to load
+        max_samples: Limit number of samples
+
+    Returns:
+        SurveyTensor instance
+    """
+    from astro_lab.tensors import SurveyTensor
+
+    data_path = Path(data_path)
+    parquet_file = data_path / f"nsa_v1_0_1_{split}.parquet"
+
+    if not parquet_file.exists():
+        raise FileNotFoundError(f"NSA {split} data not found: {parquet_file}")
+
+    df = pl.read_parquet(parquet_file)
+
+    if max_samples:
+        df = df.head(max_samples)
+
+    # Convert to tensor - handle mixed data types
+    numeric_df = df.select(
+        [
+            col
+            for col in df.columns
+            if df[col].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
+        ]
+    )
+    data_tensor = torch.tensor(numeric_df.to_numpy(), dtype=torch.float32)
+
+    # Create column mapping for numeric columns only
+    column_mapping = {col: i for i, col in enumerate(numeric_df.columns)}
+
+    # Create survey tensor
+    survey_tensor = SurveyTensor(
+        data_tensor,
+        survey_name="nsa",
+        data_release="v1_0_1",
+        filter_system="galex_sdss",
+        column_mapping=column_mapping,
+        survey_metadata={
+            "num_galaxies": len(df),
+            "redshift_range": [df["Z"].min(), df["Z"].max()],
+            "split": split,
+        },
+    )
+
+    return survey_tensor
+
+
+def test_nsa_tensor_compatibility():
+    """Test NSA data compatibility with tensor system."""
+    try:
+        # Test loading
+        data = load_nsa_as_tensors("data/processed/nsa", "train", max_samples=100)
+        print("✅ NSA tensor loading successful")
+        print(f"   Positions: {data['pos'].shape}")
+        print(f"   Features: {data['x'].shape}")
+        if "edge_index" in data:
+            print(f"   Edges: {data['edge_index'].shape}")
+
+        # Test survey tensor
+        survey_tensor = create_nsa_survey_tensor(
+            "data/processed/nsa", "train", max_samples=100
+        )
+        print("✅ NSA SurveyTensor creation successful")
+        print(f"   Survey: {survey_tensor.survey_name}")
+        print(f"   Shape: {survey_tensor.shape}")
+
+        return True
+
+    except Exception as e:
+        print(f"❌ NSA tensor compatibility test failed: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    test_nsa_tensor_compatibility()

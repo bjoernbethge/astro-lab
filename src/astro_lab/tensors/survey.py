@@ -101,8 +101,8 @@ class SurveyTensor(AstroTensorBase, ValidationMixin):
     # Survey configuration and defaults - using centralized constants
     # =========================================================================
 
-    @classmethod
-    def _get_default_filter_system(cls, survey_name: str) -> str:
+    @staticmethod
+    def _get_default_filter_system(survey_name: str) -> str:
         """Get default filter system for known surveys."""
         filter_systems = {
             "gaia": "gaia_dr3",
@@ -124,6 +124,7 @@ class SurveyTensor(AstroTensorBase, ValidationMixin):
         return [
             "gaia",
             "sdss",
+            "nsa",  # NASA-Sloan Atlas
             "lsst",
             "euclid",
             "des",

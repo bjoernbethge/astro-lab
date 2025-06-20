@@ -508,8 +508,27 @@ class AstroDataset(InMemoryDataset):
         features = torch.nan_to_num(features, nan=0.0)
         positions = torch.nan_to_num(positions, nan=0.0)
 
+        # Create labels for classification
+        if self.survey == "gaia" and "bp_rp" in df.columns:
+            # Stellar classification based on B-R color
+            bp_rp = df["bp_rp"].to_numpy()
+            bp_rp = np.nan_to_num(bp_rp, nan=0.0)
+            labels = (
+                np.digitize(
+                    bp_rp, bins=np.array([-0.5, 0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 2.0])
+                )
+                - 1
+            )
+            labels = np.clip(labels, 0, 7)
+            y = torch.tensor(labels, dtype=torch.long)
+        else:
+            # Default: random labels for demo
+            y = torch.randint(0, 8, (len(df),), dtype=torch.long)
+
         # Create graph data
-        data = Data(x=features, edge_index=edge_index, pos=positions, num_nodes=len(df))
+        data = Data(
+            x=features, edge_index=edge_index, pos=positions, y=y, num_nodes=len(df)
+        )
 
         # Add metadata
         data.survey_name = self.config["name"]
@@ -924,9 +943,14 @@ def _create_nsa_graph(
 ) -> Data:
     """Create NSA galaxy graph."""
     # Convert redshift to distance and create 3D coordinates
-    z = df["z"].to_numpy()
-    ra = df["ra"].to_numpy()
-    dec = df["dec"].to_numpy()
+    # Handle both uppercase and lowercase column names
+    z_col = "Z" if "Z" in df.columns else "z"
+    ra_col = "RA" if "RA" in df.columns else "ra"
+    dec_col = "DEC" if "DEC" in df.columns else "dec"
+
+    z = df[z_col].to_numpy()
+    ra = df[ra_col].to_numpy()
+    dec = df[dec_col].to_numpy()
 
     # Simple redshift to distance conversion (Hubble flow)
     c = 299792.458  # km/s
@@ -943,12 +967,23 @@ def _create_nsa_graph(
 
     coords_3d = np.column_stack([x, y, z_coord])
 
-    # Create feature matrix
-    feature_cols = ["ra", "dec", "z"]
+    # Create feature matrix - handle both uppercase and lowercase
+    feature_cols = [ra_col, dec_col, z_col]
     available_cols = [col for col in feature_cols if col in df.columns]
 
-    # Add photometry if available
-    photo_cols = ["petromag_r", "petromag_g", "petromag_i", "mass"]
+    # Add photometry if available (try both cases)
+    photo_cols = [
+        "petromag_r",
+        "petromag_g",
+        "petromag_i",
+        "mass",
+        "PETROMAG_R",
+        "PETROMAG_G",
+        "PETROMAG_I",
+        "MASS",
+        "ELPETRO_MASS",
+        "SERSIC_MASS",
+    ]
     available_cols.extend([col for col in photo_cols if col in df.columns])
 
     features = df.select(available_cols).to_numpy()
@@ -1026,10 +1061,29 @@ def _create_gaia_graph(
     edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
     node_features = torch.tensor(features, dtype=torch.float)
 
+    # Create labels for Gaia stellar classification based on color
+    if "bp_rp" in df.columns:
+        bp_rp = df["bp_rp"].to_numpy()
+        bp_rp = np.nan_to_num(bp_rp, nan=0.0)
+
+        # Stellar classification based on B-R color:
+        # 0: Very blue (hot stars), 1: Blue, 2: Blue-white, 3: White
+        # 4: Yellow-white, 5: Yellow, 6: Orange, 7: Red (cool stars)
+        labels = (
+            np.digitize(bp_rp, bins=np.array([-0.5, 0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 2.0]))
+            - 1
+        )
+        labels = np.clip(labels.astype(int), 0, 7)  # Ensure labels are in range [0, 7]
+        y = torch.tensor(labels, dtype=torch.long)
+    else:
+        # Fallback: random labels for demo
+        y = torch.randint(0, 8, (len(features),), dtype=torch.long)
+
     return Data(
         x=node_features,
         edge_index=edge_index,
         edge_attr=edge_attr,
+        y=y,
         num_nodes=len(features),
     )
 

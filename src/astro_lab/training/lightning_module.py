@@ -215,9 +215,7 @@ class AstroLightningModule(LightningModule):
         loss = F.cross_entropy(sim_matrix, labels)
         return loss
 
-    def _compute_step(
-        self, batch: Dict[str, Any], stage: str
-    ) -> Dict[str, torch.Tensor]:
+    def _compute_step(self, batch, stage: str) -> Dict[str, torch.Tensor]:
         """Unified computation for all steps."""
         results = {}
 
@@ -231,7 +229,16 @@ class AstroLightningModule(LightningModule):
         else:
             # Supervised learning
             predictions = self(batch)
-            targets = batch["y"]
+
+            # Extract targets from batch (handle both dict and Data object)
+            if hasattr(batch, "y"):
+                targets = batch.y
+            elif isinstance(batch, dict):
+                targets = batch["y"]
+            elif isinstance(batch, list) and hasattr(batch[0], "y"):
+                targets = batch[0].y
+            else:
+                raise ValueError(f"Cannot find targets 'y' in batch: {type(batch)}")
 
             # Compute loss based on task type
             if self.task_type == "classification":
@@ -250,7 +257,7 @@ class AstroLightningModule(LightningModule):
 
         return results
 
-    def training_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch, batch_idx: int) -> torch.Tensor:
         """Training step."""
         results = self._compute_step(batch, "train")
 
@@ -260,7 +267,7 @@ class AstroLightningModule(LightningModule):
 
         return results["loss"]
 
-    def validation_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch, batch_idx: int) -> torch.Tensor:
         """Validation step."""
         results = self._compute_step(batch, "val")
 
@@ -270,7 +277,7 @@ class AstroLightningModule(LightningModule):
 
         return results["loss"]
 
-    def test_step(self, batch: Dict[str, Any], batch_idx: int) -> torch.Tensor:
+    def test_step(self, batch, batch_idx: int) -> torch.Tensor:
         """Test step."""
         results = self._compute_step(batch, "test")
 

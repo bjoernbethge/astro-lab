@@ -343,16 +343,108 @@ class AstroTrainer(Trainer):
         val_dataloader: DataLoader,
         n_trials: int = 50,
         timeout: Optional[int] = None,
+        search_space: Optional[Dict[str, Any]] = None,
         **optuna_kwargs,
     ) -> Any:
         """Optimize hyperparameters using Optuna (if available)."""
         if not OPTUNA_AVAILABLE or OptunaTrainer is None:
             raise ImportError("Optuna not available. Install with: pip install optuna")
 
-        # Create model factory for Optuna
+        # Create model factory for Optuna that creates different models based on trial suggestions
         def model_factory(trial):
-            # This is a simplified example - customize based on your model
-            return self.astro_module
+            # Get the original model configuration
+            original_model = self.astro_module.model
+
+            # Create hyperparameter suggestions based on search space
+            if search_space:
+                # Suggest learning rate
+                if "learning_rate" in search_space:
+                    lr_config = search_space["learning_rate"]
+                    if lr_config["type"] == "loguniform":
+                        learning_rate = trial.suggest_float(
+                            "learning_rate",
+                            lr_config["low"],
+                            lr_config["high"],
+                            log=True,
+                        )
+                    else:
+                        learning_rate = trial.suggest_float(
+                            "learning_rate", lr_config["low"], lr_config["high"]
+                        )
+                else:
+                    learning_rate = trial.suggest_float(
+                        "learning_rate", 1e-5, 1e-2, log=True
+                    )
+
+                # Suggest hidden_dim
+                if "hidden_dim" in search_space:
+                    hd_config = search_space["hidden_dim"]
+                    if hd_config["type"] == "categorical":
+                        hidden_dim = trial.suggest_categorical(
+                            "hidden_dim", hd_config["choices"]
+                        )
+                    else:
+                        hidden_dim = trial.suggest_int(
+                            "hidden_dim", hd_config["low"], hd_config["high"]
+                        )
+                else:
+                    hidden_dim = trial.suggest_categorical(
+                        "hidden_dim", [64, 128, 256, 512]
+                    )
+
+                # Suggest dropout
+                if "dropout" in search_space:
+                    dropout_config = search_space["dropout"]
+                    dropout = trial.suggest_float(
+                        "dropout", dropout_config["low"], dropout_config["high"]
+                    )
+                else:
+                    dropout = trial.suggest_float("dropout", 0.1, 0.5)
+
+                # Create new model with suggested parameters
+                from astro_lab.models import AstroSurveyGNN
+
+                new_model = AstroSurveyGNN(
+                    hidden_dim=hidden_dim,
+                    output_dim=getattr(original_model, "output_dim", 8),
+                    dropout=dropout,
+                    num_layers=getattr(original_model, "num_layers", 3),
+                    conv_type=getattr(original_model, "conv_type", "gcn"),
+                    task=getattr(original_model, "task", "node_classification"),
+                )
+
+                # Create new Lightning module with suggested learning rate
+                lightning_module = AstroLightningModule(
+                    model=new_model, learning_rate=learning_rate
+                )
+
+                return lightning_module
+            else:
+                # Default search space if none provided
+                learning_rate = trial.suggest_float(
+                    "learning_rate", 1e-5, 1e-2, log=True
+                )
+                hidden_dim = trial.suggest_categorical(
+                    "hidden_dim", [64, 128, 256, 512]
+                )
+                dropout = trial.suggest_float("dropout", 0.1, 0.5)
+
+                from astro_lab.models import AstroSurveyGNN
+
+                new_model = AstroSurveyGNN(
+                    hidden_dim=hidden_dim,
+                    output_dim=getattr(original_model, "output_dim", 8),
+                    dropout=dropout,
+                    num_layers=getattr(original_model, "num_layers", 3),
+                    conv_type=getattr(original_model, "conv_type", "gcn"),
+                    task=getattr(original_model, "task", "node_classification"),
+                )
+
+                lightning_module = AstroLightningModule(
+                    model=new_model, learning_rate=learning_rate
+                )
+
+                return lightning_module
 
         # Create Optuna trainer
         optuna_trainer = OptunaTrainer(

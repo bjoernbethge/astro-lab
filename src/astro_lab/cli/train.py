@@ -16,6 +16,7 @@ import yaml
 
 from astro_lab.models.utils import create_gaia_classifier
 from astro_lab.training import AstroTrainer, create_astro_datamodule
+from astro_lab.utils.config_loader import ConfigLoader, load_experiment_config
 
 # 🌟 NEW: Import tensor-native models
 try:
@@ -31,6 +32,222 @@ except ImportError:
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def create_default_config(output_path: str = "config.yaml") -> None:
+    """
+    Create a default configuration file using ConfigLoader.
+
+    Args:
+        output_path: Path where to save the config file
+    """
+    try:
+        # Use ConfigLoader to load default config
+        loader = ConfigLoader("configs/default.yaml")
+        config = loader.load_config("default_experiment")
+
+        # Save to specified path
+        with open(output_path, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, indent=2)
+
+        print(f"✅ Default configuration created: {output_path}")
+        print("🚀 You can now edit this file and run:")
+        print(f"   astro-lab train train --config {output_path}")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to create default config: {e}")
+        # Fallback: create minimal config
+        minimal_config = {
+            "model": {
+                "type": "gaia_classifier",
+                "hidden_dim": 128,
+                "num_layers": 3,
+                "dropout": 0.1,
+            },
+            "data": {
+                "dataset": "gaia",
+                "batch_size": 32,
+                "max_samples": 5000,
+                "return_tensor": True,
+            },
+            "training": {
+                "max_epochs": 100,
+                "learning_rate": 0.001,
+                "experiment_name": "default_experiment",
+            },
+        }
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            yaml.dump(minimal_config, f, default_flow_style=False, indent=2)
+
+        print(f"✅ Minimal configuration created: {output_path}")
+
+
+def train_from_config(config_path: str) -> None:
+    """
+    Train model from configuration file using ConfigLoader.
+
+    Args:
+        config_path: Path to YAML configuration file
+    """
+    try:
+        # Use ConfigLoader for proper config handling
+        loader = ConfigLoader(config_path)
+        config = loader.load_config()
+
+        logger.info(f"🚀 Training with config: {config_path}")
+        logger.info(f"   Experiment: {config['mlflow']['experiment_name']}")
+
+        # Create model
+        model_config = loader.get_model_config()
+        model = create_model_from_config(model_config)
+
+        # Create datamodule
+        data_config = config["data"]
+        enhanced_data_config = enhance_data_config_for_tensors(data_config)
+
+        dataset_name = enhanced_data_config["dataset"]
+        dataset_params = {
+            k: v for k, v in enhanced_data_config.items() if k != "dataset"
+        }
+        datamodule = create_astro_datamodule(dataset_name, **dataset_params)
+
+        # Create trainer with full config
+        training_config = loader.get_training_config()
+        mlflow_config = loader.get_mlflow_config()
+
+        # Merge configs for trainer - exclude parameters that are not for Lightning Trainer
+        trainer_config = {
+            k: v
+            for k, v in training_config.items()
+            if k not in ["learning_rate", "tracking_uri"]
+        }
+        trainer_config["experiment_name"] = mlflow_config["experiment_name"]
+
+        # Use centralized parameter distribution
+        from astro_lab.utils.config_params import (
+            get_lightning_params,
+            get_mlflow_params,
+            get_trainer_params,
+            validate_parameter_conflicts,
+        )
+
+        # Validate configuration first
+        is_valid, error_msg = validate_parameter_conflicts(config)
+        if not is_valid:
+            raise ValueError(f"❌ Configuration error: {error_msg}")
+
+        # Get properly distributed parameters
+        trainer_config = get_trainer_params(config)
+        lightning_params = get_lightning_params(config)
+        mlflow_params = get_mlflow_params(config)
+
+        # Add experiment name to trainer config
+        trainer_config["experiment_name"] = mlflow_params["experiment_name"]
+
+        # Wrap model in Lightning module if needed
+        from astro_lab.training.lightning_module import AstroLightningModule
+
+        if not isinstance(model, AstroLightningModule):
+            lightning_module = AstroLightningModule(model=model, **lightning_params)
+        else:
+            lightning_module = model
+
+        trainer = AstroTrainer(lightning_module=lightning_module, **trainer_config)
+
+        # Train
+        logger.info("🎯 Starting training...")
+        trainer.fit(datamodule=datamodule)
+
+        logger.info("🎉 Training completed!")
+
+    except Exception as e:
+        logger.error(f"❌ Training failed: {e}")
+        raise
+
+
+def optimize_from_config(config_path: str) -> None:
+    """
+    Run hyperparameter optimization from configuration file.
+
+    Args:
+        config_path: Path to YAML configuration file
+    """
+    try:
+        # Use ConfigLoader for proper config handling
+        loader = ConfigLoader(config_path)
+        config = loader.load_config()
+
+        logger.info(f"🎯 Optimizing with config: {config_path}")
+
+        # Create model
+        model_config = loader.get_model_config()
+        model = create_model_from_config(model_config)
+
+        # Create datamodule
+        data_config = config["data"]
+        enhanced_data_config = enhance_data_config_for_tensors(data_config)
+
+        dataset_name = enhanced_data_config["dataset"]
+        dataset_params = {
+            k: v for k, v in enhanced_data_config.items() if k != "dataset"
+        }
+        datamodule = create_astro_datamodule(dataset_name, **dataset_params)
+
+        # Use centralized parameter distribution
+        from astro_lab.utils.config_params import (
+            get_lightning_params,
+            get_mlflow_params,
+            get_trainer_params,
+            validate_parameter_conflicts,
+        )
+
+        # Validate configuration first
+        is_valid, error_msg = validate_parameter_conflicts(config)
+        if not is_valid:
+            raise ValueError(f"❌ Configuration error: {error_msg}")
+
+        # Get properly distributed parameters
+        trainer_config = get_trainer_params(config)
+        lightning_params = get_lightning_params(config)
+        mlflow_params = get_mlflow_params(config)
+
+        # Add experiment name to trainer config
+        trainer_config["experiment_name"] = mlflow_params["experiment_name"]
+
+        # Wrap model in Lightning module if needed
+        from astro_lab.training.lightning_module import AstroLightningModule
+
+        if not isinstance(model, AstroLightningModule):
+            lightning_module = AstroLightningModule(model=model, **lightning_params)
+        else:
+            lightning_module = model
+
+        trainer = AstroTrainer(lightning_module=lightning_module, **trainer_config)
+
+        # Run optimization
+        logger.info("🎯 Starting hyperparameter optimization...")
+        optimization_config = config.get("optimization", {})
+
+        # Use centralized parameter distribution for optimization
+        from astro_lab.utils.config_params import get_optuna_params
+
+        # Get properly filtered Optuna parameters
+        optuna_params = get_optuna_params(optimization_config)
+        search_space = optimization_config.get("search_space", None)
+
+        best_params = trainer.optimize_hyperparameters(
+            train_dataloader=datamodule.train_dataloader(),
+            val_dataloader=datamodule.val_dataloader(),
+            search_space=search_space,
+            **optuna_params,
+        )
+
+        logger.info(f"✨ Best parameters: {best_params}")
+
+    except Exception as e:
+        logger.error(f"❌ Optimization failed: {e}")
+        raise
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -145,7 +362,25 @@ def train_model(
 
     # Create trainer
     logger.info("⚡ Initializing trainer...")
-    trainer = AstroTrainer(model=model, **training_config)
+    # Wrap model in Lightning module if needed
+    from astro_lab.training.lightning_module import AstroLightningModule
+    from astro_lab.utils.config_params import get_lightning_params
+
+    if not isinstance(model, AstroLightningModule):
+        lightning_params = get_lightning_params(config)
+        lightning_module = AstroLightningModule(model=model, **lightning_params)
+    else:
+        lightning_module = model
+
+    # Use centralized parameter distribution
+    from astro_lab.utils.config_params import get_trainer_params
+
+    trainer_params = get_trainer_params(config)
+    trainer_params["experiment_name"] = config.get("mlflow", {}).get(
+        "experiment_name", "astro_experiment"
+    )
+
+    trainer = AstroTrainer(lightning_module=lightning_module, **trainer_params)
 
     if optimize:
         # Hyperparameter optimization
