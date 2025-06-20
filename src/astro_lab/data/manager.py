@@ -26,7 +26,7 @@ class AstroDataManager:
     def __init__(self, base_dir: Union[str, Path] = "data"):
         self.config = DataConfig(base_dir)
         self.base_dir = self.config.base_dir
-        self.setup_directories()
+        # Remove automatic directory creation - only create when needed
 
     def setup_directories(self):
         """Create standardized data directory structure using new config."""

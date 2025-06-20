@@ -1,25 +1,30 @@
 """
-AstroLab Core Data Module - Clean Polars-First Implementation with Full Tensor Integration
-==========================================================================================
+Data Core - Central Data Processing Functions
+============================================
 
-Eliminiert Wrapper-Chaos und bietet direkte Polars→PyTorch→AstroTensor Pipeline.
-Ersetzt die komplexe Manager/DataModule/Transform Kette durch einfache,
-performante Klassen mit nativer SurveyTensor Integration.
+Provides core data processing functions for astronomical surveys
+and cosmic web analysis.
 """
 
+import logging
 import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import astropy.units as u
 import lightning as L
 import numpy as np
 import polars as pl
 import torch
 import torch_geometric.transforms as T
-from sklearn.neighbors import NearestNeighbors, BallTree
+from astropy.coordinates import SkyCoord
+from sklearn.neighbors import BallTree, NearestNeighbors
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # 🌟 TENSOR INTEGRATION - Import all tensor types
 try:
@@ -195,36 +200,36 @@ def adaptive_cosmic_web_clustering(
     verbose: bool = True
 ) -> Tuple[Dict[str, Any], np.ndarray]:
     """
-    Adaptive Cosmic Web Clustering basierend auf lokaler Dichte.
+    Adaptive Cosmic Web Clustering based on local density.
     
     Args:
-        spatial_tensor: Spatial3DTensor mit Clustering-Methoden
-        coords_3d: 3D-Koordinaten in Mpc
-        scale_mpc: Skala für Clustering in Mpc
-        verbose: Ausführliche Ausgabe
+        spatial_tensor: Spatial3DTensor with clustering methods
+        coords_3d: 3D coordinates in Mpc
+        scale_mpc: Scale for clustering in Mpc
+        verbose: Verbose output
         
     Returns:
-        Tuple von (Clustering-Ergebnisse, lokale Dichte)
+        Tuple of (clustering results, local density)
     """
-    # Lokale Dichte berechnen
-    radius_pc = scale_mpc * 1_000_000  # Skala in pc
+    # Calculate local density
+    radius_pc = scale_mpc * 1_000_000  # Scale in pc
     local_density = calculate_local_density(coords_3d, radius_pc)
     
-    # Adaptive Parameter basierend auf Dichte
+    # Adaptive parameters based on density
     mean_density = np.mean(local_density)
     std_density = np.std(local_density)
     
-    # eps basierend auf Dichte-Variation
+    # eps based on density variation
     eps_pc = radius_pc * (1 + std_density / max(mean_density, 1e-30))
     
-    # min_samples basierend auf lokaler Dichte
+    # min_samples based on local density
     min_samples = max(2, int(mean_density * 0.1))
     
     if verbose:
-        print(f"  📊 Lokale Dichte: {mean_density:.2e} ± {std_density:.2e} obj/pc³")
-        print(f"  🎯 Adaptive eps: {eps_pc/1_000_000:.1f} Mpc, min_samples: {min_samples}")
+        logger.info(f"  📊 Local density: {mean_density:.2e} ± {std_density:.2e} obj/pc³")
+        logger.info(f"  🎯 Adaptive eps: {eps_pc/1_000_000:.1f} Mpc, min_samples: {min_samples}")
     
-    # Dichte-basiertes Clustering
+    # Density-based clustering
     results = spatial_tensor.cosmic_web_clustering(
         eps_pc=eps_pc,
         min_samples=min_samples,
@@ -240,39 +245,39 @@ def analyze_cosmic_web(
     verbose: bool = True
 ) -> Dict[str, Any]:
     """
-    Vollständige Cosmic Web-Analyse für einen SurveyTensor.
+    Complete Cosmic Web analysis for a SurveyTensor.
     
     Args:
-        survey_tensor: SurveyTensor mit räumlichen Daten
-        scales_mpc: Liste von Skalen für Multi-Scale-Analyse
-        verbose: Ausführliche Ausgabe
+        survey_tensor: SurveyTensor with spatial data
+        scales_mpc: List of scales for multi-scale analysis
+        verbose: Verbose output
         
     Returns:
-        Dictionary mit allen Analyse-Ergebnissen
+        Dictionary with all analysis results
     """
     if verbose:
-        print(f"🌌 COSMIC WEB ANALYSIS: {survey_tensor.survey_name}")
-        print("=" * 50)
+        logger.info(f"🌌 COSMIC WEB ANALYSIS: {survey_tensor.survey_name}")
+        logger.info("=" * 50)
     
-    # Spatial Tensor extrahieren
+    # Extract spatial tensor
     spatial_tensor = survey_tensor.get_spatial_tensor()
     coords_3d = spatial_tensor.cartesian.detach().cpu().numpy()
     
-    # Globale Metriken
+    # Global metrics
     total_volume = np.prod(coords_3d.max(axis=0) - coords_3d.min(axis=0))
     global_density = len(coords_3d) / total_volume
     
     if verbose:
-        print(f"📊 Dataset: {len(coords_3d):,} objects")
-        print(f"📏 Volume: {total_volume:.0f} Mpc³")
-        print(f"🌍 Global density: {global_density:.2e} obj/Mpc³")
+        logger.info(f"📊 Dataset: {len(coords_3d):,} objects")
+        logger.info(f"📏 Volume: {total_volume:.0f} Mpc³")
+        logger.info(f"🌍 Global density: {global_density:.2e} obj/Mpc³")
     
-    # Multi-Scale Clustering
+    # Multi-scale clustering
     results_summary = {}
     
     for scale in scales_mpc:
         if verbose:
-            print(f"\n🕸️ Scale {scale} Mpc:")
+            logger.info(f"\n🕸️ Scale {scale} Mpc:")
         
         start_time = time.time()
         
@@ -301,12 +306,12 @@ def analyze_cosmic_web(
             }
             
             if verbose:
-                print(f"  ⏱️ Completed in {cluster_time:.1f}s")
-                print(f"  Groups: {n_groups}, Grouped: {(len(coords_3d) - n_noise) / len(coords_3d) * 100:.1f}%")
+                logger.info(f"  ⏱️ Completed in {cluster_time:.1f}s")
+                logger.info(f"  Groups: {n_groups}, Grouped: {(len(coords_3d) - n_noise) / len(coords_3d) * 100:.1f}%")
                 
         except Exception as e:
             if verbose:
-                print(f"  ❌ Error: {e}")
+                logger.error(f"  ❌ Error: {e}")
             continue
     
     return {
@@ -327,26 +332,26 @@ def create_cosmic_web_loader(
     **kwargs
 ) -> Dict[str, Any]:
     """
-    Convenience-Funktion: Lade Survey und führe Cosmic Web-Analyse durch.
+    Convenience function: Load survey and perform cosmic web analysis.
     
     Args:
-        survey: Survey-Name ('gaia', 'sdss', 'nsa', 'linear', etc.)
-        max_samples: Maximale Anzahl Objekte
-        scales_mpc: Skalen für Multi-Scale-Analyse
-        device: Device für Verarbeitung (auto-detect if None)
-        **kwargs: Weitere Parameter für Survey-Loading
+        survey: Survey name ('gaia', 'sdss', 'nsa', 'linear', etc.)
+        max_samples: Maximum number of objects
+        scales_mpc: Scales for multi-scale analysis
+        device: Device for processing (auto-detect if None)
+        **kwargs: Additional parameters for survey loading
         
     Returns:
-        Cosmic Web-Analyse-Ergebnisse
+        Cosmic web analysis results
     """
     # Auto-detect optimal device
     device = device or get_optimal_device()
     
-    print(f"🚀 Using device: {device}")
+    logger.info(f"🚀 Using device: {device}")
     if device.type == "cuda":
-        print(f"📊 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+        logger.info(f"📊 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     
-    # Survey-spezifische Loader verwenden
+    # Use survey-specific loaders
     if survey == "gaia":
         survey_tensor = load_gaia_data(max_samples=max_samples, return_tensor=True, **kwargs)
     elif survey == "sdss":
@@ -354,7 +359,7 @@ def create_cosmic_web_loader(
     elif survey == "nsa":
         survey_tensor = load_nsa_data(max_samples=max_samples, return_tensor=True, **kwargs)
     elif survey == "linear":
-        # Für LINEAR direkt SurveyTensor erstellen
+        # Create SurveyTensor directly for LINEAR
         data_path = Path("data/raw/linear/linear_raw.parquet")
         if not data_path.exists():
             raise FileNotFoundError(f"LINEAR data not found: {data_path}")
@@ -392,9 +397,9 @@ def create_cosmic_web_loader(
         try:
             survey_tensor = survey_tensor.to(device)
         except Exception as e:
-            print(f"⚠️ Could not move to GPU: {e}")
+            logger.warning(f"⚠️ Could not move to GPU: {e}")
     
-    # Führe Cosmic Web-Analyse durch
+    # Perform cosmic web analysis
     results = analyze_cosmic_web(survey_tensor, scales_mpc=scales_mpc, verbose=True)
     
     return results
@@ -688,8 +693,7 @@ class AstroDataset(InMemoryDataset):
         if root is None:
             from .config import data_config
 
-            # Ensure survey directories exist before using them
-            data_config.ensure_survey_directories(survey)
+            # Don't create directories automatically - only when actually needed
             root = str(data_config.get_survey_processed_dir(survey))
 
         super().__init__(root, transform, force_reload=force_reload)

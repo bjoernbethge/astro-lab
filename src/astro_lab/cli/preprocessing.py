@@ -166,6 +166,36 @@ def process_catalog_command(args):
             output_path=output_file.parent,
         )
 
+    else:
+        # Auto-save to survey-specific processed directory
+        from astro_lab.data.config import data_config
+        
+        # Detect survey type from filename or data
+        survey_type = detect_survey_type(input_path.stem, df_clean)
+        
+        # Create survey-specific processed directory
+        data_config.ensure_survey_directories(survey_type)
+        processed_dir = data_config.get_survey_processed_dir(survey_type)
+        
+        # Save processed catalog
+        output_file = processed_dir / f"{input_path.stem}_processed.parquet"
+        
+        if args.force and output_file.exists():
+            output_file.unlink()
+            print(f"🗑️  Deleted existing: {output_file.name}")
+
+        df_clean.write_parquet(output_file)
+        print(f"💾 Processed catalog saved to: {output_file}")
+
+        # AUTOMATIC single graph creation - Standard in GNNs!
+        create_graph_from_dataframe(
+            df_clean,
+            survey_type,
+            k_neighbors=getattr(args, "k_neighbors", 8),
+            distance_threshold=getattr(args, "distance_threshold", 50.0),
+            output_path=processed_dir,
+        )
+
     print(f"\n✅ Processing complete: {df_clean.shape[0]:,} rows retained")
 
 

@@ -4,12 +4,20 @@ AstroLab Data Configuration
 
 Centralized configuration for data directory structure and paths.
 This replaces hardcoded paths throughout the codebase.
+
+Directory Creation Policy:
+- Core directories (raw, processed, cache, etc.) are only created when explicitly requested
+- Survey-specific directories are only created when actually working with that survey
+- No automatic directory creation on import to avoid cluttering the filesystem
 """
 
 import os
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class DataConfig:
     """Centralized data configuration for AstroLab."""
@@ -98,7 +106,7 @@ class DataConfig:
         for dir_path in core_dirs:
             dir_path.mkdir(parents=True, exist_ok=True)
 
-        print(f"📁 Core data structure created in: {self.base_dir}")
+        logger.info(f"📁 Core data structure created in: {self.base_dir}")
 
     def ensure_survey_directories(self, survey: str):
         """Create directories for a specific survey only when needed."""
@@ -109,7 +117,7 @@ class DataConfig:
         raw_dir.mkdir(parents=True, exist_ok=True)
         processed_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"📁 Created directories for {survey} survey")
+        logger.info(f"📁 Created directories for {survey} survey")
 
     def ensure_experiment_directories(self, experiment_name: str):
         """Create experiment directories only when needed."""
@@ -120,7 +128,7 @@ class DataConfig:
         mlruns_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        print(f"🧪 Created experiment directories for {experiment_name}")
+        logger.info(f"🧪 Created experiment directories for {experiment_name}")
 
     def get_results_structure(
         self, survey: str, experiment_name: str
@@ -143,7 +151,7 @@ class DataConfig:
         for dir_name, dir_path in structure.items():
             dir_path.mkdir(parents=True, exist_ok=True)
 
-        print(f"📊 Created results structure for {survey}/{experiment_name}")
+        logger.info(f"📊 Created results structure for {survey}/{experiment_name}")
         return structure
 
     def get_experiment_paths(self, experiment_name: str) -> Dict[str, Path]:
@@ -156,7 +164,7 @@ class DataConfig:
 
     def migrate_old_structure(self):
         """Migrate from old chaotic structure to new clean structure."""
-        print("🔄 Migrating old data structure...")
+        logger.info("🔄 Migrating old data structure...")
 
         # Map old paths to new paths
         migrations = [
@@ -172,10 +180,10 @@ class DataConfig:
         for old_path, new_path in migrations:
             if old_path.exists() and old_path.is_dir():
                 new_path.parent.mkdir(parents=True, exist_ok=True)
-                print(f"  📦 {old_path} -> {new_path}")
+                logger.info(f"  📦 {old_path} -> {new_path}")
                 # Note: Actual file moving would be done manually or with additional logic
 
-        print("✅ Migration plan created. Manual file moving required.")
+        logger.info("✅ Migration plan created. Manual file moving required.")
 
 
 # Global configuration instance
