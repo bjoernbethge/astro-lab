@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 from astro_lab.data import AstroDataset, create_astro_dataloader
 from astro_lab.models.astro import AstroSurveyGNN
 from astro_lab.models.utils import create_gaia_classifier
+from astro_lab.data.core import get_optimal_device, get_optimal_batch_size
 
 # Import real AstroLab training components
 from astro_lab.training import AstroLightningModule, AstroTrainer
@@ -51,10 +52,11 @@ def get_gpu_info() -> Dict:
 
 @pytest.mark.cuda
 def test_basic_cuda_training():
-    """Test basic CUDA training functionality."""
+    """Test basic CUDA training functionality (device-agnostic)."""
     print_header("Basic CUDA Training Tests")
 
-    if not torch.cuda.is_available():
+    device = get_optimal_device()
+    if device.type != "cuda":
         pytest.skip("CUDA not available")
 
     gpu_info = get_gpu_info()
@@ -64,22 +66,19 @@ def test_basic_cuda_training():
 
     # Create real model
     model = create_gaia_classifier(hidden_dim=64, num_classes=8)
-
     lightning_module = AstroLightningModule(
         model=model, task_type="classification", learning_rate=1e-3
     )
-
-    # Move to GPU
-    lightning_module = lightning_module.cuda()
-    print("  ✓ AstroLightningModule moved to GPU")
+    # Move to detected device
+    lightning_module = lightning_module.to(device)
+    print(f"  ✓ AstroLightningModule moved to {device}")
 
     # Create training data
-    batch_size = 32
-    x = torch.randn(batch_size, 10)
-    edge_index = torch.randint(0, batch_size, (2, batch_size * 4))
-    y = torch.randint(0, 8, (batch_size,))
-
-    batch = {"x": x.cuda(), "edge_index": edge_index.cuda(), "y": y.cuda()}
+    batch_size = get_optimal_batch_size(32)
+    x = torch.randn(batch_size, 10, device=device)
+    edge_index = torch.randint(0, batch_size, (2, batch_size * 4), device=device)
+    y = torch.randint(0, 8, (batch_size,), device=device)
+    batch = {"x": x, "edge_index": edge_index, "y": y}
 
     # Test training step
     lightning_module.train()
@@ -92,19 +91,20 @@ def test_basic_cuda_training():
         val_loss = lightning_module.validation_step(batch, 0)
     print(f"  ✓ Validation step completed, loss: {val_loss.item():.4f}")
 
-    # Verify everything is on GPU
-    assert next(lightning_module.parameters()).device.type == "cuda"
-    assert loss.device.type == "cuda"
+    # Verify everything is on correct device
+    assert next(lightning_module.parameters()).device.type == device.type
+    assert loss.device.type == device.type
 
     print("✅ Basic CUDA training tests passed!")
 
 
 @pytest.mark.cuda
 def test_astro_trainer_gpu():
-    """Test real AstroTrainer on GPU."""
+    """Test real AstroTrainer on GPU (device-agnostic)."""
     print_subheader("Real AstroTrainer GPU Tests")
 
-    if not torch.cuda.is_available():
+    device = get_optimal_device()
+    if device.type != "cuda":
         pytest.skip("CUDA not available")
 
     print("🧪 Real AstroTrainer GPU Training:")
@@ -113,7 +113,6 @@ def test_astro_trainer_gpu():
     model = AstroSurveyGNN(
         hidden_dim=32, output_dim=128, num_layers=2
     )  # Embedding dimension
-
     lightning_module = AstroLightningModule(
         model=model,
         task_type="unsupervised",  # Contrastive learning - realistic for astronomy!
@@ -121,6 +120,7 @@ def test_astro_trainer_gpu():
         temperature=0.1,  # For contrastive loss
         projection_dim=128,  # For projection head
     )
+    lightning_module = lightning_module.to(device)
 
     # Manually initialize projection head since model has hidden_dim attribute
     lightning_module.projection_head = lightning_module._auto_create_projection_head(
@@ -130,64 +130,45 @@ def test_astro_trainer_gpu():
     # Use existing AstroDataset infrastructure for realistic testing
     print("  Creating AstroDataset for testing...")
 
-    # Create test data using AstroDataset (much cleaner than custom dataset!)
     try:
-        # Create dataset using the existing infrastructure
         dataset = AstroDataset(survey="gaia", max_samples=100, return_tensor=False)
-
         if len(dataset) > 0:
-            # Get the graph data - no labels needed for unsupervised learning!
-            graph_data = dataset[0]
-
-            # Create train/val loaders using PyTorch Geometric
+            graph_data = dataset[0].to(device)
             from torch_geometric.loader import DataLoader as PyGDataLoader
-
             train_loader = PyGDataLoader([graph_data], batch_size=1, shuffle=True)
             val_loader = PyGDataLoader([graph_data], batch_size=1, shuffle=False)
         else:
             raise ValueError("AstroDataset is empty")
-
     except Exception as e:
         print(f"  Warning: Could not create AstroDataset ({e}), using fallback...")
-
-        # Fallback: Create minimal dataset manually if AstroDataset fails
         from torch_geometric.data import Data
         from torch_geometric.loader import DataLoader as PyGDataLoader
-
-        # Create some sample graph data (no labels for unsupervised learning)
         data_list = []
         for i in range(50):
-            x = torch.randn(16, 8)  # 16 nodes, 8 features
-            edge_index = torch.randint(0, 16, (2, 48))  # Random edges
-            # No labels needed for unsupervised learning!
+            x = torch.randn(16, 8, device=device)
+            edge_index = torch.randint(0, 16, (2, 48), device=device)
             data = Data(x=x, edge_index=edge_index)
             data_list.append(data)
-
         train_loader = PyGDataLoader(data_list[:40], batch_size=16, shuffle=True)
         val_loader = PyGDataLoader(data_list[40:], batch_size=16, shuffle=False)
 
-    # Create AstroTrainer with correct parameters
     trainer = AstroTrainer(
         lightning_module=lightning_module,
         max_epochs=2,
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
+        accelerator="gpu" if device.type == "cuda" else "cpu",
         devices=1,
         patience=5,
     )
-    print("  ✓ AstroTrainer created with GPU accelerator")
+    print(f"  ✓ AstroTrainer created with {device.type} accelerator")
 
-    # Test training
     start_time = time.perf_counter()
     trainer.fit(train_dataloader=train_loader, val_dataloader=val_loader)
     training_time = time.perf_counter() - start_time
-
     print(f"  ✓ Training completed in {training_time:.2f}s")
 
-    # Test prediction
     test_results = trainer.test(test_dataloader=val_loader)
     print("  ✓ Testing completed")
     print(f"  ✓ Test results: {len(test_results)} metrics")
-
     print("✅ Real AstroTrainer GPU tests passed!")
 
 

@@ -260,9 +260,9 @@ class Spatial3DTensor(AstroTensorBase):
         # Simple conversion without complex units
         try:
             return SkyCoord(
-                ra=ra.numpy(),
-                dec=dec.numpy(),
-                distance=distance.numpy(),
+                ra=ra.detach().cpu().numpy(),
+                dec=dec.detach().cpu().numpy(),
+                distance=distance.detach().cpu().numpy(),
                 unit=("deg", "deg", "Mpc"),
             )
         except Exception:
@@ -323,11 +323,11 @@ class Spatial3DTensor(AstroTensorBase):
                     query, k=min(len(indices), max_neighbors)
                 )[1][0]
             else:
-                distances = np.linalg.norm(self._data.numpy()[indices] - query, axis=1)
+                distances = np.linalg.norm(self._data.detach().cpu().numpy()[indices] - query, axis=1)
         else:
             # KDTree
             indices = spatial_index.query_radius(query, r=radius)[0]
-            distances = np.linalg.norm(self._data.numpy()[indices] - query, axis=1)
+            distances = np.linalg.norm(self._data.detach().cpu().numpy()[indices] - query, axis=1)
 
             if max_neighbors and len(indices) > max_neighbors:
                 sort_idx = np.argsort(distances)[:max_neighbors]
@@ -585,8 +585,8 @@ class Spatial3DTensor(AstroTensorBase):
 
         from sklearn.cluster import DBSCAN, AgglomerativeClustering
 
-        # Get 3D coordinates in parsecs
-        coords_pc = self._data.numpy()
+        # Get 3D coordinates in parsecs - Fix CUDA tensor conversion
+        coords_pc = self._data.detach().cpu().numpy()
 
         # Convert units if needed
         if self.unit == "kpc":
@@ -633,7 +633,7 @@ class Spatial3DTensor(AstroTensorBase):
                     "center_pc": center,
                     "radius_pc": float(distances.max()),
                     "density": float(
-                        cluster_mask.sum() / (4 / 3 * np.pi * distances.max() ** 3)
+                        cluster_mask.sum() / (4 / 3 * np.pi * max(distances.max(), 1e-6) ** 3)
                     ),
                 }
 
@@ -666,8 +666,8 @@ class Spatial3DTensor(AstroTensorBase):
 
         from sklearn.neighbors import NearestNeighbors
 
-        # Get coordinates in parsecs
-        coords_pc = self._data.numpy()
+        # Get coordinates in parsecs - Fix CUDA tensor conversion
+        coords_pc = self._data.detach().cpu().numpy()
         if self.unit == "kpc":
             coords_pc *= 1000
         elif self.unit == "Mpc":
@@ -700,7 +700,8 @@ class Spatial3DTensor(AstroTensorBase):
         Returns:
             Dictionary with density field and structure analysis
         """
-        coords_pc = self._data.numpy()
+        # Fix CUDA tensor conversion
+        coords_pc = self._data.detach().cpu().numpy()
         if self.unit == "kpc":
             coords_pc *= 1000
         elif self.unit == "Mpc":

@@ -7,6 +7,7 @@ Ersetzt die komplexe Manager/DataModule/Transform Kette durch einfache,
 performante Klassen mit nativer SurveyTensor Integration.
 """
 
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
@@ -16,7 +17,7 @@ import numpy as np
 import polars as pl
 import torch
 import torch_geometric.transforms as T
-from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import NearestNeighbors, BallTree
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
 
@@ -45,6 +46,359 @@ try:
     TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
     TORCH_GEOMETRIC_AVAILABLE = False
+
+
+# =========================================================================
+# 🚀 PERFORMANCE OPTIMIZATION - CUDA, Polars, PyTorch 2025 Best Practices
+# =========================================================================
+
+def get_optimal_device() -> torch.device:
+    """Get optimal device with CUDA optimization."""
+    if torch.cuda.is_available():
+        # Set CUDA optimization flags
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        
+        # Use first available GPU
+        return torch.device("cuda:0")
+    else:
+        return torch.device("cpu")
+
+
+def get_optimal_batch_size(
+    dataset_size: int, 
+    model_complexity: int = 64,
+    memory_safety_factor: float = 0.8
+) -> int:
+    """
+    Calculate optimal batch size based on available memory and dataset size.
+    
+    Args:
+        dataset_size: Number of samples in dataset
+        model_complexity: Hidden dimension or complexity factor
+        memory_safety_factor: Safety factor for memory usage (0.8 = 80% of available)
+        
+    Returns:
+        Optimal batch size
+    """
+    if torch.cuda.is_available():
+        # Get GPU memory
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory
+        gpu_memory_gb = gpu_memory / (1024**3)
+        
+        # Estimate memory per sample (rough heuristic)
+        memory_per_sample = model_complexity * 4  # bytes per sample
+        max_samples = int((gpu_memory_gb * 1024**3 * memory_safety_factor) / memory_per_sample)
+        
+        # Conservative batch size
+        optimal_batch_size = min(max_samples, dataset_size, 128)
+        
+        # Ensure reasonable minimum
+        return max(optimal_batch_size, 8)
+    else:
+        # CPU: use smaller batches
+        return min(dataset_size, 32)
+
+
+def get_optimal_num_workers() -> int:
+    """Get optimal number of workers for DataLoader."""
+    cpu_count = os.cpu_count() or 4
+    
+    if torch.cuda.is_available():
+        # GPU: fewer workers since GPU is bottleneck
+        return min(cpu_count // 2, 4)
+    else:
+        # CPU: more workers for parallel processing
+        return min(cpu_count - 1, 8)
+
+
+def optimize_polars_settings():
+    """Optimize Polars settings for performance."""
+    # Enable lazy evaluation for better performance
+    try:
+        # Try newer Polars API
+        pl.Config.set_global_string_cache(True)
+    except AttributeError:
+        try:
+            # Try alternative API
+            pl.Config.set_string_cache(True)
+        except AttributeError:
+            # Fallback: newer versions handle this automatically
+            pass
+    
+    # Set memory pool size for better performance
+    try:
+        if hasattr(pl, 'set_memory_pool_size'):
+            pl.set_memory_pool_size(1024 * 1024 * 1024)  # 1GB
+    except Exception:
+        # Ignore if not available
+        pass
+
+
+def optimize_torch_settings():
+    """Optimize PyTorch settings for performance."""
+    if torch.cuda.is_available():
+        # Enable memory efficient attention if available
+        if hasattr(torch.backends.cuda, 'enable_flash_sdp'):
+            torch.backends.cuda.enable_flash_sdp(True)
+        
+        # Enable memory efficient attention
+        if hasattr(torch.backends.cuda, 'enable_mem_efficient_sdp'):
+            torch.backends.cuda.enable_mem_efficient_sdp(True)
+        
+        # Set memory fraction
+        torch.cuda.set_per_process_memory_fraction(0.9)
+
+
+# Initialize optimizations
+optimize_polars_settings()
+optimize_torch_settings()
+
+
+# =========================================================================
+# 🌟 COSMIC WEB ANALYSIS FUNCTIONS - Dichte-basiert für alle Surveys
+# =========================================================================
+
+def calculate_local_density(coords_3d: np.ndarray, radius_pc: float = 1_000_000) -> np.ndarray:
+    """
+    Berechne lokale Dichte für jedes Objekt.
+    
+    Args:
+        coords_3d: 3D-Koordinaten in Mpc
+        radius_pc: Radius für lokale Dichteberechnung in pc
+        
+    Returns:
+        Lokale Dichte für jedes Objekt in obj/pc³
+    """
+    # Konvertiere zu pc für lokale Dichteberechnung
+    coords_pc = coords_3d * 1_000_000  # Mpc zu pc
+    
+    # BallTree für effiziente Radius-Suchen
+    tree = BallTree(coords_pc, metric='euclidean')
+    
+    # Zähle Nachbarn in Radius für jedes Objekt
+    counts = tree.query_radius(coords_pc, r=radius_pc, count_only=True)
+    
+    # Lokale Dichte = Anzahl Nachbarn / Volumen
+    volume = (4/3) * np.pi * radius_pc**3
+    local_density = counts / volume
+    
+    return local_density
+
+
+def adaptive_cosmic_web_clustering(
+    spatial_tensor: Spatial3DTensor, 
+    coords_3d: np.ndarray, 
+    scale_mpc: float,
+    verbose: bool = True
+) -> Tuple[Dict[str, Any], np.ndarray]:
+    """
+    Adaptive Cosmic Web Clustering basierend auf lokaler Dichte.
+    
+    Args:
+        spatial_tensor: Spatial3DTensor mit Clustering-Methoden
+        coords_3d: 3D-Koordinaten in Mpc
+        scale_mpc: Skala für Clustering in Mpc
+        verbose: Ausführliche Ausgabe
+        
+    Returns:
+        Tuple von (Clustering-Ergebnisse, lokale Dichte)
+    """
+    # Lokale Dichte berechnen
+    radius_pc = scale_mpc * 1_000_000  # Skala in pc
+    local_density = calculate_local_density(coords_3d, radius_pc)
+    
+    # Adaptive Parameter basierend auf Dichte
+    mean_density = np.mean(local_density)
+    std_density = np.std(local_density)
+    
+    # eps basierend auf Dichte-Variation
+    eps_pc = radius_pc * (1 + std_density / max(mean_density, 1e-30))
+    
+    # min_samples basierend auf lokaler Dichte
+    min_samples = max(2, int(mean_density * 0.1))
+    
+    if verbose:
+        print(f"  📊 Lokale Dichte: {mean_density:.2e} ± {std_density:.2e} obj/pc³")
+        print(f"  🎯 Adaptive eps: {eps_pc/1_000_000:.1f} Mpc, min_samples: {min_samples}")
+    
+    # Dichte-basiertes Clustering
+    results = spatial_tensor.cosmic_web_clustering(
+        eps_pc=eps_pc,
+        min_samples=min_samples,
+        algorithm="dbscan",
+    )
+    
+    return results, local_density
+
+
+def analyze_cosmic_web(
+    survey_tensor: SurveyTensor,
+    scales_mpc: List[float] = [5.0, 10.0, 20.0, 50.0],
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Vollständige Cosmic Web-Analyse für einen SurveyTensor.
+    
+    Args:
+        survey_tensor: SurveyTensor mit räumlichen Daten
+        scales_mpc: Liste von Skalen für Multi-Scale-Analyse
+        verbose: Ausführliche Ausgabe
+        
+    Returns:
+        Dictionary mit allen Analyse-Ergebnissen
+    """
+    if verbose:
+        print(f"🌌 COSMIC WEB ANALYSIS: {survey_tensor.survey_name}")
+        print("=" * 50)
+    
+    # Spatial Tensor extrahieren
+    spatial_tensor = survey_tensor.get_spatial_tensor()
+    coords_3d = spatial_tensor.cartesian.detach().cpu().numpy()
+    
+    # Globale Metriken
+    total_volume = np.prod(coords_3d.max(axis=0) - coords_3d.min(axis=0))
+    global_density = len(coords_3d) / total_volume
+    
+    if verbose:
+        print(f"📊 Dataset: {len(coords_3d):,} objects")
+        print(f"📏 Volume: {total_volume:.0f} Mpc³")
+        print(f"🌍 Global density: {global_density:.2e} obj/Mpc³")
+    
+    # Multi-Scale Clustering
+    results_summary = {}
+    
+    for scale in scales_mpc:
+        if verbose:
+            print(f"\n🕸️ Scale {scale} Mpc:")
+        
+        start_time = time.time()
+        
+        try:
+            results, local_density = adaptive_cosmic_web_clustering(
+                spatial_tensor, coords_3d, scale, verbose=verbose
+            )
+            
+            cluster_time = time.time() - start_time
+            
+            n_groups = results["n_clusters"]
+            n_noise = results["n_noise"]
+            
+            results_summary[scale] = {
+                "n_clusters": n_groups,
+                "n_noise": n_noise,
+                "grouped_fraction": (len(coords_3d) - n_noise) / len(coords_3d),
+                "time_s": cluster_time,
+                "mean_local_density": float(np.mean(local_density)),
+                "density_variation": float(np.std(local_density)),
+                "local_density_stats": {
+                    "min": float(np.min(local_density)),
+                    "max": float(np.max(local_density)),
+                    "median": float(np.median(local_density)),
+                }
+            }
+            
+            if verbose:
+                print(f"  ⏱️ Completed in {cluster_time:.1f}s")
+                print(f"  Groups: {n_groups}, Grouped: {(len(coords_3d) - n_noise) / len(coords_3d) * 100:.1f}%")
+                
+        except Exception as e:
+            if verbose:
+                print(f"  ❌ Error: {e}")
+            continue
+    
+    return {
+        "survey_name": survey_tensor.survey_name,
+        "n_objects": len(coords_3d),
+        "coordinates": coords_3d,
+        "total_volume": total_volume,
+        "global_density": global_density,
+        "results_by_scale": results_summary,
+    }
+
+
+def create_cosmic_web_loader(
+    survey: str,
+    max_samples: Optional[int] = None,
+    scales_mpc: List[float] = [5.0, 10.0, 20.0, 50.0],
+    device: Optional[torch.device] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Convenience-Funktion: Lade Survey und führe Cosmic Web-Analyse durch.
+    
+    Args:
+        survey: Survey-Name ('gaia', 'sdss', 'nsa', 'linear', etc.)
+        max_samples: Maximale Anzahl Objekte
+        scales_mpc: Skalen für Multi-Scale-Analyse
+        device: Device für Verarbeitung (auto-detect if None)
+        **kwargs: Weitere Parameter für Survey-Loading
+        
+    Returns:
+        Cosmic Web-Analyse-Ergebnisse
+    """
+    # Auto-detect optimal device
+    device = device or get_optimal_device()
+    
+    print(f"🚀 Using device: {device}")
+    if device.type == "cuda":
+        print(f"📊 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    
+    # Survey-spezifische Loader verwenden
+    if survey == "gaia":
+        survey_tensor = load_gaia_data(max_samples=max_samples, return_tensor=True, **kwargs)
+    elif survey == "sdss":
+        survey_tensor = load_sdss_data(max_samples=max_samples, return_tensor=True, **kwargs)
+    elif survey == "nsa":
+        survey_tensor = load_nsa_data(max_samples=max_samples, return_tensor=True, **kwargs)
+    elif survey == "linear":
+        # Für LINEAR direkt SurveyTensor erstellen
+        data_path = Path("data/raw/linear/linear_raw.parquet")
+        if not data_path.exists():
+            raise FileNotFoundError(f"LINEAR data not found: {data_path}")
+        
+        df = pl.read_parquet(data_path)
+        if max_samples and len(df) > max_samples:
+            df = df.sample(max_samples, seed=42)
+        
+        survey_tensor = _polars_to_survey_tensor(df, "linear")
+    elif survey == "tng":
+        survey_tensor = load_tng50_data(max_samples=max_samples)
+        # Convert to SurveyTensor if needed
+        if not hasattr(survey_tensor, 'get_spatial_tensor'):
+            # Create SurveyTensor from TNG data
+            coords = survey_tensor[0].pos.detach().cpu().numpy()
+            survey_tensor = Spatial3DTensor(coords, unit="Mpc")
+    elif survey == "exoplanet":
+        # Load exoplanet data
+        data_path = Path("data/processed/exoplanet_graphs/raw/confirmed_exoplanets.parquet")
+        if not data_path.exists():
+            raise FileNotFoundError(f"Exoplanet data not found: {data_path}")
+        
+        df = pl.read_parquet(data_path)
+        df = df.filter(pl.col("sy_dist").is_not_null() & (pl.col("sy_dist") > 0))
+        
+        if max_samples and len(df) > max_samples:
+            df = df.sample(max_samples, seed=42)
+        
+        survey_tensor = _polars_to_survey_tensor(df, "exoplanet")
+    else:
+        raise ValueError(f"Unknown survey: {survey}")
+    
+    # Move to optimal device if possible
+    if hasattr(survey_tensor, 'to') and device.type == "cuda":
+        try:
+            survey_tensor = survey_tensor.to(device)
+        except Exception as e:
+            print(f"⚠️ Could not move to GPU: {e}")
+    
+    # Führe Cosmic Web-Analyse durch
+    results = analyze_cosmic_web(survey_tensor, scales_mpc=scales_mpc, verbose=True)
+    
+    return results
+
 
 # Survey configurations - DRY principle with TENSOR METADATA
 SURVEY_CONFIGS = {
@@ -725,23 +1079,24 @@ class AstroDataModule(L.LightningDataModule):
         self,
         survey: str,
         data_path: Optional[str] = None,
-        batch_size: int = 1,
+        batch_size: Optional[int] = None,  # Auto-detect if None
         k_neighbors: int = 8,
         max_samples: Optional[int] = None,
         train_ratio: float = 0.7,
         val_ratio: float = 0.15,
-        num_workers: int = 4,  # Better default for performance
+        num_workers: Optional[int] = None,  # Auto-detect if None
         force_reload: bool = False,
+        device: Optional[torch.device] = None,  # Auto-detect if None
         **kwargs,
     ):
         super().__init__()
         self.save_hyperparameters()
 
-        # Store attributes for easy access
-        self.num_workers = num_workers
-        self.batch_size = batch_size
-
-        # Create dataset
+        # Auto-detect optimal settings
+        self.device = device or get_optimal_device()
+        self.num_workers = num_workers or get_optimal_num_workers()
+        
+        # Create dataset first to get size for batch size optimization
         self.dataset = AstroDataset(
             survey=survey,
             data_path=data_path,
@@ -750,6 +1105,13 @@ class AstroDataModule(L.LightningDataModule):
             force_reload=force_reload,
             **kwargs,
         )
+        
+        # Auto-detect optimal batch size
+        if batch_size is None:
+            dataset_size = len(self.dataset) if len(self.dataset) > 0 else 1000
+            self.batch_size = get_optimal_batch_size(dataset_size)
+        else:
+            self.batch_size = batch_size
 
     def setup(self, stage: Optional[str] = None):
         """Setup with automatic train/val/test splits."""
@@ -780,13 +1142,19 @@ class AstroDataModule(L.LightningDataModule):
             f"Val={data.val_mask.sum()}, "
             f"Test={data.test_mask.sum()}"
         )
+        
+        # Move data to optimal device
+        if self.device.type == "cuda":
+            data = data.to(self.device)
+            print(f"🚀 Moved data to {self.device}")
 
     def train_dataloader(self):
         return DataLoader(
             [self.dataset[0]],
-            batch_size=1,
+            batch_size=1,  # Graph datasets use batch_size=1
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
+            pin_memory=self.device.type == "cuda",
         )
 
     def val_dataloader(self):
@@ -795,6 +1163,7 @@ class AstroDataModule(L.LightningDataModule):
             batch_size=1,
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
+            pin_memory=self.device.type == "cuda",
         )
 
     def test_dataloader(self):
@@ -803,6 +1172,7 @@ class AstroDataModule(L.LightningDataModule):
             batch_size=1,
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
+            pin_memory=self.device.type == "cuda",
         )
 
 
@@ -1418,18 +1788,35 @@ def load_tng50_temporal_data(
     return dataset
 
 
-def detect_survey_type(dataset_name: str, df: pl.DataFrame) -> str:
+def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
     """
     Detect survey type from filename and columns.
 
     Args:
         dataset_name: Name of the dataset file
-        df: Polars DataFrame with astronomical data
+        df: Polars DataFrame with astronomical data (can be None)
 
     Returns:
         Survey type string
     """
     name_lower = dataset_name.lower()
+    
+    # Handle None DataFrame case
+    if df is None:
+        # Try to detect from filename only
+        if "tng50" in name_lower or "parttype" in name_lower:
+            return "tng50"
+        elif "nsa" in name_lower:
+            return "nsa"
+        elif "gaia" in name_lower:
+            return "gaia"
+        elif "sdss" in name_lower:
+            return "sdss"
+        elif "linear" in name_lower:
+            return "linear"
+        else:
+            return "generic"
+    
     columns = [col.lower() for col in df.columns]
 
     # TNG50 simulation data
@@ -1953,3 +2340,121 @@ def _create_tng50_graph(
         pos=torch.tensor(coords, dtype=torch.float),  # 3D positions
         num_nodes=len(all_features),
     )
+
+
+def benchmark_performance(
+    survey: str = "linear",
+    max_samples: int = 1000,
+    verbose: bool = True
+) -> Dict[str, Any]:
+    """
+    Benchmark performance of cosmic web analysis with different optimizations.
+    
+    Args:
+        survey: Survey to benchmark
+        max_samples: Number of samples to test
+        verbose: Print detailed results
+        
+    Returns:
+        Performance benchmark results
+    """
+    if verbose:
+        print("🚀 PERFORMANCE BENCHMARK")
+        print("=" * 50)
+    
+    # Test device detection
+    device = get_optimal_device()
+    if verbose:
+        print(f"📱 Device: {device}")
+        if device.type == "cuda":
+            gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+            print(f"📊 GPU Memory: {gpu_memory:.1f} GB")
+    
+    # Test batch size optimization
+    optimal_batch_size = get_optimal_batch_size(max_samples)
+    optimal_workers = get_optimal_num_workers()
+    
+    if verbose:
+        print(f"⚡ Optimal batch size: {optimal_batch_size}")
+        print(f"🔧 Optimal workers: {optimal_workers}")
+    
+    # Benchmark cosmic web analysis
+    start_time = time.time()
+    
+    try:
+        results = create_cosmic_web_loader(
+            survey=survey,
+            max_samples=max_samples,
+            scales_mpc=[5.0, 10.0],  # Fewer scales for benchmark
+            device=device,
+        )
+        
+        total_time = time.time() - start_time
+        
+        if verbose:
+            print(f"⏱️ Total time: {total_time:.2f}s")
+            print(f"📊 Objects processed: {results['n_objects']:,}")
+            print(f"🚀 Throughput: {results['n_objects']/total_time:.0f} objects/s")
+        
+        return {
+            "device": str(device),
+            "optimal_batch_size": optimal_batch_size,
+            "optimal_workers": optimal_workers,
+            "total_time": total_time,
+            "objects_processed": results['n_objects'],
+            "throughput": results['n_objects']/total_time,
+            "success": True,
+        }
+        
+    except Exception as e:
+        if verbose:
+            print(f"❌ Benchmark failed: {e}")
+        
+        return {
+            "device": str(device),
+            "optimal_batch_size": optimal_batch_size,
+            "optimal_workers": optimal_workers,
+            "total_time": time.time() - start_time,
+            "error": str(e),
+            "success": False,
+        }
+
+
+def print_performance_info():
+    """Print current performance configuration."""
+    print("🚀 PERFORMANCE CONFIGURATION")
+    print("=" * 40)
+    
+    # Device info
+    device = get_optimal_device()
+    print(f"📱 Device: {device}")
+    
+    if device.type == "cuda":
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        print(f"📊 GPU Memory: {gpu_memory:.1f} GB")
+        print(f"🔧 CUDA Version: {torch.version.cuda}")
+        print(f"⚡ cuDNN: {torch.backends.cudnn.version()}")
+    
+    # CPU info
+    cpu_count = os.cpu_count()
+    print(f"🖥️ CPU Cores: {cpu_count}")
+    
+    # Optimal settings
+    optimal_workers = get_optimal_num_workers()
+    print(f"🔧 Optimal Workers: {optimal_workers}")
+    
+    # PyTorch optimizations
+    print(f"⚡ cuDNN Benchmark: {torch.backends.cudnn.benchmark}")
+    print(f"🔒 cuDNN Deterministic: {torch.backends.cudnn.deterministic}")
+    print(f"🚀 TF32 Enabled: {torch.backends.cuda.matmul.allow_tf32}")
+    
+    # Polars optimizations
+    try:
+        string_cache = pl.Config.get_global_string_cache()
+        print(f"📊 Polars String Cache: {string_cache}")
+    except AttributeError:
+        try:
+            string_cache = pl.Config.get_string_cache()
+            print(f"📊 Polars String Cache: {string_cache}")
+        except AttributeError:
+            print("📊 Polars String Cache: Auto-managed")

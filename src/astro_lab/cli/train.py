@@ -17,6 +17,7 @@ import yaml
 from astro_lab.models.utils import create_gaia_classifier
 from astro_lab.training import AstroTrainer, create_astro_datamodule
 from astro_lab.utils.config_loader import ConfigLoader, load_experiment_config
+from astro_lab.utils.config.params import get_lightning_params, get_trainer_params
 
 # 🌟 NEW: Import tensor-native models
 try:

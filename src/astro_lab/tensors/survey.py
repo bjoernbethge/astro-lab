@@ -137,6 +137,7 @@ class SurveyTensor(AstroTensorBase, ValidationMixin):
             "kepler",
             "roman",
             "vera_rubin",
+            "linear",
         ]
 
     @staticmethod

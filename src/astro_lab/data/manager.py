@@ -635,6 +635,12 @@ def list_catalogs() -> pl.DataFrame:
     return data_manager.list_catalogs()
 
 
+def list_catalog_names() -> list:
+    """List catalog names as a simple list."""
+    df = data_manager.list_catalogs()
+    return df["name"].to_list() if not df.is_empty() else []
+
+
 def load_catalog(path: Union[str, Path]) -> pl.DataFrame:
     """Load catalog from path."""
     return data_manager.load_catalog(path)
@@ -696,6 +702,7 @@ __all__ = [
     "import_fits",
     "import_tng50",
     "list_catalogs",
+    "list_catalog_names",
     "load_catalog",
     "process_for_ml",
     "load_gaia_bright_stars",

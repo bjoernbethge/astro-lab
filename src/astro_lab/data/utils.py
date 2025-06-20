@@ -501,7 +501,7 @@ def preprocess_catalog(
     df : pl.DataFrame
         Input catalog DataFrame
     clean_null_columns : bool, default True
-        Whether to remove columns with too many nulls
+        Whether to remove rows with null values
     min_observations : int, optional
         Minimum number of valid observations required
     magnitude_columns : List[str], optional
@@ -517,19 +517,24 @@ def preprocess_catalog(
     print(f"🧹 Preprocessing catalog data: {df.shape}")
     original_height = df.height
 
-    # Remove completely empty columns
+    # Remove rows with null values if requested
     if clean_null_columns:
-        null_counts = df.null_count()
-        columns_to_keep = [
-            col
-            for col in df.columns
-            if null_counts.select(col).item() < df.height * 0.95
-        ]
-        if len(columns_to_keep) < len(df.columns):
-            print(
-                f"📉 Removed {len(df.columns) - len(columns_to_keep)} columns with >95% null values"
-            )
-            df = df.select(columns_to_keep)
+        # Remove rows that have any null values
+        df = df.drop_nulls()
+        print(f"📉 Removed rows with null values: {original_height} → {df.height} rows")
+
+    # Remove completely empty columns
+    null_counts = df.null_count()
+    columns_to_keep = [
+        col
+        for col in df.columns
+        if null_counts.select(col).item() < df.height * 0.95
+    ]
+    if len(columns_to_keep) < len(df.columns):
+        print(
+            f"📉 Removed {len(df.columns) - len(columns_to_keep)} columns with >95% null values"
+        )
+        df = df.select(columns_to_keep)
 
     # Filter by minimum observations
     if min_observations is not None:

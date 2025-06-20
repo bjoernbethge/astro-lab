@@ -71,8 +71,13 @@ try:
             # Try importing bpy - this can fail with numpy multiarray errors
             import bpy
             import mathutils
-
             from . import advanced as b3d_adv
+            from . import core
+            from . import grease_pencil_2d
+            from . import grease_pencil_3d
+            from . import lazy
+            from .operators import AstroLabApi, register as al_register, unregister as al_unregister
+            from . import live_tensor_bridge
 
         # Test basic functionality safely
         try:
@@ -89,6 +94,14 @@ except ImportError as e:
     bpy = None
     mathutils = None
     b3d_adv = None
+    core = None
+    grease_pencil_2d = None
+    grease_pencil_3d = None
+    lazy = None
+    AstroLabApi = None
+    al_register = None
+    al_unregister = None
+    live_tensor_bridge = None
 
 except Exception as e:
     # Handle numpy multiarray import errors gracefully
@@ -97,167 +110,45 @@ except Exception as e:
     else:
         BLENDER_ERROR = f"Blender initialization failed: {e}"
     BLENDER_AVAILABLE = False
+    # Make sure all potential imports are None
+    bpy = None
+    mathutils = None
+    b3d_adv = None
+    core = None
+    grease_pencil_2d = None
+    grease_pencil_3d = None
+    lazy = None
+    AstroLabApi = None
+    al_register = None
+    al_unregister = None
+    live_tensor_bridge = None
 
-# Module imports with fallback handling
-_CORE_AVAILABLE = False
-_GREASE_PENCIL_AVAILABLE = False
-_VIEWPORT_AVAILABLE = False
-_ADVANCED_AVAILABLE = False
-
-if BLENDER_AVAILABLE:
-    # Core Blender utilities
-    try:
-        with _suppress_all_output():
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                from .core import *
-        _CORE_AVAILABLE = True
-    except (ImportError, AttributeError, RuntimeError):
-        _CORE_AVAILABLE = False
-    except Exception:
-        _CORE_AVAILABLE = False
-
-    # Grease Pencil utilities
-    try:
-        with _suppress_all_output():
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                from .grease_pencil_2d import GreasePencil2DPlotter
-                from .grease_pencil_3d import GreasePencil3DPlotter
-        _GREASE_PENCIL_AVAILABLE = True
-    except (ImportError, AttributeError):
-        _GREASE_PENCIL_AVAILABLE = False
-    except Exception:
-        _GREASE_PENCIL_AVAILABLE = False
-
-    # Viewport capture removed - not needed for prototyping
-    _VIEWPORT_AVAILABLE = False
-
-    # Advanced Blender features
-    try:
-        with _suppress_all_output():
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                from .advanced import ADVANCED_AVAILABLE as _ADV_CHECK
-
-                if _ADV_CHECK:
-                    from .advanced import *
-
-                    _ADVANCED_AVAILABLE = True
-                else:
-                    _ADVANCED_AVAILABLE = False
-    except (ImportError, AttributeError):
-        _ADVANCED_AVAILABLE = False
-    except Exception:
-        _ADVANCED_AVAILABLE = False
 
 # Base exports - always available
 __all__ = [
+    "bpy",
     "BLENDER_AVAILABLE",
     "BLENDER_ERROR",
-    "get_blender_info",
-    "check_blender_compatibility",
+    "AstroLabApi",
+    "core",
+    "advanced",
+    "grease_pencil_2d",
+    "grease_pencil_3d",
+    "lazy",
+    "live_tensor_bridge",
 ]
 
-# Conditional exports based on successful imports
-if _CORE_AVAILABLE:
-    __all__.extend(
-        [
-            "AstroPlotter",
-            "FuturisticAstroPlotter",
-            "GeometryNodesVisualizer",
-            "GreasePencilPlotter",
-            "reset_scene",
-            "normalize_scene",
-            "setup_scene",
-            "create_material",
-            "create_light",
-            "setup_lighting_preset",
-            "create_camera",
-            "animate_camera",
-            "create_camera_path",
-            "create_astro_object",
-            "setup_astronomical_scene",
-            "render_scene",
-            "setup_render_settings",
-        ]
-    )
+def register():
+    """Register all Blender modules for Astro-Lab."""
+    if BLENDER_AVAILABLE and al_register:
+        al_register()
 
-if _GREASE_PENCIL_AVAILABLE:
-    __all__.extend(
-        [
-            "GreasePencil2DPlotter",
-            "GreasePencil3DPlotter",
-        ]
-    )
+def unregister():
+    """Unregister all Blender modules for Astro-Lab."""
+    if BLENDER_AVAILABLE and al_unregister:
+        al_unregister()
 
-if _ADVANCED_AVAILABLE:
-    __all__.extend(
-        [
-            "ProceduralAstronomy",
-            "AstronomicalMaterials",
-            "VolumetricAstronomy",
-            "GravitationalSimulation",
-        ]
-    )
-
-
-def get_blender_info() -> dict[str, Any]:
-    """Get detailed information about Blender availability and capabilities."""
-    info = {
-        "available": BLENDER_AVAILABLE,
-        "error": BLENDER_ERROR,
-        "modules": {
-            "core": _CORE_AVAILABLE,
-            "grease_pencil": _GREASE_PENCIL_AVAILABLE,
-            "viewport": _VIEWPORT_AVAILABLE,
-            "advanced": _ADVANCED_AVAILABLE,
-        },
-    }
-
-    if BLENDER_AVAILABLE:
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                info["version"] = bpy.app.version_string
-                info["build"] = (
-                    bpy.app.build_platform.decode()
-                    if hasattr(bpy.app, "build_platform")
-                    else "unknown"
-                )
-        except:
-            info["version"] = "unknown"
-            info["build"] = "unknown"
-
-    return info
-
-
-def check_blender_compatibility() -> tuple[bool, list[str]]:
-    """Check Blender compatibility and return status with any issues."""
-    issues = []
-
-    if not BLENDER_AVAILABLE:
-        issues.append(f"Blender not available: {BLENDER_ERROR}")
-        return False, issues
-
-    # Check core module availability
-    if not _CORE_AVAILABLE:
-        issues.append("Core Blender utilities not available")
-
-    if not _GREASE_PENCIL_AVAILABLE:
-        issues.append("Grease Pencil utilities not available")
-
-    if not _ADVANCED_AVAILABLE:
-        issues.append("Advanced Blender features not available")
-
-    # Basic functionality test
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            test_vec = mathutils.Vector((1, 0, 0))
-            if len(test_vec) != 3:
-                issues.append("mathutils functionality test failed")
-    except Exception as e:
-        issues.append(f"mathutils test failed: {e}")
-
-    return len(issues) == 0, issues
+# Automatically register when the module is loaded inside Blender
+# Check for 'bpy.context' to ensure it's not a headless/background run
+if BLENDER_AVAILABLE and hasattr(bpy, "context"):
+    register()
