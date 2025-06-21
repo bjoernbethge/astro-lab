@@ -909,3 +909,284 @@ astro-lab download gaia
 4. Enable caching for repeated access
 5. Use survey-specific optimizations
 
+# 📊 Data Loaders Guide
+
+Comprehensive guide to loading and processing astronomical data with AstroLab.
+
+## 🚀 Quick Start
+
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+
+# Load Gaia stellar data
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=1000,
+    scales_mpc=[5.0, 10.0, 20.0]
+)
+
+print(f"Found {results['n_objects']} objects")
+print(f"Volume: {results['total_volume']:.0f} Mpc³")
+```
+
+## 📋 Available Surveys
+
+### 🌟 Stellar Surveys
+- **[Gaia DR3](docs/GAIA_COSMIC_WEB.md)**: Stellar catalogs with proper motions
+- **LINEAR**: Asteroid light curves and variable stars
+
+### 🌌 Galaxy Surveys  
+- **[SDSS DR17](docs/NSA_COSMIC_WEB.md)**: Galaxy photometry and spectra
+- **[NSA](docs/NSA_COSMIC_WEB.md)**: Galaxy catalogs with distances
+
+### 🪐 Exoplanet Data
+- **[NASA Exoplanet Archive](docs/EXOPLANET_PIPELINE.md)**: Confirmed exoplanets
+- **[Exoplanet Cosmic Web](docs/EXOPLANET_COSMIC_WEB.md)**: Spatial distribution analysis
+
+### 🌌 Cosmological Simulations
+- **TNG50**: IllustrisTNG cosmological simulations
+
+## 🔧 Data Loading Functions
+
+### Cosmic Web Analysis
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+
+# Basic cosmic web analysis
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=1000,
+    scales_mpc=[5.0, 10.0, 20.0],
+    return_tensor=True
+)
+
+# Access results
+print(f"Objects: {results['n_objects']}")
+print(f"Volume: {results['total_volume']:.0f} Mpc³")
+print(f"Clusters: {len(results['clusters'])}")
+```
+
+### Direct Data Loading
+```python
+from astro_lab.data import create_astro_datamodule
+
+# Create data module for training
+datamodule = create_astro_datamodule(
+    dataset="gaia",
+    batch_size=32,
+    max_samples=5000,
+    return_tensor=True
+)
+
+# Get data loaders
+train_loader = datamodule.train_dataloader()
+val_loader = datamodule.val_dataloader()
+test_loader = datamodule.test_dataloader()
+```
+
+## 🎯 Survey-Specific Guides
+
+### Gaia Stellar Analysis
+See **[Gaia Cosmic Web Analysis](docs/GAIA_COSMIC_WEB.md)** for detailed stellar structure analysis.
+
+### Galaxy Surveys (SDSS/NSA)
+See **[SDSS/NSA Analysis](docs/NSA_COSMIC_WEB.md)** for galaxy morphology and clustering.
+
+### Exoplanet Detection
+See **[Exoplanet Pipeline](docs/EXOPLANET_PIPELINE.md)** for transit detection workflows.
+
+## 📊 Data Processing Pipeline
+
+### 1. Raw Data Loading
+```python
+from astro_lab.data.core import load_survey_data
+
+# Load raw survey data
+raw_data = load_survey_data(
+    survey="gaia",
+    magnitude_limit=12.0,
+    max_samples=10000
+)
+```
+
+### 2. Preprocessing
+```python
+from astro_lab.data.transforms import preprocess_astronomical_data
+
+# Apply preprocessing
+processed_data = preprocess_astronomical_data(
+    raw_data,
+    normalize=True,
+    standardize=True,
+    create_graphs=True,
+    k_neighbors=8
+)
+```
+
+### 3. Tensor Creation
+```python
+from astro_lab.tensors import Spatial3DTensor, PhotometricTensor
+
+# Create specialized tensors
+spatial_tensor = Spatial3DTensor.from_catalog_data(processed_data)
+photometric_tensor = PhotometricTensor.from_survey_data(processed_data)
+```
+
+## 🔄 Data Augmentation
+
+### Spatial Augmentation
+```python
+from astro_lab.data.transforms import apply_spatial_augmentation
+
+augmented_data = apply_spatial_augmentation(
+    data,
+    rotation_range=360,
+    translation_range=0.1,
+    scaling_range=0.9
+)
+```
+
+### Photometric Augmentation
+```python
+from astro_lab.data.transforms import apply_photometric_augmentation
+
+augmented_data = apply_photometric_augmentation(
+    data,
+    noise_level=0.01,
+    extinction_range=0.1
+)
+```
+
+## 📈 Performance Optimization
+
+### Batch Processing
+```python
+# Optimize batch size for your hardware
+datamodule = create_astro_datamodule(
+    dataset="gaia",
+    batch_size=64,  # Adjust based on GPU memory
+    num_workers=4,  # Parallel data loading
+    persistent_workers=True
+)
+```
+
+### Memory Management
+```python
+# Use tensor operations for memory efficiency
+from astro_lab.tensors import optimize_memory_usage
+
+optimized_data = optimize_memory_usage(
+    data,
+    precision="float16",  # Use half precision
+    chunk_size=1000      # Process in chunks
+)
+```
+
+## 🔍 Data Validation
+
+### Quality Checks
+```python
+from astro_lab.data.validation import validate_astronomical_data
+
+validation_report = validate_astronomical_data(
+    data,
+    check_missing=True,
+    check_outliers=True,
+    check_physical_limits=True
+)
+
+print(f"Data quality score: {validation_report['quality_score']:.2f}")
+```
+
+### Statistical Analysis
+```python
+from astro_lab.data.analysis import analyze_data_statistics
+
+stats = analyze_data_statistics(data)
+print(f"Mean distance: {stats['mean_distance']:.2f} pc")
+print(f"Distance std: {stats['distance_std']:.2f} pc")
+```
+
+## 🛠️ CLI Data Management
+
+### Download Data
+```bash
+# Download survey data
+python -m src.astro_lab.cli.data download gaia --magnitude-limit 12.0
+python -m src.astro_lab.cli.data download sdss --survey dr17
+```
+
+### Process Data
+```bash
+# Preprocess downloaded data
+python -m src.astro_lab.cli.data preprocess gaia --create-graphs
+python -m src.astro_lab.cli.data preprocess sdss --normalize
+```
+
+### List Available Data
+```bash
+# List available surveys
+python -m src.astro_lab.cli.data list-surveys
+
+# Check data status
+python -m src.astro_lab.cli.data status
+```
+
+## 📊 Data Formats
+
+### Input Formats
+- **Parquet**: High-performance columnar format (recommended)
+- **FITS**: Standard astronomical format
+- **CSV**: Simple tabular data
+- **HDF5**: Hierarchical data format
+
+### Output Formats
+- **PyTorch Tensors**: For machine learning
+- **Graph Objects**: For graph neural networks
+- **Cosmic Web Results**: For visualization
+
+## 🔗 Related Documentation
+
+- **[Development Guide](docs/DEVGUIDE.md)**: Setup and architecture
+- **[Cosmograph Integration](docs/COSMOGRAPH_INTEGRATION.md)**: Interactive visualization
+- **[Training Guide](../README.md#training-workflow)**: Machine learning workflows
+
+## 🎯 Use Cases
+
+### Stellar Classification
+```python
+# Load Gaia data for stellar classification
+datamodule = create_astro_datamodule(
+    dataset="gaia",
+    task="stellar_classification",
+    batch_size=32,
+    max_samples=10000
+)
+```
+
+### Galaxy Morphology
+```python
+# Load SDSS data for galaxy analysis
+datamodule = create_astro_datamodule(
+    dataset="sdss",
+    task="galaxy_morphology",
+    batch_size=16,
+    max_samples=5000
+)
+```
+
+### Exoplanet Detection
+```python
+# Load exoplanet data for transit detection
+datamodule = create_astro_datamodule(
+    dataset="exoplanets",
+    task="transit_detection",
+    batch_size=64,
+    max_samples=20000
+)
+```
+
+---
+
+**Next Steps**: Explore [Interactive Visualization](docs/COSMOGRAPH_INTEGRATION.md) or dive into [Machine Learning Training](../README.md#training-workflow)!
+

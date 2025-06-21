@@ -1,270 +1,313 @@
-# 🌌 AstroLab Development Guide
+# 🔧 Development Guide
 
-## 🚀 Project Overview
+Comprehensive guide for contributing to AstroLab development and setting up your development environment.
 
-AstroLab is a comprehensive Python framework for astronomical data analysis, machine learning, and visualization with advanced cosmic web analysis and interactive 3D visualization capabilities. The project combines modern ML tools with specialized astronomy libraries.
+## 🚀 Quick Setup
 
-## 📦 Dependency Architecture
-
-### Core Package Structure
-
-The project is divided into several specialized packages:
-
-```
-astro-lab/
-├── astro-viz/          # 3D Visualization & Blender Integration
-├── astro-torch/        # PyTorch & ML for Astronomy
-├── astro-pack/         # Astronomy Libraries & Data Access
-├── astro-lab/          # Main Framework
-└── astro-lab-ml/       # ML-specific Extensions
-```
-
-### 🌌 New Features in 2025
-
-#### Cosmic Web Analysis
-- **Multi-scale clustering** across stellar and cosmological scales
-- **Adaptive density-based analysis** for all survey types
-- **Real-time cosmic web visualization** with CosmographBridge
-- **Survey-specific color mapping** and physics simulation
-
-#### Interactive 3D Visualization
-- **CosmographBridge**: Seamless integration with cosmic web analysis
-- **Survey-specific colors**: Gold for stars, blue for galaxies, green for simulations
-- **Real-time physics**: Gravity and repulsion simulation
-- **Multi-survey support**: Gaia, SDSS, NSA, TNG50, LINEAR, Exoplanets
-
-### 🎯 marimo-flow v0.1.1 Dependencies
-
-**marimo-flow** brings two main components:
-
-#### Marimo v0.14.0 (Interactive Notebook System)
-
-**Core Features:**
-- `click v8.2.1` - CLI Interface + `colorama v0.4.6`
-- `docutils v0.21.2` - Documentation
-- `itsdangerous v2.2.0` - Security
-- `jedi v0.19.2` - Code Intelligence + `parso v0.8.4`
-- `loro v1.5.1` - Collaborative editing
-- `markdown v3.8.1` - Markdown Support
-- `narwhals v1.42.1` - DataFrame API
-- `packaging v24.2` - Package Management
-- `psutil v7.0.0` - System Monitoring
-- `pygments v2.19.1` - Syntax Highlighting
-- `pymdown-extensions v10.15` - Extended Markdown Features
-- `pyyaml v6.0.2` - YAML Support
-- `starlette v0.46.2` - Web Framework + `anyio v4.9.0`
-- `tomlkit v0.13.3` - TOML Support
-- `uvicorn v0.34.3` - ASGI Server + `h11 v0.16.0`
-- `websockets v15.0.1` - WebSocket Support
-
-**LSP Support:**
-- `python-lsp-ruff v2.2.2` + `python-lsp-server v1.12.2` + `ruff v0.12.0`
-- `cattrs v25.1.1` + `lsprotocol v2025.0.0`
-
-**Recommended Features:**
-- `altair v5.5.0` - Visualization + `jsonschema v4.24.0`
-- `duckdb v1.3.1` - In-Memory Database
-- `nbformat v5.10.4` - Jupyter Notebook Format + `jupyter-core v5.8.1`
-- `openai v1.88.0` - AI Integration + `httpx v0.28.1` + `pydantic v2.11.7`
-- `polars[pyarrow] v1.31.0` - DataFrame Library + `pyarrow v20.0.0`
-- `sqlglot v26.29.0` - SQL Parser/Transpiler
-
-#### MLflow v3.1.0 (ML Experiment Tracking)
-
-**Core MLflow:**
-- `alembic v1.16.2` - Database Migration + `sqlalchemy v2.0.41`
-- `docker v7.1.0` - Container Support + `pywin32 v310`
-- `flask v3.1.1` - Web UI + `werkzeug v3.1.3` + `jinja2 v3.1.6`
-- `graphene v3.4.3` - GraphQL API + `graphql-core v3.2.6`
-- `mlflow-skinny v3.1.0` - Core MLflow + `fastapi v0.115.13` + `databricks-sdk v0.57.0`
-
-**Data Science Stack:**
-- `matplotlib v3.10.3` - Plotting + `numpy v1.26.4` + `pillow v11.2.1`
-- `pandas v2.3.0` - DataFrames + `pytz v2025.2`
-- `pyarrow v20.0.0` - Columnar Data
-- `scikit-learn v1.7.0` - ML Library + `scipy v1.15.3` + `joblib v1.5.1`
-- `waitress v3.0.2` - WSGI Server
-
-### 🔬 Astronomy-specific Packages
-
-#### astro-torch v0.1.0
-- `astroml v1.0.2.post1` - ML for Astronomy + `scikit-learn v1.7.0`
-- `astropy v7.1.0` - Astronomy Core Library
-- `polars v1.31.0` - DataFrame Library
-- `torch v2.7.1+cu128` - PyTorch with CUDA
-
-#### astro-pack v0.1.0
-- `astroml v1.0.2.post1` - ML for Astronomy
-- `astrophot v0.16.13` - Photometry + PyTorch + Pyro
-- `astropy v7.1.0` - Astronomy Core
-- `astroquery v0.4.10` - Database Queries
-- `poliastro v0.7.0` - Orbital Mechanics + Numba
-- `sdss-access v3.0.8` - SDSS Data Access
-- `sgp4 v2.24` - Satellite Tracking
-
-#### astro-viz v0.1.0
-- `astropy v7.1.0` - Astronomy Core
-- `bpy v4.4.0` - Blender Python API
-- `pyvista v0.45.2` - 3D Visualization + VTK
-- `cosmograph v0.0.47` - Interactive Graph Visualization
-
-### 🧠 ML/Training Packages
-- `lightning v2.5.1.post0` - PyTorch Lightning
-- `optuna v4.4.0` - Hyperparameter Optimization
-- `torch-geometric v2.6.1` - Graph Neural Networks
-- `numba v0.61.2` - JIT Compilation
-
-### 📊 Interactive Tools
-- `cosmograph v0.0.47` - Graph Visualization
-- `anywidget v0.9.18` - Jupyter Widgets
-- `jupyter v1.1.1` - Jupyter Ecosystem
-
-## 🛠️ Development Setup
+### Prerequisites
+- **Python 3.11+**: Modern Python with type hints support
+- **UV**: Fast Python package manager
+- **Git**: Version control
+- **CUDA** (optional): GPU acceleration for deep learning
 
 ### Installation
-
 ```bash
-# Clone Repository
-git clone <repository-url>
+# Clone repository
+git clone https://github.com/bjoernbethge/astro-lab.git
 cd astro-lab
 
-# Install with uv
+# Install dependencies
 uv sync
 
-# Verify Installation
+# Install PyTorch Geometric
+uv pip install pyg torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+
+# Verify installation
 uv run pytest -v
 ```
 
-### Key Dependencies
+## 🏗️ Project Architecture
 
-**Core Scientific Stack:**
-- `numpy v1.26.4` - Numerical Computing
-- `scipy v1.15.3` - Scientific Computing
-- `pandas v2.3.0` - DataFrames
-- `matplotlib v3.10.3` - Plotting
-- `scikit-learn v1.7.0` - Machine Learning
-
-**Astronomy-specific:**
-- `astropy v7.1.0` - Astronomy Core
-- `astroml v1.0.2.post1` - ML for Astronomy
-- `astrophot v0.16.13` - Photometry
-- `astroquery v0.4.10` - Data Access
-
-**Deep Learning:**
-- `torch v2.7.1+cu128` - PyTorch with CUDA
-- `lightning v2.5.1.post0` - Training Framework
-- `torch-geometric v2.6.1` - Graph Neural Networks
-
-**Interactive Development:**
-- `marimo v0.14.0` - Reactive Notebooks
-- `jupyter v1.1.1` - Jupyter Ecosystem
-- `mlflow v3.1.0` - Experiment Tracking
-
-**Visualization:**
-- `cosmograph v0.0.47` - Interactive Graph Visualization
-- `pyvista v0.45.2` - 3D Visualization
-- `bpy v4.4.0` - Blender Integration
-
-## 🔧 Development Commands
-
-```bash
-# Testing
-uv run pytest -v                    # All Tests
-uv run pytest test/test_*.py -v     # Specific Tests
-
-# Dependency Management
-uv tree                             # Dependency Tree
-uv tree --package marimo-flow       # Specific Package
-
-# Interactive Development
-uv run marimo edit                  # Marimo Notebook
-uv run jupyter lab                  # Jupyter Lab
-uv run mlflow ui                    # MLflow UI
-
-# CLI Tools
-uv run python -m astro_lab.cli.preprocessing --help
-uv run python -m astro_lab.cli.train --help
-uv run python -m astro_lab.cli.cosmic_web --help
-```
-
-## 🌌 Cosmic Web Development
-
-### Quick Start with Cosmic Web Analysis
-
-```python
-from astro_lab.data.core import create_cosmic_web_loader
-from astro_lab.utils.viz import CosmographBridge
-
-# Load and analyze data
-results = create_cosmic_web_loader(survey="gaia", max_samples=500)
-
-# Create interactive visualization
-bridge = CosmographBridge()
-widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
-```
-
-### Testing Cosmic Web Features
-
-```bash
-# Test cosmic web analysis
-uv run python test_cosmograph_real.py
-
-# Run cosmic web examples
-uv run python examples/simple_cosmograph_demo.py
-
-# Test CLI cosmic web commands
-uv run python -m astro_lab.cli.cosmic_web --help
-```
-
-## 📁 Project Structure
-
+### Core Components
 ```
 src/astro_lab/
-├── cli/                    # Command Line Interface
-│   ├── cosmic_web.py      # Cosmic web analysis CLI
-│   ├── download.py        # Data download
-│   ├── preprocessing.py   # Data preprocessing
-│   └── train.py          # Model training
-├── data/                   # Data Processing & Loading
-│   ├── core.py           # Cosmic web analysis functions
-│   ├── manager.py        # Data management
-│   └── processing.py     # Data processing
-├── models/                 # ML Models & Architectures
-├── tensors/                # Specialized Tensor Types
-│   └── spatial_3d.py     # 3D spatial tensors with cosmic web methods
-├── training/               # Training Utilities
-├── utils/                  # Utility Functions
-│   └── viz/              # Visualization utilities
-│       ├── cosmograph_bridge.py  # Cosmograph integration
-│       ├── tensor_bridge.py      # Tensor visualization
-│       └── bidirectional_bridge.py # Multi-framework bridges
-└── simulation/             # Simulation Tools
+├── cli/           # Command-line interface
+│   ├── train.py   # Training workflows
+│   └── data.py    # Data management
+├── data/          # Data loading and processing
+│   ├── core.py    # Core data structures
+│   └── transforms.py # Data transformations
+├── models/        # Neural network architectures
+│   ├── factory.py # Model factory
+│   ├── astro.py   # Astronomical models
+│   └── base_gnn.py # Base graph neural networks
+├── training/      # Training framework
+│   ├── trainer.py # AstroTrainer
+│   └── lightning_module.py # Lightning integration
+├── tensors/       # Specialized tensor types
+│   ├── base.py    # Base tensor classes
+│   └── spatial_3d.py # 3D spatial tensors
+└── utils/         # Utilities and visualization
+    ├── viz/       # Visualization tools
+    └── blender/   # Blender integration
 ```
 
-## 🎯 Key Features
+### Key Design Principles
+- **Modularity**: Each component is self-contained
+- **Type Safety**: Comprehensive type hints throughout
+- **GPU Acceleration**: CUDA-optimized operations
+- **Reproducibility**: MLflow experiment tracking
+- **Extensibility**: Easy to add new surveys and models
 
-- **Reactive Notebooks**: Marimo for interactive development
-- **ML Experiment Tracking**: MLflow Integration
-- **Specialized Tensors**: Astronomy-specific data types
-- **Graph Neural Networks**: For spatial data structures
-- **3D Visualization**: Blender & PyVista Integration
-- **CUDA Support**: GPU-accelerated computations
-- **Cosmic Web Analysis**: Multi-scale structure analysis
-- **Interactive 3D Visualization**: CosmographBridge integration
+## 🧪 Development Workflow
 
-## 🚀 Getting Started
+### 1. Environment Setup
+```bash
+# Activate virtual environment
+uv shell
 
-1. **Setup Environment**: `uv sync`
-2. **Run Tests**: `uv run pytest -v`
-3. **Start Marimo**: `uv run marimo edit`
-4. **Explore Data**: Check `data/` directory
-5. **Train Models**: Use CLI tools or notebooks
-6. **Analyze Cosmic Web**: Use `create_cosmic_web_loader`
-7. **Visualize Results**: Use `CosmographBridge`
+# Install development dependencies
+uv pip install pytest pytest-cov black isort mypy
 
-## 📚 Additional Resources
+# Setup pre-commit hooks
+uv pip install pre-commit
+pre-commit install
+```
 
-- **Cosmograph Integration**: See `docs/COSMOGRAPH_INTEGRATION.md`
-- **Data Loaders**: See `docs/DATA_LOADERS.md`
-- **Cosmic Web Analysis**: See `docs/GAIA_COSMIC_WEB.md`
-- **Examples**: Check `examples/simple_cosmograph_demo.py` 
+### 2. Code Quality
+```bash
+# Format code
+uv run black src/ test/
+uv run isort src/ test/
+
+# Type checking
+uv run mypy src/
+
+# Linting
+uv run flake8 src/
+```
+
+### 3. Testing
+```bash
+# Run all tests
+uv run pytest -v
+
+# Run with coverage
+uv run pytest --cov=src/astro_lab --cov-report=html
+
+# Run specific test categories
+uv run pytest test/models/ -v
+uv run pytest test/tensors/ -v
+uv run pytest test/training/ -v
+```
+
+### 4. Interactive Development
+```bash
+# Start Marimo reactive notebook
+uv run marimo edit
+
+# Start Jupyter Lab
+uv run jupyter lab
+
+# Launch MLflow UI
+uv run mlflow ui
+```
+
+## 📝 Contributing Guidelines
+
+### Code Style
+- **Python**: Follow PEP 8 with Black formatting
+- **Type Hints**: Use comprehensive type annotations
+- **Docstrings**: Google-style docstrings for all functions
+- **Comments**: Clear, concise comments for complex logic
+
+### Commit Messages
+Use conventional commit format:
+```bash
+feat: add new stellar classification model
+fix: resolve tensor memory leak in cosmic web analysis
+docs: update data loaders documentation
+test: add comprehensive model tests
+refactor: simplify CLI argument parsing
+```
+
+### Pull Request Process
+1. **Fork** the repository
+2. **Create** a feature branch: `git checkout -b feature/amazing-feature`
+3. **Make** your changes with tests
+4. **Run** the test suite: `uv run pytest -v`
+5. **Commit** your changes: `git commit -m 'feat: add amazing feature'`
+6. **Push** to your branch: `git push origin feature/amazing-feature`
+7. **Open** a Pull Request
+
+## 🔬 Adding New Features
+
+### New Survey Support
+1. **Data Loading**: Add survey-specific loader in `src/astro_lab/data/`
+2. **Configuration**: Create survey config in `configs/surveys/`
+3. **Tests**: Add comprehensive tests in `test/data/`
+4. **Documentation**: Update relevant documentation
+
+### New Model Architecture
+1. **Model Implementation**: Add model in `src/astro_lab/models/`
+2. **Factory Registration**: Register in `src/astro_lab/models/factory.py`
+3. **Configuration**: Add model config support
+4. **Tests**: Add model tests in `test/models/`
+
+### New Tensor Type
+1. **Tensor Implementation**: Add tensor in `src/astro_lab/tensors/`
+2. **Base Class**: Inherit from appropriate base tensor
+3. **Operations**: Implement required tensor operations
+4. **Tests**: Add comprehensive tensor tests
+
+## 🐛 Debugging
+
+### Common Issues
+```bash
+# CUDA issues
+uv run python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
+
+# Memory issues
+uv run python -c "import torch; print(f'GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB')"
+
+# Import issues
+uv run python -c "import astro_lab; print('Import successful')"
+```
+
+### Debug Mode
+```bash
+# Run with debug logging
+uv run python -m src.astro_lab.cli.train train -c config.yaml --verbose
+
+# Run tests with debug output
+uv run pytest -v -s --tb=short
+```
+
+### Performance Profiling
+```python
+import cProfile
+import pstats
+
+# Profile specific function
+profiler = cProfile.Profile()
+profiler.enable()
+# Your code here
+profiler.disable()
+stats = pstats.Stats(profiler)
+stats.sort_stats('cumulative')
+stats.print_stats(10)
+```
+
+## 📊 Performance Optimization
+
+### GPU Optimization
+```python
+# Use mixed precision training
+trainer = AstroTrainer(
+    precision="16-mixed",
+    accelerator="gpu",
+    devices=1
+)
+
+# Optimize batch size
+datamodule = create_astro_datamodule(
+    dataset="gaia",
+    batch_size=64,  # Adjust based on GPU memory
+    num_workers=4   # Parallel data loading
+)
+```
+
+### Memory Management
+```python
+# Use gradient checkpointing for large models
+model = AstroSurveyGNN(
+    hidden_dim=512,
+    num_layers=6,
+    gradient_checkpointing=True
+)
+
+# Optimize tensor operations
+from astro_lab.tensors import optimize_memory_usage
+optimized_data = optimize_memory_usage(data, precision="float16")
+```
+
+## 🔗 Integration Testing
+
+### End-to-End Testing
+```bash
+# Test complete training pipeline
+uv run python -m src.astro_lab.cli.train run -c configs/gaia_optimization.yaml --epochs 1
+
+# Test data loading pipeline
+uv run python -c "from astro_lab.data.core import create_cosmic_web_loader; create_cosmic_web_loader('gaia', max_samples=100)"
+```
+
+### Cross-Platform Testing
+```bash
+# Test on different platforms
+uv run pytest test/ --platform=linux
+uv run pytest test/ --platform=windows
+uv run pytest test/ --platform=macos
+```
+
+## 📚 Documentation Standards
+
+### Code Documentation
+- **Module Docstrings**: Overview of module functionality
+- **Function Docstrings**: Google-style with type hints
+- **Class Docstrings**: Description of class purpose and usage
+- **Inline Comments**: For complex algorithms
+
+### API Documentation
+- **Type Hints**: Comprehensive type annotations
+- **Examples**: Practical usage examples
+- **Error Handling**: Document expected exceptions
+- **Performance Notes**: Memory and time complexity
+
+### User Documentation
+- **Quick Start**: Simple examples for common use cases
+- **Tutorials**: Step-by-step guides for complex workflows
+- **Reference**: Complete API reference
+- **Troubleshooting**: Common issues and solutions
+
+## 🚀 Release Process
+
+### Version Management
+```bash
+# Bump version
+uv run bump2version patch  # or minor/major
+
+# Create release
+git tag -a v1.0.0 -m "Release v1.0.0"
+git push origin v1.0.0
+```
+
+### Release Checklist
+- [ ] All tests passing
+- [ ] Documentation updated
+- [ ] Version bumped
+- [ ] Changelog updated
+- [ ] Release notes written
+- [ ] PyPI package built (if applicable)
+
+## 🔗 Related Documentation
+
+- **[Data Loaders](docs/DATA_LOADERS.md)**: Data processing and loading
+- **[Cosmograph Integration](docs/COSMOGRAPH_INTEGRATION.md)**: Interactive visualization
+- **[Training Guide](../README.md#training-workflow)**: Machine learning workflows
+
+## 🤝 Community Guidelines
+
+### Communication
+- **Issues**: Use GitHub issues for bug reports and feature requests
+- **Discussions**: Use GitHub Discussions for questions and ideas
+- **Code Review**: Be constructive and helpful in PR reviews
+
+### Code of Conduct
+- **Respect**: Treat all contributors with respect
+- **Inclusion**: Welcome contributors from all backgrounds
+- **Collaboration**: Work together to improve the project
+
+---
+
+**Ready to contribute?** Start with a [good first issue](https://github.com/bjoernbethge/astro-lab/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or explore the [Data Loaders Guide](docs/DATA_LOADERS.md)! 

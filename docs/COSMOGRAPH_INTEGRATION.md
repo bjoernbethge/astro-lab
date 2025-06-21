@@ -1,166 +1,385 @@
-# 🌌 Cosmograph Integration - Interactive Astronomical Graph Visualization
+# 🎨 Cosmograph Integration Guide
 
-Simple and powerful integration of Cosmograph for interactive graph visualization of astronomical data from all surveys.
+Interactive 3D visualization for astronomical data using CosmographBridge.
 
 ## 🚀 Quick Start
 
 ```python
-from src.astro_lab.data.core import create_cosmic_web_loader
-from src.astro_lab.utils.viz import CosmographBridge
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
 
-# Load real survey data with cosmic web analysis
+# Load astronomical data
 results = create_cosmic_web_loader(survey="gaia", max_samples=500)
 
-# Create interactive visualization
+# Create interactive 3D visualization
 bridge = CosmographBridge()
 widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 
-# Widget is now ready for interaction
+# Display in Jupyter notebook
+display(widget)
 ```
 
-## 📊 Available Methods
+## 🌟 Key Features
 
-### `CosmographBridge.from_cosmic_web_results()`
-Create visualization from cosmic web analysis results:
+### Interactive 3D Visualization
+- **Real-time physics**: Gravity and repulsion simulation
+- **Survey-specific colors**: Gold for stars, blue for galaxies, green for simulations
+- **Multi-scale exploration**: Zoom from stellar to cosmological scales
+- **Interactive controls**: Rotate, zoom, and explore data in 3D
 
+### Seamless Integration
+- **Direct from cosmic web analysis**: No intermediate steps required
+- **Automatic color mapping**: Survey-specific visual themes
+- **Real-time updates**: Dynamic visualization as data changes
+- **Jupyter compatibility**: Works in notebooks and lab environments
+
+## 🔧 Basic Usage
+
+### Single Survey Visualization
 ```python
+from astro_lab.utils.viz import CosmographBridge
+
+# Create bridge instance
 bridge = CosmographBridge()
-widget = bridge.from_cosmic_web_results(
-    results,  # From create_cosmic_web_loader
-    survey_name="gaia",
-    radius=5.0,
-    point_color='#ffd700'  # Gold for stars
-)
-```
 
-### `CosmographBridge.from_spatial_tensor()`
-Create visualization from Spatial3DTensor:
-
-```python
-bridge = CosmographBridge()
-widget = bridge.from_spatial_tensor(
-    tensor,
-    radius=5.0,
-    point_color='#ffd700',
-    link_color='#666666'
-)
-```
-
-### `CosmographBridge.from_survey_data()`
-Create visualization from survey data (legacy support):
-
-```python
-widget = bridge.from_survey_data(
-    data,
-    survey_name="gaia",  # gaia, sdss, nsa, tng50, linear, exoplanet
-    radius=5.0
-)
-```
-
-### `CosmographBridge.from_coordinates()`
-Create visualization from raw coordinates:
-
-```python
-widget = bridge.from_coordinates(
-    coords,  # Nx3 array
-    radius=5.0
-)
-```
-
-## 🎨 Survey-Specific Colors
-
-The bridge automatically applies appropriate colors for each survey:
-
-```python
-color_map = {
-    'gaia': '#ffd700',      # Gold for stars
-    'sdss': '#4a90e2',      # Blue for galaxies
-    'nsa': '#e24a4a',       # Red for NSA
-    'tng50': '#00ff00',     # Green for simulation
-    'tng': '#00ff00',       # Green for simulation
-    'linear': '#ff8800',    # Orange for asteroids
-    'exoplanet': '#ff00ff'  # Magenta for exoplanets
-}
-```
-
-## 🔧 Convenience Function
-
-```python
-from src.astro_lab.utils.viz import create_cosmograph_visualization
-
-# Automatically detects data type and creates visualization
-widget = create_cosmograph_visualization(
-    data_source,  # Spatial3DTensor, cosmic web results, or coordinates array
-    survey_name="gaia",
-    radius=5.0
-)
-```
-
-## ⚙️ Configuration Options
-
-Default settings can be customized:
-
-```python
-bridge = CosmographBridge()
+# Load and visualize Gaia data
+results = create_cosmic_web_loader(survey="gaia", max_samples=1000)
 widget = bridge.from_cosmic_web_results(
     results,
     survey_name="gaia",
-    radius=5.0,
-    background_color='#000011',
-    simulation_gravity=0.1,
-    simulation_repulsion=0.2,
-    show_labels=True,
-    show_top_labels_limit=10,
-    curved_links=True,
-    curved_link_weight=0.3
+    radius=3.0,
+    background_color='#000011'
 )
 ```
 
-## 🌟 Supported Surveys
-
-The bridge works seamlessly with all available surveys:
-
-- **Gaia DR3**: Stellar data with parallax distances
-- **SDSS DR17**: Galaxy survey with redshift data  
-- **NSA**: NASA Sloan Atlas galaxy catalog
-- **TNG50**: Cosmological simulation data
-- **LINEAR**: Asteroid lightcurve data
-- **Exoplanet**: Planetary system data
-
-## 📝 Examples
-
-See `examples/simple_cosmograph_demo.py` for complete examples with:
-
-- **Gaia stars**: Gold visualization with stellar clustering
-- **SDSS galaxies**: Blue visualization for extragalactic data
-- **TNG50 simulation**: Green visualization for cosmological simulation
-- **NSA galaxies**: Red visualization for galaxy survey data
-
-## 🎮 Interactive Features
-
-- **Click and drag** to navigate the 3D space
-- **Scroll** to zoom in/out
-- **Right-click** for simulation control
-- **Hover** over points for information
-- **Real-time physics simulation** with gravity and repulsion
-
-## 🔗 Integration with Cosmic Web Analysis
-
-The bridge is designed to work directly with the cosmic web analysis pipeline:
-
+### Multi-Survey Comparison
 ```python
-# Complete workflow
+# Compare different surveys
+surveys = ["gaia", "sdss", "nsa", "tng50"]
+widgets = []
+
+for survey in surveys:
+    results = create_cosmic_web_loader(survey=survey, max_samples=500)
+    widget = bridge.from_cosmic_web_results(results, survey_name=survey)
+    widgets.append(widget)
+
+# Display all widgets
+for i, widget in enumerate(widgets):
+    print(f"Survey: {surveys[i]}")
+    display(widget)
+```
+
+## 🎨 Customization Options
+
+### Visual Styling
+```python
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    radius=5.0,                    # Node radius
+    background_color='#000011',    # Dark blue background
+    node_color='#FFD700',          # Gold nodes for stars
+    edge_color='#444444',          # Gray edges
+    edge_width=0.5                 # Edge thickness
+)
+```
+
+### Physics Simulation
+```python
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    physics_enabled=True,          # Enable physics simulation
+    gravity_strength=0.1,          # Gravity force
+    repulsion_strength=0.05,       # Repulsion force
+    damping_factor=0.8             # Motion damping
+)
+```
+
+### Layout Options
+```python
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    layout_type="force_directed",  # Force-directed layout
+    # layout_type="circular",      # Circular layout
+    # layout_type="random",        # Random layout
+    layout_iterations=100          # Layout optimization iterations
+)
+```
+
+## 🌌 Survey-Specific Visualizations
+
+### Stellar Data (Gaia)
+```python
+# Gold theme for stellar data
+results = create_cosmic_web_loader(survey="gaia", max_samples=1000)
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    node_color='#FFD700',          # Gold stars
+    background_color='#000011',    # Dark space
+    radius=2.0                     # Smaller nodes for stars
+)
+```
+
+### Galaxy Data (SDSS/NSA)
+```python
+# Blue theme for galaxy data
+results = create_cosmic_web_loader(survey="sdss", max_samples=500)
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="sdss",
+    node_color='#4169E1',          # Royal blue galaxies
+    background_color='#000011',    # Dark space
+    radius=4.0                     # Larger nodes for galaxies
+)
+```
+
+### Simulation Data (TNG50)
+```python
+# Green theme for simulation data
+results = create_cosmic_web_loader(survey="tng50", max_samples=300)
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="tng50",
+    node_color='#32CD32',          # Lime green simulation
+    background_color='#000011',    # Dark space
+    radius=3.0                     # Medium nodes
+)
+```
+
+## 🔄 Advanced Usage
+
+### Custom Data Integration
+```python
+from astro_lab.tensors import Spatial3DTensor
+
+# Create custom spatial tensor
+spatial_tensor = Spatial3DTensor.from_catalog_data({
+    "RA": ra_data,
+    "DEC": dec_data,
+    "DISTANCE": distance_data
+})
+
+# Convert to cosmic web format
+results = {
+    "positions": spatial_tensor.get_coordinates_cartesian(),
+    "n_objects": len(ra_data),
+    "total_volume": spatial_tensor.calculate_volume(),
+    "clusters": spatial_tensor.find_clusters(radius=10.0)
+}
+
+# Visualize custom data
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="custom",
+    node_color='#FF6B6B',          # Custom color
+    radius=2.5
+)
+```
+
+### Real-time Updates
+```python
+import time
+
+# Create initial visualization
+results = create_cosmic_web_loader(survey="gaia", max_samples=100)
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+
+# Update data in real-time
+for i in range(10):
+    # Update cosmic web analysis
+    new_results = create_cosmic_web_loader(
+        survey="gaia", 
+        max_samples=100 + i * 50
+    )
+    
+    # Update visualization
+    widget.update_data(new_results)
+    time.sleep(1)  # Wait 1 second between updates
+```
+
+## 🎯 Use Cases
+
+### Stellar Cluster Analysis
+```python
+# Analyze stellar clusters in Gaia data
 results = create_cosmic_web_loader(
     survey="gaia",
-    max_samples=1000,
-    scales_mpc=[5.0, 10.0, 20.0]
+    max_samples=2000,
+    scales_mpc=[1.0, 2.0, 5.0]  # Small scales for clusters
 )
 
 widget = bridge.from_cosmic_web_results(
     results,
     survey_name="gaia",
-    radius=3.0
+    radius=1.5,
+    physics_enabled=True,
+    gravity_strength=0.2
 )
 ```
 
-This provides a complete pipeline from raw survey data to interactive 3D visualization! 🚀 
+### Galaxy Distribution Analysis
+```python
+# Analyze large-scale galaxy distribution
+results = create_cosmic_web_loader(
+    survey="sdss",
+    max_samples=1000,
+    scales_mpc=[10.0, 20.0, 50.0]  # Large scales for galaxies
+)
+
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="sdss",
+    radius=5.0,
+    layout_type="force_directed",
+    layout_iterations=200
+)
+```
+
+### Exoplanet Spatial Analysis
+```python
+# Analyze exoplanet spatial distribution
+results = create_cosmic_web_loader(
+    survey="exoplanets",
+    max_samples=500,
+    scales_mpc=[0.1, 0.5, 1.0]  # Very small scales for exoplanets
+)
+
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="exoplanets",
+    node_color='#FF4500',          # Orange for exoplanets
+    radius=2.0,
+    physics_enabled=True
+)
+```
+
+## 🔧 Configuration
+
+### Bridge Configuration
+```python
+# Configure bridge with custom settings
+bridge = CosmographBridge(
+    default_radius=3.0,
+    default_background_color='#000011',
+    physics_enabled=True,
+    layout_type="force_directed"
+)
+```
+
+### Widget Configuration
+```python
+# Configure widget behavior
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    auto_play=True,                # Auto-start physics
+    show_controls=True,            # Show control panel
+    show_info=True,                # Show data info
+    responsive=True                # Responsive to window size
+)
+```
+
+## 🔗 Integration with Other Tools
+
+### Jupyter Integration
+```python
+# In Jupyter notebook
+from IPython.display import display
+
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+display(widget)
+
+# Save as HTML
+widget.save_html("cosmic_web_visualization.html")
+```
+
+### Blender Integration
+```python
+from astro_lab.utils.blender import export_to_blender
+
+# Export cosmic web data to Blender
+export_to_blender(
+    results,
+    output_file="cosmic_web.blend",
+    node_material="emission",
+    edge_material="wire"
+)
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+```python
+# Check if cosmograph is available
+try:
+    import cosmograph
+    print("Cosmograph available")
+except ImportError:
+    print("Install cosmograph: pip install cosmograph")
+
+# Check data format
+if "positions" not in results:
+    print("Results must contain 'positions' key")
+
+# Check widget creation
+try:
+    widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+    print("Widget created successfully")
+except Exception as e:
+    print(f"Error creating widget: {e}")
+```
+
+### Performance Optimization
+```python
+# Reduce data size for better performance
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=500,  # Reduce for better performance
+    return_tensor=False  # Disable tensor operations
+)
+
+# Use simpler physics for large datasets
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    physics_enabled=False,  # Disable for large datasets
+    layout_iterations=50    # Reduce iterations
+)
+```
+
+## 🔗 Related Documentation
+
+- **[Data Loaders](docs/DATA_LOADERS.md)**: Loading astronomical data
+- **[Gaia Cosmic Web](docs/GAIA_COSMIC_WEB.md)**: Stellar structure analysis
+- **[Development Guide](docs/DEVGUIDE.md)**: Contributing to the project
+
+## 🎯 Examples
+
+### Complete Workflow
+```python
+# 1. Load data
+from astro_lab.data.core import create_cosmic_web_loader
+results = create_cosmic_web_loader(survey="gaia", max_samples=1000)
+
+# 2. Create visualization
+from astro_lab.utils.viz import CosmographBridge
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+
+# 3. Customize appearance
+widget.set_node_color('#FFD700')  # Gold stars
+widget.set_background_color('#000011')  # Dark space
+
+# 4. Enable physics
+widget.enable_physics(gravity_strength=0.1, repulsion_strength=0.05)
+
+# 5. Display
+display(widget)
+```
+
+---
+
+**Ready to explore the cosmos?** Start with [Data Loading](docs/DATA_LOADERS.md) or dive into [Machine Learning Training](../README.md#training-workflow)! 
