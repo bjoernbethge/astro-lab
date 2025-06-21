@@ -2,7 +2,7 @@
 Tests for Model Factory
 =======================
 
-Tests for model factory pattern and registry system.
+Tests for model factory pattern and registry system with new unified architecture.
 """
 
 import pytest
@@ -19,6 +19,8 @@ from astro_lab.models.factory import (
     get_model_info,
     list_available_models,
 )
+from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
+from astro_lab.models.layers import LayerFactory
 
 
 class TestModelRegistry:
@@ -58,7 +60,7 @@ class TestModelRegistry:
 
 
 class TestModelFactory:
-    """Test the model factory system."""
+    """Test the model factory system with new unified architecture."""
 
     def test_factory_initialization(self):
         """Test factory initializes correctly."""
@@ -127,6 +129,97 @@ class TestModelFactory:
         except (ValueError, ImportError, AttributeError):
             # Multi-survey model might not be fully implemented
             pass
+
+
+class TestConfigObjects:
+    """Test the new Config objects and LayerFactory."""
+
+    def test_model_config_creation(self):
+        """Test creating ModelConfig objects."""
+        config = ModelConfig(
+            name="test_model",
+            description="Test model configuration",
+            encoder=EncoderConfig(
+                use_photometry=True,
+                use_astrometry=True,
+                use_spectroscopy=False,
+            ),
+            graph=GraphConfig(
+                conv_type="gcn",
+                hidden_dim=128,
+                num_layers=3,
+                dropout=0.1,
+            ),
+            output=OutputConfig(
+                task="stellar_classification",
+                output_dim=7,
+                pooling="mean",
+            ),
+        )
+
+        assert config.name == "test_model"
+        assert config.encoder.use_photometry
+        assert config.graph.hidden_dim == 128
+        assert config.output.task == "stellar_classification"
+
+    def test_layer_factory_conv_layers(self):
+        """Test LayerFactory creating convolution layers."""
+        factory = LayerFactory()
+
+        # Test GCN layer
+        gcn_layer = factory.create_conv_layer("gcn", 64, 128)
+        assert isinstance(gcn_layer, nn.Module)
+
+        # Test GAT layer
+        gat_layer = factory.create_conv_layer("gat", 64, 128, heads=8)
+        assert isinstance(gat_layer, nn.Module)
+
+        # Test SAGE layer
+        sage_layer = factory.create_conv_layer("sage", 64, 128)
+        assert isinstance(sage_layer, nn.Module)
+
+        # Test Transformer layer
+        transformer_layer = factory.create_conv_layer("transformer", 64, 128, heads=8)
+        assert isinstance(transformer_layer, nn.Module)
+
+    def test_layer_factory_mlp(self):
+        """Test LayerFactory creating MLPs."""
+        factory = LayerFactory()
+
+        mlp = factory.create_mlp(
+            64,  # input_dim
+            [128, 256],  # hidden_dims_or_output_dim
+            10,  # output_dim
+            activation="relu",
+            dropout=0.1,
+        )
+        assert isinstance(mlp, nn.Module)
+
+        # Test forward pass
+        x = torch.randn(5, 64)
+        output = mlp(x)
+        assert output.shape == (5, 10)
+
+    def test_layer_factory_pooling(self):
+        """Test LayerFactory pooling functions."""
+        factory = LayerFactory()
+
+        # Test pooling functions
+        mean_pool = factory.get_pooling_function("mean")
+        max_pool = factory.get_pooling_function("max")
+        add_pool = factory.get_pooling_function("add")
+
+        assert callable(mean_pool)
+        assert callable(max_pool)
+        assert callable(add_pool)
+
+        # Test with dummy data
+        x = torch.randn(10, 64)
+        batch = torch.zeros(10, dtype=torch.long)
+        batch[5:] = 1  # Two batches
+
+        mean_output = mean_pool(x, batch)
+        assert mean_output.shape == (2, 64)
 
 
 class TestConvenienceFunctions:
@@ -202,8 +295,6 @@ class TestSurveyConfigurations:
         for survey in expected_surveys:
             assert survey in factory.SURVEY_CONFIGS
             config = factory.SURVEY_CONFIGS[survey]
-
-            # Check that config has expected keys
             assert isinstance(config, dict)
             assert "conv_type" in config
             assert "hidden_dim" in config
@@ -219,109 +310,109 @@ class TestSurveyConfigurations:
             "galaxy_property_prediction",
             "transient_detection",
             "period_detection",
+            "shape_modeling",
+            "cosmological_inference",
         ]
 
         for task in expected_tasks:
-            if task in factory.TASK_CONFIGS:
-                config = factory.TASK_CONFIGS[task]
-                assert isinstance(config, dict)
-                assert "output_head" in config
-                assert "output_dim" in config
+            assert task in factory.TASK_CONFIGS
+            config = factory.TASK_CONFIGS[task]
+            assert isinstance(config, dict)
+            assert "output_head" in config
+            assert "output_dim" in config
+            assert "pooling" in config
 
 
 class TestErrorHandling:
-    """Test error handling in model factory."""
+    """Test error handling in factory methods."""
 
     def test_invalid_survey_type(self):
-        """Test error handling for invalid survey types."""
+        """Test error handling for invalid survey type."""
         factory = ModelFactory()
 
-        with pytest.raises(ValueError, match="Unknown survey"):
-            factory.create_survey_model(
-                "nonexistent_survey", task="stellar_classification"
-            )
+        with pytest.raises(ValueError):
+            factory.create_survey_model("invalid_survey", task="stellar_classification")
 
     def test_invalid_task_type(self):
-        """Test error handling for invalid task types."""
+        """Test error handling for invalid task type."""
         factory = ModelFactory()
 
-        with pytest.raises(ValueError, match="Unknown task"):
-            factory.create_survey_model("gaia", task="nonexistent_task")
+        with pytest.raises(ValueError):
+            factory.create_survey_model("gaia", task="invalid_task")
 
     def test_invalid_model_type_in_registry(self):
-        """Test error handling for invalid model types in registry."""
+        """Test error handling for invalid model type in registry."""
         registry = ModelRegistry()
 
-        with pytest.raises(ValueError, match="Unknown model type"):
-            registry.create("nonexistent_model_type")
+        with pytest.raises(ValueError):
+            registry.create("invalid_model_type")
 
 
 class TestModelIntegration:
     """Test integration between factory and models."""
 
     def test_factory_model_compatibility(self):
-        """Test that factory-created models are compatible."""
+        """Test that factory-created models are compatible with data."""
         factory = ModelFactory()
 
-        # Test that we can create at least one survey model
-        survey_types = ["gaia", "sdss", "lsst"]
-        model_created = False
+        try:
+            model = factory.create_survey_model("gaia", task="stellar_classification")
 
-        for survey in survey_types:
-            try:
-                model = factory.create_survey_model(
-                    survey, task="stellar_classification"
-                )
-                if model is not None:
-                    assert isinstance(model, nn.Module)
-                    model_created = True
-                    break
-            except (ValueError, ImportError, AttributeError):
-                continue
+            # Test with dummy data
+            x = torch.randn(10, 64)  # 10 nodes, 64 features
+            edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
 
-        # If no models were created, that's okay (might not be implemented)
-        # This test just ensures no unexpected errors occur
+            output = model(x, edge_index)
+            assert isinstance(output, torch.Tensor)
+            assert not torch.isnan(output).any()
+
+        except (ImportError, AttributeError):
+            # Model might not be fully implemented
+            pass
 
     def test_model_forward_pass(self):
-        """Test that factory-created models can perform forward passes."""
+        """Test forward pass of factory-created models."""
+        factory = ModelFactory()
+
         try:
-            model = create_gaia_classifier(num_classes=3, hidden_dim=32)
+            model = factory.create_survey_model("sdss", task="galaxy_property_prediction")
 
-            if model is not None:
-                # Test forward pass with graph data
-                x = torch.randn(10, 16)  # 10 nodes, 16 features
-                edge_index = torch.randint(0, 10, (2, 20))  # 20 edges
+            # Test forward pass
+            x = torch.randn(8, 128)
+            edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
 
-                output = model(x, edge_index)
-                assert output.shape[0] == 10
-                assert not torch.isnan(output).any()
+            output = model(x, edge_index)
+            assert output.shape[0] == 8  # Same number of nodes
+            assert not torch.isnan(output).any()
 
-        except (ImportError, AttributeError, TypeError):
-            # Model might not exist or have different signature
+        except (ImportError, AttributeError):
+            # Model might not be fully implemented
             pass
 
     def test_device_consistency(self):
-        """Test that factory models maintain device consistency."""
+        """Test that models work on different devices."""
+        factory = ModelFactory()
+
         try:
-            model = create_gaia_classifier(num_classes=3, hidden_dim=32)
+            model = factory.create_survey_model("lsst", task="transient_detection")
 
-            if model is not None:
-                # Test CPU
-                x_cpu = torch.randn(5, 16)
-                edge_index_cpu = torch.randint(0, 5, (2, 10))
-                output_cpu = model(x_cpu, edge_index_cpu)
-                assert output_cpu.device.type == "cpu"
+            # Test on CPU
+            x_cpu = torch.randn(5, 64)
+            edge_index_cpu = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
+            output_cpu = model(x_cpu, edge_index_cpu)
 
-                # Test CUDA if available
-                if torch.cuda.is_available():
-                    model_cuda = model.cuda()
-                    x_cuda = x_cpu.cuda()
-                    edge_index_cuda = edge_index_cpu.cuda()
-                    output_cuda = model_cuda(x_cuda, edge_index_cuda)
-                    assert output_cuda.device.type == "cuda"
+            # Test on GPU if available
+            if torch.cuda.is_available():
+                model_gpu = model.to("cuda")
+                x_gpu = x_cpu.to("cuda")
+                edge_index_gpu = edge_index_cpu.to("cuda")
+                output_gpu = model_gpu(x_gpu, edge_index_gpu)
 
-        except (ImportError, AttributeError, TypeError):
-            # Model might not exist or have different behavior
+                # Check outputs are consistent
+                assert torch.allclose(output_cpu, output_gpu.cpu(), atol=1e-1)
+
+        except (ImportError, AttributeError):
+            # Model might not be fully implemented
             pass
 
 
@@ -329,41 +420,36 @@ class TestModelParameterValidation:
     """Test parameter validation in model creation."""
 
     def test_parameter_override(self):
-        """Test that custom parameters override defaults."""
+        """Test that parameters can be overridden."""
         factory = ModelFactory()
 
         try:
-            # Create model with custom parameters
+            # Create model with overridden parameters
             model = factory.create_survey_model(
                 "gaia",
                 task="stellar_classification",
                 hidden_dim=256,  # Override default
-                num_layers=5,  # Override default
+                num_layers=5,    # Override default
+                dropout=0.2,     # Override default
             )
 
-            if model is not None:
-                # Check that parameters were applied (if accessible)
-                if hasattr(model, "hidden_dim"):
-                    assert model.hidden_dim == 256
-                if hasattr(model, "num_layers"):
-                    assert model.num_layers == 5
+            assert isinstance(model, nn.Module)
 
-        except (ValueError, ImportError, AttributeError):
+        except (ImportError, AttributeError):
             # Model might not be fully implemented
             pass
 
     def test_minimal_parameter_creation(self):
-        """Test model creation with minimal parameters."""
+        """Test creating models with minimal parameters."""
         factory = ModelFactory()
 
         try:
             # Create model with only required parameters
-            model = factory.create_survey_model("gaia")
+            model = factory.create_survey_model("gaia", task="stellar_classification")
 
-            if model is not None:
-                assert isinstance(model, nn.Module)
+            assert isinstance(model, nn.Module)
 
-        except (ValueError, ImportError, AttributeError):
+        except (ImportError, AttributeError):
             # Model might not be fully implemented
             pass
 

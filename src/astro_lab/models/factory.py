@@ -9,7 +9,7 @@ for astronomical data analysis.
 import numpy as np
 import torch
 import torch.nn as nn
-from typing import Any, Dict, List, Optional, Union, Tuple, Type
+from typing import Any, Dict, List, Optional, Union, Tuple, Type, Callable
 
 from astro_lab.models.base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel
 from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
@@ -21,17 +21,17 @@ class ModelRegistry:
     _models: Dict[str, type] = {}
 
     @classmethod
-    def register(cls, name: str):
+    def register(cls, name: str) -> Callable[[Type], Type]:
         """Decorator to register models."""
 
-        def decorator(model_class):
+        def decorator(model_class: Type) -> Type:
             cls._models[name] = model_class
             return model_class
 
         return decorator
 
     @classmethod
-    def create(cls, model_type: str, **kwargs) -> nn.Module:
+    def create(cls, model_type: str, **kwargs: Any) -> nn.Module:
         """Create model by type."""
         if model_type not in cls._models:
             available = list(cls._models.keys())
@@ -103,7 +103,7 @@ class ModelFactory:
     TASK_CONFIGS = {
         "stellar_classification": {
             "output_head": "classification",
-            "output_dim": 7,  # Standard stellar classes
+            "output_dim": None,  # Will be determined automatically
             "pooling": "mean",
         },
         "galaxy_property_prediction": {
@@ -113,7 +113,7 @@ class ModelFactory:
         },
         "transient_detection": {
             "output_head": "classification",
-            "output_dim": 2,  # Transient/non-transient
+            "output_dim": None,  # Will be determined automatically
             "pooling": "max",
         },
         "period_detection": {
@@ -134,10 +134,70 @@ class ModelFactory:
     }
 
     @classmethod
+    def infer_num_classes_from_data(cls, data_loader: Any, target_key: str = "target") -> int:
+        """
+        Automatically infer the number of classes from the dataset.
+        
+        Args:
+            data_loader: PyTorch DataLoader or similar iterable
+            target_key: Key for target tensor in batch dict
+            
+        Returns:
+            Number of unique classes found in the data
+        """
+        try:
+            all_targets = []
+            
+            # Sample a few batches to determine class count
+            for i, batch in enumerate(data_loader):
+                if i >= 10:  # Limit to first 10 batches for efficiency
+                    break
+                    
+                if isinstance(batch, dict):
+                    targets = batch.get(target_key)
+                elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
+                    targets = batch[1]  # Assume (data, target) format
+                else:
+                    targets = batch
+                
+                if targets is not None:
+                    if isinstance(targets, torch.Tensor):
+                        all_targets.append(targets.flatten())
+                    else:
+                        all_targets.append(torch.tensor(targets).flatten())
+            
+            if not all_targets:
+                raise ValueError("No targets found in data loader")
+            
+            # Concatenate all targets and find unique values
+            all_targets = torch.cat(all_targets)
+            unique_classes = torch.unique(all_targets)
+            num_classes = len(unique_classes)
+            
+            # Ensure classes are 0-indexed
+            min_class = unique_classes.min().item()
+            max_class = unique_classes.max().item()
+            
+            if min_class != 0:
+                print(f"⚠️  Warning: Classes start from {min_class}, not 0")
+            
+            print(f"🔍 Automatically detected {num_classes} classes: {unique_classes.tolist()}")
+            return num_classes
+            
+        except Exception as e:
+            print(f"❌ Error inferring classes from data: {e}")
+            # Fallback to default
+            return 7
+
+    @classmethod
     def create_survey_model(
-        cls, survey: str, task: str = "stellar_classification", **kwargs
+        cls, 
+        survey: str, 
+        task: str = "stellar_classification", 
+        data_loader: Optional[Any] = None,
+        **kwargs: Any
     ) -> nn.Module:
-        """Create model optimized for specific survey."""
+        """Create model optimized for specific survey with automatic class detection."""
 
         # Get survey configuration
         survey_config = cls.SURVEY_CONFIGS.get(survey, {})
@@ -152,6 +212,25 @@ class ModelFactory:
         if not task_config:
             available_tasks = list(cls.TASK_CONFIGS.keys())
             raise ValueError(f"Unknown task: {task}. Available: {available_tasks}")
+
+        # Determine output dimension
+        output_dim = None
+        
+        # Check if explicitly provided
+        if 'output_dim' in kwargs:
+            output_dim = kwargs['output_dim']
+            print(f"🎯 Using explicitly provided output_dim: {output_dim}")
+        elif data_loader is not None:
+            # Auto-detect from data
+            output_dim = cls.infer_num_classes_from_data(data_loader)
+            print(f"🔍 Auto-detected output_dim: {output_dim} from data")
+        else:
+            # Use default from task config
+            output_dim = task_config.get('output_dim', 7)
+            print(f"⚠️ No data_loader provided, using default {output_dim} classes")
+        
+        # Override task config with detected/explicit output_dim
+        task_config['output_dim'] = output_dim
 
         # Merge configurations (kwargs override defaults)
         config = {**survey_config, **task_config, **kwargs}

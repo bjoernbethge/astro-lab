@@ -1,35 +1,35 @@
-# Gaia Stellar Classification - Hyperparameter Optimization
-# ========================================================
+# Gaia Stellar Classification - Quick Test
+# ========================================
 
 model:
   type: gaia_classifier
   params:
-    hidden_dim: 64 # 🏆 OPTIMIZED from Trial 7 (best: 1.596 loss)
+    hidden_dim: 64
     num_classes: 8
-    dropout: 0.10 # 🏆 OPTIMIZED from Trial 7 (minimal overfitting)
+    dropout: 0.10
     use_batch_norm: true
 
 data:
   dataset: gaia
   data_dir: data/processed
-  batch_size: 64
-  num_workers: 4 # Improved for better performance
-  persistent_workers: true # Speed up dataloader worker initialization
-  max_samples: 100000 # More training data
+  batch_size: 32 # Smaller batch size for testing
+  num_workers: 2 # Reduced for testing
+  persistent_workers: false # Disabled for testing
+  max_samples: 1000 # Smaller dataset for quick test
   return_tensor: true
-  split_ratios: [0.8, 0.1, 0.1] # More training data
+  split_ratios: [0.8, 0.1, 0.1]
 
   # Data augmentation and preprocessing
   normalize: true
   standardize: true
 
 training:
-  max_epochs: 50 # Production epochs
-  learning_rate: 0.0142 # 🏆 OPTIMIZED from Trial 7 (best: 1.596 loss)
+  max_epochs: 5 # Quick test with few epochs
+  learning_rate: 0.01
   weight_decay: 0.0001
 
   # Early stopping for production
-  patience: 15 # More patient for final training
+  patience: 3 # Shorter patience for quick test
 
 # 🎯 Optuna Optimization Configuration
 optimization:
