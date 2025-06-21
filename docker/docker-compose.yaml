@@ -1,0 +1,68 @@
+services:
+  astro-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: astro-lab
+    ports:
+      - "2718:2718" # Astro Lab - Primary Service
+      - "5000:5000" # MLflow backend
+    volumes:
+      # Mount local directory for SQLite database and artifacts storage
+      - ./data/mlflow:/mlflow
+      # Mount snippets directory for development
+      - ./snippets:/app/snippets
+    extra_hosts:
+      # Host-Gateway for access to host services
+      - "host.docker.internal:host-gateway"
+      # Localhost alias for Container-to-Host communication
+      - "localhost:host-gateway"
+      # Astro Lab hostname for better resolution
+      - "astro-lab:127.0.0.1"
+    environment:
+      # MLflow server configuration
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////mlflow/db/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - MLFLOW_SERVE_ARTIFACTS=true
+      # Server host binding (allows external access)
+      - MLFLOW_HOST=0.0.0.0
+      - MLFLOW_PORT=5000
+      # Optional: Additional MLflow settings
+      - MLFLOW_TRACKING_USERNAME=
+      - MLFLOW_TRACKING_PASSWORD=
+      # Ollama configuration - using host Ollama
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    # The new startup script is automatically used
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+  # Optional: MinIO for S3-compatible artifact storage (alternative to local storage)
+  # Uncomment if you prefer S3-compatible storage over local file system
+  # minio:
+  #   image: minio/minio:latest
+  #   container_name: marimo-flow-minio
+  #   ports:
+  #     - "9000:9000"
+  #     - "9001:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   environment:
+  #     - MINIO_ROOT_USER=minioadmin
+  #     - MINIO_ROOT_PASSWORD=minioadmin123
+  #   command: server /data --console-address ":9001"
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+  # volumes:
+  #   minio_data:
+
+  # Networks (optional - uses default bridge network)
+volumes: { }
