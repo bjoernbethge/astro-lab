@@ -13,6 +13,10 @@ import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+# Suppress numpy warnings that occur with bpy
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
+warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
 # Comprehensive NumPy warnings suppression
 warnings.filterwarnings("ignore", message=".*NumPy 1.x.*")
 warnings.filterwarnings("ignore", message=".*numpy.core.multiarray.*")
@@ -31,15 +35,16 @@ except ImportError:
 
 import polars as pl
 
-from . import bpy
-import mathutils
-
+from . import import_bpy_with_numpy_workaround
 try:
-    BLENDER_AVAILABLE = True
-except ImportError:
-    BLENDER_AVAILABLE = False
+    bpy = import_bpy_with_numpy_workaround()
+    from mathutils import Vector
+    BPY_AVAILABLE = bpy is not None
+except ImportError as e:
+    print(f"Blender modules not available: {e}")
+    BPY_AVAILABLE = False
     bpy = None
-    mathutils = None
+    Vector = None
 
 
 # =============================================================================
@@ -112,9 +117,9 @@ def normalize_scene(
         for obj in bpy.context.scene.objects:
             if obj.type == "MESH":
                 if NUMPY_AVAILABLE:
-                    obj.location = obj.location + mathutils.Vector(offset.tolist())
+                    obj.location = obj.location + Vector(offset.tolist())
                 else:
-                    obj.location = obj.location + mathutils.Vector(offset)
+                    obj.location = obj.location + Vector(offset)
                 obj.scale *= scale
 
         bpy.context.view_layer.update()
@@ -450,7 +455,7 @@ def create_camera(
         camera.name = name
 
         # Point camera at target
-        direction = mathutils.Vector(target) - mathutils.Vector(position)
+        direction = Vector(target) - Vector(position)
         camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
 
         # Set properties

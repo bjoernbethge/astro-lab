@@ -16,14 +16,29 @@ Version: 1.0.0
 Blender: 4.4+
 """
 
+import os
+import warnings
 import math
 import random
 from typing import Any, Dict, List, Optional, Tuple, Union
+from .. import import_bpy_with_numpy_workaround
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
+# Suppress numpy warnings that occur with bpy
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
+warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+try:
+    bpy = import_bpy_with_numpy_workaround()
+    import bmesh
+    import numpy as np
+    from mathutils import Euler, Matrix, Vector
+    BPY_AVAILABLE = bpy is not None
+except ImportError as e:
+    print(f"Blender modules not available: {e}")
+    BPY_AVAILABLE = False
+    bpy = None
+    bmesh = None
+    Vector = None
 
 
 class VolumetricAstronomy:

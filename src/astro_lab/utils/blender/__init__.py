@@ -6,10 +6,24 @@ Centralized Blender availability check and import management.
 Prevents memory leaks and numpy multiarray issues.
 """
 
+import os
 import warnings
 import sys
 from contextlib import contextmanager
 from typing import Optional, Any
+
+# Import our NumPy compatibility layer
+from .numpy_compat import numpy_compat, is_blender_available, get_bpy, get_mathutils, blender_context
+
+def import_bpy_with_numpy_workaround():
+    """Setzt die NumPy-Workaround-Variable nur temporär und importiert bpy."""
+    if numpy_compat.available:
+        return numpy_compat.bpy
+    return None
+
+# Suppress numpy warnings that occur with bpy
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
+warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 # Global state to prevent multiple imports
 _bpy = None
@@ -40,10 +54,8 @@ def _suppress_all_output():
         yield
     finally:
         # Restore stdout/stderr
-        sys.stdout.close()
-        sys.stderr.close()
-        os.dup2(old_stdout_fd, sys.stdout.fileno())
-        os.dup2(old_stderr_fd, sys.stderr.fileno())
+        os.dup2(old_stdout_fd, old_stdout.fileno())
+        os.dup2(old_stderr_fd, old_stderr.fileno())
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         os.close(old_stdout_fd)
@@ -67,7 +79,7 @@ def _safe_import_blender() -> tuple[Optional[Any], Optional[Any], bool, Optional
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 
-                # Import bpy and mathutils
+                # Import bpy and mathutils with numpy warnings suppressed
                 import bpy as bpy_module
                 import mathutils as mathutils_module
                 

@@ -16,14 +16,30 @@ Version: 1.0.0
 Blender: 4.4+
 """
 
+import warnings
 import math
 import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
+# Suppress numpy warnings that occur with bpy
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
+warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+try:
+    import bpy
+    import bmesh
+    import numpy as np
+    from mathutils import Euler, Matrix, Vector
+    BPY_AVAILABLE = True
+except ImportError as e:
+    print(f"Blender modules not available: {e}")
+    BPY_AVAILABLE = False
+    bpy = None
+    bmesh = None
+    np = None
+    Euler = None
+    Matrix = None
+    Vector = None
 
 
 class ProceduralAstronomy:

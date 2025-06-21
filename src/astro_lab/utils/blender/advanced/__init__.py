@@ -1,28 +1,36 @@
 """
-Blender 4.4 Advanced Astronomical Visualization Suite
-====================================================
+Advanced Blender Visualization Suite
+===================================
 
-Professional astronomical visualization system leveraging Blender's unique capabilities:
-- Procedural galaxy generation with Geometry Nodes
-- Volumetric nebula rendering with emission spectra
-- N-body gravitational simulations with orbital mechanics
-- Scientifically accurate stellar and planetary shaders
-- Real-time physics and atmospheric effects
-
-Designed for scientific accuracy, performance, and visual excellence.
-
-Author: Astro-Graph Agent
-Version: 1.0.0
-Blender: 4.4+
-Dependencies: EEVEE Next, Geometry Nodes 4.4+
+High-end astronomical visualization tools using Blender's advanced features.
+Includes procedural generation, volumetrics, physics simulation, and artistic effects.
 """
 
+import os
+import warnings
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
-import bmesh
-import bpy
-from mathutils import Euler, Matrix, Vector
+# Set environment variable for NumPy 2.x compatibility with bpy
+os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
+
+# Suppress numpy warnings that occur with bpy
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
+warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+try:
+    import bmesh
+    import bpy
+    from mathutils import Euler, Matrix, Vector
+    BPY_AVAILABLE = True
+except ImportError as e:
+    print(f"Blender modules not available: {e}")
+    BPY_AVAILABLE = False
+    bmesh = None
+    bpy = None
+    Euler = None
+    Matrix = None
+    Vector = None
 
 try:
     # Import all advanced modules
@@ -30,6 +38,8 @@ try:
     from .physics import GravitationalSimulation, OrbitalMechanics, PhysicsShaders
     from .shaders import AstronomicalShaders
     from .volumetrics import VolumetricAstronomy, VolumetricShaders
+    from .post_processing import PostProcessingSuite, ArtisticFilters
+    from .futuristic_materials import FuturisticMaterials, MaterialPresets
 
     ADVANCED_AVAILABLE = True
 except ImportError as e:
@@ -49,11 +59,15 @@ class AdvancedVisualizationSuite:
         self.scene_name = scene_name
         self.scene_objects = {}
 
-        if ADVANCED_AVAILABLE:
+        if ADVANCED_AVAILABLE and BPY_AVAILABLE:
             self._initialize_scene()
 
     def _initialize_scene(self) -> None:
         """Initialize advanced scene with optimal settings."""
+        if not BPY_AVAILABLE or not bpy:
+            print("Blender not available")
+            return
+            
         # Set render engine to EEVEE Next
         bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
 
@@ -98,7 +112,7 @@ class AdvancedVisualizationSuite:
     def create_procedural_galaxy(
         self,
         galaxy_type: str = "spiral",
-        position: Vector = Vector((0, 0, 0)),
+        position: Optional[Any] = None,
         num_stars: int = 50000,
         radius: float = 20.0,
     ) -> Optional[Any]:
@@ -114,9 +128,12 @@ class AdvancedVisualizationSuite:
         Returns:
             Created galaxy object
         """
-        if not ADVANCED_AVAILABLE:
+        if not ADVANCED_AVAILABLE or not BPY_AVAILABLE:
             print("Advanced modules not available")
             return None
+
+        if position is None and Vector:
+            position = Vector((0, 0, 0))
 
         galaxy = ProceduralAstronomy.create_galaxy_structure(
             center=position, galaxy_type=galaxy_type, num_stars=num_stars, radius=radius
@@ -139,7 +156,7 @@ class AdvancedVisualizationSuite:
 
     def create_emission_nebula_complex(
         self,
-        center: Vector = Vector((0, 0, 0)),
+        center: Optional[Any] = None,
         nebula_type: str = "h_alpha",
         size: float = 15.0,
     ) -> Optional[Any]:
@@ -154,9 +171,12 @@ class AdvancedVisualizationSuite:
         Returns:
             Created nebula object
         """
-        if not ADVANCED_AVAILABLE:
+        if not ADVANCED_AVAILABLE or not BPY_AVAILABLE:
             print("Advanced modules not available")
             return None
+
+        if center is None and Vector:
+            center = Vector((0, 0, 0))
 
         nebula = VolumetricAstronomy.create_emission_nebula(
             center=center, size=size, nebula_type=nebula_type, density=0.2
@@ -573,6 +593,223 @@ def create_stellar_system_showcase() -> AdvancedVisualizationSuite:
     suite.setup_advanced_lighting("planetary")
 
     return suite
+
+
+def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_teal") -> None:
+    """
+    Apply a high-level visual style preset to the current advanced scene.
+    Styles: 'luxury_teal', 'autumn', 'iridescent', 'cinematic_closeup', 'dreamy_pastel'
+    """
+    import bpy
+    from mathutils import Vector
+    scene = bpy.context.scene
+
+    # Default: luxury_teal (deep teal, high contrast, bloom, dramatic light)
+    if style == "luxury_teal":
+        suite._initialize_scene()
+        suite.setup_cinematic_camera(Vector((0, 0, 0)), 40.0, 12.0)
+        suite.setup_advanced_lighting("deep_space")
+        # Set world color to deep teal
+        world = scene.world
+        if world and world.use_nodes:
+            bg = world.node_tree.nodes.get("Background")
+            if bg:
+                bg.inputs["Color"].default_value = (0.02, 0.15, 0.18, 1.0)
+        # Bloom
+        if hasattr(scene.eevee, "use_bloom"):
+            scene.eevee.use_bloom = True
+            scene.eevee.bloom_intensity = 1.2
+            scene.eevee.bloom_radius = 7.0
+        # High contrast
+        scene.view_settings.look = "High Contrast"
+        scene.view_settings.view_transform = "Filmic"
+        
+        # Apply post-processing
+        post_processing = PostProcessingSuite()
+        post_processing.apply_cinematic_preset()
+
+    elif style == "autumn":
+        suite._initialize_scene()
+        suite.setup_cinematic_camera(Vector((0, 0, 0)), 35.0, 10.0)
+        suite.setup_advanced_lighting("nebula")
+        # Warm autumn world color
+        world = scene.world
+        if world and world.use_nodes:
+            bg = world.node_tree.nodes.get("Background")
+            if bg:
+                bg.inputs["Color"].default_value = (0.18, 0.10, 0.04, 1.0)
+        if hasattr(scene.eevee, "use_bloom"):
+            scene.eevee.use_bloom = True
+            scene.eevee.bloom_intensity = 1.0
+            scene.eevee.bloom_radius = 6.0
+        scene.view_settings.look = "Medium High Contrast"
+        scene.view_settings.view_transform = "Filmic"
+        
+        # Apply post-processing
+        post_processing = PostProcessingSuite()
+        post_processing.add_color_grading("warm")
+        post_processing.add_vignette(0.3, 0.8)
+
+    elif style == "iridescent":
+        suite._initialize_scene()
+        suite.setup_cinematic_camera(Vector((0, 0, 0)), 45.0, 15.0)
+        suite.setup_advanced_lighting("deep_space")
+        # Iridescent world color
+        world = scene.world
+        if world and world.use_nodes:
+            bg = world.node_tree.nodes.get("Background")
+            if bg:
+                bg.inputs["Color"].default_value = (0.10, 0.12, 0.18, 1.0)
+        if hasattr(scene.eevee, "use_bloom"):
+            scene.eevee.use_bloom = True
+            scene.eevee.bloom_intensity = 1.5
+            scene.eevee.bloom_radius = 8.0
+        scene.view_settings.look = "Very High Contrast"
+        scene.view_settings.view_transform = "Filmic"
+        
+        # Apply post-processing
+        post_processing = PostProcessingSuite()
+        post_processing.add_lens_flare("stellar", 1.0)
+        post_processing.add_star_glow(1.5, 12)
+
+    elif style == "cinematic_closeup":
+        suite._initialize_scene()
+        suite.setup_cinematic_camera(Vector((0, 0, 0)), 10.0, 2.0)
+        suite.setup_advanced_lighting("deep_space")
+        # Moody world color
+        world = scene.world
+        if world and world.use_nodes:
+            bg = world.node_tree.nodes.get("Background")
+            if bg:
+                bg.inputs["Color"].default_value = (0.01, 0.01, 0.01, 1.0)
+        if hasattr(scene.eevee, "use_bloom"):
+            scene.eevee.use_bloom = True
+            scene.eevee.bloom_intensity = 1.8
+            scene.eevee.bloom_radius = 9.0
+        scene.view_settings.look = "Very High Contrast"
+        scene.view_settings.view_transform = "Filmic"
+        
+        # Apply post-processing
+        post_processing = PostProcessingSuite()
+        post_processing.apply_dramatic_preset()
+
+    elif style == "dreamy_pastel":
+        suite._initialize_scene()
+        suite.setup_cinematic_camera(Vector((0, 0, 0)), 30.0, 8.0)
+        suite.setup_advanced_lighting("nebula")
+        # Pastelliger world color
+        world = scene.world
+        if world and world.use_nodes:
+            bg = world.node_tree.nodes.get("Background")
+            if bg:
+                bg.inputs["Color"].default_value = (0.95, 0.90, 0.98, 1.0)
+        if hasattr(scene.eevee, "use_bloom"):
+            scene.eevee.use_bloom = True
+            scene.eevee.bloom_intensity = 0.7
+            scene.eevee.bloom_radius = 5.0
+        scene.view_settings.look = "Low Contrast"
+        scene.view_settings.view_transform = "Filmic"
+        
+        # Apply post-processing
+        post_processing = PostProcessingSuite()
+        post_processing.apply_dreamy_preset()
+
+    else:
+        print(f"Unknown style preset: {style}. Using default luxury_teal.")
+        apply_visual_style(suite, "luxury_teal")
+
+    print(f"Applied visual style: {style}")
+
+
+def create_futuristic_scene(
+    scene_name: str = "FuturisticAstroScene",
+    style: str = "luxury_teal",
+    use_post_processing: bool = True,
+) -> AdvancedVisualizationSuite:
+    """
+    Create a complete futuristic astronomical scene with all advanced features.
+    
+    Args:
+        scene_name: Name of the scene
+        style: Visual style preset
+        use_post_processing: Whether to apply post-processing effects
+        
+    Returns:
+        Configured advanced visualization suite
+    """
+    # Create advanced suite
+    suite = AdvancedVisualizationSuite(scene_name)
+    
+    # Apply visual style
+    apply_visual_style(suite, style)
+    
+    # Apply post-processing if requested
+    if use_post_processing:
+        post_processing = PostProcessingSuite(scene_name)
+        if style == "luxury_teal":
+            post_processing.apply_cinematic_preset()
+        elif style == "dramatic":
+            post_processing.apply_dramatic_preset()
+        elif style == "dreamy":
+            post_processing.apply_dreamy_preset()
+    
+    return suite
+
+
+def apply_material_preset(
+    object_name: str,
+    material_preset: str = "luxury_teal",
+) -> bpy.types.Material:
+    """
+    Apply a material preset to an object.
+    
+    Args:
+        object_name: Name of the object
+        material_preset: Material preset name
+        
+    Returns:
+        Applied material
+    """
+    obj = bpy.data.objects.get(object_name)
+    if not obj:
+        print(f"Object {object_name} not found")
+        return None
+    
+    # Get material based on preset
+    if material_preset == "luxury_teal":
+        material = MaterialPresets.luxury_teal_material()
+    elif material_preset == "golden_metallic":
+        material = MaterialPresets.golden_metallic_material()
+    elif material_preset == "crystal_glass":
+        material = MaterialPresets.crystal_glass_material()
+    elif material_preset == "holographic_blue":
+        material = MaterialPresets.holographic_blue_material()
+    elif material_preset == "energy_purple":
+        material = MaterialPresets.energy_purple_material()
+    else:
+        print(f"Unknown material preset: {material_preset}")
+        return None
+    
+    # Apply material to object
+    if obj.data.materials:
+        obj.data.materials[0] = material
+    else:
+        obj.data.materials.append(material)
+    
+    return material
+
+
+# Export all classes and functions
+__all__ = [
+    "AdvancedVisualizationSuite",
+    "PostProcessingSuite", 
+    "ArtisticFilters",
+    "FuturisticMaterials",
+    "MaterialPresets",
+    "apply_visual_style",
+    "create_futuristic_scene",
+    "apply_material_preset",
+]
 
 
 if __name__ == "__main__":
