@@ -1,22 +1,24 @@
 # 🎨 Cosmograph Integration Guide
 
-Interactive 3D visualization for astronomical data using CosmographBridge.
+Interactive 3D visualization for astronomical data using CosmographBridge with Polars for efficient data handling.
 
 ## 🚀 Quick Start
 
 ```python
-from astro_lab.data.core import create_cosmic_web_loader
 from astro_lab.utils.viz import CosmographBridge
+import polars as pl
 
-# Load astronomical data
-results = create_cosmic_web_loader(survey="gaia", max_samples=500)
-
-# Create interactive 3D visualization
+# Create bridge
 bridge = CosmographBridge()
-widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 
-# Display in Jupyter notebook
-display(widget)
+# Create visualization from Polars DataFrame
+df = pl.DataFrame({
+    'x': [1, 2, 3, 4, 5],
+    'y': [1, 2, 3, 4, 5],
+    'z': [1, 2, 3, 4, 5]
+})
+
+viz = bridge.from_polars_dataframe(df, radius=2.0)
 ```
 
 ## 🌟 Key Features
@@ -32,6 +34,10 @@ display(widget)
 - **Automatic color mapping**: Survey-specific visual themes
 - **Real-time updates**: Dynamic visualization as data changes
 - **Jupyter compatibility**: Works in notebooks and lab environments
+
+### Polars Integration
+- **Efficient data handling**: Use Polars DataFrames for data processing
+- **Automatic graph creation**: Neighbor graphs based on spatial proximity
 
 ## 🔧 Basic Usage
 
