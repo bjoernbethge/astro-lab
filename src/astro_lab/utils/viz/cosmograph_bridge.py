@@ -11,10 +11,16 @@ from typing import Any, Dict, List, Optional, Union
 import numpy as np
 import polars as pl
 
-# Suppress NumPy warnings for Cosmograph compatibility
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore", message="A module that was compiled using NumPy 1.x")
-    from cosmograph import cosmo
+# Try to import cosmograph with error handling
+COSMOGRAPH_AVAILABLE = False
+try:
+    # Suppress NumPy warnings for Cosmograph compatibility
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="A module that was compiled using NumPy 1.x")
+        from cosmograph import cosmo
+    COSMOGRAPH_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    warnings.warn(f"Cosmograph not available: {e}. Install with: pip install cosmograph")
 
 
 class CosmographBridge:
@@ -28,6 +34,11 @@ class CosmographBridge:
     
     def __init__(self):
         """Initialize the Cosmograph bridge."""
+        if not COSMOGRAPH_AVAILABLE:
+            raise ImportError(
+                "Cosmograph is not available. Install with: pip install cosmograph"
+            )
+        
         self.default_config = {
             'background_color': '#000011',
             'simulation_gravity': 0.1,
@@ -389,6 +400,11 @@ def create_cosmograph_visualization(data_source, **kwargs):
     Returns:
         Cosmograph widget
     """
+    if not COSMOGRAPH_AVAILABLE:
+        raise ImportError(
+            "Cosmograph is not available. Install with: pip install cosmograph"
+        )
+    
     bridge = CosmographBridge()
     
     if hasattr(data_source, 'cartesian'):
