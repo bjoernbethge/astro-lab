@@ -26,8 +26,8 @@ except ImportError as e:
     print(f"⚠️ NumPy import error: {e}")
     np = None
 
-from src.astro_lab.widgets.astro_lab import AstroLabWidget
-from src.astro_lab.utils.viz.bidirectional_bridge import (
+from astro_lab.widgets.astro_lab import AstroLabWidget
+from astro_lab.utils.viz.bidirectional_bridge import (
     BidirectionalPyVistaBlenderBridge,
     SyncConfig,
     quick_convert_pyvista_to_blender,

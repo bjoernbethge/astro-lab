@@ -1,139 +1,143 @@
+#!/usr/bin/env python3
 """
-Live Tensor to Blender Socket Demo
-==================================
+🌌 Live Tensor Demo
 
-This script demonstrates the power of the `LiveTensorSocketBridge`.
-It creates a procedural object in Blender and then links PyTorch tensors
-to its Geometry Node inputs. By changing the tensor values in Python,
-the Blender object is updated in real-time.
-
-**To see this in action:**
-1. Open Blender.
-2. Run this script from your IDE or the command line.
-3. Observe the created 'ProceduralGalaxy' object in Blender.
-4. Watch the console output as the script modifies the tensors.
-   The galaxy in Blender will change its size and star density accordingly.
+Demonstrates real-time tensor operations and visualization
+with live updates and interactive controls.
 """
 
-import torch
+import numpy as np
 import time
-import math
-from pathlib import Path
-import sys
+import threading
+from typing import Optional, Dict, Any
 
-# Add project root to Python path
-try:
-    from src.astro_lab.widgets.astro_lab import AstroLabWidget
-except ImportError:
-    project_root = Path(__file__).resolve().parent.parent
-    sys.path.append(str(project_root))
-    from src.astro_lab.widgets.astro_lab import AstroLabWidget
+# Import AstroLab components
+from astro_lab.widgets.astro_lab import AstroLabWidget
+from astro_lab.tensors.spatial_3d import Spatial3DTensor
 
-def run_live_demo(widget: AstroLabWidget):
-    """Executes the live tensor demonstration."""
-    print("\n--- Running Live Tensor to Blender Socket Demo ---")
-
-    # 1. Create a scene with a procedural object
-    print("Step 1: Creating a procedural galaxy in Blender.")
-    widget.al.core['reset_scene']()
-    galaxy_obj = widget.al.advanced.create_procedural_galaxy(
-        galaxy_type='spiral',
-        num_stars=50000,
-        radius=20.0
-    )
+def demo_live_tensor_updates():
+    """Demonstrates live tensor updates with real-time visualization."""
+    print("🔄 Live Tensor Updates Demo")
+    print("=" * 35)
     
-    if galaxy_obj is None:
-        print("❌ Could not create galaxy object. Aborting demo.")
-        print("   Make sure you are running Blender 2.93+ with the 'Node: Is Shader' patch or Blender 3.0+.")
-        return
-        
-    obj_name = galaxy_obj.name
-    print(f"   - Created object: '{obj_name}'")
-
-    # 2. Define the tensors in Python that will control the object
-    print("Step 2: Creating PyTorch control tensors.")
+    # Create widget
+    widget = AstroLabWidget(num_galaxies=1000)
     
-    # We start these tensors with the initial values of the galaxy
-    radius_tensor = torch.tensor(20.0, dtype=torch.float32)
+    # Create initial visualization
+    plotter = widget.create_visualization()
     
-    # Let's control the 'Arm Rotation' property
-    arm_rotation_tensor = torch.tensor(0.5, dtype=torch.float32)
-
-    # 3. Link the tensors to the Geometry Node sockets
-    print("Step 3: Linking tensors to Blender's node sockets.")
+    print("✅ Initial visualization created")
+    print("🔄 Starting live updates...")
     
-    # Note: You can find the socket identifier by hovering over the input
-    # in the Geometry Nodes modifier panel in Blender. It's often "Input_X"
-    # where X is the position of the input.
-    # For our 'create_procedural_galaxy' function:
-    # - "Radius" is Input_2
-    # - "Arm Rotation" is Input_5
-    
-    widget.al.live_bridge.link(radius_tensor, obj_name, "Input_2")
-    widget.al.live_bridge.link(arm_rotation_tensor, obj_name, "Input_5")
-
-    # 4. Animate the tensor values in a loop
-    print("\nStep 4: Starting live animation loop (Python -> Blender). Press Ctrl+C to stop.")
-    print("      (Watch the 'ProceduralGalaxy' object in Blender!)")
-    print("\n✨ TRY THIS: While the animation is running, manually change the 'Radius' or")
-    print("      'Arm Rotation' values in Blender's Geometry Nodes modifier panel.")
-    print("      You will see your change for a moment before the script overwrites it.\n")
-    
-    start_time = time.time()
-    try:
-        # Run for a fixed duration for automated testing (e.g., 10 seconds)
-        print("Running Python -> Blender animation for 10 seconds...")
-        for _ in range(200): # 200 * 0.05s = 10s
-            elapsed_time = time.time() - start_time
+    # Simulate live data updates
+    def update_loop():
+        for i in range(10):
+            # Generate new data
+            new_data = np.random.randn(1000, 3) * (1 + i * 0.1)
             
-            # Python updates the tensor -> Blender gets updated
-            new_radius = 20.0 + 5.0 * math.sin(elapsed_time * 0.5)
-            radius_tensor.fill_(new_radius)
+            # Update tensor
+            if hasattr(widget, 'galaxy_df'):
+                # Update Polars DataFrame
+                widget.galaxy_df = widget.galaxy_df.with_columns([
+                    (pl.col("ra") + np.random.normal(0, 0.1, len(widget.galaxy_df))).alias("ra"),
+                    (pl.col("dec") + np.random.normal(0, 0.1, len(widget.galaxy_df))).alias("dec"),
+                    (pl.col("redshift") + np.random.normal(0, 0.01, len(widget.galaxy_df))).alias("redshift")
+                ])
             
-            new_rotation = 0.5 + elapsed_time * 0.1
-            arm_rotation_tensor.fill_(new_rotation)
-
-            # Read back the value from the tensor to show it's consistent
-            # If you changed it in Blender, you'd see the change here for one frame
-            r_val = radius_tensor.item()
-            rot_val = arm_rotation_tensor.item()
-            print(f"\rPython -> Blender | Radius: {r_val:.2f}, Arm Rotation: {rot_val:.2f}   ", end="")
-            
-            time.sleep(0.05)
-            
-    except KeyboardInterrupt:
-        print("\n\nAnimation stopped by user.")
+            print(f"📊 Update {i+1}/10: {len(new_data)} points")
+            time.sleep(2)
     
-    print("\n\nPython -> Blender animation finished.")
+    # Start update thread
+    update_thread = threading.Thread(target=update_loop)
+    update_thread.daemon = True
+    update_thread.start()
+    
+    # Show visualization
+    plotter.show()
+    
+    return widget
 
-    # 5. Demonstrate Blender -> Python sync
-    print("\nStep 5: Demonstrating Blender -> Python synchronization.")
-    print("      You now have 15 seconds to freely change the values in Blender.")
-    print("      Watch the console to see the Python tensor update in real-time.\n")
+def demo_interactive_tensor_manipulation():
+    """Demonstrates interactive tensor manipulation."""
+    print("\n🎛️ Interactive Tensor Manipulation")
+    print("=" * 40)
+    
+    widget = AstroLabWidget(num_galaxies=500)
+    
+    # Add interactive controls
+    widget.add_interactive_controls()
+    
+    # Create visualization with controls
+    plotter = widget.create_visualization()
+    
+    print("✅ Interactive controls added")
+    print("   - Use sliders to adjust visualization")
+    print("   - Real-time tensor updates")
+    
+    # Show interactive visualization
+    plotter.show()
+    
+    return widget
 
-    try:
-        for i in range(150): # ~15 seconds
-            r_val = radius_tensor.item()
-            rot_val = arm_rotation_tensor.item()
-            print(f"\rBlender -> Python | Radius: {r_val:.2f}, Arm Rotation: {rot_val:.2f}   ", end="")
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        pass # Allow skipping this part
-        
-    finally:
-        # 6. Unlink the tensors to stop the updates
-        print("\n\nStep 6: Unlinking tensors.")
-        widget.al.live_bridge.unlink(obj_name, "Input_2")
-        widget.al.live_bridge.unlink(obj_name, "Input_5")
-        print("✅ Demo finished.")
-
+def demo_tensor_analysis():
+    """Demonstrates tensor analysis with live updates."""
+    print("\n📈 Tensor Analysis Demo")
+    print("=" * 25)
+    
+    widget = AstroLabWidget(num_galaxies=2000)
+    
+    # Initial analysis
+    print("📊 Initial analysis:")
+    widget.analyze_data()
+    
+    # Simulate progressive analysis
+    def analysis_loop():
+        for i in range(5):
+            time.sleep(3)
+            print(f"\n📊 Analysis update {i+1}/5:")
+            
+            # Add more data
+            additional_data = np.random.randn(500, 3)
+            # Update analysis
+            widget.analyze_data()
+    
+    # Start analysis thread
+    analysis_thread = threading.Thread(target=analysis_loop)
+    analysis_thread.daemon = True
+    analysis_thread.start()
+    
+    # Create visualization
+    plotter = widget.create_visualization()
+    plotter.show()
+    
+    return widget
 
 if __name__ == "__main__":
-    print("Initializing AstroLabWidget for Live Demo...")
-    widget = AstroLabWidget()
-
-    if widget.blender_available():
-        run_live_demo(widget)
-    else:
-        print("\n❌ Blender API not available.")
-        print("   This demo requires a running Blender instance and the 'bpy' module.") 
+    print("🌌 Live Tensor Demo Suite")
+    print("=" * 40)
+    
+    # Run demos
+    try:
+        live_widget = demo_live_tensor_updates()
+        print("✅ Live tensor updates demo completed")
+    except Exception as e:
+        print(f"❌ Live tensor updates demo failed: {e}")
+    
+    try:
+        interactive_widget = demo_interactive_tensor_manipulation()
+        print("✅ Interactive tensor manipulation demo completed")
+    except Exception as e:
+        print(f"❌ Interactive tensor manipulation demo failed: {e}")
+    
+    try:
+        analysis_widget = demo_tensor_analysis()
+        print("✅ Tensor analysis demo completed")
+    except Exception as e:
+        print(f"❌ Tensor analysis demo failed: {e}")
+    
+    print("\n🎉 All live tensor demos completed!")
+    print("\n💡 Key Features:")
+    print("   - Real-time tensor updates")
+    print("   - Interactive controls")
+    print("   - Live data analysis")
+    print("   - Threaded operations") 

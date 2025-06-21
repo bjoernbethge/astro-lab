@@ -10,7 +10,7 @@ Shows the new direct Blender API integration:
 - widget.utils: Blender Utilities
 """
 
-from src.astro_lab.widgets.astro_lab import AstroLabWidget
+from astro_lab.widgets.astro_lab import AstroLabWidget
 
 
 def demo_blender_api():

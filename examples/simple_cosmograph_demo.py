@@ -1,133 +1,116 @@
 #!/usr/bin/env python3
 """
-Simple Cosmograph Demo - Using CosmographBridge with AstroLab data.
+🌌 Simple Cosmograph Demo
 
-Shows how to create interactive graph visualizations from AstroLab tensors
-and survey data using the CosmographBridge class.
+Demonstrates basic cosmic web analysis and visualization
+using AstroLab's cosmic web analysis and CosmographBridge.
 """
 
-from src.astro_lab.data.core import create_cosmic_web_loader
-from src.astro_lab.utils.viz.cosmograph_bridge import (
-    CosmographBridge,
-    create_cosmograph_visualization,
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz.cosmograph_bridge import (
+    CosmographBridge, create_cosmograph_visualization
 )
 
-
-def demo_gaia_stars():
+def demo_gaia_cosmic_web():
     """Demo with Gaia stellar data."""
-    print("Loading Gaia data...")
+    print("🌟 Gaia Cosmic Web Analysis")
+    print("=" * 30)
     
-    # Load Gaia data using cosmic web loader
-    results = create_cosmic_web_loader(survey="gaia", max_samples=500)
+    # Load Gaia data with cosmic web analysis
+    results = create_cosmic_web_loader(
+        survey="gaia",
+        max_samples=1000,
+        scales_mpc=[5.0, 10.0, 20.0]
+    )
     
-    # Create visualization using the new cosmic web method
+    print(f"Found {results['n_objects']} objects")
+    print(f"Volume: {results['total_volume']:.0f} Mpc³")
+    
+    # Create interactive visualization
     bridge = CosmographBridge()
     widget = bridge.from_cosmic_web_results(
-        results, 
+        results,
         survey_name="gaia",
         radius=3.0,
-        point_color='#ffd700'  # Gold for stars
+        background_color='#000011'
     )
     
-    print(f"✅ Gaia visualization created: {len(results['coordinates'])} stars")
     return widget
 
-
-def demo_sdss_galaxies():
+def demo_sdss_cosmic_web():
     """Demo with SDSS galaxy data."""
-    print("Loading SDSS data...")
+    print("🌌 SDSS Cosmic Web Analysis")
+    print("=" * 30)
     
     # Load SDSS data
-    results = create_cosmic_web_loader(survey="sdss", max_samples=300)
+    results = create_cosmic_web_loader(
+        survey="sdss",
+        max_samples=500,
+        scales_mpc=[10.0, 20.0, 50.0]
+    )
     
-    # Use convenience function with cosmic web results
-    widget = create_cosmograph_visualization(
+    print(f"Found {results['n_objects']} galaxies")
+    print(f"Volume: {results['total_volume']:.0f} Mpc³")
+    
+    # Create visualization
+    bridge = CosmographBridge()
+    widget = bridge.from_cosmic_web_results(
         results,
         survey_name="sdss",
-        radius=8.0,
-        background_color='#001122'
+        radius=5.0,
+        background_color='#000011'
     )
     
-    print(f"✅ SDSS visualization created: {len(results['coordinates'])} galaxies")
     return widget
 
-
-def demo_tng50_simulation():
+def demo_tng50_cosmic_web():
     """Demo with TNG50 simulation data."""
-    print("Loading TNG50 data...")
+    print("🌌 TNG50 Cosmic Web Analysis")
+    print("=" * 30)
     
     # Load TNG50 data
-    results = create_cosmic_web_loader(survey="tng50", max_samples=400)
+    results = create_cosmic_web_loader(
+        survey="tng50",
+        max_samples=300,
+        scales_mpc=[5.0, 10.0, 20.0]
+    )
+    
+    print(f"Found {results['n_objects']} particles")
+    print(f"Volume: {results['total_volume']:.0f} Mpc³")
     
     # Create visualization
     bridge = CosmographBridge()
     widget = bridge.from_cosmic_web_results(
         results,
-        survey_name="tng50", 
-        radius=12.0,
-        point_color='#00ff00',  # Green for simulation
-        simulation_gravity=0.05,
-        simulation_repulsion=0.4
+        survey_name="tng50",
+        radius=4.0,
+        background_color='#000011'
     )
     
-    print(f"✅ TNG50 visualization created: {len(results['coordinates'])} particles")
     return widget
-
-
-def demo_nsa_galaxies():
-    """Demo with NSA galaxy data."""
-    print("Loading NSA data...")
-    
-    # Load NSA data
-    results = create_cosmic_web_loader(survey="nsa", max_samples=200)
-    
-    # Create visualization
-    bridge = CosmographBridge()
-    widget = bridge.from_cosmic_web_results(
-        results,
-        survey_name="nsa",
-        radius=10.0,
-        point_color='#e24a4a',  # Red for NSA
-        simulation_gravity=0.02,
-        simulation_repulsion=0.3
-    )
-    
-    print(f"✅ NSA visualization created: {len(results['coordinates'])} galaxies")
-    return widget
-
-
-def main():
-    """Run all demos."""
-    print("🌌 Simple Cosmograph Demo with Real Data")
-    print("=" * 40)
-    
-    widgets = []
-    
-    try:
-        # Demo 1: Gaia stars
-        widgets.append(demo_gaia_stars())
-        
-        # Demo 2: SDSS galaxies  
-        widgets.append(demo_sdss_galaxies())
-        
-        # Demo 3: TNG50 simulation
-        widgets.append(demo_tng50_simulation())
-        
-        # Demo 4: NSA galaxies
-        widgets.append(demo_nsa_galaxies())
-        
-        print(f"\n✅ All {len(widgets)} visualizations created successfully!")
-        print("\n💡 Tips:")
-        print("   - Click and drag to navigate")
-        print("   - Scroll to zoom")
-        print("   - Right-click for simulation control")
-        
-        return widgets
-        
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return []
-
 
 if __name__ == "__main__":
-    main() 
+    print("🌌 AstroLab Cosmograph Demo")
+    print("=" * 40)
+    
+    # Run demos
+    try:
+        gaia_widget = demo_gaia_cosmic_web()
+        print("✅ Gaia demo completed")
+    except Exception as e:
+        print(f"❌ Gaia demo failed: {e}")
+    
+    try:
+        sdss_widget = demo_sdss_cosmic_web()
+        print("✅ SDSS demo completed")
+    except Exception as e:
+        print(f"❌ SDSS demo failed: {e}")
+    
+    try:
+        tng50_widget = demo_tng50_cosmic_web()
+        print("✅ TNG50 demo completed")
+    except Exception as e:
+        print(f"❌ TNG50 demo failed: {e}")
+    
+    print("\n🎉 All demos completed!")
+    print("Check the widgets for interactive visualization.") 

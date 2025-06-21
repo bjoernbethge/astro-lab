@@ -28,7 +28,7 @@ pip install bpy
 ## 🚀 Quick Start
 
 ```python
-from src.astro_lab.widgets import AstroLabWidget
+from astro_lab.widgets import AstroLabWidget
 
 # 1. Simple demo with simulated data
 widget = AstroLabWidget(num_galaxies=5000)
@@ -43,10 +43,10 @@ widget.show()
 widget.add_interactive_controls()
 
 # 4. Blender export (if available)
-widget.export_to_blender("my_universe.blend")
+widget.export_blender_scene("my_universe.blend")
 
 # 5. Survey comparison
-from src.astro_lab.widgets.pyvista_bpy_widget import compare_surveys
+from astro_lab.widgets import compare_surveys
 tng_widget, gaia_widget = compare_surveys()
 ```
 
@@ -54,13 +54,13 @@ tng_widget, gaia_widget = compare_surveys()
 
 ```bash
 # 1. AstroLab Widget Demo (interactive)
-python -c "from src.astro_lab.widgets import AstroLabWidget; AstroLabWidget().show()"
+python -c "from astro_lab.widgets import AstroLabWidget; AstroLabWidget().show()"
 
 # 2. Simple 3D scatterplots (all surveys)
 python demo_astrolab_widget.py
 
 # 3. Survey comparison
-python -c "from src.astro_lab.widgets.pyvista_bpy_widget import compare_surveys; compare_surveys()"
+python -c "from astro_lab.widgets import compare_surveys; compare_surveys()"
 ```
 
 ## 🏗️ Architecture
@@ -75,7 +75,7 @@ AstroLabWidget(AstroPipeline)   # Extended with AstroLab integration
 - load_real_data()              # Uses existing AstroLab loaders
 - _tensor_to_polars()           # Converts AstroLab tensors
 - add_interactive_controls()    # PyVista widgets
-- export_to_blender()           # Blender integration
+- export_blender_scene()        # Blender integration
 - analyze_data()                # Polars-based analysis
 ```
 
@@ -101,16 +101,16 @@ AstroLabWidget(AstroPipeline)   # Extended with AstroLab integration
 ## 📊 Example Pipeline
 
 ```python
-from src.astro_lab.widgets.pyvista_bpy_widget import AstroPipeline
+from astro_lab.widgets import AstroLabWidget
 
 # 1. Generate/load data
-pipeline = AstroPipeline(num_galaxies=10000)
+widget = AstroLabWidget(num_galaxies=10000)
 
 # 2. Transform coordinates (Astropy)
-coords_3d, sky_coords = pipeline.get_3d_coordinates()
+coords_3d, sky_coords = widget.get_3d_coordinates()
 
 # 3. Create visualization (PyVista)
-plotter = pipeline.create_visualization()
+plotter = widget.create_visualization()
 plotter.show()
 ```
 
@@ -141,12 +141,11 @@ plotter.show()
 
 ### Import errors
 ```bash
-# Check Python path
-export PYTHONPATH="${PYTHONPATH}:/path/to/astro-lab"
+# Check if astro-lab is installed
+python -c "import astro_lab; print('astro-lab installed successfully')"
 
-# Or run from the correct directory
-cd /path/to/astro-lab
-python -c "from src.astro_lab.widgets import AstroLabWidget; AstroLabWidget().show()"
+# Or install in development mode
+pip install -e .
 ```
 
 ### Performance issues
@@ -183,8 +182,8 @@ conda install -c conda-forge polars pyvista astropy
 
 The widget uses **inheritance** and builds on existing AstroLab components:
 
-- `src/astro_lab/data/core.py` - Data loaders
-- `src/astro_lab/widgets/` - Widget framework
+- `astro_lab.data.core` - Data loaders
+- `astro_lab.widgets.astro_lab` - Main widget implementation
 - Extend easily instead of reinventing! 🎯
 
 ---
