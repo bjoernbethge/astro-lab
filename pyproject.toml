@@ -26,7 +26,7 @@ dependencies = [
     "marimo-flow>=0.1.1",
     "torchinfo>=1.8.0",
     "numba>=0.61.2",
-    "bpy>=4.4.0",
+    "bpy>=4.4.0",  # Blender Python API
     "bvh>=0.3",
     "anywidget>=0.9.18",
     "traitlets>=5.14.3",
@@ -44,7 +44,9 @@ dependencies = [
     "plotly>=6.1.2",
     "astro-viz",
     "lightning-utilities==0.14.3",
-    "markupsafe>=3.0.2"
+    "markupsafe>=3.0.2",
+    "pandas>=1.5,<2.0",
+    "numpy>=1.24,<2.0",  # Compatible with pandas and sklearn
 ]
 
 
@@ -63,18 +65,38 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
-    "fake-bpy-module-latest>=20250616",
+    "psutil>=6.1.0",  # For memory monitoring
+]
+
+# Testing specific
+test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "pytest-xdist>=3.0.0",
+    "pytest-xdist>=3.0.0", # Parallel testing
+    "pytest-timeout>=2.0.0", # Test timeouts
+    "pytest-rerunfailures>=12.0", # Retry failed tests
+    "psutil>=6.1.0", # For memory monitoring
+]
+
+# Linting and formatting
+lint = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
+]
+
+# Documentation
+docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.20.0",
 ]
-
+optim = [
+    "optuna>=4.4.0",
+]
+viz = [
+    "marimo>=0.13.15",
+]
 
 # PyTorch with CUDA support
 [[tool.uv.index]]
@@ -103,7 +125,7 @@ ignore = [
     "F401",  # Unused imports (for optional dependencies like healpy)
 ]
 
-# MyPy configuration for proper type checking with fake-bpy-module
+# MyPy configuration
 [tool.mypy]
 python_version = "3.11"
 warn_return_any = false
@@ -118,7 +140,7 @@ warn_unused_ignores = false
 warn_no_return = false
 warn_unreachable = false
 strict_equality = false
-# Allow imports of bpy and mathutils from fake-bpy-module
+# Allow imports of bpy and mathutils (real Blender modules)
 ignore_missing_imports = true
 # Ignore NumPy type issues
 ignore_errors = true
@@ -155,16 +177,18 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 
 addopts = [
-    "-ra",
+    "-ra",  # Show summary of all test results
     "--strict-markers", 
     "--strict-config",
-    "--tb=short",
+    "--tb=short",  # Shorter traceback format
     "--disable-warnings",
-    "-v"
-    # Parallel execution disabled for now
-    # "-n", "auto",  # Parallel execution
-    # "--dist", "worksteal"  # Better load balancing
+    "-v",  # Verbose output
+    "-n", "auto",  # Parallel execution with auto-detection
+    "--dist", "worksteal",  # Better load balancing
+    "--durations", "10",  # Show 10 slowest tests
+    "--maxfail", "10",  # Stop after 10 failures
 ]
+
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",
@@ -172,8 +196,12 @@ markers = [
     "cuda: Tests that require CUDA",
     "requires_data: Tests that require external data files",
     "blender: Tests that require Blender",
-    "blender_compatibility: Tests for Blender compatibility and error handling"
+    "blender_compatibility: Tests for Blender compatibility and error handling",
+    "serial: Tests that must run serially (not in parallel)",
+    "memory_intensive: Tests that use a lot of memory",
+    "network: Tests that require network access"
 ]
+
 filterwarnings = [
     "ignore::UserWarning",
     "ignore::DeprecationWarning", 
@@ -186,5 +214,7 @@ filterwarnings = [
     "ignore:.*NumPy 1.x.*:UserWarning",
     "ignore:.*numpy.core.multiarray.*:UserWarning",
     "ignore:.*Unable to initialise audio.*:UserWarning",
-    "ignore:.*Viewport capture module.*:UserWarning"
+    "ignore:.*Viewport capture module.*:UserWarning",
+    "ignore:.*pytest.*:UserWarning",  # Ignore pytest warnings
+    "ignore:.*xdist.*:UserWarning"  # Ignore xdist warnings
 ]
