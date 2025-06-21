@@ -15,6 +15,7 @@ from torch_geometric.nn import GCNConv, Linear, global_mean_pool
 from astro_lab.tensors import SurveyTensor
 from astro_lab.models.encoders import AstrometryEncoder, PhotometryEncoder
 from astro_lab.models.utils import initialize_weights
+from astro_lab.models.layers import LayerFactory
 
 # AstroPhot integration
 try:

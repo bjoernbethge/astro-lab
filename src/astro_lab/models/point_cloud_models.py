@@ -26,6 +26,7 @@ from torch_geometric.transforms import KNNGraph, SamplePoints
 
 from astro_lab.models.base_gnn import BaseAstroGNN
 from astro_lab.tensors import SurveyTensor
+from astro_lab.models.layers import LayerFactory
 
 
 class GravitationalMessagePassing(MessagePassing):
@@ -35,9 +36,9 @@ class GravitationalMessagePassing(MessagePassing):
         super().__init__(aggr="add")  # Sum gravitational forces
 
         self.mlp = nn.Sequential(
-            nn.Linear(hidden_dim * 2 + 1, hidden_dim),
+            LayerFactory.create_mlp(hidden_dim * 2 + 1, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, hidden_dim),
+            LayerFactory.create_mlp(hidden_dim, hidden_dim),
         )
 
         # Learnable gravitational constant scaling
@@ -96,23 +97,15 @@ class StellarPointCloudGNN(BaseAstroGNN):
         # PointNet++ layers for hierarchical stellar structures
         self.pointnet_layers = nn.ModuleList()
         for _ in range(3):
-            local_nn = nn.Sequential(
-                nn.Linear(hidden_dim + 3, hidden_dim),  # +3 for position features
-                nn.ReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-            )
-            global_nn = nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, hidden_dim),
-            )
+            local_nn = LayerFactory.create_mlp(hidden_dim + 3, hidden_dim)
+            global_nn = LayerFactory.create_mlp(hidden_dim, hidden_dim)
             self.pointnet_layers.append(PointNetConv(local_nn, global_nn))
 
         # GAT layers for adaptive star weighting (brightness/importance)
         self.attention_layers = nn.ModuleList(
             [
-                GATConv(hidden_dim, hidden_dim // 8, heads=8, dropout=0.1),
-                GATConv(hidden_dim, hidden_dim // 8, heads=8, dropout=0.1),
+                LayerFactory.create_conv_layer("gat", hidden_dim, hidden_dim, heads=8, dropout=0.1),
+                LayerFactory.create_conv_layer("gat", hidden_dim, hidden_dim, heads=8, dropout=0.1),
             ]
         )
 
@@ -122,9 +115,9 @@ class StellarPointCloudGNN(BaseAstroGNN):
 
         # Stellar feature encoder
         self.stellar_encoder = nn.Sequential(
-            nn.Linear(1, hidden_dim // 4),  # Start with magnitude
+            LayerFactory.create_mlp(1, hidden_dim // 4),  # Start with magnitude
             nn.ReLU(),
-            nn.Linear(hidden_dim // 4, hidden_dim),
+            LayerFactory.create_mlp(hidden_dim // 4, hidden_dim),
         )
 
     def build_stellar_graph(
@@ -206,32 +199,25 @@ class HierarchicalStellarGNN(BaseAstroGNN):
         self.scale_processors = nn.ModuleList()
         for scale in scales:
             # Create proper PointNetConv with MLPs
-            local_nn = nn.Sequential(
-                nn.Linear(self.hidden_dim + 3, self.hidden_dim),
-                nn.ReLU(),
-                nn.Linear(self.hidden_dim, self.hidden_dim),
-            )
-            global_nn = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim),
-                nn.ReLU(),
-                nn.Linear(self.hidden_dim, self.hidden_dim),
-            )
+            local_nn = LayerFactory.create_mlp(self.hidden_dim + 3, [self.hidden_dim], self.hidden_dim)
+            global_nn = LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim], self.hidden_dim)
             pointnet = PointNetConv(local_nn, global_nn)
 
             processor = nn.ModuleList(
                 [
                     pointnet,
                     nn.ReLU(),
-                    GATConv(
-                        self.hidden_dim, self.hidden_dim // 4, heads=4, concat=True
+                    LayerFactory.create_conv_layer(
+                        "gat", self.hidden_dim, self.hidden_dim // 4, heads=4, concat=True
                     ),
                 ]
             )
             self.scale_processors.append(processor)
 
         # Cross-scale fusion
+        total_scale_dim = len(scales) * self.hidden_dim
         self.scale_fusion = nn.Sequential(
-            nn.Linear(len(scales) * self.hidden_dim, self.hidden_dim),
+            LayerFactory.create_mlp(total_scale_dim, [self.hidden_dim], self.hidden_dim),
             nn.LayerNorm(self.hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
@@ -261,6 +247,13 @@ class HierarchicalStellarGNN(BaseAstroGNN):
             h_scale = processor[1](h_scale)  # ReLU
             h_scale = processor[2](h_scale, edge_index)  # GATConv
 
+            # Ensure correct dimensions
+            if h_scale.size(-1) != self.hidden_dim:
+                # Add projection if needed
+                if not hasattr(self, f'projection_{scale}'):
+                    setattr(self, f'projection_{scale}', nn.Linear(h_scale.size(-1), self.hidden_dim))
+                h_scale = getattr(self, f'projection_{scale}')(h_scale)
+
             scale_features.append(h_scale)
 
         # Fuse multi-scale features
@@ -286,32 +279,32 @@ class StellarClusterGNN(BaseAstroGNN):
 
         # Stellar evolution features
         self.evolution_encoder = nn.Sequential(
-            nn.Linear(5, self.hidden_dim // 2),  # B-V, V-I, etc.
+            LayerFactory.create_mlp(5, [self.hidden_dim // 2], self.hidden_dim // 2),  # B-V, V-I, etc.
             nn.ReLU(),
-            nn.Linear(self.hidden_dim // 2, self.hidden_dim),
+            LayerFactory.create_mlp(self.hidden_dim // 2, [self.hidden_dim], self.hidden_dim),
         )
 
         # Cluster-specific heads
         if cluster_detection:
             self.cluster_head = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim // 2], self.hidden_dim // 2),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim // 2, 1),
+                LayerFactory.create_mlp(self.hidden_dim // 2, [1], 1),
                 nn.Sigmoid(),
             )
 
         if age_estimation:
             self.age_head = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim // 2], self.hidden_dim // 2),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim // 2, 1),
+                LayerFactory.create_mlp(self.hidden_dim // 2, [1], 1),
             )
 
         if metallicity_estimation:
             self.metallicity_head = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim // 2], self.hidden_dim // 2),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim // 2, 1),
+                LayerFactory.create_mlp(self.hidden_dim // 2, [1], 1),
             )
 
     def forward(
@@ -368,9 +361,9 @@ class GalacticStructureGNN(BaseAstroGNN):
 
         # Galactic coordinate encoder
         self.galactic_encoder = nn.Sequential(
-            nn.Linear(6, self.hidden_dim),  # l, b, distance, pm_l, pm_b, vrad
+            LayerFactory.create_mlp(6, [self.hidden_dim], self.hidden_dim),  # l, b, distance, pm_l, pm_b, vrad
             nn.ReLU(),
-            nn.Linear(self.hidden_dim, self.hidden_dim),
+            LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim], self.hidden_dim),
         )
 
         # Structure-specific analyzers
@@ -382,16 +375,16 @@ class GalacticStructureGNN(BaseAstroGNN):
 
         if bar_detection:
             self.bar_head = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim // 2], self.hidden_dim // 2),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim // 2, 3),  # bar strength, angle, length
+                LayerFactory.create_mlp(self.hidden_dim // 2, [3], 3),  # bar strength, angle, length
             )
 
         if halo_analysis:
             self.halo_head = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, [self.hidden_dim // 2], self.hidden_dim // 2),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim // 2, 2),  # halo density, velocity dispersion
+                LayerFactory.create_mlp(self.hidden_dim // 2, [2], 2),  # halo density, velocity dispersion
             )
 
     def forward(

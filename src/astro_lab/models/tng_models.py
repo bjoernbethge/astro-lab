@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from astro_lab.models.tgnn import TemporalGATCNN, TemporalGCN
+from astro_lab.models.layers import LayerFactory
 
 
 class CosmicEvolutionGNN(TemporalGCN):
@@ -42,19 +43,19 @@ class CosmicEvolutionGNN(TemporalGCN):
         # Cosmological time encoding
         if redshift_encoding:
             self.redshift_encoder = nn.Sequential(
-                nn.Linear(1, hidden_dim // 4),
+                LayerFactory.create_mlp(1, hidden_dim // 4),
                 nn.ReLU(),
-                nn.Linear(hidden_dim // 4, hidden_dim // 4),
+                LayerFactory.create_mlp(hidden_dim // 4, hidden_dim // 4),
             )
-            self.time_projection = nn.Linear(hidden_dim + hidden_dim // 4, hidden_dim)
+            self.time_projection = LayerFactory.create_mlp(hidden_dim + hidden_dim // 4, hidden_dim)
 
         # Cosmological parameter prediction head
         if cosmological_features:
             self.cosmo_head = nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim // 2),
+                LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
                 nn.ReLU(),
                 nn.Dropout(0.1),
-                nn.Linear(hidden_dim // 2, 6),  # Omega_m, Omega_L, h, sigma_8, n_s, w
+                LayerFactory.create_mlp(hidden_dim // 2, 6),  # Omega_m, Omega_L, h, sigma_8, n_s, w
             )
 
     def encode_snapshot_with_redshift(
@@ -130,19 +131,19 @@ class GalaxyFormationGNN(TemporalGCN):
 
         # Environment encoder
         self.env_encoder = nn.Sequential(
-            nn.Linear(self.hidden_dim, environment_dim),
+            LayerFactory.create_mlp(self.hidden_dim, environment_dim),
             nn.ReLU(),
-            nn.Linear(environment_dim, environment_dim),
+            LayerFactory.create_mlp(environment_dim, environment_dim),
         )
 
         # Multi-task heads for galaxy properties
         self.property_heads = nn.ModuleDict(
             {
-                "stellar_mass": nn.Linear(self.hidden_dim, 1),
-                "sfr": nn.Linear(self.hidden_dim, 1),
-                "metallicity": nn.Linear(self.hidden_dim, 1),
-                "size": nn.Linear(self.hidden_dim, 1),
-                "morphology": nn.Linear(self.hidden_dim, 3),  # disk, bulge, irregular
+                "stellar_mass": LayerFactory.create_mlp(self.hidden_dim, 1),
+                "sfr": LayerFactory.create_mlp(self.hidden_dim, 1),
+                "metallicity": LayerFactory.create_mlp(self.hidden_dim, 1),
+                "size": LayerFactory.create_mlp(self.hidden_dim, 1),
+                "morphology": LayerFactory.create_mlp(self.hidden_dim, 3),  # disk, bulge, irregular
             }
         )
 
@@ -197,18 +198,18 @@ class HaloMergerGNN(TemporalGATCNN):
         if merger_detection:
             # Merger event detector
             self.merger_detector = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, self.hidden_dim // 2),
                 nn.ReLU(),
                 nn.Dropout(0.1),
-                nn.Linear(self.hidden_dim // 2, 1),
+                LayerFactory.create_mlp(self.hidden_dim // 2, 1),
                 nn.Sigmoid(),
             )
 
             # Merger mass ratio predictor
             self.mass_ratio_predictor = nn.Sequential(
-                nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+                LayerFactory.create_mlp(self.hidden_dim, self.hidden_dim // 2),
                 nn.ReLU(),
-                nn.Linear(self.hidden_dim // 2, 1),
+                LayerFactory.create_mlp(self.hidden_dim // 2, 1),
             )
 
     def detect_merger_events(
@@ -260,17 +261,17 @@ class EnvironmentalQuenchingGNN(TemporalGCN):
 
         # Environment classifier
         self.env_classifier = nn.Sequential(
-            nn.Linear(self.hidden_dim, self.hidden_dim // 2),
+            LayerFactory.create_mlp(self.hidden_dim, self.hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(self.hidden_dim // 2, environment_types),
+            LayerFactory.create_mlp(self.hidden_dim // 2, environment_types),
         )
 
         # Quenching predictor
         self.quenching_predictor = nn.Sequential(
-            nn.Linear(self.hidden_dim + environment_types, self.hidden_dim // 2),
+            LayerFactory.create_mlp(self.hidden_dim + environment_types, self.hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(self.hidden_dim // 2, 1),
+            LayerFactory.create_mlp(self.hidden_dim // 2, 1),
             nn.Sigmoid(),
         )
 

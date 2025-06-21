@@ -16,6 +16,7 @@ from torch_geometric.nn import GATConv, GCNConv, Linear, global_mean_pool
 from astro_lab.tensors.lightcurve import LightcurveTensor
 from astro_lab.models.encoders import LightcurveEncoder
 from astro_lab.models.utils import initialize_weights
+from astro_lab.models.layers import LayerFactory
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,12 @@ class TemporalGCN(nn.Module):
         self.dropout = dropout
 
         # Input projection
-        self.input_projection = nn.Linear(input_dim, hidden_dim)
+        self.input_projection = LayerFactory.create_mlp(input_dim, hidden_dim)
 
         # Graph convolution layers
         self.convs = nn.ModuleList()
         for i in range(graph_layers):
-            self.convs.append(GCNConv(hidden_dim, hidden_dim, normalize=True))
+            self.convs.append(LayerFactory.create_conv_layer("gcn", hidden_dim, hidden_dim))
 
         self.norms = nn.ModuleList(
             [nn.LayerNorm(hidden_dim) for _ in range(graph_layers)]
@@ -94,10 +95,10 @@ class TemporalGCN(nn.Module):
 
         # Output layer
         self.output_layer = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
+            LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_dim // 2, output_dim),
+            LayerFactory.create_mlp(hidden_dim // 2, output_dim),
         )
 
         self.apply(initialize_weights)
@@ -323,7 +324,7 @@ class ALCDEFTemporalGNN(nn.Module):
 
         # Graph convolution layers for temporal relationships
         self.convs = nn.ModuleList(
-            [GCNConv(hidden_dim, hidden_dim, normalize=True) for _ in range(num_layers)]
+            [LayerFactory.create_conv_layer("gcn", hidden_dim, hidden_dim) for _ in range(num_layers)]
         )
 
         self.norms = nn.ModuleList(
@@ -340,10 +341,10 @@ class ALCDEFTemporalGNN(nn.Module):
         else:
             # Generic regression head
             self.output_head = nn.Sequential(
-                Linear(hidden_dim, hidden_dim // 2),
+                LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
                 nn.ReLU(),
                 nn.Dropout(dropout),
-                Linear(hidden_dim // 2, output_dim),
+                LayerFactory.create_mlp(hidden_dim // 2, output_dim),
             )
 
         self.apply(initialize_weights)
@@ -392,12 +393,12 @@ class PeriodDetectionHead(nn.Module):
     def __init__(self, hidden_dim: int, output_dim: int):
         super().__init__()
         self.head = nn.Sequential(
-            Linear(hidden_dim, hidden_dim // 2),
+            LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(0.1),
-            Linear(hidden_dim // 2, hidden_dim // 4),
+            LayerFactory.create_mlp(hidden_dim // 2, hidden_dim // 4),
             nn.ReLU(),
-            Linear(hidden_dim // 4, output_dim),
+            LayerFactory.create_mlp(hidden_dim // 4, output_dim),
             nn.Softplus(),  # Ensure positive period values
         )
 
@@ -411,12 +412,12 @@ class ShapeModelingHead(nn.Module):
     def __init__(self, hidden_dim: int, output_dim: int):
         super().__init__()
         self.head = nn.Sequential(
-            Linear(hidden_dim, hidden_dim),
+            LayerFactory.create_mlp(hidden_dim, hidden_dim),
             nn.ReLU(),
             nn.Dropout(0.1),
-            Linear(hidden_dim, hidden_dim // 2),
+            LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
-            Linear(hidden_dim // 2, output_dim),
+            LayerFactory.create_mlp(hidden_dim // 2, output_dim),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -429,10 +430,10 @@ class ClassificationHead(nn.Module):
     def __init__(self, hidden_dim: int, num_classes: int):
         super().__init__()
         self.head = nn.Sequential(
-            Linear(hidden_dim, hidden_dim // 2),
+            LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
             nn.ReLU(),
             nn.Dropout(0.2),
-            Linear(hidden_dim // 2, num_classes),
+            LayerFactory.create_mlp(hidden_dim // 2, num_classes),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
