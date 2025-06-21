@@ -155,6 +155,13 @@ class AstroTrainer(Trainer):
             if k not in ["accelerator", "devices", "precision", "max_epochs"]
         }
 
+        # Determine if we should disable Lightning's default logging
+        disable_lightning_logs = (
+            MLFLOW_AVAILABLE and 
+            getattr(self.training_config.logging, 'use_mlflow', False) and
+            logger is not None
+        )
+
         # Initialize parent Trainer with modern parameters
         super().__init__(
             max_epochs=self.training_config.scheduler.max_epochs,
@@ -163,6 +170,12 @@ class AstroTrainer(Trainer):
             precision=precision,
             callbacks=callbacks,
             logger=logger,
+            # Disable Lightning's default logging since we use MLflow
+            enable_progress_bar=True,
+            enable_model_summary=True,
+            enable_checkpointing=True,
+            # Disable default Lightning logs directory when using MLflow
+            default_root_dir=None if disable_lightning_logs else None,
             **filtered_kwargs,
         )
 
