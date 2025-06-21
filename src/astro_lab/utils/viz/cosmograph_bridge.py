@@ -2,14 +2,14 @@
 CosmographBridge - Simple integration of Cosmograph with AstroLab tensors.
 
 Provides a clean interface to create interactive graph visualizations
-from AstroLab spatial tensors and survey data.
+from AstroLab spatial tensors and survey data using Polars for data handling.
 """
 
 import warnings
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
-import pandas as pd
+import polars as pl
 
 # Suppress NumPy warnings for Cosmograph compatibility
 with warnings.catch_warnings():
@@ -23,6 +23,7 @@ class CosmographBridge:
     
     Provides simple methods to convert spatial tensors and survey data
     into interactive graph visualizations using Cosmograph.
+    Uses Polars for efficient data handling and converts to pandas only when needed.
     """
     
     def __init__(self):
@@ -62,8 +63,8 @@ class CosmographBridge:
         # Create neighbor graph
         edges = tensor._create_radius_graph(tensor.cartesian, radius=radius).t().cpu().numpy()
         
-        # Create DataFrames
-        points_df = pd.DataFrame({
+        # Create Polars DataFrames
+        points_df = pl.DataFrame({
             'id': [f'node_{i}' for i in range(len(coords))],
             'x': coords[:, 0],
             'y': coords[:, 1],
@@ -71,11 +72,15 @@ class CosmographBridge:
             'distance': np.linalg.norm(coords, axis=1)
         })
         
-        links_df = pd.DataFrame({
+        links_df = pl.DataFrame({
             'source': [f'node_{edges[i, 0]}' for i in range(len(edges))],
             'target': [f'node_{edges[i, 1]}' for i in range(len(edges))],
             'distance': np.random.uniform(1.0, radius, len(edges))
         })
+        
+        # Convert to pandas for Cosmograph (required by cosmograph)
+        points_pandas = points_df.to_pandas()
+        links_pandas = links_df.to_pandas()
         
         # Merge configs
         config = {**self.default_config, **kwargs}
@@ -85,8 +90,8 @@ class CosmographBridge:
         
         # Use link_width_by and link_width_scale instead of link_width_range
         return cosmo(
-            points=points_df,
-            links=links_df,
+            points=points_pandas,
+            links=links_pandas,
             point_id_by='id',
             point_x_by='x',
             point_y_by='y',
@@ -219,12 +224,17 @@ class CosmographBridge:
                         edge_list.append([i, indices[i][j]])
             edges = np.array(edge_list, dtype=int)
         
-        # Create DataFrames
-        points_df = pd.DataFrame({
+        # Extract coordinates explicitly
+        x_coords = coords[:, 0].tolist()
+        y_coords = coords[:, 1].tolist()
+        z_coords = coords[:, 2].tolist()
+        
+        # Create Polars DataFrames
+        points_df = pl.DataFrame({
             'id': [f'point_{i}' for i in range(len(coords))],
-            'x': coords[:, 0],
-            'y': coords[:, 1],
-            'z': coords[:, 2]
+            'x': x_coords,
+            'y': y_coords,
+            'z': z_coords
         })
         
         if edges.size > 0:
@@ -233,10 +243,14 @@ class CosmographBridge:
         else:
             sources = []
             targets = []
-        links_df = pd.DataFrame({
+        links_df = pl.DataFrame({
             'source': sources,
             'target': targets
         })
+        
+        # Convert to pandas for Cosmograph (required by cosmograph)
+        points_pandas = points_df.to_pandas()
+        links_pandas = links_df.to_pandas()
         
         # Merge configs
         config = {**self.default_config, **kwargs}
@@ -250,8 +264,106 @@ class CosmographBridge:
         config.pop('link_color', None)
         
         return cosmo(
-            points=points_df,
-            links=links_df,
+            points=points_pandas,
+            links=links_pandas,
+            point_id_by='id',
+            point_x_by='x',
+            point_y_by='y',
+            point_color=point_color,
+            point_size_range=[2, 6],
+            link_source_by='source',
+            link_target_by='target',
+            link_color=link_color,
+            link_width_scale=1.0,
+            **config
+        )
+
+    def from_polars_dataframe(self,
+                             df: pl.DataFrame,
+                             x_col: str = 'x',
+                             y_col: str = 'y',
+                             z_col: str = 'z',
+                             id_col: Optional[str] = None,
+                             radius: float = 5.0,
+                             **kwargs) -> Any:
+        """
+        Create Cosmograph visualization directly from Polars DataFrame.
+        
+        Args:
+            df: Polars DataFrame with coordinate columns
+            x_col: Column name for x coordinates
+            y_col: Column name for y coordinates
+            z_col: Column name for z coordinates
+            id_col: Column name for point IDs (optional)
+            radius: Radius for neighbor graph creation
+            **kwargs: Additional Cosmograph parameters
+            
+        Returns:
+            Cosmograph widget
+        """
+        # Extract coordinates
+        coords = df.select([x_col, y_col, z_col]).to_numpy()
+        
+        # Create IDs if not provided
+        if id_col is None or id_col not in df.columns:
+            ids = [f'point_{i}' for i in range(len(df))]
+        else:
+            ids = df[id_col].to_list()
+        
+        # Create neighbor graph
+        from sklearn.neighbors import NearestNeighbors
+        nbrs = NearestNeighbors(n_neighbors=5, algorithm='ball_tree').fit(coords)
+        distances, indices = nbrs.kneighbors(coords)
+        
+        edge_list = []
+        for i in range(len(coords)):
+            for j in range(1, len(indices[i])):
+                if distances[i][j] <= radius:
+                    edge_list.append([i, indices[i][j]])
+        edges = np.array(edge_list, dtype=int)
+        
+        # Extract coordinates explicitly
+        x_coords = coords[:, 0].tolist()
+        y_coords = coords[:, 1].tolist()
+        z_coords = coords[:, 2].tolist()
+        
+        # Create Polars DataFrames
+        points_df = pl.DataFrame({
+            'id': ids,
+            'x': x_coords,
+            'y': y_coords,
+            'z': z_coords
+        })
+        
+        if edges.size > 0:
+            sources = [ids[src] for src in edges[:, 0]]
+            targets = [ids[tgt] for tgt in edges[:, 1]]
+        else:
+            sources = []
+            targets = []
+        links_df = pl.DataFrame({
+            'source': sources,
+            'target': targets
+        })
+        
+        # Convert to pandas for Cosmograph
+        points_pandas = points_df.to_pandas()
+        links_pandas = links_df.to_pandas()
+        
+        # Merge configs
+        config = {**self.default_config, **kwargs}
+        
+        # Extract colors from kwargs or use defaults
+        point_color = kwargs.get('point_color', '#ffffff')
+        link_color = kwargs.get('link_color', '#666666')
+        
+        # Remove these from config to avoid duplicate parameters
+        config.pop('point_color', None)
+        config.pop('link_color', None)
+        
+        return cosmo(
+            points=points_pandas,
+            links=links_pandas,
             point_id_by='id',
             point_x_by='x',
             point_y_by='y',
@@ -271,7 +383,7 @@ def create_cosmograph_visualization(data_source, **kwargs):
     Convenience function to create Cosmograph visualization.
     
     Args:
-        data_source: Spatial3DTensor, survey data dict, cosmic web results, or coordinates array
+        data_source: Spatial3DTensor, survey data dict, cosmic web results, coordinates array, or Polars DataFrame
         **kwargs: Additional parameters for CosmographBridge
         
     Returns:
@@ -292,5 +404,8 @@ def create_cosmograph_visualization(data_source, **kwargs):
     elif isinstance(data_source, np.ndarray):
         # Raw coordinates
         return bridge.from_coordinates(data_source, **kwargs)
+    elif isinstance(data_source, pl.DataFrame):
+        # Polars DataFrame
+        return bridge.from_polars_dataframe(data_source, **kwargs)
     else:
         raise ValueError("Unsupported data source type") 
