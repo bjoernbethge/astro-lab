@@ -502,26 +502,55 @@ class AstroLabWidget(AstroPipeline):
         else:
             data = tensor.numpy()
 
-        # Basis-Schema abhängig vom Survey-Typ
+        # Base schema depending on survey type
         if survey_type == "gaia":
-            columns = ["ra", "dec", "parallax", "pmra", "pmdec", "g_mag"]
+            schema = {
+                "ra": float,
+                "dec": float,
+                "parallax": float,
+                "pmra": float,
+                "pmdec": float,
+                "phot_g_mean_mag": float,
+                "bp_rp": float,
+                "teff_val": float,
+            }
         elif survey_type == "sdss":
-            columns = ["ra", "dec", "redshift", "g_mag", "r_mag", "i_mag"]
-        elif survey_type == "tng50":
-            columns = ["x", "y", "z", "vx", "vy", "vz"]
+            schema = {
+                "ra": float,
+                "dec": float,
+                "u": float,
+                "g": float,
+                "r": float,
+                "i": float,
+                "z": float,
+                "redshift": float,
+            }
         else:
-            columns = [f"col_{i}" for i in range(data.shape[1])]
+            schema = {"ra": float, "dec": float, "magnitude": float}
 
-        # Spaltenanzahl anpassen
-        columns = columns[: data.shape[1]]
+        # Feature engineering for astronomical data
+        if survey_type == "gaia":
+            # For Gaia: Estimate redshift from parallax
+            if "parallax" in data and data["parallax"] > 0:
+                distance_pc = 1000 / data["parallax"]  # Distance in parsecs
+                redshift = distance_pc * 0.0000001  # Rough estimate
+            else:
+                redshift = 0.0
 
-        df = pl.DataFrame(data, schema=columns)
+            # Estimate stellar mass
+            if "teff_val" in data and data["teff_val"] > 0:
+                # Simple mass estimation from temperature
+                mass = (data["teff_val"] / 5777) ** 0.5  # Solar mass units
+            else:
+                mass = 1.0
+
+        df = pl.DataFrame(data, schema=schema)
 
         # Feature-Engineering für astronomische Daten
-        if survey_type in ["gaia", "sdss"] and "ra" in columns and "dec" in columns:
-            if "redshift" not in columns:
+        if survey_type in ["gaia", "sdss"] and "ra" in schema and "dec" in schema:
+            if "redshift" not in schema:
                 # Für Gaia: Redshift aus Parallax schätzen
-                if "parallax" in columns:
+                if "parallax" in schema:
                     df = df.with_columns(
                         (1.0 / (pl.col("parallax") * 1000)).alias("distance_pc")
                     ).with_columns(
@@ -533,10 +562,10 @@ class AstroLabWidget(AstroPipeline):
                     df = df.with_columns(pl.lit(0.1).alias("redshift"))
 
             # Stellarmasse schätzen
-            if "g_mag" in columns and "r_mag" in columns:
+            if "phot_g_mean_mag" in schema and "bp_rp" in schema:
                 df = df.with_columns(
                     [
-                        (pl.col("g_mag") - pl.col("r_mag")).alias("g_r_color"),
+                        (pl.col("phot_g_mean_mag") - pl.col("bp_rp")).alias("g_r_color"),
                         (10.0 + np.random.normal(0, 1, len(df))).alias(
                             "log_stellar_mass"
                         ),

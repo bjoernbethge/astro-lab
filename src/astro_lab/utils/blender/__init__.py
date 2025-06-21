@@ -30,7 +30,7 @@ except ImportError as e:
     bpy = None
     mathutils = None
 
-# 4. Lazy-Import-Funktionen für Submodule (ohne lazy)
+# 4. Lazy-import functions for submodules (without lazy)
 def get_core():
     """Get core module with memory management."""
     from . import core
