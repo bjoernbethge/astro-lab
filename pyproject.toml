@@ -18,11 +18,9 @@ dependencies = [
     "h5py>=3.8.0", # For TNG50/IllustrisTNG HDF5 files
     # 3D Visualization and data exchange
     "pyvista>=0.45.2",
-    "vtk>=9.3.0",
     # Machine Learning
     "torch>=2.7.1",
     "torch-geometric>=2.6.1",
-    "scipy>=1.10.0",
     # MLflow and tracking
     "mlflow>=2.15.0",
     "marimo-flow>=0.1.1",
@@ -46,7 +44,7 @@ dependencies = [
     "plotly>=6.1.2",
     "astro-viz",
     "lightning-utilities==0.14.3",
-    "markupsafe>=3.0.2",
+    "markupsafe>=3.0.2"
 ]
 
 # Optional dependencies for different use cases
@@ -85,7 +83,6 @@ link-mode = "copy"
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "pytest-forked>=1.4.0",  # Process isolation for memory leaks
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "fake-bpy-module-latest>=20250616",
@@ -96,9 +93,8 @@ dev = [
 test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "pytest-xdist>=3.0.0",  # Parallel testing
-    "pytest-forked>=1.4.0",  # Process isolation for memory leaks
-    "psutil>=6.1.0",  # For memory monitoring
+    "pytest-xdist>=3.0.0", # Parallel testing
+    "psutil>=6.1.0", # For memory monitoring
 ]
 
 # Linting and formatting
@@ -205,7 +201,9 @@ addopts = [
     "--strict-config",
     "--tb=short",
     "--disable-warnings",
-    "-v"
+    "-v",
+    "-n", "auto",  # Parallel execution
+    "--dist", "worksteal"  # Better load balancing
 ]
 markers = [
     "unit: Unit tests",
