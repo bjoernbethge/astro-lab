@@ -417,21 +417,89 @@ def cli():
 
 @cli.command()
 @click.option("--config", "-c", required=True, help="Path to configuration file")
+@click.option("--optimize-first", "-o", is_flag=True, help="Run hyperparameter optimization before training")
+@click.option("--n-trials", "-n", default=20, help="Number of optimization trials (if optimize-first is used)")
+@click.option("--auto-optimize", "-a", is_flag=True, help="Automatically optimize if no best parameters found")
+@click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
+def run(config: str, optimize_first: bool, n_trials: int, auto_optimize: bool, verbose: bool):
+    """
+    Run the complete ML workflow: optimize (optional) -> train -> evaluate.
+    
+    This is the recommended approach for most use cases.
+    """
+    try:
+        setup_logging(verbose=verbose)
+        logger.info("🚀 Starting complete ML workflow...")
+        
+        # Load configuration
+        loader = ConfigLoader(config)
+        config_dict = loader.load_config()
+        config_dict = ensure_mlflow_block(config_dict)
+        
+        # Check if we should optimize first
+        if optimize_first:
+            logger.info("🔍 Step 1: Running hyperparameter optimization...")
+            best_params = run_optimization(loader, config_dict, n_trials)
+            
+            # Update config with best parameters
+            if best_params:
+                logger.info("🔄 Updating config with best parameters...")
+                update_config_with_best_params(config, best_params)
+                # Reload config with updated parameters
+                loader = ConfigLoader(config)
+                config_dict = loader.load_config()
+        
+        # Auto-optimize if no good parameters found
+        elif auto_optimize and should_optimize(config_dict):
+            logger.info("🔍 Auto-detected need for optimization...")
+            best_params = run_optimization(loader, config_dict, n_trials)
+            if best_params:
+                update_config_with_best_params(config, best_params)
+                loader = ConfigLoader(config)
+                config_dict = loader.load_config()
+        
+        # Run training
+        logger.info("🚀 Step 2: Running training...")
+        train_from_config(config)
+        
+        logger.info("🎉 Complete workflow finished successfully!")
+        
+    except Exception as e:
+        logger.error(f"❌ Workflow failed: {e}")
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--config", "-c", required=True, help="Path to configuration file")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def train(config: str, verbose: bool):
-    """Train a model using the specified configuration."""
+    """Train a model using the specified configuration (training only)."""
     train_model(config, optimize=False, verbose=verbose)
 
 
 @cli.command()
 @click.option("--config", "-c", required=True, help="Path to configuration file")
 @click.option("--n-trials", "-n", default=50, help="Number of optimization trials")
+@click.option("--update-config", "-u", is_flag=True, help="Update config file with best parameters")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
-def optimize(config: str, n_trials: int, verbose: bool):
-    """Optimize hyperparameters using the specified configuration."""
+def optimize(config: str, n_trials: int, update_config: bool, verbose: bool):
+    """Optimize hyperparameters using the specified configuration (optimization only)."""
     try:
         setup_logging(verbose=verbose)
-        optimize_from_config(config, n_trials=n_trials)
+        loader = ConfigLoader(config)
+        config_dict = loader.load_config()
+        config_dict = ensure_mlflow_block(config_dict)
+        
+        best_params = run_optimization(loader, config_dict, n_trials)
+        
+        if update_config and best_params:
+            logger.info("🔄 Updating config file with best parameters...")
+            update_config_with_best_params(config, best_params)
+            logger.info(f"✅ Config updated: {config}")
+        
     except Exception as e:
         logger.error(f"❌ Optimization failed: {e}")
         if verbose:
@@ -451,6 +519,110 @@ def create_config(output: str):
     except Exception as e:
         logger.error(f"❌ Failed to create configuration: {e}")
         sys.exit(1)
+
+
+def should_optimize(config: Dict[str, Any]) -> bool:
+    """Check if optimization should be run based on config."""
+    # Check if config has default/untuned parameters
+    model_params = config.get("model", {}).get("params", {})
+    
+    # If learning rate is default, probably needs optimization
+    if model_params.get("learning_rate") in [0.001, 1e-3, None]:
+        return True
+    
+    # If hidden_dim is default, probably needs optimization
+    if model_params.get("hidden_dim") in [128, 64, None]:
+        return True
+    
+    # If dropout is default, probably needs optimization
+    if model_params.get("dropout") in [0.1, 0.2, None]:
+        return True
+    
+    return False
+
+
+def run_optimization(loader: ConfigLoader, config: Dict[str, Any], n_trials: int) -> Optional[Dict[str, Any]]:
+    """Run hyperparameter optimization and return best parameters."""
+    try:
+        logger.info(f"🔍 Starting optimization with {n_trials} trials...")
+        
+        # Create datamodule
+        data_config_section = config.get("data", {})
+        enhanced_data_config = enhance_data_config_for_tensors(data_config_section)
+        
+        dataset_name = enhanced_data_config["dataset"]
+        dataset_params = {
+            k: v for k, v in enhanced_data_config.items() if k != "dataset"
+        }
+        
+        datamodule = create_astro_datamodule(dataset_name, **dataset_params)
+        
+        # Create base model and trainer
+        model_config = loader.get_model_config()
+        survey = model_config.get("survey", "gaia")
+        task = model_config.get("task", "stellar_classification")
+        model = ModelFactory.create_survey_model(survey=survey, task=task, **model_config.get("params", {}))
+        
+        training_config = loader.get_training_config()
+        lightning_module = AstroLightningModule(
+            model=model,
+            task_type="classification",
+            learning_rate=training_config.get("learning_rate", 1e-3),
+            num_classes=model_config.get("params", {}).get("output_dim", 8),
+        )
+        
+        trainer = AstroTrainer(
+            lightning_module=lightning_module,
+            max_epochs=training_config.get("max_epochs", 100),
+            accelerator="auto",
+            devices="auto",
+            precision="16-mixed",
+        )
+        
+        # Run optimization
+        results = trainer.optimize_hyperparameters(
+            train_dataloader=datamodule.train_dataloader(),
+            val_dataloader=datamodule.val_dataloader(),
+            n_trials=n_trials,
+        )
+        
+        logger.info("🎉 Optimization completed!")
+        logger.info(f"🔍 Best parameters: {results}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"❌ Optimization failed: {e}")
+        return None
+
+
+def update_config_with_best_params(config_path: str, best_params: Dict[str, Any]) -> None:
+    """Update configuration file with best parameters from optimization."""
+    try:
+        # Load current config
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        
+        # Update model parameters
+        if "model" not in config:
+            config["model"] = {}
+        if "params" not in config["model"]:
+            config["model"]["params"] = {}
+        
+        # Update with best parameters
+        for key, value in best_params.items():
+            if key in ["learning_rate", "hidden_dim", "dropout", "num_layers"]:
+                config["model"]["params"][key] = value
+        
+        # Save updated config
+        with open(config_path, "w", encoding="utf-8") as f:
+            yaml.dump(config, f, default_flow_style=False, indent=2)
+        
+        logger.info(f"✅ Config updated with best parameters: {config_path}")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to update config: {e}")
+        raise
 
 
 def main():
