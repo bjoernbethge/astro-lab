@@ -80,6 +80,9 @@ class CosmographBridge:
         # Merge configs
         config = {**self.default_config, **kwargs}
         
+        # Remove point_color from config to avoid duplicate parameter
+        config.pop('point_color', None)
+        
         # Use link_width_by and link_width_scale instead of link_width_range
         return cosmo(
             points=points_df,
@@ -238,17 +241,25 @@ class CosmographBridge:
         # Merge configs
         config = {**self.default_config, **kwargs}
         
+        # Extract point_color from kwargs or use default
+        point_color = kwargs.get('point_color', '#ffffff')
+        link_color = kwargs.get('link_color', '#666666')
+        
+        # Remove these from config to avoid duplicate parameters
+        config.pop('point_color', None)
+        config.pop('link_color', None)
+        
         return cosmo(
             points=points_df,
             links=links_df,
             point_id_by='id',
             point_x_by='x',
             point_y_by='y',
-            point_color='#ffffff',
+            point_color=point_color,
             point_size_range=[2, 6],
             link_source_by='source',
             link_target_by='target',
-            link_color='#666666',
+            link_color=link_color,
             link_width_scale=1.0,
             **config
         )
