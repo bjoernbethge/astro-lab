@@ -1,16 +1,19 @@
 """
-Data Core - Central Data Processing Functions
-============================================
+Core Data Processing Module
+==========================
 
-Provides core data processing functions for astronomical surveys
-and cosmic web analysis.
+Core functionality for astronomical data processing and analysis.
+Provides data loading, preprocessing, and tensor operations.
 """
 
-import logging
 import os
+import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+
+# Set environment variable for NumPy 2.x compatibility with bpy and other modules
+os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
 
 import astropy.units as u
 import lightning as L
@@ -1355,14 +1358,20 @@ def load_lightcurve_data(
     )
 
 
-def load_tng50_data(max_samples: Optional[int] = None) -> AstroDataset:
+def load_tng50_data(
+    max_samples: Optional[int] = None, 
+    particle_type: str = "PartType0",
+    return_tensor: bool = False
+) -> Union[AstroDataset, Any]:
     """Load TNG50 simulation data as a survey-like dataset.
 
     Args:
         max_samples: Maximum number of particles to load (None = all)
+        particle_type: Particle type to load (PartType0, PartType1, PartType4, PartType5)
+        return_tensor: Whether to return as tensor instead of AstroDataset
 
     Returns:
-        AstroDataset with TNG50 simulation data
+        AstroDataset or tensor with TNG50 simulation data
     """
     config = SURVEY_CONFIGS["tng50"]
 
@@ -1381,6 +1390,10 @@ def load_tng50_data(max_samples: Optional[int] = None) -> AstroDataset:
     # Load with Polars
     df = pl.read_parquet(data_path)
 
+    # Filter by particle type if specified
+    if particle_type and "particle_type" in df.columns:
+        df = df.filter(pl.col("particle_type") == particle_type)
+
     # Apply sampling if requested
     if max_samples and len(df) > max_samples:
         df = df.sample(n=max_samples, seed=42)
@@ -1396,6 +1409,10 @@ def load_tng50_data(max_samples: Optional[int] = None) -> AstroDataset:
         tensor_metadata=config,
     )
 
+    if return_tensor:
+        # Return as tensor if requested
+        return dataset.get_spatial_tensor()
+    
     return dataset
 
 

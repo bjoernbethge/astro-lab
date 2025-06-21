@@ -25,6 +25,7 @@ from torch_geometric.nn import (
 )
 
 from astro_lab.models.utils import get_activation, initialize_weights
+from astro_lab.models.layers import LayerFactory
 
 ConvType = Literal["gcn", "gat", "sage", "transformer"]
 TaskType = Literal["node_classification", "node_regression", "graph_classification"]
@@ -100,31 +101,10 @@ class BaseAstroGNN(nn.Module):
         convs = nn.ModuleList()
 
         for i in range(self.num_layers):
-            if self.conv_type == "gcn":
-                conv = GCNConv(self.hidden_dim, self.hidden_dim, normalize=True)
-            elif self.conv_type == "gat":
-                conv = GATConv(
-                    self.hidden_dim,
-                    self.hidden_dim // 8,
-                    heads=8,
-                    dropout=self.dropout,
-                    concat=True,
-                )
-            elif self.conv_type == "sage":
-                conv = SAGEConv(self.hidden_dim, self.hidden_dim, normalize=True)
-            elif self.conv_type == "transformer":
-                conv = TransformerConv(
-                    self.hidden_dim,
-                    self.hidden_dim // 8,
-                    heads=8,
-                    dropout=self.dropout,
-                    concat=True,
-                )
-            else:
-                raise ValueError(f"Unknown conv_type: {self.conv_type}")
-
+            conv = LayerFactory.create_conv_layer(
+                self.conv_type, self.hidden_dim, self.hidden_dim
+            )
             convs.append(conv)
-
         return convs
 
     def graph_forward(

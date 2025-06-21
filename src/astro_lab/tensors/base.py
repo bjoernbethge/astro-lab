@@ -203,6 +203,10 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         """Create a deep copy of the tensor."""
         return self.__class__(data=self._data.clone(), **self._metadata)
 
+    def copy(self) -> "Self":
+        """Create a deep copy of the tensor (alias for clone)."""
+        return self.clone()
+
     def detach(self) -> "Self":
         """Detach from computation graph."""
         return self.__class__(data=self._data.detach(), **self._metadata)
@@ -284,16 +288,32 @@ class AstroTensorBase(BaseModel, ValidationMixin):
     def to_pyvista(self, scalars: Optional[torch.Tensor] = None, **kwargs):
         """
         Convert tensor to PyVista mesh.
-        Simplified - requires tensor utils to be available.
         """
         try:
-            from ..utils.tensor import transfer_to_framework
-
-            return transfer_to_framework(
-                self._data, "pyvista", scalars=scalars, **kwargs
-            )
+            import pyvista as pv
+            
+            # Get positions from tensor data
+            positions = self._data.detach().cpu().numpy()
+            
+            # Create point cloud
+            mesh = pv.PolyData(positions)
+            
+            # Add scalars if provided
+            if scalars is not None:
+                scalars_np = scalars.detach().cpu().numpy()
+                if scalars_np.ndim == 1:
+                    mesh.point_data["scalars"] = scalars_np
+                else:
+                    # If multi-dimensional, use first dimension
+                    mesh.point_data["scalars"] = scalars_np[:, 0] if scalars_np.shape[1] > 0 else scalars_np.flatten()
+            
+            return mesh
+            
         except ImportError:
-            logger.warning("PyVista conversion requires tensor utils")
+            logger.warning("PyVista not available")
+            return None
+        except Exception as e:
+            logger.warning(f"PyVista conversion failed: {e}")
             return None
 
     def to_blender(self, name: str = "astro_object", collection_name: str = "AstroLab"):

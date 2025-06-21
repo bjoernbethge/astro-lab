@@ -34,6 +34,7 @@ from astro_lab.models.encoders import (
 from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
 from astro_lab.models.utils import get_activation, initialize_weights
 from astro_lab.tensors import SurveyTensor
+from astro_lab.models.layers import LayerFactory
 
 
 class AstroSurveyGNN(BaseAstroGNN):
@@ -87,19 +88,9 @@ class AstroSurveyGNN(BaseAstroGNN):
         # Graph convolutions
         self.convs = nn.ModuleList()
         for i in range(num_layers):
-            if conv_type == "gcn":
-                conv = GCNConv(hidden_dim, hidden_dim, normalize=True)
-            elif conv_type == "gat":
-                conv = GATConv(hidden_dim, hidden_dim // 8, heads=8, dropout=dropout)
-            elif conv_type == "sage":
-                conv = SAGEConv(hidden_dim, hidden_dim, normalize=True)
-            elif conv_type == "transformer":
-                conv = TransformerConv(
-                    hidden_dim, hidden_dim // 8, heads=8, dropout=dropout
-                )
-            else:
-                raise ValueError(f"Unknown conv_type: {conv_type}")
-
+            conv = LayerFactory.create_conv_layer(
+                self.conv_type, hidden_dim, hidden_dim, **kwargs
+            )
             self.convs.append(conv)
 
         # Normalization
@@ -236,7 +227,7 @@ class AstroSurveyGNN(BaseAstroGNN):
         output = self.output_head(h)
 
         if return_embeddings:
-            return {"output": output, "embeddings": embeddings}
+            return {"logits": output, "embeddings": embeddings}
         return output
 
 

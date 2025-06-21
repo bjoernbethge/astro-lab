@@ -56,19 +56,12 @@ def _(dir_browser):
 def _():
     dataset_file = mo.ui.file(filetypes=[".parquet"], kind="area")
     dataset_file
-    return (dataset_file,)
-
-
-@app.cell
-def _(dataset_file):
-    mo.stop(dataset_file.value is None)
-    df = pl.read_parquet(dataset_file.contents())
-    mo.ui.dataframe(df)
     return
 
 
 @app.cell
 def _():
+    al.w
     return
 
 

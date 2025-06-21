@@ -15,7 +15,6 @@ from typing import Any, Dict, List, Optional, Union, Tuple
 from .trainer import AstroTrainer
 from .lightning_module import AstroLightningModule
 from .mlflow_logger import AstroMLflowLogger
-from .optuna_trainer import OptunaTrainer
 
 # Check for optional dependencies
 try:
@@ -33,8 +32,10 @@ except ImportError:
 try:
     import optuna
     OPTUNA_AVAILABLE = True
+    from .optuna_trainer import OptunaTrainer
 except ImportError:
     OPTUNA_AVAILABLE = False
+    OptunaTrainer = None
 
 __all__ = [
     "AstroTrainer",

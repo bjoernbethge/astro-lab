@@ -15,15 +15,41 @@ Factory Functions:
 - create_sdss_galaxy_classifier()
 - create_lsst_transient_detector()
 - create_multi_survey_model()
+
+Configuration Management:
+- ModelConfig: Pydantic-based model configuration
+- LayerFactory: Centralized layer creation
 """
 
+# Configuration management
+from .config import (
+    ModelConfig,
+    EncoderConfig,
+    GraphConfig,
+    OutputConfig,
+    TrainingConfig,
+    get_predefined_config,
+    list_predefined_configs,
+    PREDEFINED_CONFIGS,
+)
+
+# Layer factory and components
+from .layers import (
+    LayerFactory,
+    AttentionPooling,
+    ResidualBlock,
+    FeatureFusion,
+    LayerRegistry,
+)
+
 # Base classes
+from .base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel
+
 # Main models
 from .astro import (
     AstroSurveyGNN,
 )
 from .astrophot_models import AstroPhotGNN, NSAGalaxyModeler
-from .base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel, FeatureFusion
 
 # Encoders
 from .encoders import (
@@ -92,30 +118,50 @@ from .tng_models import (
 # Model utilities
 from .utils import AttentionPooling, get_activation, get_pooling, initialize_weights
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
+    # Configuration Management
+    "ModelConfig",
+    "EncoderConfig", 
+    "GraphConfig",
+    "OutputConfig",
+    "TrainingConfig",
+    "get_predefined_config",
+    "list_predefined_configs",
+    "PREDEFINED_CONFIGS",
+    
+    # Layer Factory
+    "LayerFactory",
+    "AttentionPooling",
+    "ResidualBlock", 
+    "FeatureFusion",
+    "LayerRegistry",
+    
     # Base Classes
     "BaseAstroGNN",
     "BaseTemporalGNN",
     "BaseTNGModel",
-    "FeatureFusion",
+    
     # Main Models
     "AstroSurveyGNN",
     "AstroPhotGNN",
     "ALCDEFTemporalGNN",
     "TemporalGCN",
+    
     # Point Cloud Models
     "StellarPointCloudGNN",
     "HierarchicalStellarGNN",
     "StellarClusterGNN",
     "GalacticStructureGNN",
+    
     # Encoders
     "BaseEncoder",
     "PhotometryEncoder",
     "AstrometryEncoder",
     "SpectroscopyEncoder",
     "LightcurveEncoder",
+    
     # Output Heads
     "OutputHeadRegistry",
     "RegressionHead",
@@ -125,6 +171,7 @@ __all__ = [
     "MultiTaskHead",
     "CosmologicalHead",
     "create_output_head",
+    
     # Factory Functions
     "ModelFactory",
     "ModelRegistry",
@@ -139,18 +186,22 @@ __all__ = [
     "compile_astro_model",
     "get_model_info",
     "list_available_models",
+    
     # Utilities
-    "AttentionPooling",
     "get_activation",
     "get_pooling",
     "initialize_weights",
+    
     # Galaxy Modeling
     "NSAGalaxyModeler",
+    
     # Base temporal models
     "TemporalGCN",
     "TemporalGATCNN",
+    
     # ALCDEF temporal models
     "ALCDEFTemporalGNN",
+    
     # TNG-specific models
     "CosmicEvolutionGNN",
     "GalaxyFormationGNN",
@@ -163,7 +214,7 @@ CAPABILITIES = {
     "surveys": ["gaia", "sdss", "lsst", "euclid", "des", "ps1", "2mass", "wise"],
     "tasks": [
         "stellar_classification",
-        "galaxy_property_prediction",
+        "galaxy_property_prediction", 
         "transient_detection",
         "period_detection",
         "shape_modeling",
@@ -172,9 +223,11 @@ CAPABILITIES = {
     "tensor_types": [
         "SurveyTensor",
         "PhotometricTensor",
-        "SpectralTensor",
+        "SpectralTensor", 
         "Spatial3DTensor",
         "LightcurveTensor",
     ],
     "frameworks": ["pytorch_geometric", "torch_compile", "astrolab_tensors"],
+    "config_management": ["pydantic", "type_safety", "validation"],
+    "layer_factory": ["centralized", "consistent", "extensible"],
 }

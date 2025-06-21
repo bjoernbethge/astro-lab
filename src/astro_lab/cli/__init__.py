@@ -19,9 +19,10 @@ os.environ["PYTHONWARNINGS"] = "ignore::UserWarning:numpy"
 
 import argparse
 import sys
+import yaml
 from pathlib import Path
 
-from astro_lab.utils.config_loader import ConfigLoader
+from astro_lab.utils.config import ConfigLoader
 
 __all__ = [
     "main",
@@ -30,6 +31,10 @@ __all__ = [
 
 def main():
     """Main CLI entry point with streamlined interface."""
+    # Welcome message
+    print("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory!")
+    print()
+    
     parser = argparse.ArgumentParser(
         description="AstroLab - Astronomical Machine Learning Laboratory",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -199,6 +204,12 @@ astro-lab config surveys
     show_parser = config_subparsers.add_parser("show", help="Show survey configuration")
     show_parser.add_argument("survey", help="Survey name (e.g., gaia, sdss)")
 
+    # 🌟 NEW: Model config subcommand
+    model_parser = config_subparsers.add_parser("model", help="Model configuration management")
+    model_parser.add_argument("action", choices=["list", "show", "create"], help="Model config action")
+    model_parser.add_argument("--name", help="Model config name")
+    model_parser.add_argument("--output", "-o", help="Output file for create action")
+
     args = parser.parse_args()
 
     # If no command provided, show help
@@ -225,24 +236,28 @@ def handle_download(args):
         print("❌ Download action required. Use --help for options.")
         return
 
-    from astro_lab.data import download_bright_all_sky, list_catalogs
+    try:
+        from astro_lab.data import download_bright_all_sky, list_catalogs
 
-    if args.download_action == "gaia":
-        print(f"🌟 Downloading Gaia DR3 data (mag < {args.magnitude_limit})")
-        try:
-            result = download_bright_all_sky(magnitude_limit=args.magnitude_limit)
-            print(f"✅ Success: {result}")
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            sys.exit(1)
+        if args.download_action == "gaia":
+            print(f"🌟 Downloading Gaia DR3 data (mag < {args.magnitude_limit})")
+            try:
+                result = download_bright_all_sky(magnitude_limit=args.magnitude_limit)
+                print(f"✅ Success: {result}")
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                sys.exit(1)
 
-    elif args.download_action == "list":
-        print("📋 Available datasets:")
-        try:
-            catalogs = list_catalogs()
-            print(catalogs)
-        except Exception as e:
-            print(f"❌ Error: {e}")
+        elif args.download_action == "list":
+            print("📋 Available datasets:")
+            try:
+                catalogs = list_catalogs()
+                print(catalogs)
+            except Exception as e:
+                print(f"❌ Error: {e}")
+    except Exception as e:
+        print(f"❌ Error in download command: {e}")
+        sys.exit(1)
 
 
 def handle_preprocess(args):
@@ -251,181 +266,185 @@ def handle_preprocess(args):
         print("❌ Preprocessing action required. Use --help for options.")
         return
 
-    from pathlib import Path
+    try:
+        from pathlib import Path
 
-    from astro_lab.data import (
-        create_graph_datasets_from_splits,
-        create_training_splits,
-        get_data_statistics,
-        load_catalog,
-        preprocess_catalog,
-        save_splits_to_parquet,
-    )
-    from astro_lab.utils.config_loader import ConfigLoader
+        from astro_lab.data import (
+            create_graph_datasets_from_splits,
+            create_training_splits,
+            get_data_statistics,
+            load_catalog,
+            preprocess_catalog,
+            save_splits_to_parquet,
+        )
+        from astro_lab.utils.config import ConfigLoader
 
-    if args.preprocess_action == "catalog":
-        print(f"📂 Processing catalog: {args.input}")
+        if args.preprocess_action == "catalog":
+            print(f"📂 Processing catalog: {args.input}")
 
-        # Load catalog
-        try:
-            df = load_catalog(args.input)
-            print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
-        except Exception as e:
-            print(f"❌ Error loading catalog: {e}")
-            return
-
-        # Load survey config if specified
-        config = {}
-        if args.config:
+            # Load catalog
             try:
-                loader = ConfigLoader()
-                survey_config = loader.get_survey_config(args.config)
-                config = survey_config.get("processing", {})
-                print(f"✅ Using {args.config} survey configuration")
+                df = load_catalog(args.input)
+                print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
             except Exception as e:
-                print(f"⚠️  Could not load survey config: {e}")
-
-        # Preprocess with config
-        df_clean = preprocess_catalog(df, **config)
-        print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
-
-        # Create splits if requested
-        if args.splits:
-            print("🔄 Creating training splits...")
-            train, val, test = create_training_splits(df_clean)
-
-            if args.output:
-                output_path = Path(args.output)
-                output_path.mkdir(parents=True, exist_ok=True)
-                dataset_name = Path(args.input).stem
-
-                save_splits_to_parquet(train, val, test, output_path, dataset_name)
-                create_graph_datasets_from_splits(
-                    train, val, test, output_path, dataset_name
-                )
-                print(f"💾 Splits and graphs saved to: {output_path}")
-
-        elif args.output:
-            # Save processed catalog
-            output_path = Path(args.output)
-            if output_path.is_dir():
-                output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
-            else:
-                output_file = output_path
-
-            df_clean.write_parquet(output_file)
-            print(f"💾 Processed catalog saved to: {output_file}")
-
-    elif args.preprocess_action == "stats":
-        print(f"📊 Analyzing: {args.input}")
-        try:
-            df = load_catalog(args.input)
-            stats = get_data_statistics(df)
-            print("📈 Dataset Statistics:")
-            print(f"  • Rows: {stats['n_rows']:,}")
-            print(f"  • Columns: {stats['n_columns']}")
-            print(f"  • Memory: {stats['memory_usage_mb']:.1f} MB")
-        except Exception as e:
-            print(f"❌ Error: {e}")
-
-    elif args.preprocess_action == "browse":
-        import datetime
-        import os
-
-        base_path = Path(args.path)
-        if not base_path.exists():
-            print(f"❌ Path not found: {base_path}")
-            return
-
-        if args.survey:
-            # Browse specific survey
-            survey_path = base_path / args.survey
-            if not survey_path.exists():
-                print(f"❌ Survey path not found: {survey_path}")
+                print(f"❌ Error loading catalog: {e}")
                 return
-            browse_path = survey_path
+
+            # Load survey config if specified
+            config = {}
+            if args.config:
+                try:
+                    loader = ConfigLoader()
+                    survey_config = loader.get_survey_config(args.config)
+                    config = survey_config.get("processing", {})
+                    print(f"✅ Using {args.config} survey configuration")
+                except Exception as e:
+                    print(f"⚠️  Could not load survey config: {e}")
+
+            # Preprocess with config
+            df_clean = preprocess_catalog(df, **config)
+            print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
+
+            # Create splits if requested
+            if args.splits:
+                print("🔄 Creating training splits...")
+                train, val, test = create_training_splits(df_clean)
+
+                if args.output:
+                    output_path = Path(args.output)
+                    output_path.mkdir(parents=True, exist_ok=True)
+                    dataset_name = Path(args.input).stem
+
+                    save_splits_to_parquet(train, val, test, output_path, dataset_name)
+                    create_graph_datasets_from_splits(
+                        train, val, test, output_path, dataset_name
+                    )
+                    print(f"💾 Splits and graphs saved to: {output_path}")
+
+            elif args.output:
+                # Save processed catalog
+                output_path = Path(args.output)
+                if output_path.is_dir():
+                    output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
+                else:
+                    output_file = output_path
+
+                df_clean.write_parquet(output_file)
+                print(f"💾 Processed catalog saved to: {output_file}")
+
+        elif args.preprocess_action == "stats":
+            print(f"📊 Analyzing: {args.input}")
+            try:
+                df = load_catalog(args.input)
+                stats = get_data_statistics(df)
+                print("📈 Dataset Statistics:")
+                print(f"  • Rows: {stats['n_rows']:,}")
+                print(f"  • Columns: {stats['n_columns']}")
+                print(f"  • Memory: {stats['memory_usage_mb']:.1f} MB")
+            except Exception as e:
+                print(f"❌ Error: {e}")
+
+        elif args.preprocess_action == "browse":
+            import datetime
+            import os
+
+            base_path = Path(args.path)
+            if not base_path.exists():
+                print(f"❌ Path not found: {base_path}")
+                return
+
+            if args.survey:
+                # Browse specific survey
+                survey_path = base_path / args.survey
+                if not survey_path.exists():
+                    print(f"❌ Survey path not found: {survey_path}")
+                    return
+                browse_path = survey_path
+            else:
+                browse_path = base_path
+
+            print(f"📂 Browsing: {browse_path}")
+            print("=" * 50)
+
+            try:
+                items = list(browse_path.iterdir())
+                dirs = [item for item in items if item.is_dir()]
+                files = [item for item in items if item.is_file()]
+
+                # Show directories first
+                if dirs:
+                    print("📁 Directories:")
+                    for dir_item in sorted(dirs):
+                        try:
+                            subdir_count = len(
+                                [x for x in dir_item.iterdir() if x.is_dir()]
+                            )
+                            file_count = len([x for x in dir_item.iterdir() if x.is_file()])
+                            print(
+                                f"   📁 {dir_item.name}/ ({file_count} files, {subdir_count} subdirs)"
+                            )
+                        except PermissionError:
+                            print(f"   📁 {dir_item.name}/ (access denied)")
+
+                # Show files
+                if files:
+                    print("\n📄 Files:")
+                    total_size = 0
+                    file_info_list = []
+
+                    # Collect all file information first
+                    for file_item in sorted(files):
+                        try:
+                            size_mb = file_item.stat().st_size / (1024 * 1024)
+                            total_size += size_mb
+
+                            if args.details:
+                                modified = file_item.stat().st_mtime
+                                mod_time = datetime.datetime.fromtimestamp(
+                                    modified
+                                ).strftime("%Y-%m-%d %H:%M")
+                                file_info_list.append(
+                                    f"   📄 {file_item.name} ({size_mb:.1f} MB, {mod_time})"
+                                )
+                            else:
+                                file_info_list.append(
+                                    f"   📄 {file_item.name} ({size_mb:.1f} MB)"
+                                )
+                        except (OSError, PermissionError) as e:
+                            file_info_list.append(
+                                f"   📄 {file_item.name} (error reading file: {e})"
+                            )
+
+                    # Print all file information at once
+                    for file_info in file_info_list:
+                        print(file_info)
+
+                    print(f"\n📊 Total: {len(files)} files, {total_size:.1f} MB")
+
+                if not dirs and not files:
+                    print("   (empty directory)")
+
+            except Exception as e:
+                print(f"❌ Error browsing directory: {e}")
+
+        elif args.preprocess_action == "tng50":
+            print(f"🌌 Processing TNG50: {args.input}")
+            print("💡 TNG50 processing requires the full preprocessing CLI:")
+            print(f"   python -m astro_lab.cli.preprocessing tng50 {args.input}")
+            if args.output:
+                print(f"   --output {args.output}")
+            if args.particle_types != "PartType4":
+                print(f"   --particle-types {args.particle_types}")
+
         else:
-            browse_path = base_path
-
-        print(f"📂 Browsing: {browse_path}")
-        print("=" * 50)
-
-        try:
-            items = list(browse_path.iterdir())
-            dirs = [item for item in items if item.is_dir()]
-            files = [item for item in items if item.is_file()]
-
-            # Show directories first
-            if dirs:
-                print("📁 Directories:")
-                for dir_item in sorted(dirs):
-                    try:
-                        subdir_count = len(
-                            [x for x in dir_item.iterdir() if x.is_dir()]
-                        )
-                        file_count = len([x for x in dir_item.iterdir() if x.is_file()])
-                        print(
-                            f"   📁 {dir_item.name}/ ({file_count} files, {subdir_count} subdirs)"
-                        )
-                    except PermissionError:
-                        print(f"   📁 {dir_item.name}/ (access denied)")
-
-            # Show files
-            if files:
-                print("\n📄 Files:")
-                total_size = 0
-                file_info_list = []
-
-                # Collect all file information first
-                for file_item in sorted(files):
-                    try:
-                        size_mb = file_item.stat().st_size / (1024 * 1024)
-                        total_size += size_mb
-
-                        if args.details:
-                            modified = file_item.stat().st_mtime
-                            mod_time = datetime.datetime.fromtimestamp(
-                                modified
-                            ).strftime("%Y-%m-%d %H:%M")
-                            file_info_list.append(
-                                f"   📄 {file_item.name} ({size_mb:.1f} MB, {mod_time})"
-                            )
-                        else:
-                            file_info_list.append(
-                                f"   📄 {file_item.name} ({size_mb:.1f} MB)"
-                            )
-                    except (OSError, PermissionError) as e:
-                        file_info_list.append(
-                            f"   📄 {file_item.name} (error reading file: {e})"
-                        )
-
-                # Print all file information at once
-                for file_info in file_info_list:
-                    print(file_info)
-
-                print(f"\n📊 Total: {len(files)} files, {total_size:.1f} MB")
-
-            if not dirs and not files:
-                print("   (empty directory)")
-
-        except Exception as e:
-            print(f"❌ Error browsing directory: {e}")
-
-    elif args.preprocess_action == "tng50":
-        print(f"🌌 Processing TNG50: {args.input}")
-        print("💡 TNG50 processing requires the full preprocessing CLI:")
-        print(f"   python -m astro_lab.cli.preprocessing tng50 {args.input}")
-        if args.output:
-            print(f"   --output {args.output}")
-        if args.particle_types != "PartType4":
-            print(f"   --particle-types {args.particle_types}")
-
-    else:
-        print(f"❌ Unknown preprocessing action: {args.preprocess_action}")
+            print(f"❌ Unknown preprocessing action: {args.preprocess_action}")
+    except Exception as e:
+        print(f"❌ Error in preprocess command: {e}")
+        sys.exit(1)
 
 
 def handle_train(args):
-    """Handle train command."""
+    """Handle train command with new unified architecture."""
     import yaml
 
     from .train import create_default_config, optimize_from_config, train_from_config
@@ -450,13 +469,34 @@ def handle_train(args):
             print("💡 Or use --config for full configuration support")
             return
 
-        # Create temporary config for quick training
+        # Create temporary config for quick training using new architecture
+        from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
+        
+        # Create model config using new structure
+        model_config = ModelConfig(
+            name=f"{args.model}_quick",
+            description=f"Quick training config for {args.model}",
+            encoder=EncoderConfig(
+                use_photometry=True,
+                use_astrometry=True,
+                use_spectroscopy=False,
+            ),
+            graph=GraphConfig(
+                hidden_dim=128,
+                num_layers=3,
+                dropout=0.1,
+            ),
+            output=OutputConfig(
+                task="node_classification",
+                output_dim=1,
+            ),
+        )
+
         quick_config = {
             "model": {
                 "type": args.model,
-                "hidden_dim": 128,
-                "num_layers": 3,
-                "dropout": 0.1,
+                "config": model_config.dict(),
+                "use_tensors": True,
             },
             "data": {
                 "dataset": args.dataset,
@@ -478,8 +518,14 @@ def handle_train(args):
 
         # Save temporary config
         temp_config_path = "temp_quick_config.yaml"
-        with open(temp_config_path, "w") as f:
-            yaml.dump(quick_config, f, default_flow_style=False, indent=2)
+        try:
+            with open(temp_config_path, "w") as f:
+                yaml.safe_dump(quick_config, f, default_flow_style=False, indent=2)
+        except (AttributeError, ImportError):
+            # Fallback if yaml.safe_dump is not available
+            import json
+            with open(temp_config_path, "w") as f:
+                json.dump(quick_config, f, indent=2)
 
         try:
             print(f"🚀 Quick training: {args.dataset} + {args.model}")
@@ -582,6 +628,81 @@ def handle_config(args):
         except Exception as e:
             print(f"❌ Error showing survey config: {e}")
 
+    elif args.config_action == "model":
+        handle_model_config(args)
+
+
+def handle_model_config(args):
+    """Handle model configuration management."""
+    from astro_lab.models.config import list_predefined_configs, get_predefined_config, ModelConfig
+    
+    if args.action == "list":
+        print("🏗️ Available model configurations:")
+        configs = list_predefined_configs()
+        for config_name in configs:
+            print(f"   • {config_name}")
+        print("\n💡 Use 'astro-lab config model show <name>' to see details")
+        
+    elif args.action == "show":
+        if not args.name:
+            print("❌ Model name required for show action")
+            return
+            
+        try:
+            config = get_predefined_config(args.name)
+            print(f"🏗️ Model configuration: {args.name}")
+            print(f"   Name: {config.name}")
+            print(f"   Description: {config.description}")
+            print(f"   Version: {config.version}")
+            
+            print(f"\n📊 Encoder settings:")
+            print(f"   • Photometry: {config.encoder.use_photometry}")
+            print(f"   • Astrometry: {config.encoder.use_astrometry}")
+            print(f"   • Spectroscopy: {config.encoder.use_spectroscopy}")
+            
+            print(f"\n🕸️ Graph settings:")
+            print(f"   • Conv type: {config.graph.conv_type}")
+            print(f"   • Hidden dim: {config.graph.hidden_dim}")
+            print(f"   • Num layers: {config.graph.num_layers}")
+            print(f"   • Dropout: {config.graph.dropout}")
+            
+            print(f"\n🎯 Output settings:")
+            print(f"   • Task: {config.output.task}")
+            print(f"   • Output dim: {config.output.output_dim}")
+            print(f"   • Pooling: {config.output.pooling}")
+            
+        except KeyError:
+            print(f"❌ Model configuration '{args.name}' not found")
+            print("💡 Use 'astro-lab config model list' to see available configs")
+            
+    elif args.action == "create":
+        if not args.name:
+            print("❌ Model name required for create action")
+            return
+            
+        try:
+            config = get_predefined_config(args.name)
+            output_file = args.output or f"{args.name}_config.yaml"
+            
+            # Convert to dict and save
+            config_dict = config.dict()
+            with open(output_file, "w") as f:
+                try:
+                    yaml.safe_dump(config_dict, f, default_flow_style=False, indent=2)
+                except (AttributeError, ImportError):
+                    # Fallback to json if yaml is not available
+                    import json
+                    json.dump(config_dict, f, indent=2)
+                
+            print(f"✅ Model configuration saved to: {output_file}")
+            print(f"💡 You can now use this config in your training:")
+            print(f"   astro-lab train --config {output_file}")
+            
+        except KeyError:
+            print(f"❌ Model configuration '{args.name}' not found")
+            print("💡 Use 'astro-lab config model list' to see available configs")
+
 
 if __name__ == "__main__":
     main()
+

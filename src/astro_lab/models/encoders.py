@@ -24,6 +24,7 @@ from astro_lab.tensors import (
     SpectralTensor,
     SurveyTensor,
 )
+from astro_lab.models.layers import LayerFactory
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +70,10 @@ class PhotometryEncoder(BaseEncoder):
     def __init__(self, output_dim: int):
         super().__init__(output_dim, expected_input_dim=32)
         self.encoder = nn.Sequential(
-            Linear(32, 64),  # Standard photometric features
+            LayerFactory.create_mlp(32, 64),  # Standard photometric features
             nn.ReLU(),
             nn.Dropout(0.1),
-            Linear(64, output_dim),
+            LayerFactory.create_mlp(64, output_dim),
         )
 
     def forward(self, phot_tensor: PhotometricTensor) -> torch.Tensor:
@@ -155,10 +156,10 @@ class AstrometryEncoder(nn.Module):
     def __init__(self, output_dim: int):
         super().__init__()
         self.encoder = nn.Sequential(
-            Linear(16, 32),  # Coordinate + proper motion features
+            LayerFactory.create_mlp(16, 32),  # Coordinate + proper motion features
             nn.ReLU(),
             nn.Dropout(0.1),
-            Linear(32, output_dim),
+            LayerFactory.create_mlp(32, output_dim),
         )
 
     def forward(self, spatial_tensor: Spatial3DTensor) -> torch.Tensor:
@@ -217,10 +218,10 @@ class SpectroscopyEncoder(nn.Module):
     def __init__(self, output_dim: int):
         super().__init__()
         self.encoder = nn.Sequential(
-            Linear(64, 128),  # Spectral features
+            LayerFactory.create_mlp(64, 128),  # Spectral features
             nn.ReLU(),
             nn.Dropout(0.1),
-            Linear(128, output_dim),
+            LayerFactory.create_mlp(128, output_dim),
         )
 
     def forward(self, spec_tensor: Union[SpectralTensor, SurveyTensor]) -> torch.Tensor:
@@ -281,10 +282,10 @@ class LightcurveEncoder(nn.Module):
     def __init__(self, output_dim: int):
         super().__init__()
         self.encoder = nn.Sequential(
-            Linear(32, 64),  # Lightcurve features
+            LayerFactory.create_mlp(32, 64),  # Lightcurve features
             nn.ReLU(),
             nn.Dropout(0.1),
-            Linear(64, output_dim),
+            LayerFactory.create_mlp(64, output_dim),
         )
 
     def forward(self, lc_tensor: LightcurveTensor) -> torch.Tensor:
