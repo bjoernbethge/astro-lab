@@ -110,7 +110,7 @@ uv run marimo edit
 uv run jupyter lab
 
 # Launch MLflow UI
-uv run mlflow ui
+uv run mlflow ui --backend-store-uri ./data/experiments
 ```
 
 ## 📝 Contributing Guidelines
@@ -177,7 +177,7 @@ uv run python -c "import astro_lab; print('Import successful')"
 ### Debug Mode
 ```bash
 # Run with debug logging
-uv run python -m src.astro_lab.cli.train train -c config.yaml --verbose
+astro-lab train -c config.yaml --verbose
 
 # Run tests with debug output
 uv run pytest -v -s --tb=short
@@ -236,7 +236,7 @@ optimized_data = optimize_memory_usage(data, precision="float16")
 ### End-to-End Testing
 ```bash
 # Test complete training pipeline
-uv run python -m src.astro_lab.cli.train run -c configs/gaia_optimization.yaml --epochs 1
+astro-lab run -c configs/gaia_optimization.yaml --epochs 1
 
 # Test data loading pipeline
 uv run python -c "from astro_lab.data.core import create_cosmic_web_loader; create_cosmic_web_loader('gaia', max_samples=100)"

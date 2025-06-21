@@ -1112,24 +1112,24 @@ print(f"Distance std: {stats['distance_std']:.2f} pc")
 ### Download Data
 ```bash
 # Download survey data
-python -m src.astro_lab.cli.data download gaia --magnitude-limit 12.0
-python -m src.astro_lab.cli.data download sdss --survey dr17
+astro-lab data download gaia --magnitude-limit 12.0
+astro-lab data download sdss --survey dr17
 ```
 
 ### Process Data
 ```bash
 # Preprocess downloaded data
-python -m src.astro_lab.cli.data preprocess gaia --create-graphs
-python -m src.astro_lab.cli.data preprocess sdss --normalize
+astro-lab data preprocess gaia --create-graphs
+astro-lab data preprocess sdss --normalize
 ```
 
 ### List Available Data
 ```bash
 # List available surveys
-python -m src.astro_lab.cli.data list-surveys
+astro-lab data list-surveys
 
 # Check data status
-python -m src.astro_lab.cli.data status
+astro-lab data status
 ```
 
 ## 📊 Data Formats
@@ -1184,6 +1184,26 @@ datamodule = create_astro_datamodule(
     batch_size=64,
     max_samples=20000
 )
+```
+
+## 📊 Experiment Tracking
+
+### MLflow Configuration
+```yaml
+mlflow:
+  tracking_uri: ./data/experiments
+  experiment_name: data_analysis
+  tags:
+    survey: gaia
+    task: stellar_classification
+```
+
+### View Results
+```bash
+# Launch MLflow UI
+uv run mlflow ui --backend-store-uri ./data/experiments
+
+# Access at: http://localhost:5000
 ```
 
 ---

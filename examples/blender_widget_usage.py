@@ -10,7 +10,14 @@ This example shows how to use the new direct Blender API access:
 - widget.utils: Blender utilities
 """
 
-from src.astro_lab.widgets.astro_lab import AstroLabWidget
+import sys
+from pathlib import Path
+
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(project_root))
+
+from astro_lab.widgets.astro_lab import AstroLabWidget
 
 
 def basic_blender_operations():

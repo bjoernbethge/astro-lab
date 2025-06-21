@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Process NSA galaxies with cosmic web analysis using integrated Data module functions."""
 
+import sys
 import time
 from pathlib import Path
 
 import torch
 
-from src.astro_lab.data.core import create_cosmic_web_loader
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(project_root))
+
+from astro_lab.data.core import create_cosmic_web_loader
 
 
 def main():

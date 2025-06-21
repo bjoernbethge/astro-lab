@@ -19,9 +19,9 @@ RUN chown -R astro-lab:astro-lab /app
 # Copy project files and set ownership
 COPY --chown=astro-lab:astro-lab pyproject.toml uv.lock .marimo.toml ./
 
-# Create MLflow directories with proper ownership
-RUN mkdir -p /mlflow/db /mlflow/artifacts /mlflow/models /mlflow/experiments /mlflow/runs /mlflow/prompts /snippets\
-    && chown -R astro-lab:astro-lab /mlflow
+# Create necessary directories with proper ownership
+RUN mkdir -p /app/data/experiments/db /app/data/experiments/artifacts /app/data/experiments/models /app/data/experiments/runs \
+    && chown -R astro-lab:astro-lab /app
 
 # Switch to astro-lab user for dependency installation
 USER astro-lab

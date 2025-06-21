@@ -8,10 +8,14 @@ services:
       - "2718:2718" # Astro Lab - Primary Service
       - "5000:5000" # MLflow backend
     volumes:
-      # Mount local directory for SQLite database and artifacts storage
-      - ./data/mlflow:/mlflow
+      # Mount entire data directory for all data access
+      - ./data:/app/data
+      # Mount source code for development
+      - ./src:/app/src
       # Mount snippets directory for development
       - ./snippets:/app/snippets
+      # Mount configs for easy access
+      - ./configs:/app/configs
     extra_hosts:
       # Host-Gateway for access to host services
       - "host.docker.internal:host-gateway"
@@ -21,8 +25,8 @@ services:
       - "astro-lab:127.0.0.1"
     environment:
       # MLflow server configuration
-      - MLFLOW_BACKEND_STORE_URI=sqlite:////mlflow/db/mlflow.db
-      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/mlflow/artifacts
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////app/data/experiments/db/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/app/data/experiments/artifacts
       - MLFLOW_SERVE_ARTIFACTS=true
       # Server host binding (allows external access)
       - MLFLOW_HOST=0.0.0.0

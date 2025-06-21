@@ -3,11 +3,16 @@
 
 import time
 from pathlib import Path
+import sys
+
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(project_root))
 
 import polars as pl
 import torch
 
-from src.astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.data.core import create_cosmic_web_loader
 
 
 def main():

@@ -2,6 +2,7 @@
 """Process Earth satellite data with cosmic web analysis using real TLE data and poliastro."""
 
 import time
+import sys
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -9,8 +10,12 @@ import numpy as np
 import polars as pl
 import torch
 
-from src.astro_lab.tensors import Spatial3DTensor, EarthSatelliteTensor
-from src.astro_lab.utils import calculate_volume, calculate_mean_density
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(project_root))
+
+from astro_lab.tensors import Spatial3DTensor, EarthSatelliteTensor
+from astro_lab.utils import calculate_volume, calculate_mean_density
 
 
 def load_satellite_data(max_samples=None):

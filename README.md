@@ -28,10 +28,10 @@ widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 ### Training a Model
 ```bash
 # Create configuration
-python -m src.astro_lab.cli.train create-config -o my_experiment.yaml
+astro-lab create-config -o my_experiment.yaml
 
 # Run complete ML workflow (optimize + train)
-python -m src.astro_lab.cli.train run -c my_experiment.yaml --auto-optimize
+astro-lab run -c my_experiment.yaml --auto-optimize
 ```
 
 ## 🌟 Key Features
@@ -81,22 +81,22 @@ python -m src.astro_lab.cli.train run -c my_experiment.yaml --auto-optimize
 ### Training Workflow
 ```bash
 # Complete ML workflow (recommended)
-python -m src.astro_lab.cli.train run -c config.yaml --auto-optimize
+astro-lab run -c config.yaml --auto-optimize
 
 # Training only (for production)
-python -m src.astro_lab.cli.train train -c config.yaml
+astro-lab train -c config.yaml
 
 # Optimization only (for experiments)
-python -m src.astro_lab.cli.train optimize -c config.yaml -n 50 --update-config
+astro-lab optimize -c config.yaml -n 50 --update-config
 ```
 
 ### Configuration Management
 ```bash
 # Create default configuration
-python -m src.astro_lab.cli.train create-config -o my_experiment.yaml
+astro-lab create-config -o my_experiment.yaml
 
 # List available surveys
-python -m src.astro_lab.cli.data list-surveys
+astro-lab data list-surveys
 ```
 
 ## 🏗️ Architecture
@@ -169,7 +169,7 @@ uv run marimo edit
 uv run jupyter lab
 
 # Launch MLflow UI
-uv run mlflow ui
+uv run mlflow ui --backend-store-uri ./data/experiments
 ```
 
 ### Testing
@@ -189,6 +189,56 @@ All experiments are automatically tracked with MLflow:
 - **Parameters**: Hyperparameters, model configurations
 - **Artifacts**: Model checkpoints, visualizations
 - **Reproducibility**: Complete experiment snapshots
+
+### MLflow Configuration
+```yaml
+mlflow:
+  tracking_uri: ./data/experiments
+  experiment_name: my_experiment
+  experiment_description: "Detailed experiment description"
+  tags:
+    survey: Gaia
+    task: stellar_classification
+    version: v1.0
+```
+
+## 🐳 Docker Support
+
+### Quick Start with Docker
+```bash
+# Build and start the container
+docker-compose -f docker/docker-compose.yaml up -d
+
+# Access MLflow UI
+open http://localhost:5000
+
+# Access Marimo (if started)
+open http://localhost:2718
+
+# Run CLI commands in container
+docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab --help
+```
+
+### Docker Configuration
+- **MLflow**: Automatically configured with persistent storage in `./data/experiments`
+- **Ports**: 2718 (Marimo), 5000 (MLflow)
+- **Volumes**: 
+  - `./data` → `/app/data` (all data, experiments, artifacts)
+  - `./src` → `/app/src` (source code for development)
+  - `./configs` → `/app/configs` (configuration files)
+  - `./snippets` → `/app/snippets` (development snippets)
+
+### Development with Docker
+```bash
+# Run training in container with local data
+docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab train -c /app/configs/gaia_optimization.yaml
+
+# Access data from container
+docker-compose -f docker/docker-compose.yaml exec astro-lab ls /app/data
+
+# Run interactive development
+docker-compose -f docker/docker-compose.yaml exec astro-lab marimo edit
+```
 
 ## 🤝 Contributing
 
