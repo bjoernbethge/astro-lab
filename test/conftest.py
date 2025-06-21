@@ -450,6 +450,106 @@ def cleanup_mlflow():
         pass
 
 
+@pytest.fixture
+def tng50_test_data(tmp_path):
+    """Create realistic TNG50 test data for testing."""
+    import polars as pl
+    import numpy as np
+    
+    # Create TNG50 data directory
+    tng50_dir = tmp_path / "data" / "raw" / "tng50"
+    tng50_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate realistic TNG50 particle data
+    n_particles = 1000
+    
+    # TNG50 coordinates are in ckpc/h (0-35000 ckpc/h box)
+    x = np.random.uniform(0, 35000, n_particles)
+    y = np.random.uniform(0, 35000, n_particles)
+    z = np.random.uniform(0, 35000, n_particles)
+    
+    # Gas particles (PartType0) - typical properties
+    if np.random.random() > 0.5:  # 50% chance for gas particles
+        masses = np.random.lognormal(6, 1, n_particles)  # Gas particle masses
+        temperatures = np.random.lognormal(4, 1, n_particles)  # Temperature in K
+        densities = np.random.lognormal(-2, 1, n_particles)  # Density in cm^-3
+        
+        gas_data = pl.DataFrame({
+            "x": x,
+            "y": y, 
+            "z": z,
+            "masses": masses,
+            "temperatures": temperatures,
+            "densities": densities,
+            "metallicities": np.random.uniform(0, 0.1, n_particles),
+            "star_formation_rates": np.random.exponential(0.1, n_particles),
+        })
+        
+        gas_file = tng50_dir / "tng50_parttype0.parquet"
+        gas_data.write_parquet(gas_file)
+    
+    # Dark matter particles (PartType1)
+    dm_masses = np.random.lognormal(7, 0.5, n_particles)  # DM particle masses
+    
+    dm_data = pl.DataFrame({
+        "x": x,
+        "y": y,
+        "z": z,
+        "masses": dm_masses,
+        "velocities_x": np.random.normal(0, 200, n_particles),
+        "velocities_y": np.random.normal(0, 200, n_particles),
+        "velocities_z": np.random.normal(0, 200, n_particles),
+    })
+    
+    dm_file = tng50_dir / "tng50_parttype1.parquet"
+    dm_data.write_parquet(dm_file)
+    
+    # Stars (PartType4)
+    star_masses = np.random.lognormal(0, 1, n_particles)  # Stellar masses
+    star_ages = np.random.uniform(0, 13.8, n_particles)  # Ages in Gyr
+    
+    star_data = pl.DataFrame({
+        "x": x,
+        "y": y,
+        "z": z,
+        "masses": star_masses,
+        "ages": star_ages,
+        "metallicities": np.random.uniform(0, 0.1, n_particles),
+        "velocities_x": np.random.normal(0, 150, n_particles),
+        "velocities_y": np.random.normal(0, 150, n_particles),
+        "velocities_z": np.random.normal(0, 150, n_particles),
+    })
+    
+    star_file = tng50_dir / "tng50_parttype4.parquet"
+    star_data.write_parquet(star_file)
+    
+    # Black holes (PartType5)
+    bh_masses = np.random.lognormal(6, 2, n_particles)  # BH masses
+    bh_accretion_rates = np.random.exponential(0.01, n_particles)
+    
+    bh_data = pl.DataFrame({
+        "x": x,
+        "y": y,
+        "z": z,
+        "masses": bh_masses,
+        "accretion_rates": bh_accretion_rates,
+        "velocities_x": np.random.normal(0, 100, n_particles),
+        "velocities_y": np.random.normal(0, 100, n_particles),
+        "velocities_z": np.random.normal(0, 100, n_particles),
+    })
+    
+    bh_file = tng50_dir / "tng50_parttype5.parquet"
+    bh_data.write_parquet(bh_file)
+    
+    return {
+        "data_dir": tng50_dir,
+        "gas_file": tng50_dir / "tng50_parttype0.parquet",
+        "dm_file": tng50_dir / "tng50_parttype1.parquet", 
+        "star_file": tng50_dir / "tng50_parttype4.parquet",
+        "bh_file": tng50_dir / "tng50_parttype5.parquet",
+    }
+
+
 # Pytest configuration
 def pytest_configure(config):
     """Configure pytest with custom markers and PyTorch memory settings."""

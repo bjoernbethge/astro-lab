@@ -157,7 +157,6 @@ def test_astro_trainer_gpu():
         max_epochs=2,
         accelerator="gpu" if device.type == "cuda" else "cpu",
         devices=1,
-        patience=5,
     )
     print(f"  ✓ AstroTrainer created with {device.type} accelerator")
 

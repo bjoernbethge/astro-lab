@@ -220,9 +220,6 @@ class TestFeatureTensor:
         assert isinstance(feature_tensor.get_metadata("feature_names"), list)
         assert isinstance(feature_tensor.get_metadata("astronomical_priors"), dict)
 
-    @pytest.mark.skip(
-        reason="Copy functionality needs fixing - Pydantic extra attribute issue"
-    )
     def test_copy_functionality(self, feature_tensor):
         """Test tensor copying and metadata preservation."""
         # Create a copy

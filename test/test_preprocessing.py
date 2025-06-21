@@ -712,24 +712,15 @@ class TestPerformanceAndScaling:
 class TestTNG50Preprocessing:
     """Tests für TNG50 simulation preprocessing."""
 
-    def test_load_tng50_data_from_parquet(self):
+    def test_load_tng50_data_from_parquet(self, tng50_test_data):
         """Test loading of TNG50 data from existing parquet files."""
-        from pathlib import Path
-
         from astro_lab.data.core import load_tng50_data
-
-        # Check if TNG50 data exists
-        data_dir = Path("data/raw/tng50")
-        parttype0_file = data_dir / "tng50_parttype0.parquet"
-
-        if not parttype0_file.exists():
-            pytest.skip("TNG50 test data not available")
 
         # Test loading different particle types
         particle_types = ["PartType0", "PartType1", "PartType4", "PartType5"]
 
         for particle_type in particle_types:
-            particle_file = data_dir / f"tng50_{particle_type.lower()}.parquet"
+            particle_file = tng50_test_data["data_dir"] / f"tng50_{particle_type.lower()}.parquet"
 
             if particle_file.exists():
                 print(f"Testing {particle_type}...")
@@ -750,23 +741,14 @@ class TestTNG50Preprocessing:
                 except Exception as e:
                     pytest.fail(f"Failed to load {particle_type}: {e}")
 
-    def test_tng50_graph_creation(self):
+    def test_tng50_graph_creation(self, tng50_test_data):
         """Test TNG50 graph creation from parquet data."""
-        from pathlib import Path
-
         import polars as pl
 
         from astro_lab.data.core import create_graph_from_dataframe, detect_survey_type
 
-        # Check if TNG50 data exists
-        data_dir = Path("data/raw/tng50")
-        parttype0_file = data_dir / "tng50_parttype0.parquet"
-
-        if not parttype0_file.exists():
-            pytest.skip("TNG50 test data not available")
-
         # Load a small sample
-        df = pl.read_parquet(parttype0_file)
+        df = pl.read_parquet(tng50_test_data["gas_file"])
         if len(df) > 50:
             df = df.sample(50, seed=42)
 
@@ -799,22 +781,13 @@ class TestTNG50Preprocessing:
         except Exception as e:
             pytest.fail(f"TNG50 graph creation failed: {e}")
 
-    def test_tng50_preprocessing_pipeline(self):
+    def test_tng50_preprocessing_pipeline(self, tng50_test_data):
         """Test end-to-end TNG50 preprocessing pipeline."""
-        from pathlib import Path
-
         from astro_lab.data.core import load_tng50_data
         from astro_lab.data.processing import (
             SimpleAstroProcessor,
             SimpleProcessingConfig,
         )
-
-        # Check if TNG50 data exists
-        data_dir = Path("data/raw/tng50")
-        parttype0_file = data_dir / "tng50_parttype0.parquet"
-
-        if not parttype0_file.exists():
-            pytest.skip("TNG50 test data not available")
 
         # Create processor
         config = SimpleProcessingConfig(
@@ -858,18 +831,9 @@ class TestTNG50Preprocessing:
         except Exception as e:
             pytest.fail(f"TNG50 preprocessing pipeline failed: {e}")
 
-    def test_tng50_coordinate_ranges(self):
+    def test_tng50_coordinate_ranges(self, tng50_test_data):
         """Test that TNG50 coordinates are in expected ranges."""
-        from pathlib import Path
-
         from astro_lab.data.core import load_tng50_data
-
-        # Check if TNG50 data exists
-        data_dir = Path("data/raw/tng50")
-        parttype0_file = data_dir / "tng50_parttype0.parquet"
-
-        if not parttype0_file.exists():
-            pytest.skip("TNG50 test data not available")
 
         # Load TNG50 tensor
         try:
@@ -880,10 +844,14 @@ class TestTNG50Preprocessing:
             # Extract coordinates (first 3 columns should be x, y, z)
             coords = tensor._data[:, :3]
 
+            # Helper to get value from tensor or float
+            def get_val(x):
+                return x.item() if hasattr(x, 'item') else float(x)
+
             # Check coordinate ranges (TNG50 coordinates are in ckpc/h: 0-35000 ckpc/h)
-            x_min, x_max = coords[:, 0].min().item(), coords[:, 0].max().item()
-            y_min, y_max = coords[:, 1].min().item(), coords[:, 1].max().item()
-            z_min, z_max = coords[:, 2].min().item(), coords[:, 2].max().item()
+            x_min, x_max = get_val(coords[:, 0].min()), get_val(coords[:, 0].max())
+            y_min, y_max = get_val(coords[:, 1].min()), get_val(coords[:, 1].max())
+            z_min, z_max = get_val(coords[:, 2].min()), get_val(coords[:, 2].max())
 
             print(f"   📊 X range: [{x_min:.2f}, {x_max:.2f}] ckpc/h")
             print(f"   📊 Y range: [{y_min:.2f}, {y_max:.2f}] ckpc/h")

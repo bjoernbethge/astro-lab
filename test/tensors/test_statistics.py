@@ -130,15 +130,15 @@ class TestStatisticsTensor:
         assert "xi_r" in stored_xi
         assert stored_xi["estimator"] == "davis_peebles"
 
-    @pytest.mark.skip(
-        reason="Bootstrap errors need fixing - non-empty TensorList issue"
-    )
     def test_bootstrap_errors(self, stats_tensor):
         """Test bootstrap error estimation."""
         # Compute a luminosity function first
         bin_centers, phi = stats_tensor.luminosity_function(
             magnitude_column=0, bins=10, function_name="test_lf"
         )
+        # Ensure function is stored
+        if "test_lf" not in stats_tensor.get_metadata("computed_functions", {}):
+            stats_tensor.luminosity_function(magnitude_column=0, bins=10, function_name="test_lf")
 
         # Compute bootstrap errors
         errors = stats_tensor.bootstrap_errors("test_lf", n_bootstrap=10)
@@ -157,15 +157,15 @@ class TestStatisticsTensor:
         # Check that all errors are positive
         assert torch.all(errors["std_error"] >= 0)
 
-    @pytest.mark.skip(
-        reason="Jackknife errors need fixing - non-empty TensorList issue"
-    )
     def test_jackknife_errors(self, stats_tensor):
         """Test jackknife error estimation."""
         # Compute a luminosity function first
         bin_centers, phi = stats_tensor.luminosity_function(
             magnitude_column=0, bins=10, function_name="test_lf_jk"
         )
+        # Ensure function is stored
+        if "test_lf_jk" not in stats_tensor.get_metadata("computed_functions", {}):
+            stats_tensor.luminosity_function(magnitude_column=0, bins=10, function_name="test_lf_jk")
 
         # Compute jackknife errors
         errors = stats_tensor.jackknife_errors("test_lf_jk")
@@ -265,9 +265,6 @@ class TestStatisticsTensor:
             stored = stats_tensor.get_function(f"xi_{estimator}")
             assert stored["estimator"] == estimator
 
-    @pytest.mark.skip(
-        reason="Weighted statistics need fixing - weights parameter not supported"
-    )
     def test_weighted_statistics(self, stats_tensor):
         """Test weighted statistical functions."""
         # Create weights (all equal for simplicity)
