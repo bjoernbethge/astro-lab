@@ -18,19 +18,10 @@ os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-try:
-    import bmesh
-    import bpy
-    from mathutils import Euler, Matrix, Vector
-    BPY_AVAILABLE = True
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    BPY_AVAILABLE = False
-    bmesh = None
-    bpy = None
-    Euler = None
-    Matrix = None
-    Vector = None
+# Import Blender modules directly
+import bmesh
+import bpy
+from mathutils import Euler, Matrix, Vector
 
 try:
     # Import all advanced modules
@@ -59,12 +50,12 @@ class AdvancedVisualizationSuite:
         self.scene_name = scene_name
         self.scene_objects = {}
 
-        if ADVANCED_AVAILABLE and BPY_AVAILABLE:
+        if ADVANCED_AVAILABLE:
             self._initialize_scene()
 
     def _initialize_scene(self) -> None:
         """Initialize advanced scene with optimal settings."""
-        if not BPY_AVAILABLE or not bpy:
+        if not bpy:
             print("Blender not available")
             return
             
@@ -128,7 +119,7 @@ class AdvancedVisualizationSuite:
         Returns:
             Created galaxy object
         """
-        if not ADVANCED_AVAILABLE or not BPY_AVAILABLE:
+        if not ADVANCED_AVAILABLE:
             print("Advanced modules not available")
             return None
 
@@ -171,7 +162,7 @@ class AdvancedVisualizationSuite:
         Returns:
             Created nebula object
         """
-        if not ADVANCED_AVAILABLE or not BPY_AVAILABLE:
+        if not ADVANCED_AVAILABLE:
             print("Advanced modules not available")
             return None
 

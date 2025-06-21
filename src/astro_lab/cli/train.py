@@ -41,7 +41,7 @@ def setup_logging(verbose: bool = False) -> None:
 def create_default_config(output_path: str = "config.yaml") -> None:
     """
     Create a minimal default configuration file.
-    
+
     Args:
         output_path: Path where to save the configuration file
     """
@@ -53,9 +53,9 @@ def create_default_config(output_path: str = "config.yaml") -> None:
                 "name": "gaia_classifier",
                 "type": "AstroSurveyGNN",
                 "params": {
-                    "hidden_dim": 128,
-                    "num_layers": 3,
-                    "dropout": 0.1,
+                "hidden_dim": 128,
+                "num_layers": 3,
+                "dropout": 0.1,
                 },
             },
             "data": {
@@ -128,11 +128,10 @@ def train_from_config(config_path: str) -> None:
             dataset_params = {
                 k: v for k, v in enhanced_data_config.items() if k != "dataset"
             }
-            
             logger.info(f"📊 Loading dataset: {dataset_name}")
             datamodule = create_astro_datamodule(dataset_name, **dataset_params)
             logger.info(f"✅ Datamodule created successfully")
-            
+
             # Automatische Klassenanzahl aus Trainingsdaten bestimmen
             train_loader = datamodule.train_dataloader() if hasattr(datamodule, 'train_dataloader') else None
             num_classes = None
@@ -149,7 +148,6 @@ def train_from_config(config_path: str) -> None:
                         targets.append(t.flatten())
                     if i > 5:  # Limit for efficiency
                         break
-                
                 if targets:
                     import torch
                     all_targets = torch.cat(targets)
@@ -159,7 +157,7 @@ def train_from_config(config_path: str) -> None:
                     logger.warning("⚠️ Could not detect classes from training data")
             else:
                 logger.warning("⚠️ No training dataloader available for class detection")
-            
+
             # Update model config with detected classes
             if num_classes is not None:
                 model_config = loader.get_model_config()
@@ -167,18 +165,18 @@ def train_from_config(config_path: str) -> None:
                     model_config['params'] = {}
                 model_config['params']['output_dim'] = num_classes
                 logger.info(f"🔄 Updated model config with {num_classes} classes")
-            
+
             # Create model with updated config
             model_config = loader.get_model_config()
             survey = model_config.get("survey", "gaia")
             task = model_config.get("task", "stellar_classification")
             model_params = model_config.get("params", {})
-            
+
             # Ensure output_dim is set
             if 'output_dim' not in model_params or model_params['output_dim'] is None:
                 model_params['output_dim'] = num_classes or 8  # Fallback
                 logger.info(f"🔄 Set output_dim to {model_params['output_dim']}")
-            
+
             model = ModelFactory.create_survey_model(
                 survey=survey, 
                 task=task, 
@@ -230,7 +228,7 @@ def train_from_config(config_path: str) -> None:
         try:
             trainer.fit(datamodule=datamodule)
             logger.info("🎉 Training completed successfully!")
-            
+
         except Exception as e:
             logger.error(f"❌ Training failed: {e}")
             logger.error(f"🔍 Training error details: {type(e).__name__}: {str(e)}")
@@ -274,18 +272,18 @@ def optimize_from_config(
         loader = ConfigLoader(config_path)
         config = loader.load_config()
         config = ensure_mlflow_block(config)
-        
+
         # Create datamodule
         data_config_section = config.get("data", {})
         enhanced_data_config = enhance_data_config_for_tensors(data_config_section)
-        
+
         dataset_name = enhanced_data_config["dataset"]
         dataset_params = {
             k: v for k, v in enhanced_data_config.items() if k != "dataset"
         }
         
         datamodule = create_astro_datamodule(dataset_name, **dataset_params)
-        
+
         # Create base model and trainer
         model_config = loader.get_model_config()
         survey = model_config.get("survey", "gaia")
@@ -307,7 +305,7 @@ def optimize_from_config(
             devices="auto",
             precision="16-mixed",
         )
-        
+
         # Run optimization
         logger.info("🔍 Starting hyperparameter optimization...")
         results = trainer.optimize_hyperparameters(
@@ -318,7 +316,7 @@ def optimize_from_config(
         
         logger.info("🎉 Hyperparameter optimization completed!")
         logger.info(f"🔍 Best parameters: {results}")
-        
+
     except Exception as e:
         logger.error(f"❌ Optimization failed: {e}")
         raise
@@ -334,26 +332,20 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
 
 def create_model_from_config(model_config: Dict[str, Any]) -> Any:
-    """Create model from configuration."""
-    try:
-        model_type = model_config.get("type", "AstroSurveyGNN")
-        params = model_config.get("params", {})
-        
-        if model_type == "AstroSurveyGNN":
-            from astro_lab.models.astro import AstroSurveyGNN
-            return AstroSurveyGNN(**params)
-        elif model_type == "AstroPhotGNN":
-            from astro_lab.models.astrophot_models import AstroPhotGNN
-            return AstroPhotGNN(**params)
-        elif model_type == "ALCDEFTemporalGNN":
-            from astro_lab.models.tgnn import ALCDEFTemporalGNN
-            return ALCDEFTemporalGNN(**params)
-        else:
-            raise ValueError(f"Unknown model type: {model_type}")
-            
-    except Exception as e:
-        logger.error(f"❌ Model creation failed: {e}")
-        raise
+    """Create a model from a config dict."""
+    model_type = model_config.get("type", "AstroSurveyGNN")
+    params = model_config.get("params", {})
+    if model_type == "AstroSurveyGNN":
+        from astro_lab.models.astro import AstroSurveyGNN
+        return AstroSurveyGNN(**params)
+    elif model_type == "AstroPhotGNN":
+        from astro_lab.models.astrophot_models import AstroPhotGNN
+        return AstroPhotGNN(**params)
+    elif model_type == "ALCDEFTemporalGNN":
+        from astro_lab.models.tgnn import ALCDEFTemporalGNN
+        return ALCDEFTemporalGNN(**params)
+    else:
+        raise ValueError(f"Unknown model type: {model_type}")
 
 
 def enhance_data_config_for_tensors(data_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -430,8 +422,8 @@ def run(config: str, optimize_first: bool, n_trials: int, auto_optimize: bool, v
     try:
         setup_logging(verbose=verbose)
         logger.info("🚀 Starting complete ML workflow...")
-        
-        # Load configuration
+
+    # Load configuration
         loader = ConfigLoader(config)
         config_dict = loader.load_config()
         config_dict = ensure_mlflow_block(config_dict)
@@ -554,9 +546,9 @@ def run_optimization(loader: ConfigLoader, config: Dict[str, Any], n_trials: int
         dataset_params = {
             k: v for k, v in enhanced_data_config.items() if k != "dataset"
         }
-        
+
         datamodule = create_astro_datamodule(dataset_name, **dataset_params)
-        
+
         # Create base model and trainer
         model_config = loader.get_model_config()
         survey = model_config.get("survey", "gaia")

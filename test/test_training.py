@@ -136,7 +136,7 @@ class TestAstroLightningModule:
         # Create test batch with targets
         x = torch.randn(8, 5)
         edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
-        y = torch.randint(0, 4, (8,))  # Classification targets
+        y = torch.randint(0, 4, (8,))  # Classification targets (0-3, so 4 classes)
 
         batch = {"x": x, "edge_index": edge_index, "y": y}
 
@@ -156,7 +156,7 @@ class TestAstroLightningModule:
         # Create test batch
         x = torch.randn(6, 5)
         edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
-        y = torch.randint(0, 4, (6,))
+        y = torch.randint(0, 4, (6,))  # Classification targets (0-3, so 4 classes)
 
         batch = {"x": x, "edge_index": edge_index, "y": y}
 

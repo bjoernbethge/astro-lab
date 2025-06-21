@@ -2,168 +2,102 @@
 Blender Integration Module
 =========================
 
-Centralized Blender availability check and import management.
-Prevents memory leaks and numpy multiarray issues.
+Centralized Blender import management.
+Ensures NumPy compatibility and prevents memory leaks.
 """
 
 import os
 import warnings
-import sys
-from contextlib import contextmanager
-from typing import Optional, Any
+import gc
 
-# Import our NumPy compatibility layer
-from .numpy_compat import numpy_compat, is_blender_available, get_bpy, get_mathutils, blender_context
+# 1. NumPy-Compatibility Patch (muss vor bpy-Import kommen!)
+from . import numpy_compat  # noqa: F401
 
-def import_bpy_with_numpy_workaround():
-    """Setzt die NumPy-Workaround-Variable nur temporär und importiert bpy."""
-    if numpy_compat.available:
-        return numpy_compat.bpy
-    return None
-
-# Suppress numpy warnings that occur with bpy
+# 2. Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-# Global state to prevent multiple imports
-_bpy = None
-_mathutils = None
-_blender_checked = False
-_blender_available = False
-_blender_error = None
+# 3. Import bpy/mathutils direkt mit Memory Management
+try:
+    import bpy
+    import mathutils
+    
+    # Force garbage collection after Blender imports
+    gc.collect()
+    
+except ImportError as e:
+    print(f"Blender modules not available: {e}")
+    bpy = None
+    mathutils = None
 
-@contextmanager
-def _suppress_all_output():
-    """Suppress all output during import."""
-    import os
-    import sys
-    
-    # Redirect stdout/stderr
-    old_stdout = sys.stdout
-    old_stderr = sys.stderr
-    
-    # Create null devices
-    null_fd = os.open(os.devnull, os.O_RDWR)
-    old_stdout_fd = os.dup(sys.stdout.fileno())
-    old_stderr_fd = os.dup(sys.stderr.fileno())
-    
-    sys.stdout = os.fdopen(null_fd, 'w')
-    sys.stderr = os.fdopen(null_fd, 'w')
-    
-    try:
-        yield
-    finally:
-        # Restore stdout/stderr
-        os.dup2(old_stdout_fd, old_stdout.fileno())
-        os.dup2(old_stderr_fd, old_stderr.fileno())
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        os.close(old_stdout_fd)
-        os.close(old_stderr_fd)
+# 4. Lazy-Import-Funktionen für Submodule (ohne lazy)
+def get_core():
+    """Get core module with memory management."""
+    from . import core
+    gc.collect()  # Clean up after import
+    return core
 
-def _safe_import_blender() -> tuple[Optional[Any], Optional[Any], bool, Optional[str]]:
-    """
-    Safely import Blender modules once.
-    
-    Returns:
-        Tuple of (bpy, mathutils, available, error_message)
-    """
-    global _bpy, _mathutils, _blender_checked, _blender_available, _blender_error
-    
-    if _blender_checked:
-        return _bpy, _mathutils, _blender_available, _blender_error
-    
-    try:
-        # Suppress all output and warnings during import
-        with _suppress_all_output():
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                
-                # Import bpy and mathutils with numpy warnings suppressed
-                import bpy as bpy_module
-                import mathutils as mathutils_module
-                
-                # Test basic functionality
-                _ = bpy_module.context
-                _ = mathutils_module.Vector((0, 0, 0))
-                
-                _bpy = bpy_module
-                _mathutils = mathutils_module
-                _blender_available = True
-                _blender_error = None
-                
-    except ImportError as e:
-        _bpy = None
-        _mathutils = None
-        _blender_available = False
-        _blender_error = f"Blender modules not available: {e}"
-    except Exception as e:
-        _bpy = None
-        _mathutils = None
-        _blender_available = False
-        _blender_error = f"Blender import failed: {e}"
-    
-    _blender_checked = True
-    return _bpy, _mathutils, _blender_available, _blender_error
+def get_grease_pencil_2d():
+    """Get grease pencil 2D module with memory management."""
+    from . import grease_pencil_2d
+    gc.collect()  # Clean up after import
+    return grease_pencil_2d
 
-# Initialize Blender modules once
-bpy, mathutils, BLENDER_AVAILABLE, BLENDER_ERROR = _safe_import_blender()
+def get_grease_pencil_3d():
+    """Get grease pencil 3D module with memory management."""
+    from . import grease_pencil_3d
+    gc.collect()  # Clean up after import
+    return grease_pencil_3d
 
-# Import other modules only if Blender is available
-if BLENDER_AVAILABLE:
-    try:
-        from . import advanced as b3d_adv
-        from . import core
-        from . import grease_pencil_2d
-        from . import grease_pencil_3d
-        from . import lazy
-        from .operators import AstroLabApi, register as al_register, unregister as al_unregister
-        from . import live_tensor_bridge
-    except ImportError as e:
-        BLENDER_ERROR = f"Blender submodules not available: {e}"
-        BLENDER_AVAILABLE = False
-        b3d_adv = None
-        core = None
-        grease_pencil_2d = None
-        grease_pencil_3d = None
-        lazy = None
-        AstroLabApi = None
-        al_register = None
-        al_unregister = None
-        live_tensor_bridge = None
-else:
-    # Set all to None if Blender is not available
-    b3d_adv = None
-    core = None
-    grease_pencil_2d = None
-    grease_pencil_3d = None
-    lazy = None
+def get_live_tensor_bridge():
+    """Get live tensor bridge module with memory management."""
+    from . import live_tensor_bridge
+    gc.collect()  # Clean up after import
+    return live_tensor_bridge
+
+def get_advanced():
+    """Get advanced module with memory management."""
+    from . import advanced
+    gc.collect()  # Clean up after import
+    return advanced
+
+# 5. Import operators with memory management
+try:
+    from .operators import AstroLabApi, register as al_register, unregister as al_unregister
+    gc.collect()  # Clean up after import
+except ImportError as e:
+    print(f"Blender operators not available: {e}")
     AstroLabApi = None
     al_register = None
     al_unregister = None
-    live_tensor_bridge = None
 
-# Export availability status
 __all__ = [
-    "BLENDER_ERROR", 
     "bpy",
     "mathutils",
     "AstroLabApi",
     "al_register",
-    "al_unregister"
+    "al_unregister",
+    "get_core",
+    "get_grease_pencil_2d",
+    "get_grease_pencil_3d",
+    "get_live_tensor_bridge",
+    "get_advanced",
 ]
+
 
 def register():
     """Register all Blender modules for Astro-Lab."""
-    if BLENDER_AVAILABLE and al_register:
+    if al_register:
         al_register()
+        gc.collect()  # Clean up after registration
+
 
 def unregister():
     """Unregister all Blender modules for Astro-Lab."""
-    if BLENDER_AVAILABLE and al_unregister:
+    if al_unregister:
         al_unregister()
+        gc.collect()  # Clean up after unregistration
 
-# Automatically register when the module is loaded inside Blender
-# Check for 'bpy.context' to ensure it's not a headless/background run
-if BLENDER_AVAILABLE and hasattr(bpy, "context"):
+# Automatisch registrieren, wenn in Blender-Umgebung
+if bpy and hasattr(bpy, "context"):
     register()

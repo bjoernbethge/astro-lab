@@ -1,159 +1,125 @@
 #!/usr/bin/env python3
 """
-NASA Sloan Atlas (NSA) Data Processing Example
+NSA Processing Example
+======================
 
-This example demonstrates how to:
-1. Load NSA data using the new data manager
-2. Create graphs from galaxy catalogs
-3. Use modern DataLoaders for training
-4. Process astronomical data efficiently
+Demonstrates processing of NASA Sloan Atlas (NSA) galaxy data
+using AstroLab with Polars for efficient data handling.
 """
 
+import logging
 import sys
 from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.append(str(project_root))
 
-import numpy as np
+from astro_lab.data.core import load_nsa_data, create_cosmic_web_loader
 
-# Use the new data module
-from astro_lab.data import (
-    HAS_ENHANCED_FEATURES,
-    NSAGraphDataset,
-    create_nsa_dataloader,
-    data_manager,
-    get_data_dir,
-    get_data_statistics,
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+logger = logging.getLogger(__name__)
+
+
+def load_nsa_galaxy_data():
+    """Load NSA galaxy data."""
+    logger.info("🌌 Loading NSA galaxy data")
+    logger.info("=" * 35)
+    
+    # Load NSA data
+    nsa_tensor = load_nsa_data(
+        max_samples=1000,
+        return_tensor=True
+    )
+    
+    logger.info(f"✅ Loaded {len(nsa_tensor)} NSA galaxies")
+    logger.info(f"📊 Shape: {nsa_tensor.shape}")
+    logger.info(f"🎯 Survey: {nsa_tensor.survey_name}")
+    
+    # Access underlying Polars DataFrame
+    if hasattr(nsa_tensor, 'data'):
+        df = nsa_tensor.data
+        logger.info(f"📋 Columns: {list(df.columns)}")
+        logger.info(f"📈 Data types: {df.schema}")
+    
+    return nsa_tensor
+
+
+def perform_nsa_cosmic_web_analysis():
+    """Perform cosmic web analysis on NSA data."""
+    logger.info("🌐 Performing NSA cosmic web analysis")
+    logger.info("=" * 45)
+    
+    # Perform cosmic web analysis
+    results = create_cosmic_web_loader(
+        survey="nsa",
+        max_samples=500,
+        scales_mpc=[10.0, 20.0, 50.0]
+    )
+    
+    logger.info(f"✅ Analyzed {results['n_objects']} galaxies")
+    logger.info(f"📊 Volume: {results['total_volume']:.0f} Mpc³")
+    logger.info(f"🌍 Global density: {results['global_density']:.2e} obj/Mpc³")
+    
+    # Show multi-scale results
+    for scale, result in results["results_by_scale"].items():
+        logger.info(f"  {scale} Mpc: {result['n_clusters']} groups, "
+                   f"{result['grouped_fraction']*100:.1f}% grouped")
+    
+    return results
+
+
+def demonstrate_nsa_data_operations():
+    """Demonstrate NSA-specific data operations."""
+    logger.info("🔧 Demonstrating NSA data operations")
+    logger.info("=" * 40)
+    
+    # Load data
+    nsa_tensor = load_nsa_data(max_samples=100, return_tensor=True)
+    
+    if hasattr(nsa_tensor, 'data'):
+        df = nsa_tensor.data
+        
+        # Demonstrate NSA-specific operations
+        logger.info("📊 NSA galaxy statistics:")
+        
+        if 'z' in df.columns:
+            logger.info(f"  Mean redshift: {df['z'].mean():.3f}")
+            logger.info(f"  Redshift range: {df['z'].min():.3f} - {df['z'].max():.3f}")
+        
+        if 'absmag' in df.columns:
+            logger.info(f"  Mean absolute magnitude: {df['absmag'].mean():.2f}")
+        
+        if 'mass' in df.columns:
+            logger.info(f"  Mean stellar mass: {df['mass'].mean():.2e} M☉")
 
 
 def main():
-    """Main example function demonstrating modern NSA data handling."""
-    print("NASA Sloan Atlas (NSA) Modern Data Processing")
-    print("=" * 50)
-
-    # Check which features are available
-    if HAS_ENHANCED_FEATURES:
-        print("✅ Enhanced features available - full processing pipeline")
-        demo_enhanced_processing()
-    else:
-        print("📊 Using PyTorch Geometric datasets only")
-        demo_basic_graph_dataset()
-
-    print("\n" + "=" * 50)
-    print("✅ Demo completed successfully")
-
-
-def demo_enhanced_processing():
-    """Demo with enhanced processing features using data manager."""
-    print("\n1. Loading NSA data with data manager...")
-
+    """Main NSA processing workflow."""
+    logger.info("🌌 AstroLab NSA Processing Example")
+    logger.info("=" * 45)
+    
     try:
-        # Try to load existing NSA catalog
-        catalog_path = Path("data/processed/nsa/catalog.parquet")
-
-        if catalog_path.exists():
-            df = data_manager.load_catalog(catalog_path)
-            print(f"✅ Loaded existing NSA catalog: {len(df):,} galaxies")
-
-            # Get statistics
-            stats = get_data_statistics(df)
-            print(f"📊 Total columns: {stats['n_columns']}")
-            print(f"📊 Numeric columns: {len(stats['numeric_columns'])}")
-
-            # Show sample of data
-            print(f"✅ Data sample shape: {df.shape}")
-            if len(df) > 0:
-                print(f"📋 Sample columns: {df.columns[:5]}")
-        else:
-            print("❌ No NSA catalog found")
-            print("💡 To create NSA data, you need to:")
-            print("   1. Install astroML: uv add astroML")
-            print("   2. Run NSA download script")
-
-        # Now demo the graph dataset
-        demo_basic_graph_dataset()
-
+        # Load NSA data
+        nsa_data = load_nsa_galaxy_data()
+        
+        # Perform analysis
+        cosmic_results = perform_nsa_cosmic_web_analysis()
+        
+        # Demonstrate operations
+        demonstrate_nsa_data_operations()
+        
+        logger.info("🎉 NSA processing completed successfully!")
+        logger.info(f"   - NSA: {len(nsa_data)} galaxies")
+        logger.info(f"   - Cosmic Web: {cosmic_results['n_objects']} objects analyzed")
+        
     except Exception as e:
-        print(f"❌ Error in enhanced processing: {e}")
-        demo_basic_graph_dataset()
-
-
-def demo_basic_graph_dataset():
-    """Demo using PyTorch Geometric NSA dataset."""
-    print("\n2. Creating NSA Graph Dataset...")
-
-    try:
-        # Create graph dataset
-        dataset = NSAGraphDataset(
-            max_galaxies=1000,  # Smaller for demo
-            k_neighbors=8,
-            distance_threshold=50.0,
-        )
-
-        print(f"✅ Dataset created with {len(dataset)} graphs")
-
-        if len(dataset) > 0:
-            # Show first graph
-            data = dataset[0]  # type: ignore
-            print("📊 Graph structure:")
-            print(f"   - Nodes: {data.num_nodes:,}")  # type: ignore
-            print(f"   - Edges: {data.num_edges:,}")  # type: ignore
-            print(f"   - Features: {data.x.shape[1]}")  # type: ignore
-            print(f"   - 3D positions: {data.pos.shape}")  # type: ignore
-
-            # Create DataLoader
-            dataloader = create_nsa_dataloader(
-                max_galaxies=1000,
-                batch_size=1,
-                shuffle=False,
-                use_galaxy_transforms=True,
-            )
-
-            print("✅ DataLoader created successfully")
-
-            # Test batch loading
-            batch = next(iter(dataloader))
-            print(f"📦 Batch shape: {batch.x.shape}")  # type: ignore
-            print(f"📦 Batch edges: {batch.edge_index.shape}")  # type: ignore
-
-        else:
-            print("❌ Dataset is empty - no NSA data available")
-            print(
-                "💡 Make sure NSA data is available in data/processed/nsa/catalog.parquet"
-            )
-
-    except FileNotFoundError as e:
-        print(f"❌ NSA data not found: {e}")
-        print("💡 To create NSA data:")
-        print("   1. Install astroML: uv add astroML")
-        print("   2. Use data manager to download/import NSA data")
-        demo_mock_data()
-    except Exception as e:
-        print(f"❌ Error creating dataset: {e}")
-        demo_mock_data()
-
-
-def demo_mock_data():
-    """Demo with mock data if real data not available."""
-    print("\n3. Mock Data Demo...")
-
-    # Create mock NSA-like data
-    n_galaxies = 100
-    mock_data = {
-        "RA": np.random.uniform(0, 360, n_galaxies),
-        "DEC": np.random.uniform(-30, 30, n_galaxies),
-        "ZDIST": np.random.uniform(0.01, 0.1, n_galaxies),
-        "PETROMAG_R": np.random.uniform(12, 18, n_galaxies),
-        "MASS": np.random.uniform(1e9, 1e12, n_galaxies),
-    }
-
-    print(f"✅ Created mock data with {n_galaxies} galaxies")
-
-    # Show data ranges
-    for key, values in mock_data.items():
-        print(f"   {key}: {values.min():.3f} - {values.max():.3f}")
+        logger.error(f"❌ NSA processing failed: {e}")
+        raise
 
 
 if __name__ == "__main__":

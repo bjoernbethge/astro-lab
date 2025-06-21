@@ -7,43 +7,43 @@ and data processing in the AstroLab framework.
 """
 
 import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
 import numpy as np
 import torch
 import yaml
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Tuple
 
 # Import all utility modules directly
-from . import config
-from . import viz
-from . import blender
+from . import blender, config, viz
 
 # Import specific functions
 from .viz import (
-    PyVistaZeroCopyBridge,
     BlenderZeroCopyBridge,
     NumpyZeroCopyBridge,
-    ZeroCopyBridge,
-    transfer_to_framework,
-    optimize_tensor_layout,
-    get_tensor_memory_info,
-    zero_copy_context,
-    pinned_memory_context,
+    PyVistaZeroCopyBridge,
     TensorProtocol,
     TNG50Visualizer,
+    ZeroCopyBridge,
+    calculate_graph_metrics,
+    create_spatial_graph,
+    get_tensor_memory_info,
+    list_available_data,
     load_tng50_gas,
     load_tng50_stars,
-    quick_pyvista_plot,
+    optimize_tensor_layout,
+    pinned_memory_context,
     quick_blender_import,
-    list_available_data,
-    create_spatial_graph,
-    calculate_graph_metrics,
+    quick_pyvista_plot,
     spatial_distance_matrix,
+    transfer_to_framework,
+    zero_copy_context,
 )
 
 # Check for optional dependencies
 try:
     import torch_geometric
+
     TORCH_GEOMETRIC_AVAILABLE = True
     GRAPH_AVAILABLE = True  # For backward compatibility
 except ImportError:
@@ -55,12 +55,13 @@ logger = logging.getLogger(__name__)
 # Base exports - always available
 __all__ = [
     "config",
-    "viz", 
+    "viz",
     "blender",
     "list_available_data",
     "TORCH_GEOMETRIC_AVAILABLE",
-    "GRAPH_AVAILABLE"  # For backward compatibility
+    "GRAPH_AVAILABLE",  # For backward compatibility
 ]
+
 
 def get_utils_info() -> Dict[str, Any]:
     """Get information about available utilities."""
@@ -72,9 +73,10 @@ def get_utils_info() -> Dict[str, Any]:
         "graph_available": GRAPH_AVAILABLE,
     }
 
-def calculate_volume(coords: 'np.ndarray | torch.Tensor') -> float:
+
+def calculate_volume(coords: "np.ndarray | torch.Tensor") -> float:
     """Berechnet das Volumen des 3D-Quaders, der alle Punkte umfasst."""
-    if hasattr(coords, 'detach'):
+    if hasattr(coords, "detach"):
         coords = coords.detach().cpu().numpy()
     x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
     y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
@@ -82,8 +84,8 @@ def calculate_volume(coords: 'np.ndarray | torch.Tensor') -> float:
     return float((x_max - x_min) * (y_max - y_min) * (z_max - z_min))
 
 
-def calculate_mean_density(coords: 'np.ndarray | torch.Tensor') -> float:
+def calculate_mean_density(coords: "np.ndarray | torch.Tensor") -> float:
     """Berechnet die mittlere Dichte der Objekte im Volumen."""
     n = coords.shape[0]
     vol = calculate_volume(coords)
-    return n / vol if vol > 0 else float('nan')
+    return n / vol if vol > 0 else float("nan")

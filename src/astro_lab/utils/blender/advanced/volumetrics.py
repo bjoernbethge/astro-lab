@@ -21,14 +21,14 @@ import warnings
 import math
 import random
 from typing import Any, Dict, List, Optional, Tuple, Union
-from .. import import_bpy_with_numpy_workaround
+from .. import numpy_compat  # noqa: F401
+import bpy
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 try:
-    bpy = import_bpy_with_numpy_workaround()
     import bmesh
     import numpy as np
     from mathutils import Euler, Matrix, Vector

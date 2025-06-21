@@ -15,7 +15,7 @@ dependencies = [
     "poliastro>=0.7.0",
     "sdss-access>=3.0.8",
     "sgp4>=2.24",
-    "numpy>=2.0.0",
+    "numpy>=1.24,<2.0",  # Compatible with pandas and sklearn
 ]
 
 [build-system]

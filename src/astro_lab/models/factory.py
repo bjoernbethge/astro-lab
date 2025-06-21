@@ -225,8 +225,10 @@ class ModelFactory:
             output_dim = cls.infer_num_classes_from_data(data_loader)
             print(f"🔍 Auto-detected output_dim: {output_dim} from data")
         else:
-            # Use default from task config
+            # Use default from task config or fallback to 7
             output_dim = task_config.get('output_dim', 7)
+            if output_dim is None:
+                output_dim = 7  # Fallback for None values
             print(f"⚠️ No data_loader provided, using default {output_dim} classes")
         
         # Override task config with detected/explicit output_dim

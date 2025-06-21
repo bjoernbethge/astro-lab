@@ -8,23 +8,23 @@ Optimized for Lightning 2.0+ compatibility and modern ML practices.
 """
 
 import logging
-from typing import Any, Dict, Optional, Union, List
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
 from lightning import LightningModule
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau
-from torchmetrics import Accuracy, Precision, Recall, F1Score
+from torchmetrics import Accuracy, F1Score, Precision, Recall
 from torchmetrics.classification import MulticlassAccuracy
 
 # Import real model classes
 from astro_lab.models.astro import AstroSurveyGNN
 from astro_lab.models.astrophot_models import AstroPhotGNN
-from astro_lab.models.tgnn import ALCDEFTemporalGNN
 from astro_lab.models.config import ModelConfig
-from astro_lab.training.config import TrainingConfig as FullTrainingConfig
 from astro_lab.models.factory import create_gaia_classifier
+from astro_lab.models.tgnn import ALCDEFTemporalGNN
+from astro_lab.training.config import TrainingConfig as FullTrainingConfig
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class AstroLightningModule(LightningModule):
     """
     Unified PyTorch Lightning Module for Astronomical Machine Learning.
-    
+
     Features:
     - Lightning 2.0+ compatible architecture
     - Robust error handling with detailed logging
@@ -58,10 +58,10 @@ class AstroLightningModule(LightningModule):
         **kwargs,
     ):
         super().__init__()
-        
+
         # Save hyperparameters for Lightning compatibility
-        self.save_hyperparameters(ignore=['model'])
-        
+        self.save_hyperparameters(ignore=["model"])
+
         # Core configuration
         self.task_type = task_type
         self.learning_rate = learning_rate
@@ -74,7 +74,7 @@ class AstroLightningModule(LightningModule):
 
         # Initialize model with robust error handling
         self._initialize_model(model)
-        
+
         # Initialize metrics for tracking (will be set up after class detection)
         self._setup_metrics()
 
@@ -82,7 +82,9 @@ class AstroLightningModule(LightningModule):
         self._step_times = []
         self._memory_usage = []
 
-        logger.info(f"✅ AstroLightningModule initialized with task_type: {self.task_type}")
+        logger.info(
+            f"✅ AstroLightningModule initialized with task_type: {self.task_type}"
+        )
 
     def _initialize_model(self, model: Optional[torch.nn.Module]) -> None:
         """Initialize model with robust error handling."""
@@ -92,7 +94,9 @@ class AstroLightningModule(LightningModule):
                 logger.info(f"✅ Using provided model: {type(model).__name__}")
             elif self.model_config is not None:
                 self.model = self._create_model_from_config(self.model_config)
-                logger.info(f"✅ Created model from config: {type(self.model).__name__}")
+                logger.info(
+                    f"✅ Created model from config: {type(self.model).__name__}"
+                )
             else:
                 # Create default model
                 self.model = self._create_default_model()
@@ -106,13 +110,21 @@ class AstroLightningModule(LightningModule):
         if self.task_type == "classification":
             # Use detected num_classes or fallback
             num_classes = self.num_classes or 7
-            self.train_acc = MulticlassAccuracy(num_classes=num_classes, average='macro')
-            self.val_acc = MulticlassAccuracy(num_classes=num_classes, average='macro')
-            self.test_acc = MulticlassAccuracy(num_classes=num_classes, average='macro')
-            
-            self.train_f1 = F1Score(task='multiclass', num_classes=num_classes, average='macro')
-            self.val_f1 = F1Score(task='multiclass', num_classes=num_classes, average='macro')
-            self.test_f1 = F1Score(task='multiclass', num_classes=num_classes, average='macro')
+            self.train_acc = MulticlassAccuracy(
+                num_classes=num_classes, average="macro"
+            )
+            self.val_acc = MulticlassAccuracy(num_classes=num_classes, average="macro")
+            self.test_acc = MulticlassAccuracy(num_classes=num_classes, average="macro")
+
+            self.train_f1 = F1Score(
+                task="multiclass", num_classes=num_classes, average="macro"
+            )
+            self.val_f1 = F1Score(
+                task="multiclass", num_classes=num_classes, average="macro"
+            )
+            self.test_f1 = F1Score(
+                task="multiclass", num_classes=num_classes, average="macro"
+            )
         else:
             # For regression tasks
             self.train_acc = None
@@ -125,53 +137,57 @@ class AstroLightningModule(LightningModule):
     def _detect_num_classes_from_data(self, dataloader) -> int:
         """
         Automatically detect number of classes from the dataloader.
-        
+
         Args:
             dataloader: PyTorch DataLoader
-            
+
         Returns:
             Number of unique classes
         """
         try:
             all_targets = []
-            
+
             # Sample a few batches to determine class count
             for i, batch in enumerate(dataloader):
                 if i >= 10:  # Limit to first 10 batches for efficiency
                     break
-                    
+
                 if isinstance(batch, dict):
                     targets = batch.get("target")
                 elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
                     targets = batch[1]  # Assume (data, target) format
                 else:
                     targets = batch
-                
+
                 if targets is not None:
                     if isinstance(targets, torch.Tensor):
                         all_targets.append(targets.flatten())
                     else:
                         all_targets.append(torch.tensor(targets).flatten())
-            
+
             if not all_targets:
-                logger.warning("No targets found in dataloader, using default 7 classes")
+                logger.warning(
+                    "No targets found in dataloader, using default 7 classes"
+                )
                 return 7
-            
+
             # Concatenate all targets and find unique values
             all_targets = torch.cat(all_targets)
             unique_classes = torch.unique(all_targets)
             num_classes = len(unique_classes)
-            
+
             # Ensure classes are 0-indexed
             min_class = unique_classes.min().item()
             max_class = unique_classes.max().item()
-            
+
             if min_class != 0:
                 logger.warning(f"Classes start from {min_class}, not 0")
-            
-            logger.info(f"🔍 Automatically detected {num_classes} classes: {unique_classes.tolist()}")
+
+            logger.info(
+                f"🔍 Automatically detected {num_classes} classes: {unique_classes.tolist()}"
+            )
             return num_classes
-            
+
         except Exception as e:
             logger.error(f"❌ Error detecting classes from data: {e}")
             return 7
@@ -179,11 +195,16 @@ class AstroLightningModule(LightningModule):
     def _create_default_model(self) -> torch.nn.Module:
         """Create default model with logging."""
         try:
-            from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
-            
+            from astro_lab.models.config import (
+                EncoderConfig,
+                GraphConfig,
+                ModelConfig,
+                OutputConfig,
+            )
+
             # Use detected num_classes or fallback
             output_dim = self.num_classes or 7
-            
+
             default_config = ModelConfig(
                 name="default_gaia",
                 description="Default Gaia survey configuration",
@@ -230,26 +251,33 @@ class AstroLightningModule(LightningModule):
                 input_dim += encoder.spatial_3d_dim
             if input_dim == 0:
                 input_dim = 16  # Fallback
-                
+
             # Use detected num_classes for classification tasks
             output_dim = config.output.output_dim
-            if config.output.task == "stellar_classification" and self.num_classes is not None:
+            if (
+                config.output.task == "stellar_classification"
+                and self.num_classes is not None
+            ):
                 output_dim = self.num_classes
-                logger.info(f"🎯 Using detected {output_dim} classes for stellar classification")
-                
-            logger.info(f"🔧 Creating AstroSurveyGNN with input_dim={input_dim}, hidden_dim={config.graph.hidden_dim}, output_dim={output_dim}")
-            
-        return AstroSurveyGNN(
+                logger.info(
+                    f"🎯 Using detected {output_dim} classes for stellar classification"
+                )
+
+            logger.info(
+                f"🔧 Creating AstroSurveyGNN with input_dim={input_dim}, hidden_dim={config.graph.hidden_dim}, output_dim={output_dim}"
+            )
+
+            return AstroSurveyGNN(
                 input_dim=input_dim,
-            hidden_dim=config.graph.hidden_dim,
+                hidden_dim=config.graph.hidden_dim,
                 output_dim=output_dim,
-            conv_type=config.graph.conv_type,
-            num_layers=config.graph.num_layers,
-            dropout=config.graph.dropout,
-            task=config.output.task,
-            use_photometry=config.encoder.use_photometry,
-            use_astrometry=config.encoder.use_astrometry,
-            use_spectroscopy=config.encoder.use_spectroscopy,
+                conv_type=config.graph.conv_type,
+                num_layers=config.graph.num_layers,
+                dropout=config.graph.dropout,
+                task=config.output.task,
+                use_photometry=config.encoder.use_photometry,
+                use_astrometry=config.encoder.use_astrometry,
+                use_spectroscopy=config.encoder.use_spectroscopy,
                 use_lightcurve=config.encoder.use_lightcurve,
                 use_spatial_3d=config.encoder.use_spatial_3d,
             )
@@ -257,7 +285,9 @@ class AstroLightningModule(LightningModule):
             logger.error(f"❌ Failed to create model from config: {e}")
             raise
 
-    def forward(self, batch: Union[torch.Tensor, Dict[str, torch.Tensor], Any]) -> torch.Tensor:
+    def forward(
+        self, batch: Union[torch.Tensor, Dict[str, torch.Tensor], Any]
+    ) -> torch.Tensor:
         """Forward pass with robust error handling and logging."""
         try:
             # Handle different batch formats
@@ -266,22 +296,22 @@ class AstroLightningModule(LightningModule):
                 edge_index = None
                 batch_tensor = None
             elif hasattr(batch, "x"):
-            x, edge_index = batch.x, batch.edge_index
-            batch_tensor = getattr(batch, "batch", None)
-        elif isinstance(batch, dict):
+                x, edge_index = batch.x, batch.edge_index
+                batch_tensor = getattr(batch, "batch", None)
+            elif isinstance(batch, dict):
                 x = batch.get("x")
                 edge_index = batch.get("edge_index", None)
-            batch_tensor = batch.get("batch", None)
+                batch_tensor = batch.get("batch", None)
             else:
                 raise ValueError(f"Unsupported batch type: {type(batch)}")
 
-        # Forward pass through model
+            # Forward pass through model
             if edge_index is not None:
                 output = self.model(x, edge_index, batch_tensor)
             else:
                 output = self.model(x)
-                
-        return output
+
+            return output
 
         except Exception as e:
             logger.error(f"❌ Forward pass failed: {e}")
@@ -289,7 +319,9 @@ class AstroLightningModule(LightningModule):
             logger.error(f"   Batch shape: {getattr(batch, 'shape', 'N/A')}")
             raise
 
-    def _compute_loss(self, outputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def _compute_loss(
+        self, outputs: torch.Tensor, targets: torch.Tensor
+    ) -> torch.Tensor:
         """Compute loss based on task type."""
         if self.task_type == "classification":
             # Ensure targets are long for classification
@@ -299,11 +331,19 @@ class AstroLightningModule(LightningModule):
                 targets = targets.squeeze(-1)
             # Check for invalid class indices
             if torch.any(targets < 0) or torch.any(targets >= outputs.shape[1]):
-                logger.error(f"❌ Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}")
-                raise ValueError(f"Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}")
+                logger.error(
+                    f"❌ Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}"
+                )
+                raise ValueError(
+                    f"Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}"
+                )
             if outputs.shape[0] != targets.shape[0]:
-                logger.error(f"❌ Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}")
-                raise ValueError(f"Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}")
+                logger.error(
+                    f"❌ Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}"
+                )
+                raise ValueError(
+                    f"Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}"
+                )
             return F.cross_entropy(outputs, targets)
         elif self.task_type == "regression":
             return F.mse_loss(outputs, targets)
@@ -345,12 +385,14 @@ class AstroLightningModule(LightningModule):
                 targets = targets.mean(dim=1)
 
             # Debug: Log shapes and value ranges
-            logger.debug(f"Batch {stage}: outputs.shape={outputs.shape}, targets.shape={targets.shape}, targets.min={targets.min().item()}, targets.max={targets.max().item()}")
+            logger.debug(
+                f"Batch {stage}: outputs.shape={outputs.shape}, targets.shape={targets.shape}, targets.min={targets.min().item()}, targets.max={targets.max().item()}"
+            )
 
             # Compute loss
             loss = self._compute_loss(outputs, targets)
 
-        # Log metrics
+            # Log metrics
             self._log_step_metrics(outputs, targets, loss, stage)
 
             return {
@@ -362,29 +404,58 @@ class AstroLightningModule(LightningModule):
         except Exception as e:
             logger.error(f"❌ {stage} step failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
-            logger.error(f"   Batch keys: {list(batch.keys()) if isinstance(batch, dict) else 'N/A'}")
-            if 'targets' in locals():
-                logger.error(f"   targets.shape: {getattr(targets, 'shape', None)}, targets: {targets}")
-            if 'outputs' in locals():
+            logger.error(
+                f"   Batch keys: {list(batch.keys()) if isinstance(batch, dict) else 'N/A'}"
+            )
+            if "targets" in locals():
+                logger.error(
+                    f"   targets.shape: {getattr(targets, 'shape', None)}, targets: {targets}"
+                )
+            if "outputs" in locals():
                 logger.error(f"   outputs.shape: {getattr(outputs, 'shape', None)}")
             raise
 
-    def _log_step_metrics(self, outputs: torch.Tensor, targets: torch.Tensor, loss: torch.Tensor, stage: str) -> None:
+    def _log_step_metrics(
+        self,
+        outputs: torch.Tensor,
+        targets: torch.Tensor,
+        loss: torch.Tensor,
+        stage: str,
+    ) -> None:
         """Log metrics for the current step."""
         # Log loss
         self.log(f"{stage}_loss", loss, prog_bar=True, sync_dist=True)
-        
+
         # Log accuracy for classification
         if self.task_type == "classification" and hasattr(self, f"{stage}_acc"):
             acc_metric = getattr(self, f"{stage}_acc")
-            acc = acc_metric(outputs, targets)
-            self.log(f"{stage}_acc", acc, prog_bar=True, sync_dist=True)
             
-            # Log F1 score
-            if hasattr(self, f"{stage}_f1"):
-                f1_metric = getattr(self, f"{stage}_f1")
-                f1 = f1_metric(outputs, targets)
-                self.log(f"{stage}_f1", f1, sync_dist=True)
+            # Ensure we have the correct number of classes
+            if outputs.dim() > 1 and outputs.size(1) != self.num_classes:
+                # Auto-detect number of classes from outputs
+                detected_classes = outputs.size(1)
+                logger.warning(f"⚠️ Output has {detected_classes} classes, but num_classes is {self.num_classes}")
+                # Update num_classes and recreate metrics
+                self.num_classes = detected_classes
+                self._setup_metrics()
+                acc_metric = getattr(self, f"{stage}_acc")
+            
+            try:
+                acc = acc_metric(outputs, targets)
+                self.log(f"{stage}_acc", acc, prog_bar=True, sync_dist=True)
+
+                # Log F1 score
+                if hasattr(self, f"{stage}_f1"):
+                    f1_metric = getattr(self, f"{stage}_f1")
+                    f1 = f1_metric(outputs, targets)
+                    self.log(f"{stage}_f1", f1, sync_dist=True)
+            except Exception as e:
+                logger.error(f"❌ Error computing metrics: {e}")
+                logger.error(f"   outputs.shape: {outputs.shape}")
+                logger.error(f"   targets.shape: {targets.shape}")
+                logger.error(f"   num_classes: {self.num_classes}")
+                # Don't fail the training step, just skip metrics
+                pass
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Training step with error handling."""
@@ -417,9 +488,9 @@ class AstroLightningModule(LightningModule):
         """Configure optimizers and schedulers."""
         try:
             # Get optimizer parameters from config or use defaults
-            lr = getattr(self, 'learning_rate', 1e-3)
-            weight_decay = getattr(self, 'weight_decay', 1e-4)
-            
+            lr = getattr(self, "learning_rate", 1e-3)
+            weight_decay = getattr(self, "weight_decay", 1e-4)
+
             optimizer = AdamW(
                 self.parameters(),
                 lr=lr,
@@ -427,31 +498,28 @@ class AstroLightningModule(LightningModule):
             )
 
             # Configure scheduler if training config is available
-            if self.training_config and hasattr(self.training_config, 'scheduler'):
+            if self.training_config and hasattr(self.training_config, "scheduler"):
                 scheduler_config = self.training_config.scheduler
-                scheduler_type = getattr(scheduler_config, 'type', 'cosine')
-                
-                if scheduler_type == 'cosine':
+                scheduler_type = getattr(scheduler_config, "type", "cosine")
+
+                if scheduler_type == "cosine":
                     scheduler = CosineAnnealingLR(
                         optimizer,
                         T_max=scheduler_config.max_epochs,
-                        eta_min=scheduler_config.min_lr
+                        eta_min=scheduler_config.min_lr,
                     )
-                elif scheduler_type == 'onecycle':
+                elif scheduler_type == "onecycle":
                     # Estimate steps per epoch if not available
-                    steps_per_epoch = getattr(scheduler_config, 'steps_per_epoch', 100)
+                    steps_per_epoch = getattr(scheduler_config, "steps_per_epoch", 100)
                     scheduler = OneCycleLR(
                         optimizer,
                         max_lr=lr,
                         epochs=scheduler_config.max_epochs,
-                        steps_per_epoch=steps_per_epoch
+                        steps_per_epoch=steps_per_epoch,
                     )
-                elif scheduler_type == 'reduce_on_plateau':
+                elif scheduler_type == "reduce_on_plateau":
                     scheduler = ReduceLROnPlateau(
-                optimizer,
-                        mode='min',
-                factor=0.5,
-                        patience=5
+                        optimizer, mode="min", factor=0.5, patience=5
                     )
                 else:
                     scheduler = None
@@ -459,15 +527,15 @@ class AstroLightningModule(LightningModule):
                 scheduler = None
 
             if scheduler:
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {
+                return {
+                    "optimizer": optimizer,
+                    "lr_scheduler": {
                         "scheduler": scheduler,
-                    "monitor": "val_loss",
-                },
-            }
-        else:
-            return optimizer
+                        "monitor": "val_loss",
+                    },
+                }
+            else:
+                return optimizer
 
         except Exception as e:
             logger.error(f"❌ Failed to configure optimizers: {e}")
@@ -502,36 +570,46 @@ class AstroLightningModule(LightningModule):
     def on_train_start(self) -> None:
         """Called when training starts - detect classes if needed."""
         super().on_train_start()
-        
+
         # Auto-detect classes if not set and we have a dataloader
         if self.num_classes is None and self.task_type == "classification":
             try:
-                if hasattr(self, 'trainer') and self.trainer is not None:
+                if hasattr(self, "trainer") and self.trainer is not None:
                     dataloader = self.trainer.train_dataloader
                     if dataloader is not None:
-                        detected_classes = self._detect_num_classes_from_data(dataloader)
+                        detected_classes = self._detect_num_classes_from_data(
+                            dataloader
+                        )
                         self.num_classes = detected_classes
-                        
+
                         # Recreate model with correct number of classes
                         if self.model_config is not None:
-                            self.model = self._create_model_from_config(self.model_config)
-                            logger.info(f"🔄 Recreated model with {detected_classes} classes")
+                            self.model = self._create_model_from_config(
+                                self.model_config
+                            )
+                            logger.info(
+                                f"🔄 Recreated model with {detected_classes} classes"
+                            )
                         else:
                             # Recreate default model with correct classes
                             self.model = self._create_default_model()
-                            logger.info(f"🔄 Recreated default model with {detected_classes} classes")
-                        
+                            logger.info(
+                                f"🔄 Recreated default model with {detected_classes} classes"
+                            )
+
                         # Recreate metrics with correct number of classes
                         self._setup_metrics()
-                        logger.info(f"🔄 Recreated metrics with {detected_classes} classes")
-                        
+                        logger.info(
+                            f"🔄 Recreated metrics with {detected_classes} classes"
+                        )
+
                         # Move model to correct device
-                        if hasattr(self, 'device'):
+                        if hasattr(self, "device"):
                             self.model = self.model.to(self.device)
                             logger.info(f"🔄 Moved model to device: {self.device}")
             except Exception as e:
                 logger.error(f"❌ Error during class detection: {e}")
-        
+
         logger.info("🚀 Training started")
         logger.info(f"   Model: {type(self.model).__name__}")
         logger.info(f"   Task: {self.task_type}")

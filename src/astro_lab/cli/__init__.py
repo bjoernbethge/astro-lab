@@ -215,7 +215,7 @@ astro-lab config surveys
     # If no command provided, show help
     if not args.command:
         parser.print_help()
-        return
+        sys.exit(0)
 
     # Route to appropriate command handler
     if args.command == "download":

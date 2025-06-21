@@ -35,16 +35,9 @@ except ImportError:
 
 import polars as pl
 
-from . import import_bpy_with_numpy_workaround
-try:
-    bpy = import_bpy_with_numpy_workaround()
-    from mathutils import Vector
-    BPY_AVAILABLE = bpy is not None
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    BPY_AVAILABLE = False
-    bpy = None
-    Vector = None
+# Import bpy directly since it's available
+import bpy
+from mathutils import Vector
 
 
 # =============================================================================
