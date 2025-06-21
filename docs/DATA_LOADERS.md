@@ -331,13 +331,20 @@ python -m astro_lab.cli.preprocessing tng50 \
 ## 🌌 Cosmic Web CLI
 
 ```bash
-# Perform cosmic web analysis
-python -m astro_lab.cli.cosmic_web gaia --max-samples 1000 --scales 5.0 10.0 20.0
-python -m astro_lab.cli.cosmic_web sdss --output results/sdss_cosmic_web/
-python -m astro_lab.cli.cosmic_web nsa --create-visualization
+# Analyze Gaia cosmic web
+astro-lab preprocess cosmic-web gaia --max-samples 10000
 
-# Multi-survey analysis
-python -m astro_lab.cli.cosmic_web compare --surveys gaia sdss nsa --output results/comparison/
+# Analyze with custom scales
+astro-lab preprocess cosmic-web nsa --scales 5.0 10.0 20.0 50.0
+
+# Save results
+astro-lab preprocess cosmic-web linear --output results/cosmic_web/
+
+# Process all surveys at once
+astro-lab preprocess all-surveys --max-samples 500 --output results/
+
+# List available surveys
+astro-lab preprocess surveys
 ```
 
 ## 🔧 Common Problems & Solutions
@@ -806,6 +813,12 @@ astro-lab preprocess cosmic-web nsa --scales 5.0 10.0 20.0 50.0
 
 # Save results
 astro-lab preprocess cosmic-web linear --output results/cosmic_web/
+
+# Process all surveys at once
+astro-lab preprocess all-surveys --max-samples 500 --output results/
+
+# List available surveys
+astro-lab preprocess surveys
 ```
 
 ## Integration with Training

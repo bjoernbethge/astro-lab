@@ -8,13 +8,16 @@ The NSA cosmic web analysis processes ~640,000 galaxies with redshift z < 0.15, 
 ## Usage
 
 ### CLI Processing
-\\\ash
+```bash
 # Process NSA data with cosmic web analysis
-python -m astro_lab.cli.preprocessing nsa --max-samples 640000 --enable-clustering --enable-statistics --output-dir results/nsa_cosmic_web
+astro-lab preprocess cosmic-web nsa --max-samples 640000 --scales 5.0 10.0 20.0 50.0 --output results/
 
-# Direct cosmic web script  
-python process_nsa_cosmic_web.py
-\\\
+# Process with verbose logging
+astro-lab preprocess cosmic-web nsa --max-samples 640000 --verbose
+
+# Process all surveys including NSA
+astro-lab preprocess all-surveys --max-samples 500 --output results/
+```
 
 ### Results
 - Multi-scale clustering: 5-50 Mpc hierarchy

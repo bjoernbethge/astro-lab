@@ -9,7 +9,7 @@ A comprehensive framework for astronomical data analysis, machine learning, and 
 git clone https://github.com/bjoernbethge/astro-lab.git
 cd astro-lab
 uv sync
-uv pip install pyg torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 ```
 
 ### Basic Usage

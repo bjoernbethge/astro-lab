@@ -34,13 +34,13 @@ widget = bridge.from_cosmic_web_results(
 ### CLI Processing
 ```bash
 # Process exoplanet data with cosmic web analysis
-python -m astro_lab.cli.preprocessing exoplanet
+astro-lab preprocess cosmic-web exoplanet --max-samples 5000 --scales 10.0 25.0 50.0 --output results/
 
-# Direct cosmic web script  
-python process_exoplanet_cosmic_web.py
+# Process with verbose logging
+astro-lab preprocess cosmic-web exoplanet --max-samples 5000 --verbose
 
-# Cosmic web analysis
-python -m astro_lab.cli.cosmic_web exoplanet --max-samples 5000
+# Process all surveys including exoplanet
+astro-lab preprocess all-surveys --max-samples 500 --output results/
 ```
 
 ### Results

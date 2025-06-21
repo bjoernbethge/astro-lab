@@ -47,28 +47,6 @@ dependencies = [
     "markupsafe>=3.0.2"
 ]
 
-# Optional dependencies for different use cases
-[project.optional-dependencies]
-# Hyperparameter optimization
-optim = [
-    "optuna>=4.4.0",
-]
-
-# Additional astronomical tools
-astro-extra = [
-    "astropy>=5.0.0",
-    "photutils>=1.8.0",
-]
-
-
-
-# All optional dependencies
-all = [
-    "astro-lab[optim,astro-extra]",
-]
-extended = [
-    "sdss-access>=3.0.7",
-]
 
 [build-system]
 requires = ["hatchling"]
@@ -86,36 +64,17 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "fake-bpy-module-latest>=20250616",
-    "psutil>=6.1.0",  # For memory monitoring
-]
-
-# Testing specific
-test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "pytest-xdist>=3.0.0", # Parallel testing
-    "psutil>=6.1.0", # For memory monitoring
-]
-
-# Linting and formatting
-lint = [
+    "pytest-xdist>=3.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
-]
-
-# Documentation
-docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.20.0",
 ]
-optim = [
-    "optuna>=4.4.0",
-]
-viz = [
-    "marimo>=0.13.15",
-]
+
 
 # PyTorch with CUDA support
 [[tool.uv.index]]
@@ -201,9 +160,10 @@ addopts = [
     "--strict-config",
     "--tb=short",
     "--disable-warnings",
-    "-v",
-    "-n", "auto",  # Parallel execution
-    "--dist", "worksteal"  # Better load balancing
+    "-v"
+    # Parallel execution disabled for now
+    # "-n", "auto",  # Parallel execution
+    # "--dist", "worksteal"  # Better load balancing
 ]
 markers = [
     "unit: Unit tests",
