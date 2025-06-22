@@ -39,15 +39,17 @@ os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
 logger = logging.getLogger(__name__)
 
 # 🌟 TENSOR INTEGRATION - Import all tensor types
-# Core dependencies - should always be available
-from astro_lab.tensors import (
-    LightcurveTensor,
-    PhotometricTensor,
-    SimulationTensor,
-    Spatial3DTensor,
-    SpectralTensor,
-    SurveyTensor,
-)
+try:
+    from astro_lab.tensors import (
+        LightcurveTensor,
+        PhotometricTensor,
+        SimulationTensor,
+        Spatial3DTensor,
+        SpectralTensor,
+        SurveyTensor,
+    )
+except ImportError:
+    pass
 
 
 # Function defined here to avoid circular import
@@ -704,6 +706,14 @@ class AstroDataset(InMemoryDataset):
                     raise ValueError("Invalid Data object")
                 self.data, self.slices = self.collate([data])
 
+            # Verify that data is not None
+            if self.data is None:
+                raise ValueError("Loaded data is None")
+                
+            # Verify that we have valid samples
+            if len(self) == 0:
+                raise ValueError("Dataset has 0 samples after loading")
+
             logger.info(f"✅ Successfully loaded {len(self)} graph samples")
 
         except Exception as e:
@@ -713,6 +723,23 @@ class AstroDataset(InMemoryDataset):
     def load(self, path: Union[str, Path]):
         """Load dataset from standardized .pt file location."""
         self._load_pt_file()
+
+    def __getitem__(self, idx: int):
+        """Get item from dataset with proper error handling."""
+        if self.data is None:
+            raise RuntimeError("Dataset not loaded. Call download() first.")
+        
+        if idx >= len(self):
+            raise IndexError(f"Index {idx} out of range for dataset with {len(self)} samples")
+        
+        # Get the item using parent class method
+        item = super().__getitem__(idx)
+        
+        # Verify item is valid
+        if item is None:
+            raise ValueError(f"Dataset returned None for index {idx}")
+        
+        return item
 
     def get_info(self) -> Dict[str, Any]:
         """Get dataset information."""
@@ -759,7 +786,7 @@ def load_gaia_data(
     Returns:
         SurveyTensor with Gaia data or AstroDataset
     """
-    if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
+    if return_tensor:
         # Create temporary dataset to get DataFrame
         temp_dataset = AstroDataset(
             survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
@@ -768,12 +795,10 @@ def load_gaia_data(
         df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "gaia", {"max_samples": max_samples})
 
-    # Create AstroDataset with survey parameter
     dataset = AstroDataset(
         survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
     )
     dataset.load(None)  # Load from .pt file
-
     return dataset
 
 
@@ -793,8 +818,7 @@ def load_sdss_data(
     Returns:
         SurveyTensor with SDSS data or AstroDataset
     """
-    if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
-        # Create temporary dataset to get DataFrame
+    if return_tensor:
         temp_dataset = AstroDataset(
             survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
         )
@@ -802,12 +826,10 @@ def load_sdss_data(
         df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "sdss", {"max_samples": max_samples})
 
-    # Create AstroDataset with survey parameter
     dataset = AstroDataset(
         survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
     )
     dataset.load(None)  # Load from .pt file
-
     return dataset
 
 
@@ -827,8 +849,7 @@ def load_nsa_data(
     Returns:
         SurveyTensor with NSA data or AstroDataset
     """
-    if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
-        # Create temporary dataset to get DataFrame
+    if return_tensor:
         temp_dataset = AstroDataset(
             survey="nsa", max_samples=max_samples, return_tensor=False, **kwargs
         )
@@ -836,12 +857,10 @@ def load_nsa_data(
         df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "nsa", {"max_samples": max_samples})
 
-    # Create AstroDataset with survey parameter
     dataset = AstroDataset(
         survey="nsa", max_samples=max_samples, return_tensor=False, **kwargs
     )
     dataset.load(None)  # Load from .pt file
-
     return dataset
 
 
@@ -861,7 +880,7 @@ def load_lightcurve_data(
     Returns:
         LightcurveTensor with lightcurve data or AstroDataset
     """
-    if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
+    if return_tensor:
         dataset = AstroDataset(
             survey="linear", max_samples=max_samples, return_tensor=False, **kwargs
         )

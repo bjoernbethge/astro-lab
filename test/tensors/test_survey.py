@@ -154,6 +154,7 @@ class TestSurveyTensorDatasetIntegration:
 
         # Test basic dataset functionality
         first_item = gaia_dataset[0]
+        assert first_item is not None, "Dataset returned None for first item"
         assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
@@ -163,6 +164,7 @@ class TestSurveyTensorDatasetIntegration:
 
         # Test basic dataset functionality
         first_item = nsa_dataset[0]
+        assert first_item is not None, "Dataset returned None for first item"
         assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
@@ -172,6 +174,7 @@ class TestSurveyTensorDatasetIntegration:
 
         # Test basic dataset functionality
         first_item = exoplanet_dataset[0]
+        assert first_item is not None, "Dataset returned None for first item"
         assert hasattr(first_item, "x")  # PyG Data object
 
     def test_cross_survey_operations(self, gaia_dataset, nsa_dataset):

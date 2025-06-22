@@ -248,9 +248,8 @@ def tng_processed_data_path(data_dir: Path) -> Optional[Path]:
 def gaia_dataset():
     """Create Gaia AstroDataset fixture using processed data."""
     try:
-        # Use a smaller processed file for testing (we have n100.pt available)
         dataset = AstroDataset(survey="gaia", max_samples=100, k_neighbors=8)
-        # Verify dataset is valid
+        dataset.download()
         if len(dataset) == 0:
             pytest.skip("Gaia dataset is empty")
         return dataset
@@ -263,6 +262,7 @@ def nsa_dataset():
     """Create NSA AstroDataset fixture using processed data."""
     try:
         dataset = AstroDataset(survey="nsa", max_samples=50, k_neighbors=8)
+        dataset.download()
         if len(dataset) == 0:
             pytest.skip("NSA dataset is empty")
         return dataset
@@ -274,8 +274,8 @@ def nsa_dataset():
 def exoplanet_dataset():
     """Create Exoplanet AstroDataset fixture using processed data."""
     try:
-        # Try with smaller sample size first since exoplanet data is limited
         dataset = AstroDataset(survey="exoplanet", max_samples=10, k_neighbors=5)
+        dataset.download()
         if len(dataset) == 0:
             pytest.skip("Exoplanet dataset is empty")
         return dataset
