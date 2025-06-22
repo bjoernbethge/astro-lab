@@ -23,7 +23,6 @@ from .core import SURVEY_CONFIGS
 
 logger = logging.getLogger(__name__)
 
-
 def preprocess_catalog(
     input_path: Union[str, Path],
     survey_type: str,
@@ -76,7 +75,6 @@ def preprocess_catalog(
         logger.info(f"💾 Saved processed data to {output_path}")
 
     return df_clean
-
 
 def preprocess_catalog_lazy(
     input_path: Union[str, Path],
@@ -147,7 +145,6 @@ def preprocess_catalog_lazy(
 
     return lf_clean
 
-
 def create_graph_from_dataframe(
     df: pl.DataFrame,
     survey_type: str,
@@ -193,7 +190,6 @@ def create_graph_from_dataframe(
         logger.info(f"💾 Saved graph to {output_path}")
 
     return graph_data
-
 
 def create_graph_datasets_from_splits(
     train_df: pl.DataFrame,
@@ -243,7 +239,6 @@ def create_graph_datasets_from_splits(
     )
     return datasets
 
-
 def _apply_survey_preprocessing(df: pl.DataFrame, survey_type: str) -> pl.DataFrame:
     """Apply survey-specific preprocessing."""
     if survey_type == "gaia":
@@ -259,7 +254,6 @@ def _apply_survey_preprocessing(df: pl.DataFrame, survey_type: str) -> pl.DataFr
     else:
         logger.warning(f"⚠️ No specific preprocessing for {survey_type}, using generic")
         return _preprocess_generic_data(df)
-
 
 def _apply_survey_preprocessing_lazy(
     lf: pl.LazyFrame, survey_type: str
@@ -277,7 +271,6 @@ def _apply_survey_preprocessing_lazy(
         return lf  # TNG50 data is already clean
     else:
         return _preprocess_generic_data_lazy(lf)
-
 
 def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess Gaia data."""
@@ -303,7 +296,6 @@ def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:
 
     return df_clean
 
-
 def _preprocess_sdss_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess SDSS data."""
     # Remove rows with missing coordinates and redshift
@@ -315,14 +307,12 @@ def _preprocess_sdss_data(df: pl.DataFrame) -> pl.DataFrame:
 
     return df_clean
 
-
 def _preprocess_nsa_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess NSA data."""
     # Remove rows with missing coordinates
     df_clean = df.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
 
     return df_clean
-
 
 def _preprocess_linear_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess LINEAR data."""
@@ -332,7 +322,6 @@ def _preprocess_linear_data(df: pl.DataFrame) -> pl.DataFrame:
     # Entferne Zeilen mit fehlenden Koordinaten
     df_clean = df.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
     return df_clean
-
 
 def _preprocess_generic_data(df: pl.DataFrame) -> pl.DataFrame:
     """Generic preprocessing for unknown survey types."""
@@ -346,7 +335,6 @@ def _preprocess_generic_data(df: pl.DataFrame) -> pl.DataFrame:
         df_clean = df
 
     return df_clean
-
 
 def _preprocess_gaia_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy Gaia preprocessing."""
@@ -367,7 +355,6 @@ def _preprocess_gaia_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
         ]
     )
 
-
 def _preprocess_sdss_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy SDSS preprocessing."""
     return lf.filter(
@@ -376,11 +363,9 @@ def _preprocess_sdss_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
         & pl.col("z").is_not_null()
     )
 
-
 def _preprocess_nsa_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy NSA preprocessing."""
     return lf.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
-
 
 def _preprocess_linear_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy LINEAR preprocessing."""
@@ -396,12 +381,10 @@ def _preprocess_linear_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     return lf_renamed.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
 
-
 def _preprocess_generic_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Generic lazy preprocessing."""
     # This is a simplified version - in practice, you'd inspect the schema
     return lf.filter(pl.all_horizontal(pl.all().is_not_null()))
-
 
 def _create_knn_graph(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     """Create k-NN graph from coordinates."""
@@ -432,7 +415,6 @@ def _create_knn_graph(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     edge_index = torch.tensor(np.vstack([sources, targets]), dtype=torch.long)
 
     return edge_index
-
 
 def _create_gaia_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
@@ -484,7 +466,6 @@ def _create_gaia_graph(
 
     return data
 
-
 def _create_sdss_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
@@ -524,7 +505,6 @@ def _create_sdss_graph(
     data.k_neighbors = k_neighbors
 
     return data
-
 
 def _create_nsa_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
@@ -566,7 +546,6 @@ def _create_nsa_graph(
 
     return data
 
-
 def _create_tng50_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
@@ -606,7 +585,6 @@ def _create_tng50_graph(
     data.k_neighbors = k_neighbors
 
     return data
-
 
 def _create_generic_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
@@ -676,7 +654,6 @@ def _create_generic_graph(
     data.k_neighbors = k_neighbors
 
     return data
-
 
 def perform_gaia_crossmatching(
     exoplanet_coords: pl.DataFrame,
@@ -779,7 +756,6 @@ def perform_gaia_crossmatching(
 
     return results
 
-
 def perform_fallback_crossmatching(
     exoplanet_coords: pl.DataFrame,
     gaia_df: pl.DataFrame,
@@ -867,7 +843,6 @@ def perform_fallback_crossmatching(
 
     logger.info(f"✅ Fallback cross-matching completed: {len(matches)} matches found")
     return results
-
 
 def enrich_exoplanets_with_gaia_coordinates(
     exoplanet_df: pl.DataFrame,
@@ -1107,7 +1082,6 @@ def enrich_exoplanets_with_gaia_coordinates(
     )
 
     return enriched_df
-
 
 def _preprocess_exoplanet_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess exoplanet data with coordinate enrichment."""

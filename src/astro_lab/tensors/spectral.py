@@ -8,7 +8,6 @@ import torch
 
 from .base import AstroTensorBase
 
-
 class SpectralTensor(AstroTensorBase):
     """
     Tensor for astronomical spectral data with wavelength-dependent operations.

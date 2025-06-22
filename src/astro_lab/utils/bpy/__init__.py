@@ -29,7 +29,6 @@ except ImportError as e:
     bpy = None
     mathutils = None
 
-
 # 4. Context Managers for proper memory management - ONLY BPY
 @contextmanager
 def blender_memory_context():
@@ -58,7 +57,6 @@ def blender_memory_context():
         except:
             pass  # Ignore if purge fails
         gc.collect()
-
 
 @contextmanager
 def bpy_object_context(mesh_obj):
@@ -93,7 +91,6 @@ def bpy_object_context(mesh_obj):
             pass  # Ignore if restoration fails
         gc.collect()
 
-
 # 5. Lazy-import functions for submodules
 def get_core():
     """Get core module with memory management."""
@@ -102,14 +99,12 @@ def get_core():
     gc.collect()  # Clean up after import
     return core
 
-
 def get_grease_pencil_2d():
     """Get grease pencil 2D module with memory management."""
     from . import grease_pencil_2d
 
     gc.collect()  # Clean up after import
     return grease_pencil_2d
-
 
 def get_grease_pencil_3d():
     """Get grease pencil 3D module with memory management."""
@@ -118,14 +113,12 @@ def get_grease_pencil_3d():
     gc.collect()  # Clean up after import
     return grease_pencil_3d
 
-
 def get_advanced():
     """Get advanced module with memory management."""
     from . import advanced
 
     gc.collect()  # Clean up after import
     return advanced
-
 
 # 6. Import operators with memory management
 try:
@@ -155,20 +148,17 @@ __all__ = [
     "get_advanced",
 ]
 
-
 def register():
     """Register all Blender modules for Astro-Lab."""
     if al_register:
         al_register()
         gc.collect()  # Clean up after registration
 
-
 def unregister():
     """Unregister all Blender modules for Astro-Lab."""
     if al_unregister:
         al_unregister()
         gc.collect()  # Clean up after unregistration
-
 
 # Automatisch registrieren, wenn in Blender-Umgebung
 if bpy and hasattr(bpy, "context"):

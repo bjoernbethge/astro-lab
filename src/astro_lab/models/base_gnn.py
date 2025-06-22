@@ -33,7 +33,6 @@ logger = logging.getLogger(__name__)
 ConvType = Literal["gcn", "gat", "sage", "transformer"]
 TaskType = Literal["node_classification", "node_regression", "graph_classification"]
 
-
 class FeatureFusion(nn.Module):
     """Unified feature fusion module for combining multiple feature types."""
 
@@ -52,7 +51,6 @@ class FeatureFusion(nn.Module):
         """Fuse multiple feature tensors."""
         concatenated = torch.cat(features, dim=-1)
         return self.fusion(concatenated)
-
 
 class BaseAstroGNN(nn.Module):
     """Base class for all astronomical GNN models."""
@@ -168,7 +166,6 @@ class BaseAstroGNN(nn.Module):
 
         return h
 
-
 class BaseTemporalGNN(BaseAstroGNN):
     """Base class for all temporal GNN models."""
 
@@ -244,7 +241,6 @@ class BaseTemporalGNN(BaseAstroGNN):
             h = self.temporal_forward(snapshots)
 
         return h
-
 
 class BaseTNGModel(BaseTemporalGNN):
     """Base class for all TNG simulation models."""

@@ -25,7 +25,6 @@ try:
 except ImportError:
     ASTROPHOT_AVAILABLE = False
 
-
 class AstroPhotGNN(nn.Module):
     """Graph Neural Network with AstroPhot integration for galaxy modeling."""
 
@@ -163,7 +162,6 @@ class AstroPhotGNN(nn.Module):
         else:
             return self.global_head(pooled)
 
-
 class SersicParameterHead(nn.Module):
     """Output head for Sersic profile parameters."""
 
@@ -187,7 +185,6 @@ class SersicParameterHead(nn.Module):
 
         return torch.cat([re, n, ie, pa], dim=-1)
 
-
 class DiskParameterHead(nn.Module):
     """Output head for exponential disk parameters."""
 
@@ -208,7 +205,6 @@ class DiskParameterHead(nn.Module):
         pa = torch.remainder(params[..., 2:3], 180.0)  # Position angle
 
         return torch.cat([rd, i0, pa], dim=-1)
-
 
 class BulgeParameterHead(nn.Module):
     """Output head for bulge component parameters."""
@@ -231,7 +227,6 @@ class BulgeParameterHead(nn.Module):
 
         return torch.cat([rb, ib, q], dim=-1)
 
-
 class GlobalGalaxyHead(nn.Module):
     """Output head for global galaxy parameters."""
 
@@ -249,7 +244,6 @@ class GlobalGalaxyHead(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(x)
 
-
 # NSA-specific model
 class NSAGalaxyModeler(AstroPhotGNN):
     """Specialized model for NSA galaxy catalog."""
@@ -260,7 +254,6 @@ class NSAGalaxyModeler(AstroPhotGNN):
             output_dim=20,  # Rich NSA parameter set
             **kwargs,
         )
-
 
 __all__ = [
     "AstroPhotGNN",

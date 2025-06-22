@@ -18,7 +18,6 @@ from astro_lab.data import (
     list_catalogs,
 )
 
-
 def main():
     """Main function - shows modern usage."""
     parser = argparse.ArgumentParser(
@@ -81,7 +80,6 @@ catalogs = list_catalogs()
             print(f"❌ Error: {e}")
     else:
         parser.print_help()
-
 
 if __name__ == "__main__":
     main()

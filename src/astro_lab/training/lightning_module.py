@@ -29,7 +29,6 @@ from astro_lab.training.config import TrainingConfig as FullTrainingConfig
 # Setup logging
 logger = logging.getLogger(__name__)
 
-
 class AstroLightningModule(LightningModule):
     """
     Unified PyTorch Lightning Module for Astronomical Machine Learning.
@@ -708,6 +707,5 @@ class AstroLightningModule(LightningModule):
     def on_test_start(self) -> None:
         """Called when testing starts."""
         logger.info("🔍 Testing started")
-
 
 __all__ = ["AstroLightningModule"]

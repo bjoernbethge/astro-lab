@@ -68,7 +68,6 @@ class GravitationalMessagePassing(MessagePassing):
         msg_input = torch.cat([x_i, x_j, weight], dim=-1)
         return self.mlp(msg_input)
 
-
 class StellarPointCloudGNN(BaseAstroGNN):
     """GNN for 3D stellar point cloud processing with PointNet++ layers."""
 
@@ -184,7 +183,6 @@ class StellarPointCloudGNN(BaseAstroGNN):
 
         return {"embeddings": h, "edge_index": edge_index, "positions": pos}
 
-
 class HierarchicalStellarGNN(BaseAstroGNN):
     """Hierarchical GNN for multi-scale stellar structures."""
 
@@ -261,7 +259,6 @@ class HierarchicalStellarGNN(BaseAstroGNN):
         # Fuse multi-scale features
         multi_scale = torch.cat(scale_features, dim=-1)
         return self.scale_fusion(multi_scale)
-
 
 class StellarClusterGNN(BaseAstroGNN):
     """Specialized GNN for stellar cluster analysis."""
@@ -344,7 +341,6 @@ class StellarClusterGNN(BaseAstroGNN):
 
         return outputs
 
-
 class GalacticStructureGNN(BaseAstroGNN):
     """GNN for analyzing galactic structure from stellar distributions."""
 
@@ -424,7 +420,6 @@ class GalacticStructureGNN(BaseAstroGNN):
 
         return outputs
 
-
 # Factory functions for 3D stellar models
 def create_stellar_point_cloud_model(
     model_type: str = "point_cloud",
@@ -445,7 +440,6 @@ def create_stellar_point_cloud_model(
         return GalacticStructureGNN(**kwargs)
     else:
         raise ValueError(f"Unknown 3D stellar model type: {model_type}")
-
 
 def create_optimized_stellar_graph(
     positions: torch.Tensor,

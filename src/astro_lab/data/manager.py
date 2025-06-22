@@ -1,8 +1,8 @@
 """
-AstroLab Data Manager - Legacy Data Management
-=============================================
+AstroLab Data Manager - Data Management
+======================================
 
-Legacy data management system for backward compatibility.
+Data management system for astronomical datasets.
 Handles data loading, processing, and catalog management.
 """
 
@@ -28,7 +28,6 @@ from .preprocessing import preprocess_catalog, preprocess_catalog_lazy
 from .utils import load_fits_optimized
 
 logger = logging.getLogger(__name__)
-
 
 class AstroDataManager:
     """
@@ -771,52 +770,42 @@ class AstroDataManager:
 
         logger.info(f"🧹 Cleaned up {cleaned_files} temporary files")
 
-
 # Global data manager instance
 data_manager = AstroDataManager()
-
 
 # Convenience functions
 def download_gaia(region: str = "lmc", magnitude_limit: float = 15.0) -> Path:
     """Download Gaia catalog."""
     return data_manager.download_gaia_catalog(magnitude_limit, region)
 
-
 def download_bright_all_sky(magnitude_limit: float = 12.0) -> Path:
     """Download bright all-sky Gaia catalog (~1 GB)."""
     return data_manager.download_gaia_catalog(magnitude_limit, "bright_all_sky")
-
 
 def import_fits(fits_file: Union[str, Path], catalog_name: str) -> Path:
     """Import FITS catalog."""
     return data_manager.import_fits_catalog(fits_file, catalog_name)
 
-
 def import_tng50(hdf5_file: Union[str, Path], dataset_name: str = "PartType0") -> Path:
     """Import TNG50 simulation data."""
     return data_manager.import_tng50_hdf5(hdf5_file, dataset_name)
 
-
 def list_catalogs() -> pl.DataFrame:
     """List all available catalogs."""
     return data_manager.list_catalogs()
-
 
 def list_catalog_names() -> list:
     """List catalog names as a simple list."""
     df = data_manager.list_catalogs()
     return df["name"].to_list() if not df.is_empty() else []
 
-
 def load_catalog(path: Union[str, Path]) -> pl.DataFrame:
     """Load catalog from path."""
     return data_manager.load_catalog(path)
 
-
 def process_for_ml(raw_file: Union[str, Path], **kwargs) -> Path:
     """Process raw catalog for ML."""
     return data_manager.process_for_ml(raw_file, **kwargs)
-
 
 def load_gaia_bright_stars(magnitude_limit: float = 12.0) -> pl.DataFrame:
     """
@@ -852,14 +841,12 @@ def load_gaia_bright_stars(magnitude_limit: float = 12.0) -> pl.DataFrame:
         print(f"❌ Error loading Gaia catalog: {e}")
         return pl.DataFrame()
 
-
 def load_bright_stars(limit: Optional[int] = None) -> pl.DataFrame:
     """Load bright stars (alias for load_gaia_bright_stars)"""
     data = load_gaia_bright_stars(12.0)
     if limit and not data.is_empty():
         return data.head(limit)
     return data
-
 
 __all__ = [
     "AstroDataManager",

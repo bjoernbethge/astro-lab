@@ -40,7 +40,6 @@ except ImportError as e:
     bmesh = None
     Vector = None
 
-
 class AstronomicalShaders:
     """Create scientifically accurate astronomical shaders"""
 
@@ -489,7 +488,6 @@ class AstronomicalShaders:
         links.new(wave.outputs["Color"], ramp.inputs["Fac"])
         links.new(ramp.outputs["Color"], bsdf.inputs["Base Color"])
 
-
 # Example usage functions
 def create_stellar_showcase():
     """Create showcase of different stellar types."""
@@ -523,7 +521,6 @@ def create_stellar_showcase():
     print("Stellar showcase created!")
     return stars
 
-
 def create_planetary_system():
     """Create system with different planetary types."""
     planet_types = [
@@ -551,7 +548,6 @@ def create_planetary_system():
 
     print("Planetary system created!")
     return planets
-
 
 if __name__ == "__main__":
     create_stellar_showcase()

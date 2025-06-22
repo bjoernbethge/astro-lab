@@ -11,18 +11,17 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import torch
 
+# Core dependencies - should always be available
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+from sklearn.cluster import DBSCAN, KMeans
+from sklearn.ensemble import IsolationForest
+from sklearn.feature_selection import SelectKBest, VarianceThreshold, f_classif
+from sklearn.impute import KNNImputer, SimpleImputer
+from sklearn.neighbors import BallTree
+from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
+
 from .base import AstroTensorBase
-
-# Optional dependencies
-try:
-    from sklearn.ensemble import IsolationForest
-    from sklearn.feature_selection import SelectKBest, VarianceThreshold, f_classif
-    from sklearn.impute import KNNImputer, SimpleImputer
-    from sklearn.preprocessing import MinMaxScaler, RobustScaler, StandardScaler
-
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
 
 
 class FeatureTensor(AstroTensorBase):
@@ -155,8 +154,6 @@ class FeatureTensor(AstroTensorBase):
         Returns:
             Scaled FeatureTensor
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for feature scaling")
 
         if feature_types is None:
             feature_types = self._detect_feature_types()
@@ -283,8 +280,6 @@ class FeatureTensor(AstroTensorBase):
         if method == "astronomical":
             return self._astronomical_outlier_detection()
         elif method == "isolation_forest":
-            if not SKLEARN_AVAILABLE:
-                raise ImportError("sklearn required for isolation forest")
             detector = IsolationForest(contamination=contamination, random_state=42)
             outlier_labels = detector.fit_predict(self._data.cpu().numpy())
             return torch.from_numpy(outlier_labels == -1)
@@ -313,8 +308,6 @@ class FeatureTensor(AstroTensorBase):
         if method == "astronomical":
             selected_indices = self._astronomical_feature_selection(k)
         elif method == "variance":
-            if not SKLEARN_AVAILABLE:
-                raise ImportError("sklearn required for variance threshold")
             selector = VarianceThreshold()
             selector.fit(self._data.cpu().numpy())
             selected_indices = torch.from_numpy(selector.get_support())

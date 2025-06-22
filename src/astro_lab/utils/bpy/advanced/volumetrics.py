@@ -40,7 +40,6 @@ except ImportError as e:
     bmesh = None
     Vector = None
 
-
 class VolumetricAstronomy:
     """Create volumetric astronomical phenomena"""
 
@@ -246,7 +245,6 @@ class VolumetricAstronomy:
         particle_settings.normal_factor = wind_speed / 100.0
         particle_settings.lifetime = 100
         particle_settings.render_type = "NONE"  # Volume only
-
 
 class VolumetricShaders:
     """Volumetric shaders for astronomical phenomena"""
@@ -513,7 +511,6 @@ class VolumetricShaders:
 
         return mat
 
-
 # Example usage functions
 def create_nebula_complex():
     """Create a complex nebula with multiple emission regions."""
@@ -536,7 +533,6 @@ def create_nebula_complex():
     )
 
     print("Complex nebula scene created!")
-
 
 def create_stellar_system_with_winds():
     """Create stellar system with stellar winds."""
@@ -565,7 +561,6 @@ def create_stellar_system_with_winds():
             )
 
     print("Stellar system with winds created!")
-
 
 if __name__ == "__main__":
     create_nebula_complex()

@@ -23,13 +23,10 @@ try:
 except ImportError:
     SCIPY_AVAILABLE = False
 
-try:
-    from sklearn.utils import resample
-
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-
+from sklearn.cluster import DBSCAN, KMeans
+from sklearn.neighbors import BallTree
+from sklearn.utils import resample
+from scipy.stats import binned_statistic
 
 class StatisticsTensor(AstroTensorBase):
     """
@@ -375,14 +372,13 @@ class StatisticsTensor(AstroTensorBase):
         Returns:
             Dictionary with error estimates
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for bootstrap resampling")
-
+        
         if function_name not in self.get_metadata("computed_functions", {}):
             # Try to recompute the function with the given name and same bins as original if possible
             bins = 10
             # Try to infer bins from the test context (if available)
             import inspect
+
             frame = inspect.currentframe().f_back
             if frame and "bins" in frame.f_locals:
                 bins = frame.f_locals["bins"]
@@ -390,7 +386,9 @@ class StatisticsTensor(AstroTensorBase):
 
         # Get original function
         original_func = self.get_metadata("computed_functions")[function_name]
-        bins = len(original_func["bin_centers"]) if "bin_centers" in original_func else 10
+        bins = (
+            len(original_func["bin_centers"]) if "bin_centers" in original_func else 10
+        )
 
         # Perform bootstrap resampling
         bootstrap_results = []
@@ -404,29 +402,39 @@ class StatisticsTensor(AstroTensorBase):
 
             # Create bootstrap sample
             bootstrap_data = self._data[indices]
-            bootstrap_weights = self.weights[indices] if self.weights is not None else None
-            bootstrap_coords = self.coordinates[indices] if self.coordinates is not None else None
+            bootstrap_weights = (
+                self.weights[indices] if self.weights is not None else None
+            )
+            bootstrap_coords = (
+                self.coordinates[indices] if self.coordinates is not None else None
+            )
 
             # Create temporary tensor for bootstrap
             bootstrap_tensor = StatisticsTensor(
-                bootstrap_data, 
-                coordinates=bootstrap_coords, 
-                weights=bootstrap_weights
+                bootstrap_data, coordinates=bootstrap_coords, weights=bootstrap_weights
             )
 
             # Recompute function based on type or name
             if function_name in ["luminosity_function", "test_lf", "test_lf_jk"]:
-                _, phi = bootstrap_tensor.luminosity_function(function_name=function_name, bins=bins)
+                _, phi = bootstrap_tensor.luminosity_function(
+                    function_name=function_name, bins=bins
+                )
                 bootstrap_results.append(phi)
             elif function_name == "cmd":
-                _, _, density = bootstrap_tensor.color_magnitude_diagram(function_name=function_name)
+                _, _, density = bootstrap_tensor.color_magnitude_diagram(
+                    function_name=function_name
+                )
                 bootstrap_results.append(density.flatten())
             elif function_name == "xi_r":
-                _, xi_r = bootstrap_tensor.two_point_correlation(function_name=function_name)
+                _, xi_r = bootstrap_tensor.two_point_correlation(
+                    function_name=function_name
+                )
                 bootstrap_results.append(xi_r)
             else:
                 # For other functions, try to get the stored result
-                stored_func = bootstrap_tensor.get_metadata("computed_functions", {}).get(function_name, {})
+                stored_func = bootstrap_tensor.get_metadata(
+                    "computed_functions", {}
+                ).get(function_name, {})
                 if "phi" in stored_func:
                     bootstrap_results.append(stored_func["phi"])
                 elif "density" in stored_func:
@@ -486,6 +494,7 @@ class StatisticsTensor(AstroTensorBase):
             bins = 10
             # Try to infer bins from the test context (if available)
             import inspect
+
             frame = inspect.currentframe().f_back
             if frame and "bins" in frame.f_locals:
                 bins = frame.f_locals["bins"]
@@ -493,7 +502,9 @@ class StatisticsTensor(AstroTensorBase):
 
         # Get original function
         original_func = self.get_metadata("computed_functions")[function_name]
-        bins = len(original_func["bin_centers"]) if "bin_centers" in original_func else 10
+        bins = (
+            len(original_func["bin_centers"]) if "bin_centers" in original_func else 10
+        )
 
         n_objects = self.n_objects
         if n_jackknife is None:
@@ -520,24 +531,28 @@ class StatisticsTensor(AstroTensorBase):
 
             # Create temporary tensor
             jk_tensor = StatisticsTensor(
-                jk_data, 
-                coordinates=jk_coords, 
-                weights=jk_weights
+                jk_data, coordinates=jk_coords, weights=jk_weights
             )
 
             # Recompute function based on type or name
             if function_name in ["luminosity_function", "test_lf", "test_lf_jk"]:
-                _, phi = jk_tensor.luminosity_function(function_name=function_name, bins=bins)
+                _, phi = jk_tensor.luminosity_function(
+                    function_name=function_name, bins=bins
+                )
                 jackknife_results.append(phi)
             elif function_name == "cmd":
-                _, _, density = jk_tensor.color_magnitude_diagram(function_name=function_name)
+                _, _, density = jk_tensor.color_magnitude_diagram(
+                    function_name=function_name
+                )
                 jackknife_results.append(density.flatten())
             elif function_name == "xi_r":
                 _, xi_r = jk_tensor.two_point_correlation(function_name=function_name)
                 jackknife_results.append(xi_r)
             else:
                 # For other functions, try to get the stored result
-                stored_func = jk_tensor.get_metadata("computed_functions", {}).get(function_name, {})
+                stored_func = jk_tensor.get_metadata("computed_functions", {}).get(
+                    function_name, {}
+                )
                 if "phi" in stored_func:
                     jackknife_results.append(stored_func["phi"])
                 elif "density" in stored_func:

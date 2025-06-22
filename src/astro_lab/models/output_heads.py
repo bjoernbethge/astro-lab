@@ -19,13 +19,11 @@ from astro_lab.models.utils import get_activation
 # Configure logging
 logger = logging.getLogger(__name__)
 
-
 class ModelOutput(TypedDict):
     """Type definition for model outputs."""
 
     predictions: torch.Tensor
     embeddings: torch.Tensor
-
 
 class OutputHeadRegistry:
     """Registry for output heads."""
@@ -54,7 +52,6 @@ class OutputHeadRegistry:
     def list_available(cls) -> List[str]:
         """List all available output heads."""
         return list(cls._heads.keys())
-
 
 @OutputHeadRegistry.register("regression")
 class RegressionHead(nn.Module):
@@ -91,7 +88,6 @@ class RegressionHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(x)
-
 
 @OutputHeadRegistry.register("classification")
 class ClassificationHead(nn.Module):
@@ -132,7 +128,6 @@ class ClassificationHead(nn.Module):
             if self.num_classes > 1
             else torch.sigmoid(logits)
         )
-
 
 @OutputHeadRegistry.register("period_detection")
 class PeriodDetectionHead(nn.Module):
@@ -182,7 +177,6 @@ class PeriodDetectionHead(nn.Module):
 
         return result
 
-
 @OutputHeadRegistry.register("shape_modeling")
 class ShapeModelingHead(nn.Module):
     """Head for asteroid/object shape modeling."""
@@ -216,7 +210,6 @@ class ShapeModelingHead(nn.Module):
         spin = self.spin_head(x)
 
         return {"shape_parameters": shape, "spin_vector": spin}
-
 
 @OutputHeadRegistry.register("multi_task")
 class MultiTaskHead(nn.Module):
@@ -273,7 +266,6 @@ class MultiTaskHead(nn.Module):
             outputs[task_name] = head(shared_features)
 
         return outputs
-
 
 @OutputHeadRegistry.register("cosmological")
 class CosmologicalHead(nn.Module):
@@ -339,7 +331,6 @@ class CosmologicalHead(nn.Module):
                 outputs[param] = raw_output
 
         return outputs
-
 
 # Convenience function for creating heads
 def create_output_head(

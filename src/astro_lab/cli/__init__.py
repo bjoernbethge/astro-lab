@@ -25,7 +25,6 @@ import yaml
 from astro_lab.data import (
     AstroDataset,
     create_astro_datamodule,
-    create_graph_datasets_from_splits,
     create_training_splits,
     data_config,
     get_data_statistics,
@@ -78,8 +77,8 @@ astro-lab preprocess data/gaia_catalog.parquet --config gaia
 # With detailed parameters
 astro-lab preprocess --surveys gaia --k-neighbors 8 --max-samples 10000 --splits
 
-# Show catalog statistics
-astro-lab preprocess data/catalog.parquet --stats-only
+# Process catalog (statistics are shown automatically)
+astro-lab preprocess data/catalog.parquet
 
 # Process TNG50 simulation
 astro-lab preprocess data/snap_099.0.hdf5 --tng50 --particle-types PartType4
@@ -161,9 +160,7 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
     preprocess_parser.add_argument(
         "--splits", action="store_true", help="Create train/val/test splits"
     )
-    preprocess_parser.add_argument(
-        "--stats-only", action="store_true", help="Only show statistics, don't process"
-    )
+
     preprocess_parser.add_argument(
         "--tng50", action="store_true", help="Process as TNG50 simulation data"
     )
@@ -338,10 +335,6 @@ def handle_preprocess(args):
         from pathlib import Path
 
         # Determine processing mode
-        if args.stats_only and args.input:
-            # Stats-only mode for single file
-            _show_catalog_stats(args.input)
-            return
 
         if args.tng50 and args.input:
             # TNG50 processing mode
@@ -425,7 +418,6 @@ def _process_single_file(args):
 
     try:
         from astro_lab.data import (
-            create_graph_datasets_from_splits,
             create_training_splits,
             load_catalog,
             save_splits_to_parquet,
@@ -496,14 +488,6 @@ def _process_single_file(args):
 
                 dataset_name = Path(args.input).stem
                 save_splits_to_parquet(train, val, test, output_path, dataset_name)
-                create_graph_datasets_from_splits(
-                    train,
-                    val,
-                    test,
-                    output_path,
-                    dataset_name,
-                    k_neighbors=args.k_neighbors,
-                )
                 print(f"💾 Splits and graphs saved to: {output_path}")
             else:
                 # Save processed catalog and create graph

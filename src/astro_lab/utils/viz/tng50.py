@@ -32,7 +32,6 @@ from ..bpy import bpy, mathutils
 
 logger = logging.getLogger(__name__)
 
-
 class TNG50Visualizer:
     """
     Direct TNG50 visualization from processed .pt files.
@@ -339,37 +338,31 @@ class TNG50Visualizer:
         else:
             raise ValueError(f"Unknown method: {method}")
 
-
 # Convenience functions
 def load_tng50_gas(max_particles: int = 1000) -> Dict[str, Any]:
     """Quick load of TNG50 gas particles."""
     viz = TNG50Visualizer()
     return viz.load_tng50_graph("gas", max_particles=max_particles)
 
-
 def load_tng50_stars(max_particles: int = 1000) -> Dict[str, Any]:
     """Quick load of TNG50 star particles."""
     viz = TNG50Visualizer()
     return viz.load_tng50_graph("stars", max_particles=max_particles)
-
 
 def quick_pyvista_plot(particle_type: str = "gas", **kwargs):
     """Quick PyVista plot of TNG50 data."""
     viz = TNG50Visualizer()
     return viz.quick_visualization(particle_type, "pyvista", **kwargs)
 
-
 def quick_blender_import(particle_type: str = "gas", **kwargs):
     """Quick Blender import of TNG50 data."""
     viz = TNG50Visualizer()
     return viz.quick_visualization(particle_type, "blender", **kwargs)
 
-
 def list_available_data() -> Dict[str, List[str]]:
     """List all available TNG50 data files."""
     viz = TNG50Visualizer()
     return viz.list_available_graphs()
-
 
 __all__ = [
     "TNG50Visualizer",

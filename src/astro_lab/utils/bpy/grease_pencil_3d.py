@@ -14,7 +14,6 @@ import polars as pl
 from . import bpy
 import mathutils
 
-
 class GreasePencil3DPlotter:
     """Advanced 3D plotting using curves for Grease Pencil-style visualizations."""
 

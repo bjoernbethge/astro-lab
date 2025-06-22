@@ -28,21 +28,11 @@ try:
 except ImportError:
     ASTROPY_AVAILABLE = False
 
-try:
-    from sklearn.neighbors import BallTree, KDTree
+from sklearn.cluster import DBSCAN, KMeans
+from sklearn.neighbors import BallTree
 
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-
-try:
-    import torch_geometric
-    from torch_geometric.data import Data
-
-    TORCH_GEOMETRIC_AVAILABLE = True
-except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
-
+import torch_geometric
+from torch_geometric.data import Data
 
 class Spatial3DTensor(AstroTensorBase):
     """
@@ -195,9 +185,7 @@ class Spatial3DTensor(AstroTensorBase):
         cls, skycoord: Any, unit: str = "Mpc", **kwargs
     ) -> "Spatial3DTensor":
         """Create from astropy SkyCoord object."""
-        if not ASTROPY_AVAILABLE:
-            raise ImportError("astropy required for from_astropy")
-
+        
         try:
             # Simple extraction without complex unit handling
             ra, dec, distance = (
@@ -270,9 +258,7 @@ class Spatial3DTensor(AstroTensorBase):
 
     def to_astropy(self) -> Any:
         """Convert to astropy SkyCoord object."""
-        if not ASTROPY_AVAILABLE:
-            raise ImportError("astropy required for to_astropy")
-
+        
         ra, dec, distance = self.to_spherical()
 
         # Simple conversion without complex units
@@ -288,194 +274,8 @@ class Spatial3DTensor(AstroTensorBase):
 
     def _build_spatial_index(self) -> None:
         """Build spatial index for fast neighbor queries."""
-        if not SKLEARN_AVAILABLE:
-            return
-
-        try:
-            coords = self._data.detach().cpu().numpy()
-            # Use BallTree for spherical-like coordinates, KDTree for Cartesian
-            if self.coordinate_system in ["icrs", "galactic"]:
-                index = BallTree(coords, metric="euclidean")
-            else:
-                index = KDTree(coords)
-
-            self.update_metadata(spatial_index=index)
-
-        except Exception as e:
-            print(f"⚠️  Failed to build spatial index: {e}")
-
-    def query_neighbors(
-        self,
-        query_point: Union[torch.Tensor, np.ndarray],
-        radius: float,
-        max_neighbors: Optional[int] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """
-        Fast neighbor query using spatial index.
-
-        Args:
-            query_point: Query coordinates [3] or [1, 3]
-            radius: Search radius in same units as tensor
-            max_neighbors: Maximum number of neighbors
-
-        Returns:
-            Tuple of (distances, indices)
-        """
-        spatial_index = self._metadata.get("spatial_index")
-
-        if spatial_index is None:
-            # Fallback to brute force
-            return self._brute_force_query(query_point, radius, max_neighbors)
-
-        query = np.atleast_2d(query_point)
-
-        # Query spatial index
-        if hasattr(spatial_index, "query_radius"):
-            # BallTree
-            indices = spatial_index.query_radius(query, r=radius)[0]
-            if max_neighbors and len(indices) > max_neighbors:
-                distances = spatial_index.query(
-                    query, k=min(len(indices), max_neighbors)
-                )[0][0]
-                indices = spatial_index.query(
-                    query, k=min(len(indices), max_neighbors)
-                )[1][0]
-            else:
-                distances = np.linalg.norm(
-                    self._data.detach().cpu().numpy()[indices] - query, axis=1
-                )
-        else:
-            # KDTree
-            indices = spatial_index.query_radius(query, r=radius)[0]
-            distances = np.linalg.norm(
-                self._data.detach().cpu().numpy()[indices] - query, axis=1
-            )
-
-            if max_neighbors and len(indices) > max_neighbors:
-                sort_idx = np.argsort(distances)[:max_neighbors]
-                indices = indices[sort_idx]
-                distances = distances[sort_idx]
-
-        return torch.tensor(distances), torch.tensor(indices, dtype=torch.long)
-
-    def _brute_force_query(
-        self,
-        query_point: Union[torch.Tensor, np.ndarray],
-        radius: float,
-        max_neighbors: Optional[int] = None,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Fallback brute force neighbor query."""
-        query = torch.as_tensor(query_point, dtype=torch.float32)
-        if query.dim() == 1:
-            query = query.unsqueeze(0)
-
-        # Calculate distances
-        distances = torch.norm(self._data - query, dim=-1)
-
-        # Filter by radius
-        mask = distances <= radius
-        valid_indices = torch.where(mask)[0]
-        valid_distances = distances[mask]
-
-        # Sort and limit
-        sort_idx = torch.argsort(valid_distances)
-        if max_neighbors and len(sort_idx) > max_neighbors:
-            sort_idx = sort_idx[:max_neighbors]
-
-        return valid_distances[sort_idx], valid_indices[sort_idx]
-
-    def angular_separation(self, other: "Spatial3DTensor") -> torch.Tensor:
-        """
-        Calculate angular separation using dot product.
-        More efficient than haversine for 3D coordinates.
-        """
-        # Normalize to unit vectors
-        pos1 = self._data / torch.norm(self._data, dim=-1, keepdim=True)
-        pos2 = other._data / torch.norm(other._data, dim=-1, keepdim=True)
-
-        # Dot product gives cos(angle)
-        cos_angle = torch.sum(pos1 * pos2, dim=-1)
-        cos_angle = torch.clamp(cos_angle, -1.0, 1.0)
-
-        # Convert to degrees
-        angle_rad = torch.acos(cos_angle)
-        return torch.rad2deg(angle_rad)
-
-    def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:
-        """
-        Cone search around center position.
-
-        Args:
-            center: Center position [3] (Cartesian)
-            radius_deg: Search radius in degrees
-
-        Returns:
-            Boolean mask of objects within cone
-        """
-        center_tensor = torch.as_tensor(center, dtype=torch.float32)
-        if center_tensor.dim() == 1:
-            center_tensor = center_tensor.unsqueeze(0)
-
-        # Create temporary tensor for center
-        center_spatial = Spatial3DTensor(
-            center_tensor, coordinate_system=self.coordinate_system, unit=self.unit
-        )
-
-        separations = self.angular_separation(center_spatial)
-        return separations <= radius_deg
-
-    def cross_match(
-        self,
-        other: "Spatial3DTensor",
-        radius_deg: float = 1.0 / 3600.0,  # 1 arcsec default
-    ) -> Dict[str, torch.Tensor]:
-        """
-        Cross-match with another catalog.
-
-        Args:
-            other: Other spatial tensor to match against
-            radius_deg: Matching radius in degrees
-
-        Returns:
-            Dictionary with match results
-        """
-        matches = []
-        separations = []
-
-        for i in range(len(self._data)):
-            pos = self._data[i]
-            distances, indices = other.query_neighbors(
-                pos, radius_deg * np.pi / 180.0
-            )  # Convert to radians for 3D
-
-            if len(indices) > 0:
-                # Take closest match
-                best_idx = 0
-                matches.append((i, int(indices[best_idx])))
-                separations.append(float(distances[best_idx]))
-
-        if matches:
-            matches_array = torch.tensor(matches)
-            return {
-                "self_indices": matches_array[:, 0],
-                "other_indices": matches_array[:, 1],
-                "separations": torch.tensor(separations),
-            }
-        else:
-            return {
-                "self_indices": torch.tensor([], dtype=torch.long),
-                "other_indices": torch.tensor([], dtype=torch.long),
-                "separations": torch.tensor([]),
-            }
-
-    def to_torch_geometric(self, k: int = 8, radius: Optional[float] = None) -> "Data":
-        """Convert to PyTorch Geometric Data object for GNN processing."""
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError("torch-geometric required")
-
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for graph construction")
-
+        
+        
         pos = self._data
 
         # Create edges using sklearn
@@ -557,9 +357,7 @@ class Spatial3DTensor(AstroTensorBase):
         if target_system == self.coordinate_system:
             return self
 
-        if not ASTROPY_AVAILABLE:
-            raise ImportError("astropy required for coordinate transformations")
-
+        
         # Convert via astropy
         skycoord = self.to_astropy()
 
@@ -602,10 +400,8 @@ class Spatial3DTensor(AstroTensorBase):
         Returns:
             Dictionary with cluster labels, statistics, and cosmic web features
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("scikit-learn required for cosmic web clustering")
-
-        from sklearn.cluster import DBSCAN, AgglomerativeClustering
+        
+        from sklearn.cluster import AgglomerativeClustering
 
         # Get 3D coordinates in parsecs - Fix CUDA tensor conversion
         coords_pc = self._data.detach().cpu().numpy()
@@ -686,9 +482,7 @@ class Spatial3DTensor(AstroTensorBase):
         Returns:
             Local density for each star (stars per cubic parsec)
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("scikit-learn required for density analysis")
-
+        
         from sklearn.neighbors import NearestNeighbors
 
         # Get coordinates in parsecs - Fix CUDA tensor conversion

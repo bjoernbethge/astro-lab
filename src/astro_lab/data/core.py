@@ -36,32 +36,21 @@ os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
 logger = logging.getLogger(__name__)
 
 # 🌟 TENSOR INTEGRATION - Import all tensor types
-try:
-    from astro_lab.tensors import (
-        LightcurveTensor,
-        PhotometricTensor,
-        SimulationTensor,
-        Spatial3DTensor,
-        SpectralTensor,
-        SurveyTensor,
-    )
+# Core dependencies - should always be available
+from astro_lab.tensors import (
+    LightcurveTensor,
+    PhotometricTensor,
+    SimulationTensor,
+    Spatial3DTensor,
+    SpectralTensor,
+    SurveyTensor,
+)
 
-    TENSOR_INTEGRATION_AVAILABLE = True
-except ImportError:
-    TENSOR_INTEGRATION_AVAILABLE = False
-    SurveyTensor = None
-
-# PyTorch Geometric integration
-try:
-    TORCH_GEOMETRIC_AVAILABLE = True
-except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
-
+# PyTorch Geometric integration - core dependency
 
 # =========================================================================
 # 🚀 PERFORMANCE OPTIMIZATION - CUDA, Polars, PyTorch 2025 Best Practices
 # =========================================================================
-
 
 def get_optimal_device() -> torch.device:
     """Get optimal device with CUDA optimization."""
@@ -76,7 +65,6 @@ def get_optimal_device() -> torch.device:
         return torch.device("cuda:0")
     else:
         return torch.device("cpu")
-
 
 def get_optimal_batch_size(
     dataset_size: int, model_complexity: int = 64, memory_safety_factor: float = 0.8
@@ -112,7 +100,6 @@ def get_optimal_batch_size(
         # CPU: use smaller batches
         return min(dataset_size, 32)
 
-
 def get_optimal_num_workers() -> int:
     """Get optimal number of workers for DataLoader."""
     cpu_count = os.cpu_count() or 4
@@ -124,16 +111,13 @@ def get_optimal_num_workers() -> int:
         # CPU: more workers for parallel processing
         return min(cpu_count - 1, 8)
 
-
 # Initialize optimizations
 # optimize_polars_settings()  # CAUSES MEMORY LEAKS - removed
 # optimize_torch_settings()   # Keep this separate
 
-
 # =========================================================================
 # 🌟 COSMIC WEB ANALYSIS FUNCTIONS - Density-based for all surveys
 # =========================================================================
-
 
 def calculate_local_density(
     positions: Union[torch.Tensor, np.ndarray],
@@ -167,7 +151,6 @@ def calculate_local_density(
     densities = neighbor_counts / volume
 
     return torch.tensor(densities, dtype=torch.float32)
-
 
 def adaptive_cosmic_web_clustering(
     spatial_tensor: Any,  # Spatial3DTensor or fallback
@@ -217,7 +200,6 @@ def adaptive_cosmic_web_clustering(
     )
 
     return results, local_density
-
 
 def analyze_cosmic_web(
     survey_tensor: Any,  # SurveyTensor or fallback
@@ -324,7 +306,6 @@ def analyze_cosmic_web(
         "results_by_scale": results_summary,
     }
 
-
 def create_cosmic_web_loader(
     survey: str,
     max_samples: Optional[int] = None,
@@ -414,7 +395,6 @@ def create_cosmic_web_loader(
     results = analyze_cosmic_web(survey_tensor, scales_mpc=scales_mpc, verbose=True)
 
     return results
-
 
 # Survey configurations - DRY principle with TENSOR METADATA
 SURVEY_CONFIGS = {
@@ -600,7 +580,6 @@ SURVEY_CONFIGS = {
     },
 }
 
-
 def _polars_to_survey_tensor(
     df: pl.DataFrame, survey: str, survey_metadata: Optional[Dict[str, Any]] = None
 ) -> Any:
@@ -615,9 +594,7 @@ def _polars_to_survey_tensor(
     Returns:
         SurveyTensor with properly configured metadata
     """
-    if not TENSOR_INTEGRATION_AVAILABLE:
-        raise ImportError("Tensor integration not available. Install astro_lab.tensors")
-
+    
     if survey not in SURVEY_CONFIGS:
         raise ValueError(f"Survey {survey} not supported")
 
@@ -648,7 +625,6 @@ def _polars_to_survey_tensor(
         metadata["survey_metadata"].update(survey_metadata)
 
     return SurveyTensor(data=tensor_data, **metadata)
-
 
 class AstroDataset(InMemoryDataset):
     """
@@ -860,7 +836,6 @@ class AstroDataset(InMemoryDataset):
         """Override _process to load .pt files directly."""
         self.load(None)  # Load from .pt file - no fallback to fake data
 
-
 class AstroDataModule(L.LightningDataModule):
     """
     Clean Lightning DataModule for astronomical data.
@@ -968,7 +943,6 @@ class AstroDataModule(L.LightningDataModule):
             pin_memory=self.device.type == "cuda",
         )
 
-
 # Factory function - replaces all the individual create_* functions
 def create_astro_dataloader(survey: str, batch_size: int = 1, **kwargs) -> DataLoader:
     """
@@ -979,7 +953,6 @@ def create_astro_dataloader(survey: str, batch_size: int = 1, **kwargs) -> DataL
     dataset = AstroDataset(survey=survey, **kwargs)
     return DataLoader(dataset, batch_size=batch_size)
 
-
 def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
     """
     Universal factory for astronomical data modules.
@@ -988,9 +961,7 @@ def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
     """
     return AstroDataModule(survey=survey, **kwargs)
 
-
 # 🌟 ENHANCED LOAD FUNCTIONS with automatic tensor conversion
-
 
 def load_gaia_data(
     max_samples: int = 5000,
@@ -1006,7 +977,7 @@ def load_gaia_data(
         **kwargs: Additional arguments
 
     Returns:
-        SurveyTensor with Gaia data or AstroDataset for legacy use
+        SurveyTensor with Gaia data or AstroDataset
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
         # Create temporary dataset to get DataFrame
@@ -1025,7 +996,6 @@ def load_gaia_data(
 
     return dataset
 
-
 def load_sdss_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
@@ -1040,7 +1010,7 @@ def load_sdss_data(
         **kwargs: Additional arguments
 
     Returns:
-        SurveyTensor with SDSS data or AstroDataset for legacy use
+        SurveyTensor with SDSS data or AstroDataset
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
         # Create temporary dataset to get DataFrame
@@ -1059,7 +1029,6 @@ def load_sdss_data(
 
     return dataset
 
-
 def load_nsa_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
@@ -1074,7 +1043,7 @@ def load_nsa_data(
         **kwargs: Additional arguments
 
     Returns:
-        SurveyTensor with NSA data or AstroDataset for legacy use
+        SurveyTensor with NSA data or AstroDataset
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
         # Create temporary dataset to get DataFrame
@@ -1093,7 +1062,6 @@ def load_nsa_data(
 
     return dataset
 
-
 def load_lightcurve_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
@@ -1108,7 +1076,7 @@ def load_lightcurve_data(
         **kwargs: Additional arguments
 
     Returns:
-        LightcurveTensor with lightcurve data or AstroDataset for legacy use
+        LightcurveTensor with lightcurve data or AstroDataset
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
         dataset = AstroDataset(
@@ -1137,7 +1105,6 @@ def load_lightcurve_data(
         return_tensor=return_tensor,
         **kwargs,
     )
-
 
 def load_tng50_data(
     max_samples: Optional[int] = None,
@@ -1195,7 +1162,6 @@ def load_tng50_data(
         return dataset.get_spatial_tensor()
 
     return dataset
-
 
 def load_tng50_temporal_data(
     max_samples: Optional[int] = None, snapshot_id: Optional[int] = None
@@ -1589,7 +1555,6 @@ def load_tng50_temporal_data(
 
     return dataset
 
-
 def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
     """
     Detect survey type from filename and columns.
@@ -1641,7 +1606,6 @@ def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
     else:
         return "generic"
 
-
 def create_graph_from_dataframe(
     df: pl.DataFrame,
     survey_type: str,
@@ -1664,414 +1628,7 @@ def create_graph_from_dataframe(
     Returns:
         PyTorch Geometric Data object or None if PyG not available
     """
-    if not TORCH_GEOMETRIC_AVAILABLE:
-        print("⚠️  PyTorch Geometric not available for graph creation")
-        return None
-
-    try:
-        if survey_type == "nsa":
-            return _create_nsa_graph(df, k_neighbors, distance_threshold, **kwargs)
-        elif survey_type == "gaia":
-            return _create_gaia_graph(df, k_neighbors, distance_threshold, **kwargs)
-        elif survey_type == "sdss":
-            return _create_sdss_graph(df, k_neighbors, distance_threshold, **kwargs)
-        elif survey_type == "tng50":
-            return _create_tng50_graph(df, k_neighbors, distance_threshold, **kwargs)
-        else:
-            return _create_generic_graph(df, k_neighbors, distance_threshold, **kwargs)
-
-    except Exception as e:
-        print(f"❌ Error creating {survey_type} graph: {e}")
-        return None
-
-
-def create_graph_datasets_from_splits(
-    train_df: pl.DataFrame,
-    val_df: pl.DataFrame,
-    test_df: pl.DataFrame,
-    output_path: Path,
-    dataset_name: str,
-    k_neighbors: int = 8,
-    distance_threshold: float = 50.0,
-    **kwargs,
-) -> Dict[str, Optional[Data]]:
-    """
-    Create graph datasets from train/val/test splits.
-
-    Args:
-        train_df, val_df, test_df: Split DataFrames
-        output_path: Output directory
-        dataset_name: Name of the dataset
-        k_neighbors: Number of neighbors for graph construction
-        distance_threshold: Distance threshold for edges
-        **kwargs: Additional arguments
-
-    Returns:
-        Dictionary with 'train', 'val', 'test' graph data objects
-    """
-    if not TORCH_GEOMETRIC_AVAILABLE:
-        print("⚠️  PyTorch Geometric not available - skipping graph creation")
-        return {"train": None, "val": None, "test": None}
-
-    print("\n🔗 Creating PyTorch Geometric Graphs (.pt) - Standard for GNNs")
-
-    # Detect survey type
-    survey_type = detect_survey_type(dataset_name, train_df)
-    print(f"📊 Detected survey type: {survey_type}")
-
-    results = {}
-
-    for split_name, df in [("train", train_df), ("val", val_df), ("test", test_df)]:
-        print(f"   🔄 Creating {split_name} graph...")
-
-        graph_data = create_graph_from_dataframe(
-            df, survey_type, k_neighbors, distance_threshold, **kwargs
-        )
-
-        if graph_data is not None:
-            # Save graph if output path provided
-            if output_path:
-                graph_dir = output_path / f"graphs_{split_name}"
-                graph_dir.mkdir(exist_ok=True)
-
-                # Use unified naming scheme: {survey}_k{k}_n{n}.pt
-                n_samples = len(df)
-                graph_file = (
-                    graph_dir / f"{dataset_name}_k{k_neighbors}_n{n_samples}.pt"
-                )
-                torch.save(graph_data, graph_file)
-                print(f"   💾 Saved to: {graph_file}")
-
-            print(
-                f"   📊 {split_name.title()}: {graph_data.num_nodes:,} nodes, {graph_data.num_edges:,} edges"
-            )
-
-        results[split_name] = graph_data
-
-    print("✅ Graph datasets created successfully!")
-    return results
-
-
-def _create_nsa_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
-) -> Data:
-    """Create NSA galaxy graph using SurveyTensor spatial integration."""
-    # 🌟 Create SurveyTensor first
-    survey_tensor = _polars_to_survey_tensor(df, "nsa")
-
-    # 🌟 Get spatial tensor with 3D coordinates
-    try:
-        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
-        coords_3d = spatial_tensor.cartesian.numpy()  # [N, 3] Cartesian coordinates
-
-        print(
-            f"✅ Created NSA spatial tensor: {spatial_tensor.coordinate_system}, {coords_3d.shape}"
-        )
-    except Exception as e:
-        print(f"⚠️ NSA spatial tensor failed, falling back to manual coordinates: {e}")
-        # Fallback to manual 3D calculation from z (redshift)
-        coords = df.select(["ra", "dec"]).to_numpy()
-        z_values = (
-            df.select("z").to_numpy().flatten()
-            if "z" in df.columns
-            else np.ones(len(coords)) * 0.1
-        )
-
-        # Convert to 3D using simple cosmology (c*z/H0 approximation)
-        c_over_H0 = 3000.0  # Mpc, rough approximation
-        distances = c_over_H0 * z_values
-
-        # Convert spherical to Cartesian
-        ra_rad = np.radians(coords[:, 0])
-        dec_rad = np.radians(coords[:, 1])
-
-        x = distances * np.cos(dec_rad) * np.cos(ra_rad)
-        y = distances * np.cos(dec_rad) * np.sin(ra_rad)
-        z = distances * np.sin(dec_rad)
-
-        coords_3d = np.column_stack([x, y, z])
-
-    # Create feature matrix with NSA-specific columns
-    feature_cols = ["ra", "dec", "z"]
-
-    # Add NSA photometry and morphology
-    nsa_cols = [
-        "PETROMAG_R",
-        "PETROMAG_G",
-        "PETROMAG_I",
-        "MASS",
-        "ELPETRO_MASS",
-        "SERSIC_MASS",
-    ]
-    available_cols = feature_cols + [col for col in nsa_cols if col in df.columns]
-
-    features = df.select(available_cols).to_numpy()
-    features = np.nan_to_num(features, nan=0.0)
-
-    # Add 3D coordinates to features
-    features = np.column_stack([features, coords_3d])
-
-    # Create k-nearest neighbor graph using 3D coordinates
-    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
-    nbrs.fit(coords_3d)
-
-    distances_3d, indices = nbrs.kneighbors(coords_3d)
-
-    # Convert to edge list
-    edge_list = []
-    edge_weights = []
-
-    for i, (dist_row, idx_row) in enumerate(zip(distances_3d, indices)):
-        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
-            if dist <= distance_threshold:
-                edge_list.append([i, idx])
-                edge_weights.append(float(dist))
-
-    # Convert to tensors
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
-    node_features = torch.tensor(features, dtype=torch.float)
-
-    return Data(
-        x=node_features,
-        edge_index=edge_index,
-        edge_attr=edge_attr,
-        pos=torch.tensor(coords_3d, dtype=torch.float),
-        num_nodes=len(features),
-    )
-
-
-def _create_gaia_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
-) -> Data:
-    """Create Gaia stellar graph using SurveyTensor spatial integration."""
-    # 🌟 Create SurveyTensor first
-    survey_tensor = _polars_to_survey_tensor(df, "gaia")
-
-    # 🌟 Get spatial tensor with 3D coordinates
-    try:
-        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
-        coords_3d = spatial_tensor.cartesian.numpy()  # [N, 3] Cartesian coordinates
-
-        print(
-            f"✅ Created spatial tensor: {spatial_tensor.coordinate_system}, {coords_3d.shape}"
-        )
-    except Exception as e:
-        print(f"⚠️ Spatial tensor failed, falling back to manual coordinates: {e}")
-        # Fallback to manual calculation
-        coords = df.select(["ra", "dec"]).to_numpy()
-        coords_3d = coords  # Just use 2D for fallback
-
-    # Create feature matrix
-    feature_cols = ["ra", "dec", "phot_g_mean_mag", "bp_rp", "parallax"]
-    available_cols = [col for col in feature_cols if col in df.columns]
-
-    features = df.select(available_cols).to_numpy()
-    features = np.nan_to_num(features, nan=0.0)
-
-    # Add 3D coordinates to features if available
-    if coords_3d.shape[1] == 3:
-        features = np.column_stack([features, coords_3d])
-
-    # Create k-nearest neighbor graph using 3D coordinates
-    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
-
-    if coords_3d.shape[1] == 3:
-        # Use 3D Cartesian coordinates
-        nbrs.fit(coords_3d)
-        distances, indices = nbrs.kneighbors(coords_3d)
-        distance_threshold_3d = distance_threshold  # Already in proper units
-    else:
-        # Fallback to sky coordinates
-        coords_sky = df.select(["ra", "dec"]).to_numpy()
-        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
-        nbrs.fit(np.radians(coords_sky))
-        distances, indices = nbrs.kneighbors(np.radians(coords_sky))
-        distance_threshold_3d = np.radians(distance_threshold / 3600.0)
-
-    # Convert to edge list
-    edge_list = []
-    edge_weights = []
-
-    for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
-        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
-            if dist <= distance_threshold_3d:
-                edge_list.append([i, idx])
-                edge_weights.append(float(dist))
-
-    # Convert to tensors
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
-    node_features = torch.tensor(features, dtype=torch.float)
-
-    # Create labels for Gaia stellar classification based on color
-    if "bp_rp" in df.columns:
-        bp_rp = df["bp_rp"].to_numpy()
-        bp_rp = np.nan_to_num(bp_rp, nan=0.0)
-
-        # Stellar classification based on B-R color:
-        # 0: Very blue (hot stars), 1: Blue, 2: Blue-white, 3: White
-        # 4: Yellow-white, 5: Yellow, 6: Orange, 7: Red (cool stars)
-        labels = (
-            np.digitize(bp_rp, bins=np.array([-0.5, 0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 2.0]))
-            - 1
-        )
-        labels = np.clip(labels.astype(int), 0, 7)  # Ensure labels are in range [0, 7]
-        y = torch.tensor(labels, dtype=torch.long)
-    else:
-        # Fallback: random labels for demo
-        y = torch.randint(0, 8, (len(features),), dtype=torch.long)
-
-    # Use proper 3D positions if available
-    pos_tensor = (
-        torch.tensor(coords_3d, dtype=torch.float) if coords_3d.shape[1] == 3 else None
-    )
-
-    return Data(
-        x=node_features,
-        edge_index=edge_index,
-        edge_attr=edge_attr,
-        y=y,
-        pos=pos_tensor,
-        num_nodes=len(features),
-    )
-
-
-def _create_sdss_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
-) -> Data:
-    """Create SDSS galaxy graph using SurveyTensor spatial integration."""
-    # 🌟 Create SurveyTensor first
-    survey_tensor = _polars_to_survey_tensor(df, "sdss")
-
-    # 🌟 Get spatial tensor with 3D coordinates
-    try:
-        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
-        coords_3d = spatial_tensor.cartesian.numpy()  # [N, 3] Cartesian coordinates
-        use_3d = True
-
-        print(
-            f"✅ Created SDSS spatial tensor: {spatial_tensor.coordinate_system}, {coords_3d.shape}"
-        )
-    except Exception as e:
-        print(f"⚠️ SDSS spatial tensor failed, using sky coordinates: {e}")
-        # Use sky coordinates for SDSS
-        coords_3d = df.select(["ra", "dec"]).to_numpy()
-        use_3d = False
-
-    # Create feature matrix
-    feature_cols = ["ra", "dec"]
-    if "z" in df.columns:
-        feature_cols.append("z")
-
-    # Add SDSS photometry
-    sdss_mags = ["modelmag_u", "modelmag_g", "modelmag_r", "modelmag_i", "modelmag_z"]
-    available_cols = feature_cols + [col for col in sdss_mags if col in df.columns]
-
-    features = df.select(available_cols).to_numpy()
-    features = np.nan_to_num(features, nan=0.0)
-
-    # Add coordinates to features if 3D
-    if use_3d and coords_3d.shape[1] == 3:
-        features = np.column_stack([features, coords_3d])
-
-    # Create k-nearest neighbor graph
-    if use_3d and coords_3d.shape[1] == 3:
-        # Use 3D Cartesian coordinates
-        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
-        nbrs.fit(coords_3d)
-        distances, indices = nbrs.kneighbors(coords_3d)
-        max_distance = distance_threshold
-    else:
-        # Use sky coordinates with haversine metric
-        nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="haversine")
-        nbrs.fit(np.radians(coords_3d))
-        distances, indices = nbrs.kneighbors(np.radians(coords_3d))
-        max_distance = np.radians(
-            distance_threshold / 3600.0
-        )  # Convert arcsec to radians
-
-    # Convert to edge list
-    edge_list = []
-    edge_weights = []
-
-    for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
-        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
-            if dist <= max_distance:
-                edge_list.append([i, idx])
-                edge_weights.append(float(dist))
-
-    # Convert to tensors
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
-    node_features = torch.tensor(features, dtype=torch.float)
-
-    # Use proper positions
-    pos_tensor = (
-        torch.tensor(coords_3d, dtype=torch.float)
-        if use_3d and coords_3d.shape[1] == 3
-        else None
-    )
-
-    return Data(
-        x=node_features,
-        edge_index=edge_index,
-        edge_attr=edge_attr,
-        pos=pos_tensor,
-        num_nodes=len(features),
-    )
-
-
-def _create_generic_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
-) -> Data:
-    """Create generic astronomical graph."""
-    # Use first two columns as coordinates
-    coords = df.to_numpy()[:, :2]
-    features = df.to_numpy()
-    features = np.nan_to_num(features, nan=0.0)
-
-    # Create k-nearest neighbor graph
-    nbrs = NearestNeighbors(n_neighbors=k_neighbors + 1, metric="euclidean")
-    nbrs.fit(coords)
-
-    distances, indices = nbrs.kneighbors(coords)
-
-    # Convert to edge list
-    edge_list = []
-    edge_weights = []
-
-    for i, (dist_row, idx_row) in enumerate(zip(distances, indices)):
-        for j, (dist, idx) in enumerate(zip(dist_row[1:], idx_row[1:])):  # Skip self
-            if dist <= distance_threshold:
-                edge_list.append([i, idx])
-                edge_weights.append(float(dist))
-
-    # Convert to tensors
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    edge_attr = torch.tensor(edge_weights, dtype=torch.float).unsqueeze(1)
-    node_features = torch.tensor(features, dtype=torch.float)
-
-    return Data(
-        x=node_features,
-        edge_index=edge_index,
-        edge_attr=edge_attr,
-        num_nodes=len(features),
-    )
-
-
-def _create_tng50_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
-) -> Data:
-    """Create TNG50 simulation graph from DataFrame with 3D coordinates."""
-    print(f"🌌 Creating TNG50 graph: {len(df):,} particles, k={k_neighbors}")
-
-    # Extract 3D coordinates (x, y, z)
-    coord_cols = ["x", "y", "z"]
-    missing_coords = [col for col in coord_cols if col not in df.columns]
-    if missing_coords:
-        raise ValueError(f"Missing coordinate columns for TNG50: {missing_coords}")
-
+    
     coords = df.select(coord_cols).to_numpy()
     all_features = df.to_numpy()
 
@@ -2147,7 +1704,6 @@ def _create_tng50_graph(
         num_nodes=len(all_features),
     )
 
-
 def benchmark_performance(
     survey: str = "linear", max_samples: int = 1000, verbose: bool = True
 ) -> Dict[str, Any]:
@@ -2222,7 +1778,6 @@ def benchmark_performance(
             "error": str(e),
             "success": False,
         }
-
 
 def print_performance_info():
     """Print current performance configuration."""

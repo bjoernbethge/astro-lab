@@ -28,7 +28,6 @@ except ImportError as e:
     np = None
     Vector = None
 
-
 class FuturisticMaterials:
     """Create futuristic materials for astronomical visualization"""
 
@@ -476,7 +475,6 @@ class FuturisticMaterials:
         mix_shader.inputs["Fac"].default_value = 0.6
         
         return mat
-
 
 class MaterialPresets:
     """Preset material configurations"""

@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["TemporalGCN", "TemporalGATCNN"]
 
-
 class TemporalGCN(nn.Module):
     """
     Base Temporal Graph Convolutional Network for astronomical time-series data.
@@ -186,7 +185,6 @@ class TemporalGCN(nn.Module):
 
         return {"predictions": predictions, "embeddings": final_embedding}
 
-
 class TemporalGATCNN(TemporalGCN):
     """
     Temporal Graph Attention Network with attention-based processing.
@@ -295,9 +293,7 @@ class TemporalGATCNN(TemporalGCN):
 
         return h
 
-
 # TNG-specific models moved to tng_models.py
-
 
 class ALCDEFTemporalGNN(nn.Module):
     """Temporal Graph Neural Network for ALCDEF lightcurve data with native tensor support."""
@@ -386,7 +382,6 @@ class ALCDEFTemporalGNN(nn.Module):
             return {"output": output, "embeddings": embeddings}
         return output
 
-
 class PeriodDetectionHead(nn.Module):
     """Output head for rotation period detection."""
 
@@ -405,7 +400,6 @@ class PeriodDetectionHead(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(x)
 
-
 class ShapeModelingHead(nn.Module):
     """Output head for shape modeling parameters."""
 
@@ -422,7 +416,6 @@ class ShapeModelingHead(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(x)
-
 
 class ClassificationHead(nn.Module):
     """Output head for asteroid classification."""

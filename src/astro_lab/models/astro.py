@@ -36,7 +36,6 @@ from astro_lab.models.utils import get_activation, initialize_weights
 from astro_lab.tensors import SurveyTensor
 from astro_lab.models.layers import LayerFactory
 
-
 class AstroSurveyGNN(BaseAstroGNN):
     """Graph Neural Network for astronomical survey data with native tensor support."""
 
@@ -229,6 +228,5 @@ class AstroSurveyGNN(BaseAstroGNN):
         if return_embeddings:
             return {"logits": output, "embeddings": embeddings}
         return output
-
 
 __all__ = ["AstroSurveyGNN"]

@@ -53,7 +53,6 @@ except ImportError:
     pv = None
     vtk = None
 
-
 # Blender integration - LAZY LOADING
 def _get_blender_modules():
     """Lazy import of Blender modules to avoid memory leak."""
@@ -63,7 +62,6 @@ def _get_blender_modules():
         return bpy, mathutils
     except ImportError:
         return None, None
-
 
 class TensorProtocol(Protocol):
     """Protocol for tensor-like objects."""
@@ -84,7 +82,6 @@ class TensorProtocol(Protocol):
     @property
     def is_cuda(self) -> bool: ...
 
-
 @dataclass
 class SyncConfig:
     """Configuration for bidirectional synchronization."""
@@ -97,11 +94,9 @@ class SyncConfig:
     zero_copy: bool = True
     max_vertices: int = 1000000  # Performance limit
 
-
 # =========================================================================
 # Memory profiling and optimization utilities
 # =========================================================================
-
 
 @contextmanager
 def zero_copy_context(description: str = "Zero-copy operation"):
@@ -143,7 +138,6 @@ def zero_copy_context(description: str = "Zero-copy operation"):
                     f"Zero-copy {description}: Memory change {memory_diff / 1024**2:.2f} MB"
                 )
 
-
 def optimize_tensor_layout(tensor: torch.Tensor) -> torch.Tensor:
     """
     Optimize tensor memory layout for zero-copy operations.
@@ -162,7 +156,6 @@ def optimize_tensor_layout(tensor: torch.Tensor) -> torch.Tensor:
         optimized = optimized.contiguous()
 
     return optimized
-
 
 def get_tensor_memory_info(tensor: torch.Tensor) -> Dict[str, Any]:
     """
@@ -207,11 +200,9 @@ def get_tensor_memory_info(tensor: torch.Tensor) -> Dict[str, Any]:
 
     return info
 
-
 # =========================================================================
 # Zero-Copy Data Bridges
 # =========================================================================
-
 
 class ZeroCopyBridge:
     """Base class for zero-copy data bridges."""
@@ -235,7 +226,6 @@ class ZeroCopyBridge:
                 )
         return tensor
 
-
 @contextmanager
 def pyvista_mesh_context():
     """Context manager for PyVista mesh operations with proper cleanup."""
@@ -246,7 +236,6 @@ def pyvista_mesh_context():
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-
 class PyVistaZeroCopyBridge(ZeroCopyBridge):
     """High-performance zero-copy bridge to PyVista meshes."""
 
@@ -254,9 +243,7 @@ class PyVistaZeroCopyBridge(ZeroCopyBridge):
         self, tensor: torch.Tensor, scalars: Optional[torch.Tensor] = None, **kwargs
     ):
         """Convert tensor to PyVista mesh with zero-copy optimization."""
-        if not PYVISTA_AVAILABLE:
-            raise ImportError("PyVista not available")
-
+        
         with zero_copy_context("PyVista conversion"):
             # Validate and optimize
             points_tensor = self.validate_3d_coordinates(tensor)
@@ -305,7 +292,6 @@ class PyVistaZeroCopyBridge(ZeroCopyBridge):
         except:
             pass  # Ignore cleanup errors
 
-
 class BlenderZeroCopyBridge(ZeroCopyBridge):
     """Ultra-high-performance zero-copy bridge to Blender."""
 
@@ -352,7 +338,6 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
                 collection.objects.link(obj)
                 return obj
 
-
 class NumpyZeroCopyBridge(ZeroCopyBridge):
     """Zero-copy bridge between PyTorch tensors and NumPy arrays."""
 
@@ -375,11 +360,9 @@ class NumpyZeroCopyBridge(ZeroCopyBridge):
                 tensor = tensor.to(device=device, dtype=dtype)
             return tensor
 
-
 # =========================================================================
 # Bidirectional Bridge with Live Sync
 # =========================================================================
-
 
 class BidirectionalTensorBridge:
     """
@@ -407,9 +390,7 @@ class BidirectionalTensorBridge:
         self, mesh, name: str = "pyvista_mesh", collection_name: str = "PyVistaImports"
     ) -> Optional[Any]:
         """Convert PyVista mesh to Blender object."""
-        if not PYVISTA_AVAILABLE:
-            raise ImportError("PyVista not available")
-
+        
         bpy, mathutils = _get_blender_modules()
         if bpy is None:
             raise ImportError("Blender not available")
@@ -493,11 +474,9 @@ class BidirectionalTensorBridge:
         """Add custom callback for live synchronization."""
         self._sync_callbacks.append(callback)
 
-
 # =========================================================================
 # High-level API
 # =========================================================================
-
 
 def transfer_to_framework(tensor: torch.Tensor, framework: str, **kwargs) -> Any:
     """
@@ -525,7 +504,6 @@ def transfer_to_framework(tensor: torch.Tensor, framework: str, **kwargs) -> Any
     else:
         raise ValueError(f"Unsupported framework: {framework}")
 
-
 @contextmanager
 def pinned_memory_context(size_mb: int = 100):
     """Context manager for pinned memory optimization."""
@@ -542,14 +520,12 @@ def pinned_memory_context(size_mb: int = 100):
         if "pool_tensor" in locals():
             del pool_tensor
 
-
 # High-level convenience functions
 def create_bidirectional_bridge(
     config: Optional[SyncConfig] = None,
 ) -> BidirectionalTensorBridge:
     """Create a new bidirectional bridge instance."""
     return BidirectionalTensorBridge(config)
-
 
 def quick_convert_pyvista_to_blender(
     mesh, name: str = "converted_mesh"
@@ -558,18 +534,15 @@ def quick_convert_pyvista_to_blender(
     bridge = BidirectionalTensorBridge()
     return bridge.pyvista_to_blender(mesh, name)
 
-
 def quick_convert_tensor_to_pyvista(tensor: torch.Tensor, **kwargs):
     """Quick conversion from tensor to PyVista."""
     bridge = PyVistaZeroCopyBridge()
     return bridge.to_pyvista(tensor, **kwargs)
 
-
 def quick_convert_tensor_to_blender(tensor: torch.Tensor, **kwargs) -> Optional[Any]:
     """Quick conversion from tensor to Blender."""
     bridge = BlenderZeroCopyBridge()
     return bridge.to_blender(tensor, **kwargs)
-
 
 __all__ = [
     # Bridge classes

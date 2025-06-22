@@ -14,7 +14,6 @@ import yaml
 
 from astro_lab.data.config import data_config
 
-
 class ConfigLoader:
     """Load and manage AstroLab configurations with automatic path setup."""
 
@@ -160,7 +159,6 @@ class ConfigLoader:
 
         print(f"💾 Config saved to: {output_path}")
 
-
 def load_experiment_config(
     experiment_name: str, config_file: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -177,7 +175,6 @@ def load_experiment_config(
     loader = ConfigLoader(config_file)
     return loader.load_config(experiment_name)
 
-
 def load_survey_config(survey: str) -> Dict[str, Any]:
     """
     Convenience function to load survey configuration.
@@ -190,7 +187,6 @@ def load_survey_config(survey: str) -> Dict[str, Any]:
     """
     loader = ConfigLoader()
     return loader.get_survey_config(survey)
-
 
 def setup_experiment_from_config(config_path: str, experiment_name: str):
     """

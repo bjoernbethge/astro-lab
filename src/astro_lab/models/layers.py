@@ -27,7 +27,6 @@ from torch_geometric.nn import (
 from astro_lab.models.config import ConvType, ActivationType, PoolingType
 from astro_lab.models.utils import get_activation, initialize_weights
 
-
 class LayerFactory:
     """Factory for creating neural network layers with consistent interface."""
     
@@ -162,7 +161,6 @@ class LayerFactory:
         
         return pooling_fns[pooling]
 
-
 class AttentionPooling(nn.Module):
     """Attention-based pooling for graph-level tasks."""
     
@@ -197,7 +195,6 @@ class AttentionPooling(nn.Module):
         
         # Global pooling
         return global_add_pool(weighted_x, batch)
-
 
 class ResidualBlock(nn.Module):
     """Residual block for graph neural networks."""
@@ -236,7 +233,6 @@ class ResidualBlock(nn.Module):
             out = out + identity
         
         return out
-
 
 class FeatureFusion(nn.Module):
     """Advanced feature fusion with attention mechanism."""
@@ -317,7 +313,6 @@ class FeatureFusion(nn.Module):
         
         else:
             raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
-
 
 class LayerRegistry:
     """Registry for custom layer types."""

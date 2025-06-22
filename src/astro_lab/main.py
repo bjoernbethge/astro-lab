@@ -8,7 +8,6 @@ with app.setup:
     import polars as pl
     import astro_lab as al
 
-
 @app.cell
 def _(silent):
     import mlflow as ml
@@ -24,12 +23,10 @@ def _(silent):
             ml.log_input(dataset, context, tags, model)
     return
 
-
 @app.cell
 def _():
     mo.md(r""" """)
     return
-
 
 @app.cell
 def _():
@@ -38,7 +35,6 @@ def _():
     train_ui = mo.vstack([silent,train_button])
     dir_browser = mo.ui.file_browser(initial_path="data",selection_mode="directory")
     return dir_browser, silent
-
 
 @app.cell(hide_code=True)
 def _(dir_browser):
@@ -51,19 +47,16 @@ def _(dir_browser):
     menu
     return
 
-
 @app.cell
 def _():
     dataset_file = mo.ui.file(filetypes=[".parquet"], kind="area")
     dataset_file
     return
 
-
 @app.cell
 def _():
     al.w
     return
-
 
 if __name__ == "__main__":
     app.run()

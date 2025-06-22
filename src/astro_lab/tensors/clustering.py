@@ -10,17 +10,15 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
-from .base import AstroTensorBase
+from scipy import stats
+from scipy.spatial.distance import pdist, squareform
+from sklearn.cluster import DBSCAN, KMeans
 
 # Optional dependencies
-try:
-    from sklearn.cluster import DBSCAN, HDBSCAN, AgglomerativeClustering, KMeans
-    from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import BallTree, NearestNeighbors
+from scipy.sparse import csr_matrix
 
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+from .base import AstroTensorBase
 
 try:
     import scipy.spatial.distance as distance
@@ -28,7 +26,6 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
-
 
 class ClusteringTensor(AstroTensorBase):
     """
@@ -146,9 +143,7 @@ class ClusteringTensor(AstroTensorBase):
         Returns:
             Cluster labels (-1 for noise)
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for DBSCAN clustering")
-
+        
         # Auto-estimate eps if not provided
         if eps is None:
             eps = self._estimate_eps(min_samples)
@@ -249,9 +244,7 @@ class ClusteringTensor(AstroTensorBase):
         Returns:
             Group labels (-1 for isolated objects)
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for Friends-of-Friends")
-
+        
         positions = self.positions.cpu().numpy()
 
         # Build neighbor graph
@@ -326,9 +319,7 @@ class ClusteringTensor(AstroTensorBase):
         Returns:
             Cluster labels
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for hierarchical clustering")
-
+        
         # Use both positions and features if available
         if self.features is not None:
             data = self._data.cpu().numpy()

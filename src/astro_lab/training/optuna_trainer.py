@@ -32,7 +32,6 @@ except ImportError:
     MLFlowLogger = None
     MLFLOW_AVAILABLE = False
 
-
 class OptunaTrainer:
     """Optimized Optuna-based hyperparameter optimization with optional MLflow integration."""
 
@@ -413,6 +412,5 @@ class OptunaTrainer:
         """Load a study from a file."""
         with open(filepath, "rb") as f:
             return pickle.load(f)
-
 
 __all__ = ["OptunaTrainer"]

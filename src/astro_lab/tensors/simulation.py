@@ -27,7 +27,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-
 class SimulationTensor(AstroTensorBase):
     """
     Tensor for cosmological simulation data with integrated cosmology.
@@ -408,7 +407,6 @@ class SimulationTensor(AstroTensorBase):
             f"box={self.box_size:.1f})"
         )
 
-
 class CosmologyCalculator:
     """
     Lightweight cosmology calculator integrated with SimulationTensor.
@@ -459,10 +457,7 @@ class CosmologyCalculator:
         self, z: Union[float, np.ndarray, torch.Tensor]
     ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate comoving distance to redshift z."""
-        if SCIPY_AVAILABLE:
-            return self._comoving_distance_scipy(z)
-        else:
-            return self._comoving_distance_fallback(z)
+        return self._comoving_distance_scipy(z)
 
     def _comoving_distance_scipy(self, z):
         """Calculate comoving distance using scipy integration."""
@@ -530,10 +525,7 @@ class CosmologyCalculator:
         self, z: Union[float, np.ndarray, torch.Tensor] = 0
     ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate age of universe at redshift z."""
-        if SCIPY_AVAILABLE:
-            return self._age_scipy(z)
-        else:
-            return self._age_fallback(z)
+        return self._age_scipy(z)
 
     def _age_scipy(self, z):
         """Calculate age using scipy integration."""
@@ -557,7 +549,6 @@ class CosmologyCalculator:
         # Simple approximation: t ≈ 2/(3*H0) in flat universe
         H0_gyr = self.H0 / 97.8  # Convert to 1/Gyr
         return 2.0 / (3.0 * H0_gyr * np.sqrt(self.Omega_m) * (1 + z) ** (3 / 2))
-
 
 __all__ = [
     "SimulationTensor",

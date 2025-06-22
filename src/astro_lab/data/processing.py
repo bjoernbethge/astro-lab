@@ -12,32 +12,26 @@ import sys
 # Removed memory.py - using simple context managers
 from contextlib import contextmanager
 
-
 # Minimal no-op context managers
 @contextmanager
 def comprehensive_cleanup_context(description: str):
     yield
 
-
 @contextmanager
 def pytorch_memory_context(description: str):
     yield
-
 
 @contextmanager
 def memory_tracking_context(description: str):
     yield
 
-
 @contextmanager
 def file_processing_context(file_path, memory_limit_mb=1000.0):
     yield {"file_path": file_path, "stats": {}}
 
-
 @contextmanager
 def batch_processing_context(total_items, batch_size=1, memory_threshold_mb=500.0):
     yield {"total_items": total_items, "stats": {}}
-
 
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -59,7 +53,6 @@ try:
 except ImportError:
     SIMULATION_TENSOR_AVAILABLE = False
     SimulationTensor = None
-
 
 class SimpleProcessingConfig(BaseModel):
     """Enhanced configuration for data processing with memory management."""
@@ -97,7 +90,6 @@ class SimpleProcessingConfig(BaseModel):
         if v == "auto":
             return "cuda" if torch.cuda.is_available() else "cpu"
         return v
-
 
 class EnhancedDataProcessor:
     """
@@ -407,7 +399,6 @@ class EnhancedDataProcessor:
 
         return stats
 
-
 # Enhanced processing functions with memory management
 def process_survey_data(
     data: Union[pl.DataFrame, Path, str],
@@ -429,7 +420,6 @@ def process_survey_data(
         processor = EnhancedDataProcessor(config)
         return processor.process(data, **kwargs)
 
-
 def batch_process_files(
     file_paths: List[Union[str, Path]],
     output_dir: Optional[Union[str, Path]] = None,
@@ -450,7 +440,6 @@ def batch_process_files(
         processor = EnhancedDataProcessor(config)
         return processor.process_batch(file_paths, output_dir)
 
-
 # Keep the original class for backward compatibility but disable problematic features
 class AdvancedAstroProcessor:
     """Advanced processor with experimental features (mostly disabled)."""
@@ -464,7 +453,6 @@ class AdvancedAstroProcessor:
         """Process using simplified processor."""
         print("⚠️ Using simplified processing (advanced features disabled)")
         return self.simple_processor.process(survey_tensor)
-
 
 # For backward compatibility
 ProcessingConfig = SimpleProcessingConfig

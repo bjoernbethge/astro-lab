@@ -22,11 +22,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
 # =========================================================================
 # Advanced Memory Management with contextlib
 # =========================================================================
-
 
 @contextmanager
 def cuda_memory_context(description: str = "CUDA operation"):
@@ -69,7 +67,6 @@ def cuda_memory_context(description: str = "CUDA operation"):
         except ImportError:
             pass
 
-
 @contextmanager
 def comprehensive_cleanup_context(description: str = "Operation"):
     """
@@ -90,7 +87,6 @@ def comprehensive_cleanup_context(description: str = "Operation"):
         finally:
             # Comprehensive cleanup sequence
             _perform_comprehensive_cleanup(description, initial_objects)
-
 
 def _perform_comprehensive_cleanup(description: str, initial_objects: int):
     """Perform comprehensive cleanup with proper error handling."""
@@ -117,7 +113,6 @@ def _perform_comprehensive_cleanup(description: str, initial_objects: int):
     else:
         logger.debug(f"Memory context [{description}]: {object_diff} object difference")
 
-
 def _cleanup_pytorch():
     """Clean up PyTorch resources."""
     try:
@@ -140,7 +135,6 @@ def _cleanup_pytorch():
     except ImportError:
         pass
 
-
 def _cleanup_matplotlib():
     """Clean up matplotlib resources."""
     try:
@@ -157,7 +151,6 @@ def _cleanup_matplotlib():
     except ImportError:
         pass
 
-
 def _cleanup_blender():
     """Clean up Blender resources."""
     try:
@@ -172,7 +165,6 @@ def _cleanup_blender():
     except ImportError:
         pass
 
-
 def _cleanup_garbage():
     """Perform garbage collection."""
     # Multiple GC passes for thorough cleanup
@@ -183,7 +175,6 @@ def _cleanup_garbage():
 
     # Clear generational garbage collection
     gc.set_debug(0)
-
 
 def _cleanup_system_caches():
     """Clean up system-level caches."""
@@ -205,7 +196,6 @@ def _cleanup_system_caches():
                 for key in list(mod_dict.keys()):
                     if key.startswith("_cache") or key.endswith("_cache"):
                         mod_dict.pop(key, None)
-
 
 @contextmanager
 def error_handling_context(operation_name: str):
@@ -235,11 +225,9 @@ def error_handling_context(operation_name: str):
         logger.debug("Full traceback:", exc_info=True)
         sys.exit(1)
 
-
 # =========================================================================
 # CLI Commands with Resource Management
 # =========================================================================
-
 
 @click.group(invoke_without_command=True)
 @click.pass_context
@@ -258,7 +246,6 @@ def cli(ctx):
             click.echo("Example: uv run python -m astro_lab.cli preprocess --help")
         sys.exit(0)
 
-
 @cli.command()
 @click.argument("input_file", required=False, type=click.Path(exists=True))
 @click.option(
@@ -272,7 +259,6 @@ def cli(ctx):
 @click.option(
     "--max-samples", "-n", type=int, help="Maximum number of samples to process"
 )
-@click.option("--stats-only", is_flag=True, help="Only show statistics, no processing")
 @click.option(
     "--mode",
     type=click.Choice(["batch", "single", "stats", "tng50"]),
@@ -287,7 +273,6 @@ def preprocess(
     output_dir: Optional[str],
     k_neighbors: int,
     max_samples: Optional[int],
-    stats_only: bool,
     mode: str,
     verbose: bool,
 ):
@@ -299,7 +284,7 @@ def preprocess(
     Examples:
         uv run python -m astro_lab.cli preprocess
         uv run python -m astro_lab.cli preprocess data/gaia.parquet --config gaia
-        uv run python -m astro_lab.cli preprocess --surveys gaia nsa --stats-only
+        uv run python -m astro_lab.cli preprocess --surveys gaia nsa
     """
     operation_name = "Preprocessing"
 
@@ -323,7 +308,6 @@ def preprocess(
             "max_samples": max_samples,
             "output_dir": output_dir or "data/processed",
             "surveys": list(surveys) if surveys else ["gaia", "nsa", "sdss"],
-            "stats_only": stats_only,
             "mode": mode,
         }
 
@@ -357,7 +341,6 @@ def preprocess(
             logger.info(f"📊 Final memory usage: {memory_mb:.1f} MB")
         except ImportError:
             pass
-
 
 @cli.command()
 @click.option("--config", "-c", help="Training configuration file")
@@ -395,7 +378,6 @@ def train(
 
         logger.info("✅ Training completed successfully!")
 
-
 @cli.command()
 @click.option("--survey", "-s", help="Survey to download (gaia, nsa, sdss)")
 @click.option("--output-dir", "-o", type=click.Path(), help="Output directory")
@@ -423,7 +405,6 @@ def download(survey: Optional[str], output_dir: Optional[str], verbose: bool):
 
         logger.info("✅ Download completed successfully!")
 
-
 def main():
     """
     Main entry point with comprehensive resource management.
@@ -445,7 +426,6 @@ def main():
     finally:
         # Final cleanup message (only visible in debug mode)
         logger.debug("🧹 CLI cleanup completed")
-
 
 if __name__ == "__main__":
     main()

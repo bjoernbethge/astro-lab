@@ -28,7 +28,6 @@ from astro_lab.utils.config.loader import ConfigLoader
 # Setup logging
 logger = logging.getLogger(__name__)
 
-
 def setup_logging(verbose: bool = False) -> None:
     """Setup logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
@@ -39,7 +38,6 @@ def setup_logging(verbose: bool = False) -> None:
             logging.StreamHandler(sys.stdout)
         ]
     )
-
 
 def create_default_config(output_path: str = "config.yaml") -> None:
     """
@@ -87,7 +85,6 @@ def create_default_config(output_path: str = "config.yaml") -> None:
         logger.error(f"❌ Failed to create default config: {e}")
         raise
 
-
 def ensure_mlflow_block(config: dict) -> dict:
     """Ensure that the config contains a valid mlflow block."""
     if "mlflow" not in config or not isinstance(config["mlflow"], dict):
@@ -97,7 +94,6 @@ def ensure_mlflow_block(config: dict) -> dict:
     if "tracking_uri" not in config["mlflow"]:
         config["mlflow"]["tracking_uri"] = "file:./mlruns"
     return config
-
 
 def train_from_config(config_path: str) -> None:
     """
@@ -254,7 +250,6 @@ def train_from_config(config_path: str) -> None:
         logger.error(f"🔍 Error details: {str(e)}")
         raise
 
-
 def _cleanup_memory():
     """Clean up memory to prevent leaks."""
     try:
@@ -269,7 +264,6 @@ def _cleanup_memory():
         
     except Exception as e:
         logger.warning(f"⚠️ Memory cleanup failed: {e}")
-
 
 def optimize_from_config(
     config_path: str,
@@ -340,7 +334,6 @@ def optimize_from_config(
         logger.error(f"❌ Optimization failed: {e}")
         raise
 
-
 def load_config(config_path: str) -> Dict[str, Any]:
     """Load configuration from file."""
     with open(config_path, "r", encoding="utf-8") as f:
@@ -348,7 +341,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
         if config is None:
             config = {}
         return config
-
 
 def create_model_from_config(model_config: Dict[str, Any]) -> Any:
     """Create a model from a config dict."""
@@ -366,7 +358,6 @@ def create_model_from_config(model_config: Dict[str, Any]) -> Any:
     else:
         raise ValueError(f"Unknown model type: {model_type}")
 
-
 def enhance_data_config_for_tensors(data_config: Dict[str, Any]) -> Dict[str, Any]:
     """Enhance data configuration for tensor support."""
     enhanced = data_config.copy()
@@ -381,7 +372,6 @@ def enhance_data_config_for_tensors(data_config: Dict[str, Any]) -> Dict[str, An
         enhanced["max_samples"] = 5000
         
     return enhanced
-
 
 def train_model(
     config_path: str, optimize: bool = False, verbose: bool = False
@@ -418,12 +408,10 @@ def train_model(
             traceback.print_exc()
         sys.exit(1)
 
-
 @click.group()
 def cli():
     """AstroLab CLI - Astronomical Machine Learning Training Interface."""
     pass
-
 
 @cli.command()
 @click.option("--config", "-c", required=True, help="Path to configuration file")
@@ -480,14 +468,12 @@ def run(config: str, optimize_first: bool, n_trials: int, auto_optimize: bool, v
             traceback.print_exc()
         sys.exit(1)
 
-
 @cli.command()
 @click.option("--config", "-c", required=True, help="Path to configuration file")
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 def train(config: str, verbose: bool):
     """Train a model using the specified configuration (training only)."""
     train_model(config, optimize=False, verbose=verbose)
-
 
 @cli.command()
 @click.option("--config", "-c", required=True, help="Path to configuration file")
@@ -515,7 +501,6 @@ def optimize(config: str, n_trials: int, update_config: bool, verbose: bool):
             traceback.print_exc()
         sys.exit(1)
 
-
 @cli.command()
 @click.option("--output", "-o", default="config.yaml", help="Output path for configuration")
 def create_config(output: str):
@@ -527,7 +512,6 @@ def create_config(output: str):
     except Exception as e:
         logger.error(f"❌ Failed to create configuration: {e}")
         sys.exit(1)
-
 
 def should_optimize(config: Dict[str, Any]) -> bool:
     """Check if optimization should be run based on config."""
@@ -547,7 +531,6 @@ def should_optimize(config: Dict[str, Any]) -> bool:
         return True
     
     return False
-
 
 def run_optimization(loader: ConfigLoader, config: Dict[str, Any], n_trials: int) -> Optional[Dict[str, Any]]:
     """Run hyperparameter optimization and return best parameters."""
@@ -603,7 +586,6 @@ def run_optimization(loader: ConfigLoader, config: Dict[str, Any], n_trials: int
         logger.error(f"❌ Optimization failed: {e}")
         return None
 
-
 def update_config_with_best_params(config_path: str, best_params: Dict[str, Any]) -> None:
     """Update configuration file with best parameters from optimization."""
     try:
@@ -632,11 +614,9 @@ def update_config_with_best_params(config_path: str, best_params: Dict[str, Any]
         logger.error(f"❌ Failed to update config: {e}")
         raise
 
-
 def main():
     """Main CLI entry point."""
     cli()
-
 
 if __name__ == "__main__":
     main()

@@ -12,10 +12,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # DISABLED: No Blender application connection needed
-BLENDER_AVAILABLE = False
+
 bpy = None
 mathutils = None
-
 
 class LiveTensorSocketBridge:
     """
@@ -49,7 +48,6 @@ class LiveTensorSocketBridge:
     def _send_update_signal(self):
         """Disabled - no signals."""
         pass
-
 
 # DISABLED: No global instance needed
 live_bridge = None

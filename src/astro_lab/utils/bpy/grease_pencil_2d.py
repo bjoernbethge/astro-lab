@@ -29,7 +29,6 @@ os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-
 class GreasePencil2DPlotter:
     """Professional 2D plotting using Grease Pencil v3 with curve fallbacks."""
 

@@ -18,7 +18,6 @@ from .constants import ASTRO, GRAVITY
 
 logger = logging.getLogger(__name__)
 
-
 class TensorFactory:
     """
     Factory for creating astronomical tensors.
@@ -447,17 +446,14 @@ class TensorFactory:
         # Default to survey
         return "survey"
 
-
 # Convenience functions for common use cases
 def create_gaia_tensor(data: Dict[str, Any], **kwargs):
     """Create survey tensor optimized for Gaia data."""
     return TensorFactory.create_survey(data=data, survey_name="gaia", **kwargs)
 
-
 def create_sdss_tensor(data: Dict[str, Any], **kwargs):
     """Create survey tensor optimized for SDSS data."""
     return TensorFactory.create_survey(data=data, survey_name="sdss", **kwargs)
-
 
 def create_jwst_tensor(data: Dict[str, Any], **kwargs):
     """Create survey tensor optimized for JWST data."""

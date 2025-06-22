@@ -8,7 +8,6 @@ import torch
 
 from .base import AstroTensorBase
 
-
 class PhotometricTensor(AstroTensorBase):
     """
     Tensor for multi-band photometric measurements using composition.

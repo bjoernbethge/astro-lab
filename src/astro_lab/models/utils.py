@@ -7,7 +7,6 @@ from typing import Any, Callable, List, Optional, Union
 import torch
 import torch.nn as nn
 
-
 def get_activation(name: str) -> nn.Module:
     """
     Get activation function by name.
@@ -29,7 +28,6 @@ def get_activation(name: str) -> nn.Module:
     }
 
     return activations.get(name.lower(), nn.ReLU())
-
 
 class AttentionPooling(nn.Module):
     """Attention-based global pooling layer for graphs."""
@@ -75,7 +73,6 @@ class AttentionPooling(nn.Module):
 
         return pooled
 
-
 def get_pooling(name: str, hidden_dim: Optional[int] = None) -> Callable:
     """
     Get pooling function by name.
@@ -108,7 +105,6 @@ def get_pooling(name: str, hidden_dim: Optional[int] = None) -> Callable:
         # Fallback if PyG not available
         return lambda x, batch: torch.mean(x, dim=0, keepdim=True)
 
-
 def _create_attention_pooling(hidden_dim: int):
     """Create attention pooling function."""
     attention_layer = AttentionPooling(hidden_dim)
@@ -117,7 +113,6 @@ def _create_attention_pooling(hidden_dim: int):
         return attention_layer(x, batch)
 
     return attention_pool
-
 
 def initialize_weights(module: nn.Module):
     """
@@ -138,7 +133,6 @@ def initialize_weights(module: nn.Module):
         elif "bias" in name:
             nn.init.zeros_(param)
 
-
 def count_parameters(model: nn.Module) -> int:
     """
     Count trainable parameters in a model.
@@ -150,7 +144,6 @@ def count_parameters(model: nn.Module) -> int:
         Number of trainable parameters
     """
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
 
 def model_summary(model: nn.Module) -> dict:
     """
@@ -172,7 +165,6 @@ def model_summary(model: nn.Module) -> dict:
         "num_layers": len([m for m in model.modules() if len(list(m.children())) == 0]),
     }
 
-
 # Factory functions for astronomical models
 def create_gaia_classifier(
     hidden_dim: int = 128, num_classes: int = 7, conv_type: str = "gat", **kwargs
@@ -191,7 +183,6 @@ def create_gaia_classifier(
         **kwargs,
     )
 
-
 def create_sdss_galaxy_classifier(
     hidden_dim: int = 128, output_dim: int = 1, **kwargs
 ) -> Any:
@@ -209,7 +200,6 @@ def create_sdss_galaxy_classifier(
         **kwargs,
     )
 
-
 def create_lsst_transient_detector(hidden_dim: int = 96, **kwargs) -> Any:
     """Create LSST transient detection model."""
     from astro_lab.models.astro import AstroSurveyGNN
@@ -224,7 +214,6 @@ def create_lsst_transient_detector(hidden_dim: int = 96, **kwargs) -> Any:
         task="node_classification",
         **kwargs,
     )
-
 
 def create_multi_survey_model(
     surveys: List[str], hidden_dim: int = 256, output_dim: int = 1, **kwargs
@@ -242,7 +231,6 @@ def create_multi_survey_model(
         task="node_classification",
         **kwargs,
     )
-
 
 def compile_astro_model(
     model: Any,
@@ -266,7 +254,6 @@ def compile_astro_model(
         # Fallback if compilation fails
         return model
 
-
 def create_lightcurve_classifier(
     hidden_dim: int = 128, output_dim: int = 1, **kwargs
 ) -> Any:
@@ -285,7 +272,6 @@ def create_lightcurve_classifier(
         **kwargs,
     )
 
-
 def create_asteroid_period_detector(hidden_dim: int = 96, **kwargs) -> Any:
     """Create asteroid rotation period detector using lightcurve data."""
     from astro_lab.models.astro import AstroSurveyGNN
@@ -300,7 +286,6 @@ def create_asteroid_period_detector(hidden_dim: int = 96, **kwargs) -> Any:
         task="node_regression",
         **kwargs,
     )
-
 
 def create_astrophot_model(
     model_type: str = "sersic+disk",
@@ -323,7 +308,6 @@ def create_astrophot_model(
         hidden_dim=hidden_dim,
         **kwargs,
     )
-
 
 def create_nsa_galaxy_modeler(hidden_dim: int = 128, **kwargs) -> Any:
     """Create NSA galaxy modeler with full component set."""

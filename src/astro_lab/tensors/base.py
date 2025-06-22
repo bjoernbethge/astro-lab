@@ -27,24 +27,20 @@ from .tensor_types import TensorProtocol
 
 logger = logging.getLogger(__name__)
 
-
 @contextmanager
 def comprehensive_cleanup_context(description: str):
     """Minimal no-op context manager."""
     yield
-
 
 @contextmanager
 def pytorch_memory_context(description: str):
     """Simple PyTorch memory context manager."""
     yield
 
-
 @contextmanager
 def memory_tracking_context(description: str):
     """Simple memory tracking context manager."""
     yield
-
 
 class ValidationMixin:
     """Mixin for common validation patterns."""
@@ -85,7 +81,6 @@ class ValidationMixin:
         data = getattr(self, "_data")
         if not torch.isfinite(data).all():
             raise ValueError(f"{self.__class__.__name__} contains non-finite values")
-
 
 class AstroTensorBase(BaseModel, ValidationMixin):
     """
@@ -554,7 +549,6 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         device_str = f", device='{self.device}'" if self.device.type != "cpu" else ""
 
         return f"{tensor_type}(shape=[{shape_str}], dtype={self.dtype}{device_str})"
-
 
 # Direct transfer function (simplified)
 def transfer_direct(source, target, attribute: str = "position", device: str = "cpu"):

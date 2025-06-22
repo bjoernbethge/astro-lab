@@ -10,16 +10,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-
-from .base import AstroTensorBase
+from sklearn.cluster import DBSCAN, KMeans
 
 # Optional dependencies
-try:
-    from sklearn.neighbors import BallTree, KDTree
+from sklearn.neighbors import BallTree
 
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
+from .base import AstroTensorBase
 
 try:
     import scipy.spatial.distance as distance
@@ -27,7 +23,6 @@ try:
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
-
 
 class CrossMatchTensor(AstroTensorBase):
     """
@@ -203,9 +198,7 @@ class CrossMatchTensor(AstroTensorBase):
         Returns:
             Dictionary with match results
         """
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for coordinate matching")
-
+        
         cat_a = self.catalog_a_data
         cat_b = self.catalog_b_data
 
@@ -558,9 +551,7 @@ class CrossMatchTensor(AstroTensorBase):
         self, coords_a: torch.Tensor, coords_b: torch.Tensor, tolerance: float
     ) -> List[Dict[str, Any]]:
         """Find nearest neighbor matches."""
-        if not SKLEARN_AVAILABLE:
-            raise ImportError("sklearn required for nearest neighbor matching")
-
+        
         tree = BallTree(coords_b.cpu().numpy(), metric="euclidean")
         distances, indices = tree.query(coords_a.cpu().numpy(), k=1)
 
@@ -633,23 +624,22 @@ class CrossMatchTensor(AstroTensorBase):
 
         matches = []
 
-        if SKLEARN_AVAILABLE:
-            tree = BallTree(coords.cpu().numpy(), metric="euclidean")
+        tree = BallTree(coords.cpu().numpy(), metric="euclidean")
 
-            for i in range(len(coords)):
-                distances, indices = tree.query(
-                    [coords[i].cpu().numpy()], k=5
-                )  # Find 5 nearest
+        for i in range(len(coords)):
+            distances, indices = tree.query(
+                [coords[i].cpu().numpy()], k=5
+            )  # Find 5 nearest
 
-                for dist, idx in zip(distances[0], indices[0]):
-                    if idx != i and dist <= tolerance_3d:  # Exclude self
-                        matches.append(
-                            {
-                                "index_a": i,
-                                "index_b": int(idx),
-                                "distance": float(dist),
-                            }
-                        )
+            for dist, idx in zip(distances[0], indices[0]):
+                if idx != i and dist <= tolerance_3d:  # Exclude self
+                    matches.append(
+                        {
+                            "index_a": i,
+                            "index_b": int(idx),
+                            "distance": float(dist),
+                        }
+                    )
 
         return matches
 

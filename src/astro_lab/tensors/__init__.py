@@ -62,7 +62,6 @@ from .tensor_types import (
 )
 from .transformations import TransformationRegistry, apply_transformation
 
-
 class SpatialTensorConfig(BaseModel):
     """Configuration for Spatial3DTensor."""
 
@@ -76,7 +75,6 @@ class SpatialTensorConfig(BaseModel):
     )
     epoch: Optional[str] = Field(default="J2000.0", description="Coordinate epoch")
 
-
 class PhotometricTensorConfig(BaseModel):
     """Configuration for PhotometricTensor."""
 
@@ -85,7 +83,6 @@ class PhotometricTensorConfig(BaseModel):
     bands: List[str] = Field(default_factory=lambda: ["u", "g", "r", "i", "z"])
     magnitude_system: str = Field(default="AB", description="Magnitude system")
     zeropoints: Optional[Dict[str, float]] = Field(default=None)
-
 
 class SpectralTensorConfig(BaseModel):
     """Configuration for SpectralTensor."""
@@ -96,7 +93,6 @@ class SpectralTensorConfig(BaseModel):
     flux_unit: str = Field(default="erg/s/cm2/A", description="Flux units")
     spectral_resolution: Optional[float] = Field(default=None, description="R = λ/Δλ")
 
-
 class LightcurveTensorConfig(BaseModel):
     """Configuration for LightcurveTensor."""
 
@@ -105,7 +101,6 @@ class LightcurveTensorConfig(BaseModel):
     time_format: str = Field(default="mjd", description="Time format")
     time_scale: str = Field(default="utc", description="Time scale")
     bands: List[str] = Field(default_factory=lambda: ["V", "I"])
-
 
 class OrbitTensorConfig(BaseModel):
     """Configuration for OrbitTensor."""
@@ -116,7 +111,6 @@ class OrbitTensorConfig(BaseModel):
     units: Dict[str, str] = Field(
         default_factory=lambda: {"a": "au", "e": "dimensionless", "i": "degrees"}
     )
-
 
 class SurveyTensorConfig(BaseModel):
     """Configuration for SurveyTensor."""
@@ -131,7 +125,6 @@ class SurveyTensorConfig(BaseModel):
         default=None, description="Selection function applied"
     )
     created_at: str = Field(default_factory=lambda: datetime.datetime.now().isoformat())
-
 
 __all__ = [
     # Base class
@@ -205,27 +198,22 @@ TENSOR_ARCHITECTURE = {
     "coordinator": "SurveyTensor - main coordinator tensor",
 }
 
-
 # Convenience factory functions
 def create_spatial_tensor(*args, **kwargs):
     """Create spatial tensor."""
     return Spatial3DTensor(*args, **kwargs)
 
-
 def create_photometric_tensor(*args, **kwargs):
     """Create photometric tensor."""
     return PhotometricTensor(*args, **kwargs)
-
 
 def create_survey_tensor(*args, **kwargs):
     """Create survey tensor."""
     return SurveyTensor(*args, **kwargs)
 
-
 def create_simulation_tensor(positions, features=None, **kwargs):
     """Create simulation tensor from TNG50/Illustris data."""
     return SimulationTensor(positions, features=features, **kwargs)
-
 
 # Factory methods for tensor creation
 def from_astrometric_data(ra, dec, parallax=None, pmra=None, pmdec=None, **kwargs):
@@ -251,16 +239,13 @@ def from_astrometric_data(ra, dec, parallax=None, pmra=None, pmdec=None, **kwarg
         **kwargs,
     )
 
-
 def from_lightcurve_data(times, magnitudes, errors=None, **kwargs):
     """Create LightcurveTensor from time series data."""
     return LightcurveTensor(times=times, magnitudes=magnitudes, errors=errors, **kwargs)
 
-
 def from_orbital_elements(elements, element_type="keplerian", **kwargs):
     """Create OrbitTensor from orbital elements."""
     return OrbitTensor(data=elements, element_type=element_type, **kwargs)
-
 
 # Removed migration helpers - prototyping phase
 

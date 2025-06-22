@@ -41,7 +41,6 @@ except ImportError as e:
     Matrix = None
     Vector = None
 
-
 class ProceduralAstronomy:
     """Generate procedural astronomical structures"""
 
@@ -399,7 +398,6 @@ class ProceduralAstronomy:
 
         return tree
 
-
 class AstronomicalMaterials:
     """Materials for astronomical objects"""
 
@@ -457,7 +455,6 @@ class AstronomicalMaterials:
 
         return mat
 
-
 # Example usage functions
 def create_hr_diagram_demo():
     """Create a demonstration HR diagram."""
@@ -505,7 +502,6 @@ def create_hr_diagram_demo():
 
     print("HR Diagram demonstration created!")
 
-
 def create_galaxy_comparison():
     """Create comparison of different galaxy types."""
     # Spiral galaxy
@@ -534,7 +530,6 @@ def create_galaxy_comparison():
         galaxy.data.materials.append(star_materials[i])
 
     print("Galaxy comparison scene created!")
-
 
 if __name__ == "__main__":
     create_hr_diagram_demo()

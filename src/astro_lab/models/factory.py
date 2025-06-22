@@ -16,7 +16,6 @@ from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
 from .astro import AstroSurveyGNN
 from .config import ModelConfig
 
-
 class ModelRegistry:
     """Central registry for all available models."""
 
@@ -47,7 +46,6 @@ class ModelRegistry:
     def list_available(cls) -> List[str]:
         """List all available model types."""
         return list(cls._models.keys())
-
 
 class ModelFactory:
     """Centralized model factory with survey-specific configurations."""
@@ -399,7 +397,6 @@ class ModelFactory:
 
         return AstroSurveyGNN(task=task, **final_config)
 
-
 # Convenience functions for common use cases
 def create_gaia_classifier(
     num_classes: int = 7, hidden_dim: int = 128, **kwargs
@@ -413,13 +410,11 @@ def create_gaia_classifier(
         **kwargs,
     )
 
-
 def create_sdss_galaxy_model(
     task: str = "galaxy_property_prediction", **kwargs
 ) -> nn.Module:
     """Create SDSS galaxy model."""
     return ModelFactory.create_survey_model(survey="sdss", task=task, **kwargs)
-
 
 def create_lsst_transient_detector(**kwargs) -> nn.Module:
     """Create LSST transient detector."""
@@ -427,13 +422,11 @@ def create_lsst_transient_detector(**kwargs) -> nn.Module:
         survey="lsst", task="transient_detection", **kwargs
     )
 
-
 def create_asteroid_period_detector(**kwargs) -> nn.Module:
     """Create asteroid period detection model."""
     return ModelFactory.create_temporal_model(
         model_type="alcdef", task="period_detection", **kwargs
     )
-
 
 def create_lightcurve_classifier(num_classes: int = 5, **kwargs) -> nn.Module:
     """Create lightcurve classification model."""
@@ -444,16 +437,13 @@ def create_lightcurve_classifier(num_classes: int = 5, **kwargs) -> nn.Module:
         **kwargs,
     )
 
-
 def create_stellar_cluster_analyzer(**kwargs) -> nn.Module:
     """Create stellar cluster analysis model."""
     return ModelFactory.create_3d_stellar_model(model_type="cluster", **kwargs)
 
-
 def create_galactic_structure_model(**kwargs) -> nn.Module:
     """Create galactic structure analysis model."""
     return ModelFactory.create_3d_stellar_model(model_type="galactic", **kwargs)
-
 
 # Model compilation utilities
 def compile_astro_model(
@@ -467,7 +457,6 @@ def compile_astro_model(
     except (ImportError, AttributeError):
         # Fallback if torch.compile not available
         return model
-
 
 # Model information utilities
 def get_model_info(model: nn.Module) -> Dict[str, Any]:
@@ -485,7 +474,6 @@ def get_model_info(model: nn.Module) -> Dict[str, Any]:
         "conv_type": getattr(model, "conv_type", "unknown"),
         "hidden_dim": getattr(model, "hidden_dim", "unknown"),
     }
-
 
 def list_available_models() -> Dict[str, List[str]]:
     """List all available models and configurations."""

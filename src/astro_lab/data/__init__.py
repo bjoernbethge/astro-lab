@@ -34,7 +34,6 @@ from .core import (
     # Factory Functions
     create_astro_dataloader,
     create_astro_datamodule,
-    create_graph_datasets_from_splits,
     # 🔗 GRAPH CREATION FUNCTIONS - NEW!
     create_graph_from_dataframe,
     detect_survey_type,
@@ -47,7 +46,7 @@ from .core import (
     load_tng50_temporal_data,  # 🌟 NEW: TNG50 Temporal loader
 )
 
-# 🔧 LEGACY MANAGER SUPPORT (for CLI compatibility)
+# 🔧 MANAGER SUPPORT (for CLI compatibility)
 from .manager import (
     AstroDataManager,
     data_manager,
@@ -59,6 +58,11 @@ from .manager import (
     load_catalog,
     load_gaia_bright_stars,
     process_for_ml,
+)
+
+# 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
+from .preprocessing import (
+    preprocess_catalog as preprocess_catalog_new,
 )
 
 # 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
@@ -75,14 +79,7 @@ from .utils import (
     save_splits_to_parquet,
 )
 
-# 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
-from .preprocessing import (
-    create_graph_datasets_from_splits,
-    create_graph_from_dataframe,
-    preprocess_catalog as preprocess_catalog_new,
-)
-
-# Clean exports - no legacy bloat
+# Clean exports
 __all__ = [
     # 🎯 CORE CLASSES
     "AstroDataset",  # Universal dataset for all surveys
@@ -99,14 +96,13 @@ __all__ = [
     "load_tng50_temporal_data",  # 🌟 NEW: TNG50 Temporal loader
     # 🔗 GRAPH CREATION FUNCTIONS - NEW!
     "create_graph_from_dataframe",  # Create graph from DataFrame
-    "create_graph_datasets_from_splits",  # Create graphs from splits
     "detect_survey_type",  # Auto-detect survey type
     # 🔧 CONFIGURATION
     "SURVEY_CONFIGS",  # Survey definitions (DRY)
     "DataConfig",  # New centralized config system
     "data_config",  # Global config instance
     "get_survey_paths",  # Get all paths for a survey
-    # 🔧 LEGACY MANAGER SUPPORT (for CLI)
+    # 🔧 MANAGER SUPPORT (for CLI)
     "AstroDataManager",
     "data_manager",
     "download_bright_all_sky",
@@ -129,14 +125,12 @@ __all__ = [
     "load_fits_table_optimized",
     "get_fits_info",
     # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
-    "create_graph_datasets_from_splits",
-    "create_graph_from_dataframe", 
     "preprocess_catalog_new",
 ]
 
 # Feature flags
 HAS_CLEAN_API = True
-HAS_LEGACY_API = True  # Now supporting legacy manager for CLI
+HAS_MANAGER_API = True  # Supporting data manager for CLI
 
 # Supported surveys
 SUPPORTED_SURVEYS = list(SURVEY_CONFIGS.keys())

@@ -17,7 +17,6 @@ import torch
 
 from .base import AstroTensorBase
 
-
 class LightcurveTensor(AstroTensorBase):
     """
     Tensor for astronomical time series and lightcurve data.

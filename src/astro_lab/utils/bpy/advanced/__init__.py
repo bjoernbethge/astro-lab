@@ -48,7 +48,6 @@ except ImportError as e:
     print(f"Advanced modules not available: {e}")
     ADVANCED_AVAILABLE = False
 
-
 class AdvancedVisualizationSuite:
     """
     Main interface for advanced astronomical visualization.
@@ -60,9 +59,6 @@ class AdvancedVisualizationSuite:
     def __init__(self, scene_name: str = "AstroAdvanced"):
         self.scene_name = scene_name
         self.scene_objects = {}
-
-        if ADVANCED_AVAILABLE:
-            self._initialize_scene()
 
     def _initialize_scene(self) -> None:
         """Initialize advanced scene with optimal settings."""
@@ -492,7 +488,6 @@ class AdvancedVisualizationSuite:
             print(f"Render failed: {e}")
             return False
 
-
 def initialize_advanced_scene(
     quality_preset: str = "high",
 ) -> AdvancedVisualizationSuite:
@@ -542,7 +537,6 @@ def initialize_advanced_scene(
     print(f"Advanced scene initialized with {quality_preset} quality")
     return suite
 
-
 # Convenience functions for quick scene creation
 def create_galaxy_showcase() -> AdvancedVisualizationSuite:
     """Create showcase of different galaxy types."""
@@ -559,7 +553,6 @@ def create_galaxy_showcase() -> AdvancedVisualizationSuite:
 
     return suite
 
-
 def create_nebula_showcase() -> AdvancedVisualizationSuite:
     """Create showcase of different nebula types."""
     suite = initialize_advanced_scene("high")
@@ -574,7 +567,6 @@ def create_nebula_showcase() -> AdvancedVisualizationSuite:
     suite.setup_advanced_lighting("nebula")
 
     return suite
-
 
 def create_stellar_system_showcase() -> AdvancedVisualizationSuite:
     """Create showcase stellar system with planets."""
@@ -591,7 +583,6 @@ def create_stellar_system_showcase() -> AdvancedVisualizationSuite:
     suite.setup_advanced_lighting("planetary")
 
     return suite
-
 
 def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_teal") -> None:
     """
@@ -718,7 +709,6 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
 
     print(f"Applied visual style: {style}")
 
-
 def create_futuristic_scene(
     scene_name: str = "FuturisticAstroScene",
     style: str = "luxury_teal",
@@ -752,7 +742,6 @@ def create_futuristic_scene(
             post_processing.apply_dreamy_preset()
     
     return suite
-
 
 def apply_material_preset(
     object_name: str,
@@ -796,7 +785,6 @@ def apply_material_preset(
     
     return material
 
-
 # Export all classes and functions
 __all__ = [
     "AdvancedVisualizationSuite",
@@ -808,7 +796,6 @@ __all__ = [
     "create_futuristic_scene",
     "apply_material_preset",
 ]
-
 
 if __name__ == "__main__":
     # Create demonstration scenes

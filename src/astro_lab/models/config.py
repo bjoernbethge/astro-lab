@@ -16,7 +16,6 @@ TaskType = Literal["node_classification", "node_regression", "graph_classificati
 PoolingType = Literal["mean", "max", "add", "attention"]
 ActivationType = Literal["relu", "gelu", "swish", "mish", "leaky_relu"]
 
-
 class EncoderConfig(BaseModel):
     """Configuration for feature encoders."""
     
@@ -39,7 +38,6 @@ class EncoderConfig(BaseModel):
             raise ValueError("Dimension must be positive")
         return v
 
-
 class GraphConfig(BaseModel):
     """Configuration for graph neural network layers."""
     
@@ -60,7 +58,6 @@ class GraphConfig(BaseModel):
             raise ValueError("num_heads cannot be greater than hidden_dim")
         return v
 
-
 class OutputConfig(BaseModel):
     """Configuration for output heads."""
     
@@ -75,7 +72,6 @@ class OutputConfig(BaseModel):
         if values.get('use_attention') and v is None:
             return values.get('output_dim', 1)
         return v
-
 
 class TrainingConfig(BaseModel):
     """Configuration for training settings."""
@@ -97,7 +93,6 @@ class TrainingConfig(BaseModel):
             if any(w <= 0 for w in v):
                 raise ValueError("Class weights must be positive")
         return v
-
 
 class ModelConfig(BaseModel):
     """Complete model configuration."""
@@ -159,7 +154,6 @@ class ModelConfig(BaseModel):
         output_params = self.graph.hidden_dim * self.output.output_dim
         
         return encoder_params + graph_params + output_params
-
 
 # Predefined configurations
 PREDEFINED_CONFIGS = {
@@ -223,7 +217,6 @@ PREDEFINED_CONFIGS = {
     ),
 }
 
-
 def get_predefined_config(name: str) -> ModelConfig:
     """Get a predefined model configuration."""
     if name not in PREDEFINED_CONFIGS:
@@ -231,7 +224,6 @@ def get_predefined_config(name: str) -> ModelConfig:
         raise ValueError(f"Unknown config '{name}'. Available: {available}")
     
     return PREDEFINED_CONFIGS[name]
-
 
 def list_predefined_configs() -> List[str]:
     """List all available predefined configurations."""

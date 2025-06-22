@@ -9,7 +9,6 @@ import torch
 
 from .base import AstroTensorBase
 
-
 class OrbitTensor(AstroTensorBase):
     """
     Tensor for orbital elements and state vectors in celestial mechanics.
@@ -606,7 +605,6 @@ class OrbitTensor(AstroTensorBase):
 
         system_str = f", system='{stellar_system}'" if stellar_system else ""
         return f"OrbitTensor(shape={list(self.shape)}, type='{element_type}', attractor='{attractor}'{system_str}, epoch={epoch})"
-
 
 class ManeuverTensor(AstroTensorBase):
     """

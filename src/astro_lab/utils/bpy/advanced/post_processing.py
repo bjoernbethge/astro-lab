@@ -39,7 +39,6 @@ except ImportError as e:
     bpy = None
     Vector = None
 
-
 class PostProcessingSuite:
     """Advanced post-processing for astronomical visualization"""
 
@@ -339,7 +338,6 @@ class PostProcessingSuite:
                 tree.links.remove(composite.inputs["Image"].links[0])
             # Add new connection
             tree.links.new(output_socket, composite.inputs["Image"])
-
 
 class ArtisticFilters:
     """Artistic filters for astronomical visualization"""

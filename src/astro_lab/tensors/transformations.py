@@ -17,7 +17,6 @@ from .constants import PHOTOMETRY, SPECTROSCOPY
 
 logger = logging.getLogger(__name__)
 
-
 class TransformationRegistry:
     """
     Registry for survey transformations.
@@ -122,11 +121,9 @@ class TransformationRegistry:
         cls._transformations.clear()
         cls._metadata.clear()
 
-
 # =============================================================================
 # Default transformations using the registry
 # =============================================================================
-
 
 @TransformationRegistry.register(
     "gaia",
@@ -187,7 +184,6 @@ def gaia_to_sdss(survey_tensor) -> torch.Tensor:
     except KeyError as e:
         raise ValueError(f"Missing required Gaia columns for SDSS transformation: {e}")
 
-
 @TransformationRegistry.register(
     "sdss",
     "gaia",
@@ -228,7 +224,6 @@ def sdss_to_gaia(survey_tensor) -> torch.Tensor:
     except KeyError as e:
         raise ValueError(f"Missing required SDSS columns for Gaia transformation: {e}")
 
-
 @TransformationRegistry.register(
     "gaia",
     "lsst",
@@ -265,7 +260,6 @@ def gaia_to_lsst(survey_tensor) -> torch.Tensor:
 
     except KeyError as e:
         raise ValueError(f"Missing required Gaia columns for LSST transformation: {e}")
-
 
 @TransformationRegistry.register(
     "2mass",
@@ -308,7 +302,6 @@ def twomass_to_sdss(survey_tensor) -> torch.Tensor:
     except KeyError as e:
         raise ValueError(f"Missing required 2MASS columns for SDSS transformation: {e}")
 
-
 @TransformationRegistry.register(
     "jwst",
     "sdss",
@@ -344,11 +337,9 @@ def jwst_to_sdss(survey_tensor) -> torch.Tensor:
     except KeyError as e:
         raise ValueError(f"Missing required JWST columns for SDSS transformation: {e}")
 
-
 # =============================================================================
 # Utility functions
 # =============================================================================
-
 
 def apply_transformation(survey_tensor, target_survey: str) -> torch.Tensor:
     """
@@ -386,7 +377,6 @@ def apply_transformation(survey_tensor, target_survey: str) -> torch.Tensor:
         logger.info(f"Transformation note: {info['accuracy_note']}")
 
     return transform_func(survey_tensor)
-
 
 def get_transformation_chain(source: str, target: str) -> Optional[list]:
     """

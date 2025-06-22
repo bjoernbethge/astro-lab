@@ -29,7 +29,6 @@ except ImportError:
     SYSTEM_MONITORING_AVAILABLE = False
     print("Warning: psutil/GPUtil not available. System metrics will be limited.")
 
-
 class AstroMLflowLogger(LightningMLFlowLogger):
     """Optimized MLflow logger for astronomical models with 2025 system metrics integration."""
 
@@ -519,7 +518,6 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         except Exception as e:
             print(f"Warning: Error ending MLflow run: {e}")
 
-
 def create_astro_mlflow_logger(
     config: Dict[str, Any], experiment_name: Optional[str] = None
 ) -> AstroMLflowLogger:
@@ -553,7 +551,6 @@ def create_astro_mlflow_logger(
     logger.log_config_info(config)
 
     return logger
-
 
 def setup_mlflow_experiment(
     experiment_name: str,
@@ -593,7 +590,6 @@ def setup_mlflow_experiment(
     mlflow.set_experiment(experiment_name)
     return experiment_id
 
-
 def setup_mlflow_from_config(config: Dict[str, Any]) -> str:
     """Setup MLflow experiment from configuration dictionary."""
     mlflow_config = config.get("mlflow", {})
@@ -603,7 +599,6 @@ def setup_mlflow_from_config(config: Dict[str, Any]) -> str:
         tracking_uri=mlflow_config.get("tracking_uri"),
         artifact_location=mlflow_config.get("artifact_location"),
     )
-
 
 __all__ = [
     "AstroMLflowLogger",

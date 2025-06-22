@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional, Protocol, Tuple, Union, runtime_ch
 
 import torch
 
-
 @runtime_checkable
 class TensorProtocol(Protocol):
     """Base protocol for all astronomical tensors."""
@@ -31,7 +30,6 @@ class TensorProtocol(Protocol):
     def clone(self) -> TensorProtocol: ...
 
     def get_metadata(self, key: str, default: Any = None) -> Any: ...
-
 
 @runtime_checkable
 class PhotometricTensorProtocol(Protocol):
@@ -54,7 +52,6 @@ class PhotometricTensorProtocol(Protocol):
 
     def to_dict(self) -> Dict[str, Any]: ...
 
-
 @runtime_checkable
 class Spatial3DTensorProtocol(Protocol):
     """Protocol for Spatial3DTensor to avoid circular imports."""
@@ -74,7 +71,6 @@ class Spatial3DTensorProtocol(Protocol):
 
     def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor: ...
 
-
 @runtime_checkable
 class SpectralTensorProtocol(Protocol):
     """Protocol for SpectralTensor to avoid circular imports."""
@@ -89,7 +85,6 @@ class SpectralTensorProtocol(Protocol):
     def flux_units(self) -> str: ...
 
     def redshift_correct(self, new_redshift: float) -> SpectralTensorProtocol: ...
-
 
 @runtime_checkable
 class LightcurveTensorProtocol(Protocol):
@@ -106,7 +101,6 @@ class LightcurveTensorProtocol(Protocol):
 
     def phase_fold(self, period: float) -> LightcurveTensorProtocol: ...
 
-
 @runtime_checkable
 class OrbitTensorProtocol(Protocol):
     """Protocol for OrbitTensor to avoid circular imports."""
@@ -122,7 +116,6 @@ class OrbitTensorProtocol(Protocol):
     def to_keplerian(self) -> OrbitTensorProtocol: ...
 
     def propagate(self, time_span: torch.Tensor) -> OrbitTensorProtocol: ...
-
 
 @runtime_checkable
 class SurveyTensorProtocol(Protocol):
@@ -142,7 +135,6 @@ class SurveyTensorProtocol(Protocol):
     def get_spatial_tensor(self, **kwargs) -> Spatial3DTensorProtocol: ...
 
     def get_column(self, column_name: str) -> torch.Tensor: ...
-
 
 # Type aliases for convenience
 AstroTensor = Union[

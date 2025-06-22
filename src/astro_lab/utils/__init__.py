@@ -12,57 +12,37 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+
+# DO NOT import blender automatically - only when explicitly needed
+# DO NOT import viz functions automatically - they load Blender modules
+# Import them manually when needed: from astro_lab.utils.viz import ...
+# Core dependencies - should always be available
+import torch_geometric
 import yaml
 
 # Import core utility modules directly
 from . import config, viz
 
-# DO NOT import blender automatically - only when explicitly needed
-# DO NOT import viz functions automatically - they load Blender modules
-# Import them manually when needed: from astro_lab.utils.viz import ...
-
-# Check for optional dependencies
-try:
-    import torch_geometric
-
-    TORCH_GEOMETRIC_AVAILABLE = True
-    GRAPH_AVAILABLE = True  # For backward compatibility
-except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
-    GRAPH_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
 
-# Import graph utilities if available
-if TORCH_GEOMETRIC_AVAILABLE:
-    from .viz.graph import (
-        calculate_graph_metrics,
-        create_spatial_graph,
-        spatial_distance_matrix,
-    )
+# Import graph utilities
+from .viz.graph import (
+    calculate_graph_metrics,
+    create_spatial_graph,
+    spatial_distance_matrix,
+)
 
 # Base exports - always available (minimal to avoid Blender loading)
 __all__ = [
     "config",
     "viz",
-    # "blender",  # REMOVED - only import when explicitly needed
-    # "list_available_data",  # REMOVED - loads viz modules with Blender
-    "TORCH_GEOMETRIC_AVAILABLE",
-    "GRAPH_AVAILABLE",  # For backward compatibility
     "get_utils_info",
     "calculate_volume",
     "calculate_mean_density",
+    "create_spatial_graph",
+    "calculate_graph_metrics",
+    "spatial_distance_matrix",
 ]
-
-# Add graph functions if available
-if TORCH_GEOMETRIC_AVAILABLE:
-    __all__.extend(
-        [
-            "create_spatial_graph",
-            "calculate_graph_metrics",
-            "spatial_distance_matrix",
-        ]
-    )
 
 
 def get_utils_info() -> Dict[str, Any]:
@@ -80,8 +60,8 @@ def get_utils_info() -> Dict[str, Any]:
         "config_available": True,
         "viz_available": True,
         "blender_available": blender_available,
-        "torch_geometric_available": TORCH_GEOMETRIC_AVAILABLE,
-        "graph_available": GRAPH_AVAILABLE,
+        "torch_geometric_available": True,
+        "graph_available": True,
     }
 
 

@@ -23,12 +23,8 @@ try:
 except ImportError:
     TORCH_GEOMETRIC_AVAILABLE = False
 
-try:
-    from sklearn.neighbors import NearestNeighbors
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-
+from sklearn.neighbors import BallTree
+from sklearn.cluster import DBSCAN, KMeans
 
 def _sklearn_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
     """
@@ -42,9 +38,7 @@ def _sklearn_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
     Returns:
         Edge index tensor [2, num_edges]
     """
-    if not SKLEARN_AVAILABLE:
-        raise ImportError("sklearn required for KNN graph construction")
-    
+        
     # Convert to numpy for sklearn
     coords_np = coords.detach().cpu().numpy()
     
@@ -66,7 +60,6 @@ def _sklearn_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
     
     return edge_index
 
-
 def create_spatial_graph(
     spatial_tensor: "Spatial3DTensor",
     method: str = "knn",
@@ -87,9 +80,7 @@ def create_spatial_graph(
     Returns:
         PyTorch Geometric Data object
     """
-    if not TORCH_GEOMETRIC_AVAILABLE:
-        raise ImportError("PyTorch Geometric required for graph operations")
-
+    
     # Get Cartesian coordinates
     coords = spatial_tensor.cartesian
 
@@ -98,9 +89,7 @@ def create_spatial_graph(
         # Use sklearn-based KNN as fallback
         edge_index = _sklearn_knn_graph(coords, k=k, **kwargs)
     elif method == "radius":
-        if not TORCH_GEOMETRIC_AVAILABLE:
-            raise ImportError("PyTorch Geometric required for radius graph")
-        edge_index = radius_graph(coords, r=radius, **kwargs)
+                edge_index = radius_graph(coords, r=radius, **kwargs)
     else:
         raise ValueError(f"Unknown method: {method}")
 
@@ -118,7 +107,6 @@ def create_spatial_graph(
                 setattr(data, key, value)
 
     return data
-
 
 def calculate_graph_metrics(data: Data) -> dict:
     """
@@ -159,7 +147,6 @@ def calculate_graph_metrics(data: Data) -> dict:
     }
 
     return metrics
-
 
 def _calculate_clustering_coefficient(edge_index: torch.Tensor, num_nodes: int) -> float:
     """
@@ -206,7 +193,6 @@ def _calculate_clustering_coefficient(edge_index: torch.Tensor, num_nodes: int) 
     # Return average clustering coefficient
     return float(np.mean(clustering_coeffs))
 
-
 def spatial_distance_matrix(
     coords: torch.Tensor, metric: str = "euclidean"
 ) -> torch.Tensor:
@@ -236,7 +222,6 @@ def spatial_distance_matrix(
         raise ValueError(f"Unknown metric: {metric}")
 
     return distances
-
 
 __all__ = [
     "create_spatial_graph",

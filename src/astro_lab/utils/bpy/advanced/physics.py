@@ -40,7 +40,6 @@ except ImportError as e:
     bmesh = None
     Vector = None
 
-
 class OrbitalMechanics:
     """Create realistic orbital mechanics visualizations"""
 
@@ -174,7 +173,6 @@ class OrbitalMechanics:
 
         return tree
 
-
 class GravitationalSimulation:
     """N-body gravitational simulations"""
 
@@ -259,7 +257,6 @@ class GravitationalSimulation:
         secondary.data.materials.append(secondary_mat)
 
         return primary, secondary
-
 
 class PhysicsShaders:
     """Shaders for astrophysical objects"""
@@ -353,7 +350,6 @@ class PhysicsShaders:
 
         return mat
 
-
 # Example usage functions
 def create_solar_system():
     """Create a simple solar system."""
@@ -384,7 +380,6 @@ def create_solar_system():
 
     print("Solar system created!")
 
-
 def create_binary_stars():
     """Create binary star system."""
     primary, secondary = GravitationalSimulation.create_binary_system(
@@ -393,7 +388,6 @@ def create_binary_stars():
 
     print("Binary star system created!")
     return [primary, secondary]
-
 
 if __name__ == "__main__":
     create_solar_system()

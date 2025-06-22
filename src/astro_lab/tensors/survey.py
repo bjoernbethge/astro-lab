@@ -29,7 +29,6 @@ from .tensor_types import (
     SurveyTensorProtocol,
 )
 
-
 class SurveyTensor(AstroTensorBase, ValidationMixin):
     """
     Main coordinator tensor for astronomical survey data using composition.

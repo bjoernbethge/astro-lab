@@ -65,7 +65,6 @@ class AstroLabApi:
     def __repr__(self):
         return "AstroLabApi(live_bridge, advanced, core, plot_2d, plot_3d)"
 
-
 # =============================================================================
 # Blender Operator Wrappers (for Blender UI and simple scripting)
 # =============================================================================
@@ -104,7 +103,6 @@ if bpy is not None:
             self.report({'INFO'}, f"Created {self.galaxy_type} galaxy.")
             return {'FINISHED'}
 
-
     class AL_OT_CreateEmissionNebula(bpy.types.Operator):  # type: ignore
         """Create a volumetric emission nebula."""
         bl_idname = "al.create_emission_nebula"
@@ -136,7 +134,6 @@ if bpy is not None:
             )
             self.report({'INFO'}, f"Created {self.nebula_type} nebula.")
             return {'FINISHED'}
-
 
     # Add more operators for other functionalities here...
 

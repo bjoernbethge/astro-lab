@@ -13,7 +13,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict
 
-
 @dataclass(frozen=True)
 class PhysicalConstants:
     """Fundamental physical constants."""
@@ -27,7 +26,6 @@ class PhysicalConstants:
 
     # Stefan-Boltzmann constant
     STEFAN_BOLTZMANN: float = 5.670374419e-8  # W/m²/K⁴
-
 
 @dataclass(frozen=True)
 class AstronomicalConstants:
@@ -60,7 +58,6 @@ class AstronomicalConstants:
     EARTH_RADIUS_KM: float = 6378.1  # km (equatorial)
     LUNAR_RADIUS_KM: float = 1737.4  # km
 
-
 @dataclass(frozen=True)
 class GravitationalParameters:
     """Standard gravitational parameters (GM) in km³/s²."""
@@ -82,7 +79,6 @@ class GravitationalParameters:
     # Default for generic "star" systems
     SOLAR_MASS: float = SUN  # Alias for stellar systems
 
-
 @dataclass(frozen=True)
 class SpectroscopyConstants:
     """Constants for spectroscopic calculations."""
@@ -103,7 +99,6 @@ class SpectroscopyConstants:
     ANGSTROM_TO_M: float = 1e-10  # meters per Angstrom
     ANGSTROM_TO_NM: float = 0.1  # nanometers per Angstrom
 
-
 @dataclass(frozen=True)
 class PhotometryConstants:
     """Constants for photometric calculations."""
@@ -123,7 +118,6 @@ class PhotometryConstants:
     EXTINCTION_R: float = 0.1  # R-band
     EXTINCTION_I: float = 0.08  # I-band
 
-
 @dataclass(frozen=True)
 class CosmologyConstants:
     """Standard cosmological parameters (Planck 2018)."""
@@ -141,7 +135,6 @@ class CosmologyConstants:
     SIGMA_8: float = 0.811  # Amplitude of fluctuations
     N_S: float = 0.965  # Spectral index
 
-
 # Convenience collections
 CONSTANTS = PhysicalConstants()
 ASTRO = AstronomicalConstants()
@@ -150,8 +143,7 @@ SPECTROSCOPY = SpectroscopyConstants()
 PHOTOMETRY = PhotometryConstants()
 COSMOLOGY = CosmologyConstants()
 
-
-# Legacy mappings for backward compatibility
+# Alternative mappings for convenience
 def get_mu(attractor: str) -> float:
     """
     Get gravitational parameter for given attractor.
@@ -176,7 +168,6 @@ def get_mu(attractor: str) -> float:
         "star": GRAVITY.SOLAR_MASS,  # Default for stellar systems
     }
     return mu_values.get(attractor.lower(), GRAVITY.EARTH)
-
 
 def get_planet_radius(planet: str) -> float:
     """

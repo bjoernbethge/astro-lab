@@ -14,7 +14,6 @@ from .graph import (
     spatial_distance_matrix,
 )
 
-
 # LAZY imports - only when explicitly needed to avoid Blender loading
 def get_tensor_bridge():
     """Lazy import of tensor bridge (loads Blender)."""
@@ -44,7 +43,6 @@ def get_tensor_bridge():
         "TensorProtocol": TensorProtocol,
     }
 
-
 def get_bidirectional_bridge():
     """Lazy import of bidirectional bridge (consolidated in tensor_bridge)."""
     from .tensor_bridge import (
@@ -65,7 +63,6 @@ def get_bidirectional_bridge():
         "quick_convert_tensor_to_pyvista": quick_convert_tensor_to_pyvista,
     }
 
-
 def get_tng50():
     """Lazy import of TNG50 visualizer (loads Blender)."""
     from .tng50 import (
@@ -85,7 +82,6 @@ def get_tng50():
         "quick_blender_import": quick_blender_import,
         "list_available_data": list_available_data,
     }
-
 
 # SAFE exports only
 __all__ = [

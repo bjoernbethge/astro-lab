@@ -21,7 +21,6 @@ import numpy as np
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-
 class NumpyCompatLayer:
     """Compatibility layer for NumPy 2.x with Blender."""
 
@@ -109,26 +108,21 @@ class NumpyCompatLayer:
 
         return self._mathutils["Matrix"](data)
 
-
 # Global instance
 numpy_compat = NumpyCompatLayer()
-
 
 # Convenience functions
 def is_blender_available() -> bool:
     """Check if Blender is available with NumPy 2.x compatibility."""
     return numpy_compat.available
 
-
 def get_bpy():
     """Get bpy module if available."""
     return numpy_compat.bpy
 
-
 def get_mathutils():
     """Get mathutils if available."""
     return numpy_compat.mathutils
-
 
 @contextmanager
 def blender_context():

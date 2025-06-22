@@ -11,7 +11,6 @@ from .base import AstroTensorBase
 from .orbital import OrbitTensor
 from .spatial_3d import Spatial3DTensor
 
-
 class EarthSatelliteTensor(AstroTensorBase):
     """
     Tensor for Earth satellites with Earth-specific operations using composition.
@@ -498,7 +497,6 @@ class EarthSatelliteTensor(AstroTensorBase):
         id_str = f", NORAD {norad_id}" if norad_id else ""
 
         return f"EarthSatelliteTensor(name='{satellite_name}'{id_str}, shape={list(self.shape)})"
-
 
 class AttitudeTensor(AstroTensorBase):
     """

@@ -13,7 +13,6 @@ from pathlib import Path
 
 from astro_lab.models.config import ModelConfig, TrainingConfig as ModelTrainingConfig, EncoderConfig, GraphConfig, OutputConfig
 
-
 class SchedulerConfig(BaseModel):
     """Configuration for learning rate schedulers."""
     
@@ -50,7 +49,6 @@ class SchedulerConfig(BaseModel):
             raise ValueError("Learning rate must be positive")
         return v
 
-
 class CallbackConfig(BaseModel):
     """Configuration for training callbacks."""
     
@@ -81,7 +79,6 @@ class CallbackConfig(BaseModel):
     # Custom callbacks
     custom_callbacks: List[str] = Field(default_factory=list)
 
-
 class HardwareConfig(BaseModel):
     """Configuration for hardware and performance settings."""
     
@@ -109,7 +106,6 @@ class HardwareConfig(BaseModel):
             raise ValueError("Devices list cannot be empty")
         return v
 
-
 class LoggingConfig(BaseModel):
     """Configuration for logging and experiment tracking."""
     
@@ -130,7 +126,6 @@ class LoggingConfig(BaseModel):
     
     # Custom logging
     custom_loggers: List[str] = Field(default_factory=list)
-
 
 class DataConfig(BaseModel):
     """Configuration for data loading and preprocessing."""
@@ -158,7 +153,6 @@ class DataConfig(BaseModel):
         if v <= 0 or v >= 1:
             raise ValueError("Split must be between 0 and 1")
         return v
-
 
 class TrainingConfig(BaseModel):
     """Complete training configuration integrating model and training settings."""
@@ -277,7 +271,6 @@ class TrainingConfig(BaseModel):
         
         return base_config
 
-
 # Predefined training configurations
 PREDEFINED_TRAINING_CONFIGS = {
     "gaia_stellar_training": TrainingConfig(
@@ -389,7 +382,6 @@ PREDEFINED_TRAINING_CONFIGS = {
     ),
 }
 
-
 def get_predefined_training_config(name: str) -> TrainingConfig:
     """Get a predefined training configuration."""
     if name not in PREDEFINED_TRAINING_CONFIGS:
@@ -397,7 +389,6 @@ def get_predefined_training_config(name: str) -> TrainingConfig:
         raise ValueError(f"Unknown training config '{name}'. Available: {available}")
     
     return PREDEFINED_TRAINING_CONFIGS[name]
-
 
 def list_predefined_training_configs() -> List[str]:
     """List all available predefined training configurations."""

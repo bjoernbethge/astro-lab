@@ -11,8 +11,8 @@ Directory Creation Policy:
 - No automatic directory creation on import to avoid cluttering the filesystem
 """
 
-import os
 import logging
+import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -185,7 +185,6 @@ class DataConfig:
 
         logger.info("✅ Migration plan created. Manual file moving required.")
 
-
 # Global configuration instance
 data_config = DataConfig()
 
@@ -193,22 +192,18 @@ data_config = DataConfig()
 if "ASTROLAB_DATA_DIR" in os.environ:
     data_config = DataConfig(os.environ["ASTROLAB_DATA_DIR"])
 
-
-# Convenience functions for backward compatibility
+# Convenience functions
 def get_data_dir() -> Path:
     """Get the configured data directory."""
     return data_config.base_dir
-
 
 def get_raw_dir() -> Path:
     """Get the raw data directory."""
     return data_config.raw_dir
 
-
 def get_processed_dir() -> Path:
     """Get the processed data directory."""
     return data_config.processed_dir
-
 
 def get_survey_paths(survey: str) -> Dict[str, Path]:
     """Get all standard paths for a survey."""
@@ -219,7 +214,6 @@ def get_survey_paths(survey: str) -> Dict[str, Path]:
         "graphs": data_config.get_graph_path(survey),
         "tensors": data_config.get_tensor_path(survey),
     }
-
 
 def get_experiment_paths(experiment_name: str) -> Dict[str, Path]:
     """Get all paths for an experiment."""

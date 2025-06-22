@@ -13,7 +13,6 @@ import torch.nn.functional as F
 from astro_lab.models.tgnn import TemporalGATCNN, TemporalGCN
 from astro_lab.models.layers import LayerFactory
 
-
 class CosmicEvolutionGNN(TemporalGCN):
     """
     Temporal GNN for cosmic evolution in TNG simulations.
@@ -107,7 +106,6 @@ class CosmicEvolutionGNN(TemporalGCN):
 
         return result
 
-
 class GalaxyFormationGNN(TemporalGCN):
     """
     Temporal GNN for galaxy formation and evolution.
@@ -183,7 +181,6 @@ class GalaxyFormationGNN(TemporalGCN):
 
         return result
 
-
 class HaloMergerGNN(TemporalGATCNN):
     """
     Temporal GNN for halo merger analysis using attention mechanisms.
@@ -240,7 +237,6 @@ class HaloMergerGNN(TemporalGATCNN):
             )
 
         return result
-
 
 class EnvironmentalQuenchingGNN(TemporalGCN):
     """
@@ -318,7 +314,6 @@ class EnvironmentalQuenchingGNN(TemporalGCN):
             "environment_type": env_probs,
             "quenching_probability": quenching_prob,
         }
-
 
 __all__ = [
     "CosmicEvolutionGNN",

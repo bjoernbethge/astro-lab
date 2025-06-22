@@ -29,7 +29,6 @@ from astro_lab.models.layers import LayerFactory
 # Configure logging
 logger = logging.getLogger(__name__)
 
-
 class BaseEncoder(nn.Module):
     """Base encoder with robust error handling."""
 
@@ -63,7 +62,6 @@ class BaseEncoder(nn.Module):
             return tensor.device
         else:
             return torch.device("cpu")
-
 
 class PhotometryEncoder(BaseEncoder):
     """Encoder for photometric tensor features."""
@@ -150,7 +148,6 @@ class PhotometryEncoder(BaseEncoder):
 
             return self.encoder(raw_data)
 
-
 class AstrometryEncoder(nn.Module):
     """Encoder for astrometric/spatial tensor features."""
 
@@ -211,7 +208,6 @@ class AstrometryEncoder(nn.Module):
                 raw_data = raw_data[..., :16]
 
             return self.encoder(raw_data)
-
 
 class SpectroscopyEncoder(nn.Module):
     """Encoder for spectroscopic tensor features."""
@@ -275,7 +271,6 @@ class SpectroscopyEncoder(nn.Module):
                 raw_data = raw_data[..., :64]
 
             return self.encoder(raw_data)
-
 
 class LightcurveEncoder(nn.Module):
     """Encoder for lightcurve/time-series tensor features."""
@@ -350,7 +345,6 @@ class LightcurveEncoder(nn.Module):
             # Create simple fallback features for single lightcurve
             fallback_features = torch.randn(1, 32, device=device)
             return self.encoder(fallback_features)
-
 
 __all__ = [
     "PhotometryEncoder",
