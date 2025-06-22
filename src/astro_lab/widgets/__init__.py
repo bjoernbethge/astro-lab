@@ -1,16 +1,22 @@
-"""AstroLab Widgets - Interactive astronomical visualization."""
+"""AstroLab Widgets - Interactive astronomical visualization and analysis."""
 
-from .astro_lab import AstroLabWidget, AstroPipeline, BlenderUtils
+from .astro_lab import AstroLabWidget
+from .analysis import AnalysisModule
+from .graph import GraphModule
+from .visualization import VisualizationModule
 
 __all__ = [
-    "AstroLabWidget", 
-    "AstroPipeline", 
-    "BlenderUtils"
+    "AstroLabWidget",
+    "AnalysisModule", 
+    "GraphModule",
+    "VisualizationModule"
 ]
 
-# Blender API directly available on widget:
-# - widget.ops: Blender Operations (bpy.ops)
-# - widget.data: Blender Data (bpy.data) 
-# - widget.context: Blender Context (bpy.context)
-# - widget.scene: Current Scene
-# - widget.utils: Blender Utilities (BlenderUtils)
+# Main widget provides unified API:
+# - widget.plot() - Visualization with multiple backends
+# - widget.find_neighbors() - GPU-accelerated neighbor finding
+# - widget.cluster_data() - Clustering analysis
+# - widget.analyze_density() - Density analysis
+# - widget.create_graph() - PyTorch Geometric integration
+# - widget.prepare_for_model() - Model preparation
+# - widget.al, widget.ops, widget.data, widget.context, widget.scene - Blender API
