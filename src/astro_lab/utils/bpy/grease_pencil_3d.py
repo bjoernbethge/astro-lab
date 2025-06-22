@@ -124,9 +124,6 @@ class GreasePencil3DPlotter:
         max_vectors: int = 200,
     ) -> List[Any]:
         """Create 3D vector field visualization."""
-        if not BLENDER_AVAILABLE:
-            return []
-
         objects = []
 
         # Subsample if too many vectors
@@ -172,9 +169,7 @@ class GreasePencil3DPlotter:
         color_map: str = "viridis",
     ) -> List[Any]:
         """Create 3D surface plot using curve wireframe."""
-        if not BLENDER_AVAILABLE:
-            return []
-
+        
         objects = []
 
         # Normalize coordinates
@@ -230,8 +225,6 @@ class GreasePencil3DPlotter:
         name: str,
     ) -> Optional[Any]:
         """Create 3D point as small sphere."""
-        if not BLENDER_AVAILABLE:
-            return None
 
         try:
             bpy.ops.mesh.primitive_uv_sphere_add(radius=size, location=tuple(position))
@@ -257,9 +250,6 @@ class GreasePencil3DPlotter:
         line_width: float = 0.02,
     ) -> Optional[Any]:
         """Create curve from array of points."""
-        if not BLENDER_AVAILABLE:
-            return None
-
         try:
             # Create curve
             curve_data = bpy.data.curves.new(name, type="CURVE")
@@ -343,9 +333,6 @@ class GreasePencil3DPlotter:
         name: str,
     ) -> Optional[Any]:
         """Create vector arrow."""
-        if not BLENDER_AVAILABLE:
-            return None
-
         try:
             end = start + direction * magnitude
 
@@ -386,8 +373,7 @@ class GreasePencil3DPlotter:
         self, text: str, position: List[float], size: float = 0.5
     ) -> Optional[Any]:
         """Create text object."""
-        if not BLENDER_AVAILABLE:
-            return None
+
 
         try:
             bpy.ops.object.text_add(location=position)
@@ -412,9 +398,7 @@ class GreasePencil3DPlotter:
         self, name: str, color: List[float], strength: float = 2.0
     ) -> Optional[Any]:
         """Create emission material."""
-        if not BLENDER_AVAILABLE:
-            return None
-
+        
         if name in bpy.data.materials:
             return bpy.data.materials[name]
 
@@ -487,8 +471,6 @@ class GreasePencil3DPlotter:
 
     def clear_objects(self) -> None:
         """Clear all created objects."""
-        if not BLENDER_AVAILABLE:
-            return
 
         for obj in self.created_objects:
             try:

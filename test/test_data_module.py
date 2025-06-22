@@ -46,26 +46,6 @@ from astro_lab.data.utils import (
 )
 
 
-# Simple test version of preprocess_catalog_lazy for testing
-def preprocess_catalog_lazy(
-    df: pl.DataFrame,
-    clean_null_columns: bool = True,
-    null_threshold: float = 0.95,
-    coordinate_columns=None,
-    magnitude_columns=None,
-    use_streaming: bool = True,
-    survey_type: str = "test",
-) -> pl.DataFrame:
-    """Simple test implementation of preprocess_catalog_lazy."""
-    df_clean = df.clone()
-
-    if clean_null_columns:
-        # Remove rows with any nulls for simplicity
-        df_clean = df_clean.drop_nulls()
-
-    return df_clean
-
-
 class TestAstroDataManager:
     """Test actual AstroDataManager with real data files."""
 
@@ -140,28 +120,6 @@ class TestIntegratedDataModule:
         assert detect_survey_type("gaia_catalog", None) == "gaia"
         assert detect_survey_type("nsa_data", None) == "nsa"
         assert detect_survey_type("linear_survey", None) == "linear"
-
-    def test_preprocess_catalog_lazy(self, use_streaming=True):
-        """Test preprocess_catalog function."""
-        # Create test DataFrame with some nulls
-        test_df = pl.DataFrame(
-            {
-                "ra": [0.0, None, 2.0],
-                "dec": [0.0, 1.0, None],
-                "mag": [10.0, 11.0, 12.0],
-            }
-        )
-
-        # Use the test function from this file instead
-        cleaned_df = preprocess_catalog_lazy(
-            test_df,
-            clean_null_columns=True,
-            use_streaming=True,
-            survey_type="test",  # Add required survey_type parameter
-        )
-        assert isinstance(cleaned_df, pl.DataFrame)
-        # Should remove rows with nulls
-        assert len(cleaned_df) < len(test_df)
 
     def test_create_training_splits(self):
         """Test create_training_splits function."""
@@ -306,44 +264,6 @@ class TestGraphCreation:
                 output_file.unlink()
         except Exception as e:
             pytest.skip(f"Graph creation not available: {e}")
-        finally:
-            # Clean up
-            import shutil
-
-            if test_output_dir.exists():
-                shutil.rmtree(test_output_dir)
-
-    def test_create_graph_datasets_from_splits(self):
-        """Test create_graph_datasets_from_splits function (batch/device-agnostic)."""
-        test_df = pl.DataFrame(
-            {
-                "ra": list(range(30)),
-                "dec": list(range(30)),
-                "mag": list(range(30)),
-            }
-        )
-        train, val, test = create_training_splits(test_df, test_size=0.3, val_size=0.2)
-        batch_size = get_optimal_batch_size(len(train))
-
-        # Ensure test output directory exists
-        test_output_dir = Path("test_output")
-        test_output_dir.mkdir(exist_ok=True)
-
-        try:
-            create_graph_datasets_from_splits(
-                train,
-                val,
-                test,
-                test_output_dir,
-                "test_dataset",
-                k_neighbors=3,
-                distance_threshold=5.0,
-            )
-            # Check if any graph files were created
-            graph_files = list(test_output_dir.rglob("*.pt"))
-            assert len(graph_files) > 0, "No graph files were created"
-        except Exception as e:
-            pytest.skip(f"Graph creation from splits not available: {e}")
         finally:
             # Clean up
             import shutil

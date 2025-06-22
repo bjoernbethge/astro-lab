@@ -1,12 +1,14 @@
 """
-Tests for SurveyTensor functionality and dataset integration.
+Tests for SurveyTensor and related functionality.
 """
 
 import pytest
 import torch
+import polars as pl
+import astropy.io.fits as fits
 
 from astro_lab.data import AstroDataset
-from astro_lab.tensors.survey import SurveyTensor
+from astro_lab.tensors import SurveyTensor
 
 
 class TestSurveyTensor:
@@ -160,26 +162,24 @@ class TestSurveyTensorDatasetIntegration:
     @pytest.mark.slow
     def test_nsa_survey_tensor_integration(self, nsa_dataset):
         """Test NSA dataset SurveyTensor integration."""
+        # Einfach testen: Funktioniert das vorhandene NSA-Dataset?
         assert len(nsa_dataset) > 0
-
-        # Test basic dataset functionality
         first_item = nsa_dataset[0]
-        assert first_item is not None, "Dataset returned None for first item"
+        assert first_item is not None
         assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
     def test_exoplanet_survey_tensor_integration(self, exoplanet_dataset):
         """Test Exoplanet dataset SurveyTensor integration."""
+        # Einfach testen: Funktioniert das vorhandene Exoplanet-Dataset?
         assert len(exoplanet_dataset) > 0
-
-        # Test basic dataset functionality
         first_item = exoplanet_dataset[0]
-        assert first_item is not None, "Dataset returned None for first item"
+        assert first_item is not None
         assert hasattr(first_item, "x")  # PyG Data object
 
     def test_cross_survey_operations(self, gaia_dataset, nsa_dataset):
         """Test cross-survey tensor operations."""
-        # Basic functionality test
+        # Einfach testen: Sind die vorhandenen Datasets verfügbar?
         assert len(gaia_dataset) > 0
         assert len(nsa_dataset) > 0
 
