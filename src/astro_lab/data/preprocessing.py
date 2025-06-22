@@ -403,46 +403,15 @@ def _preprocess_generic_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     return lf.filter(pl.all_horizontal(pl.all().is_not_null()))
 
 
-def _create_knn_graph(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
-    """Create k-NN graph from coordinates."""
-    if len(coords) == 0:
-        return torch.empty((2, 0), dtype=torch.long)
-
-    # Use haversine distance for 2D sky coordinates
-    if coords.shape[1] == 2:
-        coords_rad = np.radians(coords)
-        nbrs = NearestNeighbors(
-            n_neighbors=min(k_neighbors + 1, len(coords)), metric="haversine"
-        )
-    else:
-        nbrs = NearestNeighbors(n_neighbors=min(k_neighbors + 1, len(coords)))
-
-    nbrs.fit(coords)
-    distances, indices = nbrs.kneighbors(coords)
-
-    # OPTIMIZED: Vectorized edge creation
-    n_nodes = len(coords)
-    k_actual = indices.shape[1] - 1  # Exclude self
-
-    # Create source and target arrays efficiently
-    sources = np.repeat(np.arange(n_nodes), k_actual)
-    targets = indices[:, 1:].flatten()  # Skip self-connections
-
-    # OPTIMIZED: Create edge index directly without list operations
-    edge_index = torch.tensor(np.vstack([sources, targets]), dtype=torch.long)
-
-    return edge_index
-
-
 def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
-    """Create k-NN graph using torch-cluster's GPU-accelerated knn_graph."""
+    """Create k-NN graph using GPU acceleration - ONLY GPU VERSION."""
     if len(coords) == 0:
         return torch.empty((2, 0), dtype=torch.long)
     
     n_nodes = len(coords)
     logger.info(f"🚀 Creating GPU k-NN graph for {n_nodes:,} nodes with k={k_neighbors}")
     
-    # Convert to PyTorch tensor and move to GPU if available
+    # Convert to PyTorch tensor and move to GPU
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
     
@@ -465,11 +434,11 @@ def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
         return edge_index
         
     except ImportError:
-        logger.warning("⚠️ torch-cluster not available, falling back to CPU method")
-        return _create_knn_graph(coords, k_neighbors)
+        logger.error("❌ torch-cluster not available - GPU acceleration required!")
+        raise ImportError("torch-cluster required for GPU k-NN graph creation")
     except Exception as e:
-        logger.warning(f"⚠️ GPU k-NN failed ({e}), falling back to CPU method")
-        return _create_knn_graph(coords, k_neighbors)
+        logger.error(f"❌ GPU k-NN failed: {e}")
+        raise RuntimeError(f"GPU k-NN graph creation failed: {e}")
 
 
 def _create_gaia_graph(
@@ -479,8 +448,8 @@ def _create_gaia_graph(
     # Extract coordinates
     coords = df.select(["ra", "dec"]).to_numpy()
 
-    # Create k-NN graph
-    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
+    # Create k-NN graph with GPU acceleration
+    edge_index = _create_knn_graph_gpu(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["phot_g_mean_mag", "bp_rp_color", "parallax", "pmra", "pmdec"]
@@ -530,8 +499,8 @@ def _create_sdss_graph(
     # Extract coordinates
     coords = df.select(["ra", "dec", "z"]).to_numpy()
 
-    # Create k-NN graph
-    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
+    # Create k-NN graph with GPU acceleration
+    edge_index = _create_knn_graph_gpu(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["modelMag_r", "modelMag_g", "modelMag_i", "petroRad_r", "fracDeV_r"]
@@ -571,8 +540,8 @@ def _create_nsa_graph(
     # Extract coordinates
     coords = df.select(["ra", "dec", "z"]).to_numpy()
 
-    # Create k-NN graph
-    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
+    # Create k-NN graph with GPU acceleration
+    edge_index = _create_knn_graph_gpu(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"]
@@ -612,8 +581,8 @@ def _create_tng50_graph(
     # Extract 3D coordinates
     coords = df.select(["x", "y", "z"]).to_numpy()
 
-    # Create k-NN graph
-    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
+    # Create k-NN graph with GPU acceleration
+    edge_index = _create_knn_graph_gpu(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["masses", "density", "velocities_0", "velocities_1", "velocities_2"]
@@ -677,8 +646,8 @@ def _create_generic_graph(
     # Extract coordinates
     coords = df.select(coord_cols).to_numpy()
 
-    # Create k-NN graph
-    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
+    # Create k-NN graph with GPU acceleration
+    edge_index = _create_knn_graph_gpu(coords, k_neighbors)
 
     # Use all numeric columns as features
     numeric_cols = [
