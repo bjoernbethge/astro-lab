@@ -724,11 +724,17 @@ class AstroDataset(InMemoryDataset):
         """Load dataset from standardized .pt file location."""
         self._load_pt_file()
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx):
         """Get item from dataset with proper error handling."""
         if self.data is None:
             raise RuntimeError("Dataset not loaded. Call download() first.")
         
+        # Handle slice indexing (e.g., dataset[:8])
+        if isinstance(idx, slice):
+            indices = range(*idx.indices(len(self)))
+            return [self[i] for i in indices]
+        
+        # Handle single index
         if idx >= len(self):
             raise IndexError(f"Index {idx} out of range for dataset with {len(self)} samples")
         

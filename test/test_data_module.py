@@ -14,7 +14,6 @@ import torch
 
 # Import only actual classes that exist
 from astro_lab.data.core import (
-    AstroDataModule,
     AstroDataset,
     create_cosmic_web_loader,
     create_graph_datasets_from_splits,
@@ -25,6 +24,9 @@ from astro_lab.data.core import (
     load_gaia_data,
     load_nsa_data,
 )
+
+# Import AstroDataModule from the correct module
+from astro_lab.data.datamodule import AstroDataModule
 
 # Import catalog management from manager
 from astro_lab.data.manager import (
