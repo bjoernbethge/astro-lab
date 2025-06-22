@@ -24,21 +24,12 @@ warnings.filterwarnings("ignore", message=".*compiled using NumPy 1.x.*")
 warnings.filterwarnings("ignore", message=".*cannot be run in NumPy.*")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-# NumPy import with fallback
-try:
-    import numpy as np
-
-    NUMPY_AVAILABLE = True
-except ImportError:
-    np = None
-    NUMPY_AVAILABLE = False
-
-import polars as pl
-
+# NumPy import
 # Import bpy directly since it's available
 import bpy
+import numpy as np
+import polars as pl
 from mathutils import Vector
-
 
 # =============================================================================
 # SCENE MANAGEMENT
@@ -72,47 +63,29 @@ def normalize_scene(
 
     try:
         # Get scene bounds
-        if NUMPY_AVAILABLE:
-            min_coord = np.array([float("inf")] * 3)
-            max_coord = np.array([float("-inf")] * 3)
-        else:
-            min_coord = [float("inf")] * 3
-            max_coord = [float("-inf")] * 3
+        min_coord = np.array([float("inf")] * 3)
+        max_coord = np.array([float("-inf")] * 3)
 
         for obj in bpy.context.scene.objects:
             if obj.type == "MESH" and hasattr(obj.data, "vertices"):
                 mesh_data = obj.data
                 for vertex in mesh_data.vertices:
                     world_coord = obj.matrix_world @ vertex.co
-                    if NUMPY_AVAILABLE:
-                        min_coord = np.minimum(min_coord, world_coord)
-                        max_coord = np.maximum(max_coord, world_coord)
-                    else:
-                        for i in range(3):
-                            min_coord[i] = min(min_coord[i], world_coord[i])
-                            max_coord[i] = max(max_coord[i], world_coord[i])
+                    min_coord = np.minimum(min_coord, world_coord)
+                    max_coord = np.maximum(max_coord, world_coord)
 
         # Calculate scale and offset
-        if NUMPY_AVAILABLE:
-            size = max_coord - min_coord
-            max_size = np.max(size)
-            center_point = (min_coord + max_coord) / 2
-            offset = -center_point if center else np.zeros(3)
-        else:
-            size = [max_coord[i] - min_coord[i] for i in range(3)]
-            max_size = max(size)
-            center_point = [(min_coord[i] + max_coord[i]) / 2 for i in range(3)]
-            offset = [-center_point[i] if center else 0.0 for i in range(3)]
+        size = max_coord - min_coord
+        max_size = np.max(size)
+        center_point = (min_coord + max_coord) / 2
+        offset = -center_point if center else np.zeros(3)
 
         scale = target_scale / max_size if max_size > 0 else 1.0
 
         # Apply transformations
         for obj in bpy.context.scene.objects:
             if obj.type == "MESH":
-                if NUMPY_AVAILABLE:
-                    obj.location = obj.location + Vector(offset.tolist())
-                else:
-                    obj.location = obj.location + Vector(offset)
+                obj.location = obj.location + Vector(offset.tolist())
                 obj.scale *= scale
 
         bpy.context.view_layer.update()

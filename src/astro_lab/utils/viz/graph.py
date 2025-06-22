@@ -4,7 +4,7 @@ Simplified graph utilities for astronomical data.
 Basic graph construction and analysis tools that work with the new tensor architecture.
 """
 
-from typing import List, Optional, Tuple, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -15,50 +15,47 @@ if TYPE_CHECKING:
 
 # Removed duplicate TYPE_CHECKING block
 
-# Check for PyTorch Geometric and sklearn
-try:
-    from torch_geometric.data import Data
-    from torch_geometric.nn import radius_graph
-    TORCH_GEOMETRIC_AVAILABLE = True
-except ImportError:
-    TORCH_GEOMETRIC_AVAILABLE = False
-
-from sklearn.neighbors import BallTree
+# Import PyTorch Geometric and sklearn
 from sklearn.cluster import DBSCAN, KMeans
+from sklearn.neighbors import BallTree, NearestNeighbors
+from torch_geometric.data import Data
+from torch_geometric.nn import radius_graph
+
 
 def _sklearn_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
     """
     Create KNN graph using sklearn's NearestNeighbors as fallback for torch-cluster.
-    
+
     Args:
         coords: Coordinate tensor [N, 3]
         k: Number of nearest neighbors
         **kwargs: Additional arguments (ignored for sklearn implementation)
-        
+
     Returns:
         Edge index tensor [2, num_edges]
     """
-        
+
     # Convert to numpy for sklearn
     coords_np = coords.detach().cpu().numpy()
-    
+
     # Create NearestNeighbors model
-    nbrs = NearestNeighbors(n_neighbors=k+1, algorithm='auto').fit(coords_np)
-    
+    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm="auto").fit(coords_np)
+
     # Find k+1 nearest neighbors (including self)
     distances, indices = nbrs.kneighbors(coords_np)
-    
+
     # Create edge list (exclude self-connections)
     edge_list = []
     for i in range(len(coords_np)):
-        for j in range(1, k+1):  # Skip first index (self)
+        for j in range(1, k + 1):  # Skip first index (self)
             neighbor_idx = indices[i, j]
             edge_list.append([i, neighbor_idx])
-    
+
     # Convert to tensor
     edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
-    
+
     return edge_index
+
 
 def create_spatial_graph(
     spatial_tensor: "Spatial3DTensor",
@@ -80,7 +77,7 @@ def create_spatial_graph(
     Returns:
         PyTorch Geometric Data object
     """
-    
+
     # Get Cartesian coordinates
     coords = spatial_tensor.cartesian
 
@@ -89,7 +86,7 @@ def create_spatial_graph(
         # Use sklearn-based KNN as fallback
         edge_index = _sklearn_knn_graph(coords, k=k, **kwargs)
     elif method == "radius":
-                edge_index = radius_graph(coords, r=radius, **kwargs)
+        edge_index = radius_graph(coords, r=radius, **kwargs)
     else:
         raise ValueError(f"Unknown method: {method}")
 
@@ -108,6 +105,7 @@ def create_spatial_graph(
 
     return data
 
+
 def calculate_graph_metrics(data: Data) -> dict:
     """
     Calculate basic graph metrics.
@@ -119,13 +117,13 @@ def calculate_graph_metrics(data: Data) -> dict:
         Dictionary of graph metrics
     """
     # Use data.x if available, otherwise fall back to data.pos
-    if hasattr(data, 'x') and data.x is not None:
+    if hasattr(data, "x") and data.x is not None:
         num_nodes = data.x.size(0)
-    elif hasattr(data, 'pos') and data.pos is not None:
+    elif hasattr(data, "pos") and data.pos is not None:
         num_nodes = data.pos.size(0)
     else:
         raise ValueError("Data object must have either 'x' or 'pos' attribute")
-    
+
     num_edges = data.edge_index.size(1)
 
     # Calculate degree statistics
@@ -148,50 +146,56 @@ def calculate_graph_metrics(data: Data) -> dict:
 
     return metrics
 
-def _calculate_clustering_coefficient(edge_index: torch.Tensor, num_nodes: int) -> float:
+
+def _calculate_clustering_coefficient(
+    edge_index: torch.Tensor, num_nodes: int
+) -> float:
     """
     Calculate average clustering coefficient for the graph.
-    
+
     Args:
         edge_index: Edge index tensor [2, num_edges]
         num_nodes: Number of nodes in the graph
-        
+
     Returns:
         Average clustering coefficient
     """
     # Create adjacency matrix
     adj = torch.zeros(num_nodes, num_nodes, dtype=torch.bool)
     adj[edge_index[0], edge_index[1]] = True
-    
+
     # Make undirected
     adj = adj | adj.t()
-    
+
     clustering_coeffs = []
-    
+
     for node in range(num_nodes):
         # Get neighbors
         neighbors = torch.where(adj[node])[0]
         degree = len(neighbors)
-        
+
         if degree < 2:
             # No triangles possible with less than 2 neighbors
             clustering_coeffs.append(0.0)
             continue
-        
+
         # Count triangles
         triangles = 0
         for i in range(len(neighbors)):
             for j in range(i + 1, len(neighbors)):
                 if adj[neighbors[i], neighbors[j]]:
                     triangles += 1
-        
+
         # Clustering coefficient for this node
         possible_triangles = degree * (degree - 1) // 2
-        clustering_coeff = triangles / possible_triangles if possible_triangles > 0 else 0.0
+        clustering_coeff = (
+            triangles / possible_triangles if possible_triangles > 0 else 0.0
+        )
         clustering_coeffs.append(clustering_coeff)
-    
+
     # Return average clustering coefficient
     return float(np.mean(clustering_coeffs))
+
 
 def spatial_distance_matrix(
     coords: torch.Tensor, metric: str = "euclidean"
@@ -223,9 +227,9 @@ def spatial_distance_matrix(
 
     return distances
 
+
 __all__ = [
     "create_spatial_graph",
     "calculate_graph_metrics",
     "spatial_distance_matrix",
-    "TORCH_GEOMETRIC_AVAILABLE",
 ]

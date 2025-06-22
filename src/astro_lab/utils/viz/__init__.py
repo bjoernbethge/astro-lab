@@ -8,11 +8,11 @@ High-performance visualization tools for astronomical data with zero-copy data b
 # SAFE imports - no Blender dependencies
 from .cosmograph_bridge import CosmographBridge, create_cosmograph_visualization
 from .graph import (
-    TORCH_GEOMETRIC_AVAILABLE,
     calculate_graph_metrics,
     create_spatial_graph,
     spatial_distance_matrix,
 )
+
 
 # LAZY imports - only when explicitly needed to avoid Blender loading
 def get_tensor_bridge():
@@ -43,6 +43,7 @@ def get_tensor_bridge():
         "TensorProtocol": TensorProtocol,
     }
 
+
 def get_bidirectional_bridge():
     """Lazy import of bidirectional bridge (consolidated in tensor_bridge)."""
     from .tensor_bridge import (
@@ -62,6 +63,7 @@ def get_bidirectional_bridge():
         "quick_convert_tensor_to_blender": quick_convert_tensor_to_blender,
         "quick_convert_tensor_to_pyvista": quick_convert_tensor_to_pyvista,
     }
+
 
 def get_tng50():
     """Lazy import of TNG50 visualizer (loads Blender)."""
@@ -83,13 +85,13 @@ def get_tng50():
         "list_available_data": list_available_data,
     }
 
+
 # SAFE exports only
 __all__ = [
     # Graph utilities (safe)
     "create_spatial_graph",
     "calculate_graph_metrics",
     "spatial_distance_matrix",
-    "TORCH_GEOMETRIC_AVAILABLE",
     # Cosmograph (safe)
     "CosmographBridge",
     "create_cosmograph_visualization",
