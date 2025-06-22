@@ -110,10 +110,49 @@ class AstroLightningModule(LightningModule):
             logger.error(f"❌ Failed to initialize model: {e}")
             raise
 
+    def _load_num_classes_from_metadata(self) -> Optional[int]:
+        """Load number of classes from dataset metadata files."""
+        try:
+            # Try common metadata file locations
+            metadata_paths = [
+                "data/processed/gaia/gaia_tensor_metadata.json",
+                "data/processed/gaia/gaia_metadata.json",
+                "data/processed/gaia_metadata.json",
+            ]
+            
+            import json
+            from pathlib import Path
+            
+            for metadata_path in metadata_paths:
+                path = Path(metadata_path)
+                if path.exists():
+                    with open(path, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    # Check for classification info
+                    if "classification" in metadata:
+                        num_classes = metadata["classification"].get("num_classes")
+                        if num_classes:
+                            logger.info(f"📋 Found {num_classes} classes in metadata: {path}")
+                            return int(num_classes)
+                    
+                    # Fallback: check for direct num_classes field
+                    if "num_classes" in metadata:
+                        num_classes = metadata["num_classes"]
+                        logger.info(f"📋 Found {num_classes} classes in metadata: {path}")
+                        return int(num_classes)
+            
+            logger.debug("No class information found in metadata files")
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Error loading metadata: {e}")
+            return None
+
     def _setup_metrics(self) -> None:
         """Setup torchmetrics for performance tracking."""
         if self.task_type == "classification":
-            # Use detected num_classes or fallback
+            # Use detected num_classes or fallback to 4 for Gaia
             num_classes = self.num_classes or 4
             
             # Create metrics and move to device
@@ -265,14 +304,21 @@ class AstroLightningModule(LightningModule):
 
             # Use detected num_classes for classification tasks
             output_dim = config.output.output_dim
-            if (
-                config.output.task == "stellar_classification"
-                and self.num_classes is not None
-            ):
-                output_dim = self.num_classes
-                logger.info(
-                    f"🎯 Using detected {output_dim} classes for stellar classification"
-                )
+            if config.output.task == "stellar_classification":
+                # Try to load num_classes from dataset metadata first
+                metadata_classes = self._load_num_classes_from_metadata()
+                if metadata_classes is not None:
+                    output_dim = metadata_classes
+                    self.num_classes = metadata_classes
+                    logger.info(f"📋 Using {output_dim} classes from dataset metadata")
+                elif self.num_classes is not None:
+                    # Use automatically detected number of classes
+                    output_dim = self.num_classes
+                    logger.info(f"🎯 Using detected {output_dim} classes for stellar classification")
+                else:
+                    # Fallback: use config value but warn
+                    logger.warning(f"⚠️ No classes detected, using config output_dim: {output_dim}")
+                    self.num_classes = output_dim
 
             logger.info(
                 f"🔧 Creating AstroSurveyGNN with input_dim={input_dim}, hidden_dim={config.graph.hidden_dim}, output_dim={output_dim}"

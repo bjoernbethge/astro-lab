@@ -41,7 +41,6 @@ from .lightning_module import AstroLightningModule
 
 # Optional imports
 from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
-from .optuna_trainer import OptunaTrainer
 
 
 
@@ -689,6 +688,7 @@ class AstroTrainer(Trainer):
             )
 
         # Create Optuna trainer
+        from .optuna_trainer import OptunaTrainer
         optuna_trainer = OptunaTrainer(
             model_factory=model_factory,
             train_dataloader=train_dataloader,

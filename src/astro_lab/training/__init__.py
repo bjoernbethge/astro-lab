@@ -18,10 +18,15 @@ import torch.nn as nn
 
 from .lightning_module import AstroLightningModule
 from .mlflow_logger import AstroMLflowLogger
-from .optuna_trainer import OptunaTrainer
 
 # Import training components
 from .trainer import AstroTrainer
+
+# OptunaTrainer imported on demand to avoid circular imports
+try:
+    from .optuna_trainer import OptunaTrainer
+except ImportError:
+    OptunaTrainer = None
 
 __all__ = [
     "AstroTrainer",

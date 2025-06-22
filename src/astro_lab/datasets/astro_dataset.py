@@ -193,20 +193,62 @@ class AstroDataset(InMemoryDataset):
             targets = torch.tensor(knn_indices.flatten())
             edge_index = torch.stack([sources, targets])
         
-        # Create BALANCED labels for stable training
-        if x.shape[1] >= 10:  # Use G magnitude for balanced classification
-            g_mag = x[:, 9]  # G magnitude column
+        # Create ASTRONOMICAL stellar classification based on HR diagram
+        if x.shape[1] >= 15:  # Need temperature and magnitude data
+            g_mag = x[:, 9]    # G magnitude
+            bp_rp = x[:, 12]   # Color index (BP-RP)
+            teff = x[:, 14]    # Effective temperature
+            parallax = x[:, 5] # Parallax for distance
             
-            # Create balanced quartiles based on G magnitude
-            quartiles = torch.quantile(g_mag, torch.tensor([0.25, 0.5, 0.75]))
+            # Calculate absolute magnitude (distance modulus)
+            distance = 1000.0 / (parallax + 1e-6)  # Distance in parsecs
+            abs_g_mag = g_mag - 5 * torch.log10(distance / 10.0)
             
+            # Astronomical stellar classification
             y = torch.zeros(num_nodes, dtype=torch.long)
-            y[g_mag < quartiles[0]] = 0  # Brightest 25%
-            y[(g_mag >= quartiles[0]) & (g_mag < quartiles[1])] = 1  # 25-50%
-            y[(g_mag >= quartiles[1]) & (g_mag < quartiles[2])] = 2  # 50-75%
-            y[g_mag >= quartiles[2]] = 3  # Faintest 25%
             
-            logger.info(f"🌟 Created balanced magnitude labels: {torch.bincount(y)}")
+            # Main Sequence Stars (most stars): Normal temperature-magnitude relation
+            main_sequence_mask = (
+                (abs_g_mag > -2) & (abs_g_mag < 15) &  # Reasonable absolute magnitude
+                (bp_rp > -0.5) & (bp_rp < 4.0) &       # Normal color range
+                (teff > 3000) & (teff < 10000)         # Main sequence temperatures
+            )
+            y[main_sequence_mask] = 0  # Main Sequence
+            
+            # Red Giants: Bright but cool (high luminosity, low temperature)
+            red_giant_mask = (
+                (abs_g_mag < 3) &      # Bright (high luminosity)
+                (bp_rp > 1.0) &        # Red color
+                (teff < 5000)          # Cool temperature
+            ) & ~main_sequence_mask
+            y[red_giant_mask] = 1  # Red Giant
+            
+            # White Dwarfs: Faint but hot (low luminosity, high temperature)
+            white_dwarf_mask = (
+                (abs_g_mag > 10) &     # Faint (low luminosity)
+                (bp_rp < 0.5) &        # Blue/white color
+                (teff > 8000)          # Hot temperature
+            ) & ~main_sequence_mask & ~red_giant_mask
+            y[white_dwarf_mask] = 2  # White Dwarf
+            
+            # Binary Systems: Unusual color-magnitude combinations
+            binary_mask = (
+                (abs_g_mag < -1) |     # Very bright (possible binary)
+                (bp_rp < -0.3) |       # Very blue
+                (bp_rp > 3.5)          # Very red
+            ) & ~main_sequence_mask & ~red_giant_mask & ~white_dwarf_mask
+            y[binary_mask] = 3  # Binary System
+            
+            # Ensure all stars are classified (fallback to main sequence)
+            unclassified = (y == 0) & ~main_sequence_mask & ~red_giant_mask & ~white_dwarf_mask & ~binary_mask
+            y[unclassified] = 0  # Default to main sequence
+            
+            class_counts = torch.bincount(y)
+            class_names = ["Main_Sequence", "Red_Giant", "White_Dwarf", "Binary_System"]
+            logger.info(f"🌟 Created astronomical stellar classification:")
+            for i, (name, count) in enumerate(zip(class_names, class_counts)):
+                percentage = 100 * count / num_nodes
+                logger.info(f"   {name}: {count:,} stars ({percentage:.1f}%)")
         else:
             # Fallback: balanced random labels
             y = torch.randint(0, 4, (num_nodes,), dtype=torch.long)
