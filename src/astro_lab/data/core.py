@@ -27,6 +27,9 @@ from torch_geometric.loader import DataLoader
 
 from .config import data_config
 
+# Import survey configurations from centralized location
+from ..utils.config.surveys import get_survey_config
+
 logger = logging.getLogger(__name__)
 
 # Set environment variable for NumPy 2.x compatibility with bpy and other modules
@@ -422,190 +425,6 @@ def create_cosmic_web_loader(
 
 
 # Survey configurations - DRY principle with TENSOR METADATA
-SURVEY_CONFIGS = {
-    "gaia": {
-        "name": "Gaia DR3",
-        "coord_cols": ["ra", "dec"],
-        "mag_cols": ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"],
-        "extra_cols": ["parallax", "pmra", "pmdec"],
-        "color_pairs": [
-            ("phot_g_mean_mag", "phot_bp_mean_mag"),
-            ("phot_bp_mean_mag", "phot_rp_mean_mag"),
-        ],
-        "default_limit": 12.0,
-        "url": "gaia",
-        # 🌟 TENSOR METADATA
-        "filter_system": "gaia",
-        "data_release": "DR3",
-        "coordinate_system": "icrs",
-        "photometric_bands": ["G", "BP", "RP"],
-        "tensor_column_mapping": {
-            "ra": 0,
-            "dec": 1,
-            "parallax": 2,
-            "pmra": 3,
-            "pmdec": 4,
-            "phot_g_mean_mag": 5,
-            "phot_bp_mean_mag": 6,
-            "phot_rp_mean_mag": 7,
-        },
-    },
-    "sdss": {
-        "name": "SDSS DR17",
-        "coord_cols": ["ra", "dec", "z"],
-        "mag_cols": [
-            "modelMag_u",
-            "modelMag_g",
-            "modelMag_r",
-            "modelMag_i",
-            "modelMag_z",
-        ],
-        "extra_cols": ["petroRad_r", "fracDeV_r"],
-        "color_pairs": [("modelMag_g", "modelMag_r"), ("modelMag_r", "modelMag_i")],
-        "default_limit": 20.0,
-        "url": "sdss",
-        # 🌟 TENSOR METADATA
-        "filter_system": "sdss",
-        "data_release": "DR17",
-        "coordinate_system": "icrs",
-        "photometric_bands": ["u", "g", "r", "i", "z"],
-        "tensor_column_mapping": {
-            "ra": 0,
-            "dec": 1,
-            "z": 2,
-            "modelMag_u": 3,
-            "modelMag_g": 4,
-            "modelMag_r": 5,
-            "modelMag_i": 6,
-            "modelMag_z": 7,
-            "petroRad_r": 8,
-            "fracDeV_r": 9,
-        },
-    },
-    "nsa": {
-        "name": "NASA Sloan Atlas",
-        "coord_cols": ["ra", "dec", "z"],
-        "mag_cols": ["mag_g", "mag_r", "mag_i"],
-        "extra_cols": ["sersic_n", "sersic_ba", "mass"],
-        "color_pairs": [("mag_g", "mag_r"), ("mag_r", "mag_i")],
-        "default_limit": 18.0,
-        "url": "nsa",
-        # 🌟 TENSOR METADATA
-        "filter_system": "sdss",
-        "data_release": "v1_0_1",
-        "coordinate_system": "icrs",
-        "photometric_bands": ["g", "r", "i"],
-        "tensor_column_mapping": {
-            "ra": 0,
-            "dec": 1,
-            "z": 2,
-            "mag_g": 3,
-            "mag_r": 4,
-            "mag_i": 5,
-            "sersic_n": 6,
-            "sersic_ba": 7,
-            "mass": 8,
-        },
-    },
-    "linear": {
-        "name": "LINEAR Lightcurves",
-        "coord_cols": ["ra", "dec"],
-        "mag_cols": ["mag_mean", "mag_amp"],
-        "extra_cols": ["period", "period_error"],
-        "color_pairs": [],
-        "default_limit": 16.0,
-        "url": "linear",
-        # 🌟 TENSOR METADATA
-        "filter_system": "johnson",
-        "data_release": "final",
-        "coordinate_system": "icrs",
-        "photometric_bands": ["V"],
-        "tensor_column_mapping": {
-            "ra": 0,
-            "dec": 1,
-            "mag_mean": 2,
-            "mag_amp": 3,
-            "period": 4,
-            "period_error": 5,
-        },
-    },
-    # 🌟 NEW: TNG50 als vollwertiger Survey
-    "tng50": {
-        "name": "TNG50 Simulation",
-        "coord_cols": ["x", "y", "z"],
-        "mag_cols": [],  # No magnitudes for simulation
-        "extra_cols": ["masses", "velocities_0", "velocities_1", "velocities_2"],
-        "color_pairs": [],
-        "default_limit": None,  # Keine Magnitude-Limits
-        "url": "tng50",
-        # 🌟 TENSOR METADATA for Simulation
-        "filter_system": "none",
-        "data_release": "TNG50-4",
-        "coordinate_system": "cartesian",
-        "photometric_bands": [],
-        "particle_types": ["PartType0", "PartType1", "PartType4", "PartType5"],
-        "tensor_column_mapping": {
-            "x": 0,
-            "y": 1,
-            "z": 2,
-            "masses": 3,
-            "velocities_0": 4,
-            "velocities_1": 5,
-            "velocities_2": 6,
-        },
-        # Simulation-specific metadata
-        "simulation_metadata": {
-            "box_size": 35.0,  # Mpc/h
-            "redshift": 0.0,
-            "snapshot": 99,
-            "cosmology": "Planck2018",
-        },
-    },
-    # 🌟 NEW: TNG50-Temporal als vollwertiger Survey
-    "tng50_temporal": {
-        "name": "TNG50 Temporal Simulation",
-        "coord_cols": ["x", "y", "z"],
-        "mag_cols": [],  # No magnitudes for simulation
-        "extra_cols": [
-            "mass",
-            "velocity_0",
-            "velocity_1",
-            "velocity_2",
-            "particle_type",
-            "snapshot_id",
-            "redshift",
-            "time_gyr",
-            "scale_factor",
-        ],
-        "color_pairs": [],
-        "default_limit": None,  # Keine Magnitude-Limits
-        "url": "tng50_temporal",
-        # 🌟 TENSOR METADATA for temporal simulation
-        "filter_system": "none",
-        "data_release": "TNG50-4-Temporal",
-        "coordinate_system": "cartesian",
-        "photometric_bands": [],
-        "particle_types": ["PartType0", "PartType1", "PartType4", "PartType5"],
-        "tensor_column_mapping": {
-            "x": 0,
-            "y": 1,
-            "z": 2,
-            "mass": 3,
-            "velocity_0": 4,
-            "velocity_1": 5,
-            "velocity_2": 6,
-            "particle_type": 7,
-            "snapshot_id": 8,
-            "redshift": 9,
-            "time_gyr": 10,
-            "scale_factor": 11,
-        },
-        # Temporal simulation-specific metadata
-        "temporal_evolution": True,
-    },
-}
-
-
 def _polars_to_survey_tensor(
     df: pl.DataFrame, survey: str, survey_metadata: Optional[Dict[str, Any]] = None
 ) -> Any:
@@ -621,10 +440,7 @@ def _polars_to_survey_tensor(
         SurveyTensor with properly configured metadata
     """
 
-    if survey not in SURVEY_CONFIGS:
-        raise ValueError(f"Survey {survey} not supported")
-
-    config = SURVEY_CONFIGS[survey]
+    config = get_survey_config(survey)
 
     # Convert to PyTorch tensor
     tensor_data = torch.tensor(df.to_numpy(), dtype=torch.float32)
@@ -692,8 +508,8 @@ class AstroDataset(InMemoryDataset):
         super().__init__(root, transform, force_reload=force_reload)
 
         # Set up survey-specific configuration
-        if survey and survey in SURVEY_CONFIGS:
-            config = SURVEY_CONFIGS[survey]
+        if survey and survey in get_survey_config(survey):
+            config = get_survey_config(survey)
             self.coord_cols = config.get("coord_cols", ["ra", "dec"])
             self.mag_cols = config.get("mag_cols", [])
             self.extra_cols = config.get("extra_cols", [])
@@ -927,161 +743,6 @@ class AstroDataset(InMemoryDataset):
             self.load(None)
 
 
-class AstroDataModule(L.LightningDataModule):
-    """
-    Clean Lightning DataModule for astronomical data.
-
-    Eliminates complex setup logic with simple, direct approach.
-    """
-
-    def __init__(
-        self,
-        survey: str,
-        data_path: Optional[str] = None,
-        batch_size: Optional[int] = None,  # Auto-detect if None
-        k_neighbors: int = 8,
-        max_samples: Optional[int] = None,
-        train_ratio: float = 0.7,
-        val_ratio: float = 0.15,
-        num_workers: Optional[int] = None,  # Auto-detect if None
-        force_reload: bool = False,
-        device: Optional[torch.device] = None,  # Auto-detect if None
-        **kwargs,
-    ):
-        super().__init__()
-        self.save_hyperparameters()
-
-        # Auto-detect optimal settings
-        self.device = device or get_optimal_device()
-        self.num_workers = num_workers or get_optimal_num_workers()
-
-        # Create dataset first to get size for batch size optimization
-        self.dataset = AstroDataset(
-            survey=survey,
-            data_path=data_path,
-            k_neighbors=k_neighbors,
-            max_samples=max_samples,
-            force_reload=force_reload,
-            **kwargs,
-        )
-
-        # Auto-detect optimal batch size
-        if batch_size is None:
-            dataset_size = len(self.dataset) if len(self.dataset) > 0 else 1000
-            self.batch_size = get_optimal_batch_size(dataset_size)
-        else:
-            self.batch_size = batch_size
-
-    def setup(self, stage: Optional[str] = None):
-        """Setup with automatic train/val/test splits."""
-        if len(self.dataset) == 0:
-            return
-
-        data = self.dataset[0]
-        num_nodes = data.num_nodes
-
-        # Create random splits
-        indices = torch.randperm(num_nodes)
-
-        train_size = int(self.hparams.train_ratio * num_nodes)
-        val_size = int(self.hparams.val_ratio * num_nodes)
-
-        # Create masks
-        data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
-
-        data.train_mask[indices[:train_size]] = True
-        data.val_mask[indices[train_size : train_size + val_size]] = True
-        data.test_mask[indices[train_size + val_size :]] = True
-
-        print(
-            f"📊 Split {data.survey_name}: "
-            f"Train={data.train_mask.sum()}, "
-            f"Val={data.val_mask.sum()}, "
-            f"Test={data.test_mask.sum()}"
-        )
-
-        # Move data to optimal device
-        if self.device.type == "cuda":
-            data = data.to(self.device)
-            print(f"🚀 Moved data to {self.device}")
-
-    def train_dataloader(self):
-        # Ensure dataset is loaded and valid
-        if len(self.dataset) == 0:
-            raise ValueError("Dataset is empty")
-
-        data = self.dataset[0]
-        if data is None:
-            raise ValueError("Dataset contains None values")
-
-        return DataLoader(
-            [data],
-            batch_size=1,  # Graph datasets use batch_size=1
-            num_workers=0,  # Disable multiprocessing to avoid worker issues
-            persistent_workers=False,
-            pin_memory=self.device.type == "cuda",
-        )
-
-    def val_dataloader(self):
-        # Ensure dataset is loaded and valid
-        if len(self.dataset) == 0:
-            raise ValueError("Dataset is empty")
-
-        data = self.dataset[0]
-        if data is None:
-            raise ValueError("Dataset contains None values")
-
-        return DataLoader(
-            [data],
-            batch_size=1,
-            num_workers=0,  # Disable multiprocessing to avoid worker issues
-            persistent_workers=False,
-            pin_memory=self.device.type == "cuda",
-        )
-
-    def test_dataloader(self):
-        # Ensure dataset is loaded and valid
-        if len(self.dataset) == 0:
-            raise ValueError("Dataset is empty")
-
-        data = self.dataset[0]
-        if data is None:
-            raise ValueError("Dataset contains None values")
-
-        return DataLoader(
-            [data],
-            batch_size=1,
-            num_workers=0,  # Disable multiprocessing to avoid worker issues
-            persistent_workers=False,
-            pin_memory=self.device.type == "cuda",
-        )
-
-
-# Factory function - replaces all the individual create_* functions
-def create_astro_dataloader(survey: str, batch_size: int = 1, **kwargs) -> DataLoader:
-    """
-    Universal factory for astronomical data loaders.
-
-    Replaces create_gaia_dataloader, create_sdss_dataloader, etc.
-    """
-    dataset = AstroDataset(survey=survey, **kwargs)
-    return DataLoader(dataset, batch_size=batch_size)
-
-
-def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
-    """
-    Universal factory for astronomical data modules.
-
-    Replaces GaiaDataModule, ExoplanetDataModule, etc.
-    """
-    return AstroDataModule(survey=survey, **kwargs)
-
-
-# 🌟 ENHANCED LOAD FUNCTIONS with automatic tensor conversion
-
-
 def load_gaia_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
@@ -1244,7 +905,7 @@ def load_tng50_data(
     Returns:
         AstroDataset or tensor with TNG50 simulation data
     """
-    config = SURVEY_CONFIGS["tng50"]
+    config = get_survey_config("tng50")
 
     # Load TNG50 data from processed files
     data_path = Path("data/processed/tng50_combined.parquet")
@@ -1299,7 +960,7 @@ def load_tng50_temporal_data(
     Returns:
         AstroDataset with TNG50 temporal simulation data
     """
-    config = SURVEY_CONFIGS["tng50_temporal"]
+    config = get_survey_config("tng50_temporal")
 
     # Load TNG50 temporal data from processed files
     data_path = Path(

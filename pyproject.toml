@@ -64,7 +64,8 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
-    "psutil>=6.1.0",  # For memory monitoring
+    "psutil>=6.1.0", # For memory monitoring
+    "pytest-xdist>=3.7.0",
 ]
 
 # Testing specific
@@ -183,6 +184,7 @@ addopts = [
     "-v",  # Verbose output
     "--durations", "10",  # Show 10 slowest tests
     "--maxfail", "10",  # Stop after 10 failures
+    "-n", "auto",  # Parallele Tests mit pytest-xdist
 ]
 
 markers = [

@@ -15,6 +15,7 @@ from astro_lab.models.base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGMode
 from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
 from .astro import AstroSurveyGNN
 from .config import ModelConfig
+from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
 
 class ModelRegistry:
     """Central registry for all available models."""
@@ -49,55 +50,6 @@ class ModelRegistry:
 
 class ModelFactory:
     """Centralized model factory with survey-specific configurations."""
-
-    # Survey-specific default configurations
-    SURVEY_CONFIGS = {
-        "gaia": {
-            "use_astrometry": True,
-            "use_photometry": True,
-            "use_spectroscopy": False,
-            "conv_type": "gat",
-            "hidden_dim": 128,
-            "num_layers": 3,
-            "dropout": 0.1,
-        },
-        "sdss": {
-            "use_photometry": True,
-            "use_spectroscopy": True,
-            "use_astrometry": False,
-            "conv_type": "transformer",
-            "hidden_dim": 256,
-            "num_layers": 4,
-            "dropout": 0.15,
-        },
-        "lsst": {
-            "use_photometry": True,
-            "use_astrometry": True,
-            "use_spectroscopy": False,
-            "conv_type": "sage",
-            "hidden_dim": 192,
-            "num_layers": 3,
-            "dropout": 0.1,
-        },
-        "euclid": {
-            "use_photometry": True,
-            "use_astrometry": True,
-            "use_spectroscopy": False,
-            "conv_type": "gat",
-            "hidden_dim": 256,
-            "num_layers": 4,
-            "dropout": 0.1,
-        },
-        "des": {
-            "use_photometry": True,
-            "use_astrometry": False,
-            "use_spectroscopy": False,
-            "conv_type": "gcn",
-            "hidden_dim": 128,
-            "num_layers": 3,
-            "dropout": 0.1,
-        },
-    }
 
     # Task-specific configurations
     TASK_CONFIGS = {
@@ -200,9 +152,9 @@ class ModelFactory:
         """Create model optimized for specific survey with automatic class detection."""
 
         # Get survey configuration
-        survey_config = cls.SURVEY_CONFIGS.get(survey, {})
+        survey_config = get_survey_config(survey)
         if not survey_config:
-            available_surveys = list(cls.SURVEY_CONFIGS.keys())
+            available_surveys = get_available_surveys()
             raise ValueError(
                 f"Unknown survey: {survey}. Available: {available_surveys}"
             )
@@ -369,7 +321,7 @@ class ModelFactory:
         # Combine configurations from multiple surveys
         combined_config = {}
         for survey in surveys:
-            survey_config = cls.SURVEY_CONFIGS.get(survey, {})
+            survey_config = get_survey_config(survey)
             for key, value in survey_config.items():
                 if (
                     key == "use_photometry"
@@ -478,7 +430,7 @@ def get_model_info(model: nn.Module) -> Dict[str, Any]:
 def list_available_models() -> Dict[str, List[str]]:
     """List all available models and configurations."""
     return {
-        "surveys": list(ModelFactory.SURVEY_CONFIGS.keys()),
+        "surveys": get_available_surveys(),
         "tasks": list(ModelFactory.TASK_CONFIGS.keys()),
         "output_heads": OutputHeadRegistry.list_available(),
         "registered_models": ModelRegistry.list_available(),

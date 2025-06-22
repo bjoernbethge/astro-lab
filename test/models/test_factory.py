@@ -21,6 +21,7 @@ from astro_lab.models.factory import (
 )
 from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
 from astro_lab.models.layers import LayerFactory
+from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
 
 
 class TestModelRegistry:

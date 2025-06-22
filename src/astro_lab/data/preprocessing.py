@@ -19,9 +19,8 @@ import torch
 from sklearn.neighbors import NearestNeighbors
 from torch_geometric.data import Data
 
-from ..utils.config.surveys import get_survey_config, get_survey_features
+from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
 from .config import data_config
-from .core import SURVEY_CONFIGS
 
 logger = logging.getLogger(__name__)
 

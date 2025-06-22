@@ -76,7 +76,6 @@ __all__ = [
     "AstroDataset",  # Universal dataset for all surveys
     "AstroDataModule",  # Lightning integration
     # 🏭 FACTORY FUNCTIONS
-    "create_astro_dataloader",  # Universal loader factory
     "create_astro_datamodule",  # Universal datamodule factory
     # 🚀 CONVENIENCE FUNCTIONS (Most Common)
     "load_gaia_data",  # One-liner for Gaia
