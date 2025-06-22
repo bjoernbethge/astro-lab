@@ -672,13 +672,47 @@ def handle_download(args):
 
 
 def handle_train(args):
-    """Handle train command with new unified architecture."""
+    """Handle train command with helpful validation and guidance."""
     from .optimize import create_default_config, optimize_from_config, train_from_config
+
+    # Check if user provided any parameters at all
+    has_config = args.config is not None
+    has_dataset = args.dataset is not None
+    has_model = args.model is not None
+    
+    # If no parameters provided, show helpful guidance
+    if not has_config and not has_dataset and not has_model:
+        logger.info("🧠 AstroLab Training - Machine Learning for Astronomy")
+        logger.info("=" * 55)
+        logger.info("")
+        logger.info("💡 You must provide either a configuration file or dataset + model:")
+        logger.info("")
+        logger.info("📋 Option 1: With configuration file (recommended)")
+        logger.info("   astro-lab train --config my_config.yaml")
+        logger.info("")
+        logger.info("⚡ Option 2: Quick training")
+        logger.info("   astro-lab train --dataset gaia --model gaia_classifier --epochs 50")
+        logger.info("")
+        logger.info("🔧 Available parameters:")
+        logger.info("   --dataset     : Dataset (gaia, sdss, nsa)")
+        logger.info("   --model       : Model type (gaia_classifier, sdss_galaxy_classifier)")
+        logger.info("   --epochs      : Number of epochs (default: 100)")
+        logger.info("   --batch-size  : Batch size (default: 32)")
+        logger.info("   --learning-rate: Learning rate (default: 0.001)")
+        logger.info("")
+        logger.info("📖 Examples:")
+        logger.info("   astro-lab train --dataset gaia --model gaia_classifier")
+        logger.info("   astro-lab train --config configs/gaia_optimization.yaml")
+        logger.info("   astro-lab train --dataset sdss --model sdss_galaxy_classifier --epochs 200")
+        logger.info("")
+        logger.info("💡 Tip: Use 'astro-lab config create' to create a default configuration")
+        return
 
     if args.config:
         # Config-based training (preferred method)
         if not Path(args.config).exists():
             logger.error(f"❌ Configuration file not found: {args.config}")
+            logger.info("💡 Use 'astro-lab config create' to create a default configuration")
             return
 
         try:
@@ -689,10 +723,28 @@ def handle_train(args):
             sys.exit(1)
 
     else:
-        # Quick train mode (requires dataset and model)
-        if not args.dataset or not args.model:
-            logger.error("❌ For quick train, --dataset and --model are required")
-            logger.info("💡 Or use --config for full configuration support")
+        # Quick train mode - validate required parameters
+        missing_params = []
+        if not args.dataset:
+            missing_params.append("--dataset")
+        if not args.model:
+            missing_params.append("--model")
+            
+        if missing_params:
+            logger.error(f"❌ Missing parameters for quick training: {', '.join(missing_params)}")
+            logger.info("")
+            logger.info("🔧 Required parameters:")
+            logger.info("   --dataset : Choose a dataset (gaia, sdss, nsa)")
+            logger.info("   --model   : Choose a model type:")
+            logger.info("             • gaia_classifier")
+            logger.info("             • sdss_galaxy_classifier")
+            logger.info("             • lsst_transient_detector")
+            logger.info("")
+            logger.info("📖 Example:")
+            logger.info("   astro-lab train --dataset gaia --model gaia_classifier --epochs 50")
+            logger.info("")
+            logger.info("💡 Or use a configuration file:")
+            logger.info("   astro-lab train --config my_config.yaml")
             return
 
         # Create temporary config for quick training using new architecture
