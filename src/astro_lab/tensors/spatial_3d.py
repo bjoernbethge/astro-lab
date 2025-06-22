@@ -268,29 +268,9 @@ class Spatial3DTensor(AstroTensorBase):
 
     def _build_spatial_index(self) -> None:
         """Build spatial index for fast neighbor queries."""
-
-        pos = self._data
-
-        # Create edges using sklearn
-        if radius is not None:
-            edge_index = self._create_radius_graph(pos, radius)
-        else:
-            edge_index = self._create_knn_graph(pos, k)
-
-        # Node features: include both Cartesian and spherical
-        ra, dec, dist = self.to_spherical()
-        spherical_features = torch.stack(
-            [
-                torch.deg2rad(ra),
-                torch.deg2rad(dec),
-                torch.log1p(dist),  # log(1+distance) for better scaling
-            ],
-            dim=-1,
-        )
-
-        x = torch.cat([pos, spherical_features], dim=-1)  # [N, 6]
-
-        return Data(x=x, edge_index=edge_index, pos=pos)
+        # Build spatial index using BallTree
+        positions_np = self._data.cpu().numpy()
+        self._spatial_index = BallTree(positions_np, metric="euclidean")
 
     def _create_knn_graph(self, pos: torch.Tensor, k: int) -> torch.Tensor:
         """Create k-NN graph using sklearn."""
@@ -463,6 +443,130 @@ class Spatial3DTensor(AstroTensorBase):
             "cluster_stats": cluster_stats,
             "coords_pc": torch.from_numpy(coords_pc),
         }
+
+    def query_neighbors(
+        self, query_point: torch.Tensor, radius: float = 1.0
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Query neighbors within radius of a point.
+
+        Args:
+            query_point: Query point coordinates [3] or [1, 3]
+            radius: Search radius
+
+        Returns:
+            Tuple of (neighbor_indices, distances)
+        """
+        if not hasattr(self, "_spatial_index"):
+            self._build_spatial_index()
+
+        query_np = query_point.detach().cpu().numpy().reshape(1, -1)
+        indices = self._spatial_index.query_radius(query_np, r=radius)[0]
+
+        if len(indices) > 0:
+            distances = torch.norm(self._data[indices] - query_point, dim=1)
+            return torch.tensor(indices), distances
+        else:
+            return torch.tensor([]), torch.tensor([])
+
+    def angular_separation(self, other: "Spatial3DTensor") -> torch.Tensor:
+        """
+        Calculate angular separation between points in this tensor and another.
+
+        Args:
+            other: Another Spatial3DTensor
+
+        Returns:
+            Angular separations in radians
+        """
+        # Convert to spherical coordinates
+        ra1, dec1, _ = self.to_spherical()
+        ra2, dec2, _ = other.to_spherical()
+
+        # Convert to radians
+        ra1_rad = torch.deg2rad(ra1)
+        dec1_rad = torch.deg2rad(dec1)
+        ra2_rad = torch.deg2rad(ra2)
+        dec2_rad = torch.deg2rad(dec2)
+
+        # Haversine formula for angular separation
+        dra = ra2_rad - ra1_rad
+        ddec = dec2_rad - dec1_rad
+
+        a = (
+            torch.sin(ddec / 2) ** 2
+            + torch.cos(dec1_rad) * torch.cos(dec2_rad) * torch.sin(dra / 2) ** 2
+        )
+        angular_sep = 2 * torch.asin(torch.sqrt(torch.clamp(a, 0, 1)))
+
+        return angular_sep
+
+    def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:
+        """
+        Perform cone search around a center point.
+
+        Args:
+            center: Center point [ra, dec] in degrees
+            radius_deg: Search radius in degrees
+
+        Returns:
+            Boolean mask of objects within cone
+        """
+        # Convert center to tensor if needed
+        if not isinstance(center, torch.Tensor):
+            center = torch.tensor(center, dtype=torch.float32)
+
+        # Create a single-point tensor for the center
+        center_tensor = self.__class__.from_spherical(
+            center[0],
+            center[1],
+            torch.tensor(1.0),  # Use unit distance
+            coordinate_system=self.coordinate_system,
+            unit=self.unit,
+        )
+
+        # Calculate angular separations
+        separations = self.angular_separation(center_tensor)
+
+        # Convert radius to radians and create mask
+        radius_rad = torch.deg2rad(torch.tensor(radius_deg))
+        mask = separations <= radius_rad
+
+        return mask
+
+    def to_torch_geometric(self, k: int = 8, radius: Optional[float] = None) -> Data:
+        """
+        Convert to PyTorch Geometric Data object.
+
+        Args:
+            k: Number of nearest neighbors for graph construction
+            radius: Alternative radius-based graph construction
+
+        Returns:
+            PyTorch Geometric Data object
+        """
+        pos = self._data
+
+        # Create edges using sklearn
+        if radius is not None:
+            edge_index = self._create_radius_graph(pos, radius)
+        else:
+            edge_index = self._create_knn_graph(pos, k)
+
+        # Node features: include both Cartesian and spherical
+        ra, dec, dist = self.to_spherical()
+        spherical_features = torch.stack(
+            [
+                torch.deg2rad(ra),
+                torch.deg2rad(dec),
+                torch.log1p(dist),  # log(1+distance) for better scaling
+            ],
+            dim=-1,
+        )
+
+        x = torch.cat([pos, spherical_features], dim=-1)  # [N, 6]
+
+        return Data(x=x, edge_index=edge_index, pos=pos)
 
     def analyze_local_density(self, radius_pc: float = 5.0) -> torch.Tensor:
         """

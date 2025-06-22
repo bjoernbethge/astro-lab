@@ -211,7 +211,8 @@ class FeatureTensor(AstroTensorBase):
         Returns:
             FeatureTensor with imputed values
         """
-        if not SKLEARN_AVAILABLE and method in ["knn"]:
+        # Check for KNN method - sklearn is required
+        if method in ["knn"]:
             raise ImportError("sklearn required for advanced imputation")
 
         if feature_types is None:

@@ -337,7 +337,8 @@ class ClusteringTensor(AstroTensorBase):
                 n_clusters=None, distance_threshold=distance_threshold, linkage=linkage
             )
         else:
-            clustering = AgglomerativeClustering(n_clusters=n_clusters, linkage=linkage)
+            from sklearn.cluster import AgglomerativeClustering
+        clustering = AgglomerativeClustering(n_clusters=n_clusters, linkage=linkage)
 
         labels = clustering.fit_predict(data)
 
