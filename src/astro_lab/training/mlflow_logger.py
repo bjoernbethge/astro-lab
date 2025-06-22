@@ -12,22 +12,16 @@ import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+# Optional imports for enhanced system monitoring
+import GPUtil
 import mlflow
 import mlflow.pytorch
+import psutil
 import torch
 from lightning.pytorch.loggers import MLFlowLogger as LightningMLFlowLogger
 
 from astro_lab.data.config import data_config
 
-# Optional imports for enhanced system monitoring
-try:
-    import GPUtil
-    import psutil
-
-    SYSTEM_MONITORING_AVAILABLE = True
-except ImportError:
-    SYSTEM_MONITORING_AVAILABLE = False
-    print("Warning: psutil/GPUtil not available. System metrics will be limited.")
 
 class AstroMLflowLogger(LightningMLFlowLogger):
     """Optimized MLflow logger for astronomical models with 2025 system metrics integration."""
@@ -67,9 +61,7 @@ class AstroMLflowLogger(LightningMLFlowLogger):
             "version": "0.3.0",
             "data_config_version": "2.0",  # Track config system version
             "tracking_uri": tracking_uri,
-            "system_metrics_enabled": str(
-                enable_system_metrics and SYSTEM_MONITORING_AVAILABLE
-            ),
+            "system_metrics_enabled": str(enable_system_metrics),
         }
         if tags:
             astro_tags.update(tags)
@@ -84,9 +76,7 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         )
 
         # System metrics monitoring setup
-        self.enable_system_metrics = (
-            enable_system_metrics and SYSTEM_MONITORING_AVAILABLE
-        )
+        self.enable_system_metrics = enable_system_metrics
         self.system_metrics_interval = system_metrics_interval
         self._system_metrics_thread = None
         self._stop_system_metrics = threading.Event()
@@ -518,6 +508,7 @@ class AstroMLflowLogger(LightningMLFlowLogger):
         except Exception as e:
             print(f"Warning: Error ending MLflow run: {e}")
 
+
 def create_astro_mlflow_logger(
     config: Dict[str, Any], experiment_name: Optional[str] = None
 ) -> AstroMLflowLogger:
@@ -551,6 +542,7 @@ def create_astro_mlflow_logger(
     logger.log_config_info(config)
 
     return logger
+
 
 def setup_mlflow_experiment(
     experiment_name: str,
@@ -590,6 +582,7 @@ def setup_mlflow_experiment(
     mlflow.set_experiment(experiment_name)
     return experiment_id
 
+
 def setup_mlflow_from_config(config: Dict[str, Any]) -> str:
     """Setup MLflow experiment from configuration dictionary."""
     mlflow_config = config.get("mlflow", {})
@@ -599,6 +592,7 @@ def setup_mlflow_from_config(config: Dict[str, Any]) -> str:
         tracking_uri=mlflow_config.get("tracking_uri"),
         artifact_location=mlflow_config.get("artifact_location"),
     )
+
 
 __all__ = [
     "AstroMLflowLogger",

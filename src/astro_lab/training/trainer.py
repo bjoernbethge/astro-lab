@@ -38,22 +38,7 @@ from astro_lab.training.config import TrainingConfig as FullTrainingConfig
 from .lightning_module import AstroLightningModule
 
 # Optional imports
-try:
-    from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
-
-    MLFLOW_AVAILABLE = True
-except ImportError:
-    AstroMLflowLogger = None
-    setup_mlflow_experiment = None
-    MLFLOW_AVAILABLE = False
-
-try:
-    from .optuna_trainer import OptunaTrainer
-
-    OPTUNA_AVAILABLE = True
-except (ImportError, ValueError):
-    OptunaTrainer = None
-    OPTUNA_AVAILABLE = False
+from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
 
 # Type aliases for clarity
 DeviceType = Union[int, List[int], Literal["auto"]]
@@ -175,8 +160,7 @@ class AstroTrainer(Trainer):
 
         # Determine if we should disable Lightning's default logging
         disable_lightning_logs = (
-            MLFLOW_AVAILABLE
-            and getattr(self.training_config.logging, "use_mlflow", False)
+            getattr(self.training_config.logging, "use_mlflow", False)
             and logger is not None
         )
 
@@ -270,10 +254,8 @@ class AstroTrainer(Trainer):
         return callbacks
 
     def _setup_astro_logger(self):
-        """Setup logging with MLflow integration if available."""
-        if MLFLOW_AVAILABLE and getattr(
-            self.training_config.logging, "use_mlflow", False
-        ):
+        """Setup logging with MLflow integration."""
+        if getattr(self.training_config.logging, "use_mlflow", False):
             try:
                 tracking_uri = getattr(
                     self.training_config.logging, "mlflow_tracking_uri", None
