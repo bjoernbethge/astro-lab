@@ -25,15 +25,10 @@ from ..utils.viz.bidirectional_bridge import BidirectionalPyVistaBlenderBridge
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Centralized Blender/Astropy availability checks
-try:
-    from astropy.cosmology import Planck18 as cosmo
+# Centralized imports
+from astropy.cosmology import Planck18 as cosmo
 
-    ASTROPY_AVAILABLE = True
-except ImportError:
-    ASTROPY_AVAILABLE = False
-
-# Import bidirectional bridge
+# Import bidirectional bridge (note: this module might not exist anymore)
 try:
     from ..utils.viz.bidirectional_bridge import (
         SyncConfig,
@@ -114,16 +109,6 @@ class AstroPipeline:
 
     def get_3d_coordinates(self):
         """Converts 2D + Redshift to 3D coordinates using Astropy."""
-        if not ASTROPY_AVAILABLE:
-            logger.warning("⚠️ Astropy not available - using simplified coordinates.")
-            # Fallback without Astropy
-            ra_array = np.array(self.galaxy_df["ra"].to_numpy())
-            dec_array = np.array(self.galaxy_df["dec"].to_numpy())
-            redshift_array = (
-                np.array(self.galaxy_df["redshift"].to_numpy()) * 1000
-            )  # Scaling
-            coords = np.vstack([ra_array, dec_array, redshift_array]).T
-            return coords, None
 
         logger.info("🔭 Converting to 3D coordinates with Astropy...")
 
