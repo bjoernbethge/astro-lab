@@ -1,20 +1,51 @@
 # 🌌 Gaia DR3 Cosmic Web Analysis
 
-## Overview
+Complete 3D cosmic web analysis of 3 million Gaia DR3 stars using advanced spatial clustering techniques and interactive visualization.
 
-Complete 3D cosmic web analysis of 3 million Gaia DR3 stars using advanced spatial clustering techniques and interactive visualization. This represents the most comprehensive mapping of local galactic structure ever performed with AstroLab.
+## 📋 Table of Contents
 
-## 📊 Dataset: Gaia DR3 Magnitude 12.0
+- [🚀 Quick Start](#-quick-start)
+- [📊 Dataset Overview](#-dataset-overview)
+- [🕸️ Cosmic Web Structure](#️-cosmic-web-structure)
+- [🔬 Scientific Significance](#-scientific-significance)
+- [🛠️ Technical Implementation](#️-technical-implementation)
+- [📁 Data Products](#-data-products)
+- [💡 Usage Examples](#-usage-examples)
+- [📚 Related Documentation](#-related-documentation)
 
-### Raw Data Properties
+## 🚀 Quick Start
+
+```python
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
+
+# Load and analyze Gaia cosmic web
+results = create_cosmic_web_loader(
+    survey="gaia",
+    max_samples=1000000,
+    scales_mpc=[5.0, 10.0, 20.0]
+)
+
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(
+    results,
+    survey_name="gaia",
+    radius=3.0,
+    background_color='#000011',
+    point_color='#ffd700'  # Gold for stars
+)
 ```
-Total Stars:        3,000,000
-Magnitude Limit:    ≤ 12.0
-Sky Coverage:       All-sky (-90° to +90° declination)
-Distance Range:     23 - 125 parsecs from Sun
-Data Size:          346 MB (21 parameters per star)
-Parallax Range:     8 - 43 milliarcseconds
-```
+
+## 📊 Dataset Overview
+
+### Gaia DR3 Properties
+- **Total Stars**: 3,000,000
+- **Magnitude Limit**: ≤ 12.0
+- **Sky Coverage**: All-sky (-90° to +90° declination)
+- **Distance Range**: 23 - 125 parsecs from Sun
+- **Data Size**: 346 MB (21 parameters per star)
+- **Parallax Range**: 8 - 43 milliarcseconds
 
 ### Coordinate Transformation
 ```python
@@ -28,38 +59,31 @@ y = cartesian.y.to(u.pc).value  # Y coordinate (pc)
 z = cartesian.z.to(u.pc).value  # Z coordinate (pc)
 ```
 
-## 🕸️ Cosmic Web Structure Discovery
+## 🕸️ Cosmic Web Structure
 
 ### Multi-Scale Analysis Results
 
-#### Small Scale (5 pc radius) - 50,000 stars sample:
-```
-Stellar Groups:     526
-Grouped Stars:      40,691 (81.4%)
-Isolated Stars:     9,309 (18.6%)
-Largest Group:      36,375 stars
-Structure Type:     Local stellar associations
-```
+#### Small Scale (5 pc) - 50,000 stars sample
+- **Stellar Groups**: 526
+- **Grouped Stars**: 40,691 (81.4%)
+- **Isolated Stars**: 9,309 (18.6%)
+- **Structure Type**: Local stellar associations
 
-#### Complete Dataset (5 pc radius) - 3,000,000 stars:
-```
-Stellar Groups:     1
-Grouped Stars:      2,999,858 (100.0%)
-Isolated Stars:     142 (0.005%)
-Group Radius:       125.0 pc
-Density:            3.67 × 10⁻¹ stars/pc³
-Structure Type:     Continuous galactic disk
-```
+#### Complete Dataset (5 pc) - 3,000,000 stars
+- **Stellar Groups**: 1
+- **Grouped Stars**: 2,999,858 (100.0%)
+- **Isolated Stars**: 142 (0.005%)
+- **Group Radius**: 125.0 pc
+- **Density**: 3.67 × 10⁻¹ stars/pc³
+- **Structure Type**: Continuous galactic disk
 
-### 🎯 Why One Large Cluster Makes Astronomical Sense
+### Why One Large Cluster Makes Astronomical Sense
 
 #### Statistical Analysis
-```
-Total Volume:           8,181,231 pc³
-Mean Density:           3.67 × 10⁻¹ stars/pc³
-Cluster Volume (5pc):   523.6 pc³
-Expected Neighbors:     192 stars per 5 pc radius
-```
+- **Total Volume**: 8,181,231 pc³
+- **Mean Density**: 3.67 × 10⁻¹ stars/pc³
+- **Cluster Volume (5pc)**: 523.6 pc³
+- **Expected Neighbors**: 192 stars per 5 pc radius
 
 #### Astronomical Reasons
 1. **Gaia DR3 = Homogeneous All-Sky Survey**
@@ -72,15 +96,30 @@ Expected Neighbors:     192 stars per 5 pc radius
    - Stars not randomly distributed but structured
    - 5 pc radius > typical stellar separations (1-3 pc)
 
-3. **Sample Size Effect**
-   - 50k stars → 526 fragmented clusters (gaps)
-   - 3M stars → 1 connected web (complete coverage)
-   - More stars = fewer gaps = continuous structure
-
-4. **Percolation Theory**
+3. **Percolation Theory**
    - High density regime → everything connects
    - Local galactic disk is above percolation threshold
    - Confirms continuous stellar distribution
+
+## 🔬 Scientific Significance
+
+### Local Galactic Structure
+- **Solar Neighborhood** mapped in unprecedented 3D detail
+- **Stellar Associations** identified and characterized
+- **Galactic Disk Structure** revealed at 100+ parsec scale
+- **Continuous Stellar Distribution** confirmed
+
+### Cosmic Web Properties
+- **Multi-scale Structure** from 5 pc to 125 pc
+- **Hierarchical Organization** demonstrates cosmic web nature
+- **Density Variations** reveal local galactic environment
+- **Percolation Behavior** at galactic disk densities
+
+### Astrophysical Insights
+- **Star Formation Regions** identifiable as dense groups
+- **Galactic Rotation Effects** visible in large-scale structure
+- **Local Bubble Structure** mapped in 3D space
+- **Stellar Kinematics** correlated with spatial distribution
 
 ## 🛠️ Technical Implementation
 
@@ -110,33 +149,11 @@ results = spatial_tensor.cosmic_web_clustering(
 7. **Interactive Visualization** → CosmographBridge integration
 
 ### Performance Metrics
-```
-Data Loading:           ~12 seconds
-Coordinate Conversion:  ~15 seconds (Astropy)
-3D Clustering:          ~190 seconds (DBSCAN)
-Total Processing:       ~220 seconds
-Performance:            13,636 stars/second
-```
-
-## 🌌 Scientific Significance
-
-### Local Galactic Structure
-- **Solar Neighborhood** mapped in unprecedented 3D detail
-- **Stellar Associations** identified and characterized
-- **Galactic Disk Structure** revealed at 100+ parsec scale
-- **Continuous Stellar Distribution** confirmed
-
-### Cosmic Web Properties
-- **Multi-scale Structure** from 5 pc to 125 pc
-- **Hierarchical Organization** demonstrates cosmic web nature
-- **Density Variations** reveal local galactic environment
-- **Percolation Behavior** at galactic disk densities
-
-### Astrophysical Insights
-- **Star Formation Regions** identifiable as dense groups
-- **Galactic Rotation Effects** visible in large-scale structure
-- **Local Bubble Structure** mapped in 3D space
-- **Stellar Kinematics** correlated with spatial distribution
+- **Data Loading**: ~12 seconds
+- **Coordinate Conversion**: ~15 seconds (Astropy)
+- **3D Clustering**: ~190 seconds (DBSCAN)
+- **Total Processing**: ~220 seconds
+- **Performance**: 13,636 stars/second
 
 ## 📁 Data Products
 
@@ -159,12 +176,11 @@ print(f"Coordinates: {coords.shape}")               # [3000000, 3]
 print(f"Unique groups: {len(set(labels.numpy()))}")  # 1 (+ noise)
 ```
 
-## 🚀 Usage Examples
+## 💡 Usage Examples
 
 ### Basic Analysis
 ```python
 from astro_lab.data.core import create_cosmic_web_loader
-from astro_lab.utils.viz import CosmographBridge
 
 # Load and analyze Gaia cosmic web
 results = create_cosmic_web_loader(
@@ -180,6 +196,8 @@ print(f"Clusters: {len(results['clusters'])}")
 
 ### Interactive Visualization
 ```python
+from astro_lab.utils.viz import CosmographBridge
+
 # Create interactive 3D visualization
 bridge = CosmographBridge()
 widget = bridge.from_cosmic_web_results(
@@ -200,168 +218,37 @@ import torch
 coords_3d = torch.tensor(results['coordinates'], dtype=torch.float32)
 spatial_tensor = Spatial3DTensor(coords_3d, unit='pc')
 
-# Local density calculation
-densities = spatial_tensor.analyze_local_density(radius_pc=5.0)
-print(f"Mean local density: {densities.mean():.2e} stars/pc³")
-
-# 3D density field
-structure = spatial_tensor.cosmic_web_structure(grid_size_pc=20.0)
+# Analyze local density
+density_results = spatial_tensor.analyze_local_density(radius_pc=10.0)
+print(f"Mean density: {density_results['mean_density']:.2e} stars/pc³")
+print(f"Density variation: {density_results['std_density']:.2e}")
 ```
-
-### Multi-Scale Analysis
-```python
-# Analyze at different scales
-scales = [5.0, 10.0, 20.0, 50.0]
-scale_results = {}
-
-for scale in scales:
-    scale_results[scale] = create_cosmic_web_loader(
-        survey="gaia",
-        max_samples=500000,
-        scales_mpc=[scale]
-    )
-    print(f"Scale {scale} Mpc: {scale_results[scale]['n_clusters']} clusters")
-```
-
-### Comparative Analysis
-```python
-# Compare with other surveys
-surveys = ["gaia", "sdss", "nsa"]
-comparison = {}
-
-for survey in surveys:
-    comparison[survey] = create_cosmic_web_loader(
-        survey=survey,
-        max_samples=100000,
-        scales_mpc=[10.0]
-    )
-    print(f"{survey}: {comparison[survey]['n_objects']} objects, "
-          f"{comparison[survey]['n_clusters']} clusters")
-
-# Visualize comparison
-bridge = CosmographBridge()
-widgets = []
-
-for survey in surveys:
-    widget = bridge.from_cosmic_web_results(
-        comparison[survey],
-        survey_name=survey,
-        radius=2.0
-    )
-    widgets.append(widget)
-```
-
-## 🎨 Visualization Features
-
-### CosmographBridge Integration
-- **Gold color scheme** for stellar data
-- **Real-time physics simulation** with gravity and repulsion
-- **Interactive 3D navigation** with click and drag
-- **Hover information** for individual stars
-- **Cluster highlighting** for cosmic web structures
-
-### Survey-Specific Colors
-```python
-color_map = {
-    'gaia': '#ffd700',      # Gold for stars
-    'sdss': '#4a90e2',      # Blue for galaxies
-    'nsa': '#e24a4a',       # Red for NSA
-    'tng50': '#00ff00',     # Green for simulation
-    'linear': '#ff8800',    # Orange for asteroids
-    'exoplanet': '#ff00ff'  # Magenta for exoplanets
-}
-```
-
-## 🔬 Advanced Analysis
-
-### Cosmic Web Metrics
-```python
-# Calculate cosmic web metrics
-from astro_lab.tensors.spatial_3d import calculate_cosmic_web_metrics
-
-metrics = calculate_cosmic_web_metrics(
-    coordinates=results['coordinates'],
-    clusters=results['clusters'],
-    scales_mpc=[5.0, 10.0, 20.0]
-)
-
-print(f"Connectivity: {metrics['connectivity']:.3f}")
-print(f"Hierarchy: {metrics['hierarchy']:.3f}")
-print(f"Fractal dimension: {metrics['fractal_dimension']:.3f}")
-```
-
-### Statistical Analysis
-```python
-# Statistical properties of cosmic web
-stats = results['statistics']
-
-print(f"Mean cluster size: {stats['mean_cluster_size']:.1f}")
-print(f"Cluster size std: {stats['cluster_size_std']:.1f}")
-print(f"Largest cluster: {stats['largest_cluster']}")
-print(f"Cluster density: {stats['cluster_density']:.2e} objects/Mpc³")
-```
-
-## 📊 Export and Sharing
-
-### Save Results
-```python
-import json
-
-# Save cosmic web results
-with open('gaia_cosmic_web_results.json', 'w') as f:
-    json.dump(results, f, indent=2)
-
-# Save visualization settings
-viz_config = {
-    'survey_name': 'gaia',
-    'radius': 3.0,
-    'background_color': '#000011',
-    'point_color': '#ffd700'
-}
-
-with open('gaia_viz_config.json', 'w') as f:
-    json.dump(viz_config, f, indent=2)
-```
-
-### Load and Continue
-```python
-# Load saved results
-with open('gaia_cosmic_web_results.json', 'r') as f:
-    results = json.load(f)
-
-# Create visualization from saved results
-bridge = CosmographBridge()
-widget = bridge.from_cosmic_web_results(
-    results,
-    survey_name='gaia',
-    radius=3.0
-)
-```
-
-## 🌟 Key Insights
-
-1. **Continuous Galactic Structure**: Gaia DR3 reveals a continuous stellar distribution in the local galactic disk
-2. **Multi-scale Organization**: Cosmic web structure exists from 5 pc to 125 pc scales
-3. **Interactive Exploration**: CosmographBridge enables real-time 3D exploration of stellar structures
-4. **Comparative Analysis**: Framework supports cross-survey cosmic web analysis
-5. **Scientific Validation**: Results align with known galactic structure and percolation theory
-
-This analysis provides unprecedented insight into the 3D structure of our local galactic neighborhood, revealing the cosmic web nature of stellar distribution at multiple scales! 🌌✨
-
----
-
-**This analysis represents the most comprehensive 3D mapping of local galactic structure using Gaia DR3 data, revealing the cosmic web of stellar associations around the Sun with unprecedented detail and scale.**
-
-*Generated by AstroLab Cosmic Web Analysis System*
 
 ### CLI Processing
 ```bash
 # Process Gaia data with cosmic web analysis
-astro-lab preprocess cosmic-web gaia --max-samples 1000000 --scales 5.0 10.0 20.0 --output results/
+uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000000 --scales 5.0 10.0 20.0 --output results/
 
 # Process with verbose logging
-astro-lab preprocess cosmic-web gaia --max-samples 1000000 --verbose
+uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000000 --verbose
+```
 
-# Process all surveys including Gaia
-astro-lab preprocess all-surveys --max-samples 500 --output results/
-``` 
+## 📚 Related Documentation
+
+### Core Documentation
+- **[Data Loaders](DATA_LOADERS.md)** - Data processing and loading
+- **[Cosmic Web Analysis](COSMIC_WEB_ANALYSIS.md)** - Complete analysis framework
+- **[Cosmograph Integration](COSMOGRAPH_INTEGRATION.md)** - Interactive visualization
+
+### Survey-Specific Guides
+- **[SDSS/NSA Analysis](NSA_COSMIC_WEB.md)** - Galaxy survey analysis
+- **[Exoplanet Pipeline](EXOPLANET_PIPELINE.md)** - Exoplanet detection workflows
+- **[Exoplanet Cosmic Web](EXOPLANET_COSMIC_WEB.md)** - Exoplanet host star analysis
+
+### Main Documentation
+- **[Main README](../README.md)** - Complete framework overview
+- **[Complete Analysis](../COSMIC_WEB_COMPLETE_ANALYSIS.md)** - Multi-survey comparison
+
+---
+
+**Ready to explore stellar structure?** Start with [Data Loading](DATA_LOADERS.md) or dive into [Cosmic Web Analysis](COSMIC_WEB_ANALYSIS.md)! 
