@@ -34,6 +34,18 @@ def comprehensive_cleanup_context(description: str):
     yield
 
 
+@contextmanager
+def pytorch_memory_context(description: str):
+    """Simple PyTorch memory context manager."""
+    yield
+
+
+@contextmanager
+def memory_tracking_context(description: str):
+    """Simple memory tracking context manager."""
+    yield
+
+
 class ValidationMixin:
     """Mixin for common validation patterns."""
 
@@ -95,8 +107,16 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
-        # Initialize with tensor data
-        super().__init__(_data=tensor_data, **kwargs)
+        # Extract metadata from kwargs
+        metadata = kwargs.pop("metadata", {})
+        metadata.update({k: v for k, v in kwargs.items() if not k.startswith("_")})
+
+        # Initialize BaseModel first
+        super().__init__()
+
+        # Set attributes directly to bypass Pydantic validation
+        object.__setattr__(self, "_data", tensor_data)
+        object.__setattr__(self, "_metadata", metadata)
 
     def _clean_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -168,6 +188,10 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         if dim is None:
             return self._data.size()
         return self._data.size(dim)
+
+    def numel(self) -> int:
+        """Get total number of elements."""
+        return self._data.numel()
 
     # =========================================================================
     # Consistent metadata access

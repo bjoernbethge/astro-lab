@@ -61,6 +61,11 @@ class AstroDataManager:
         self.config.setup_directories()
 
     @property
+    def base_dir(self) -> Path:
+        """Get base data directory."""
+        return self.data_dir
+
+    @property
     def raw_dir(self) -> Path:
         return self.config.raw_dir
 

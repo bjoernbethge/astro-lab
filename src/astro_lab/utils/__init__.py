@@ -33,6 +33,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+# Import graph utilities if available
+if TORCH_GEOMETRIC_AVAILABLE:
+    from .viz.graph import (
+        calculate_graph_metrics,
+        create_spatial_graph,
+        spatial_distance_matrix,
+    )
+
 # Base exports - always available (minimal to avoid Blender loading)
 __all__ = [
     "config",
@@ -45,6 +53,16 @@ __all__ = [
     "calculate_volume",
     "calculate_mean_density",
 ]
+
+# Add graph functions if available
+if TORCH_GEOMETRIC_AVAILABLE:
+    __all__.extend(
+        [
+            "create_spatial_graph",
+            "calculate_graph_metrics",
+            "spatial_distance_matrix",
+        ]
+    )
 
 
 def get_utils_info() -> Dict[str, Any]:

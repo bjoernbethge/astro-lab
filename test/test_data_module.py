@@ -34,6 +34,9 @@ from astro_lab.data.manager import (
     load_gaia_bright_stars,
 )
 
+# Import preprocessing functions
+from astro_lab.data.preprocessing import preprocess_catalog_lazy
+
 # Import utility functions from utils (not core)
 from astro_lab.data.utils import (
     create_training_splits,
@@ -129,7 +132,9 @@ class TestIntegratedDataModule:
             }
         )
 
-        cleaned_df = preprocess_catalog_lazy(test_df, clean_null_columns=True, use_streaming=True)
+        cleaned_df = preprocess_catalog_lazy(
+            test_df, clean_null_columns=True, use_streaming=True
+        )
         assert isinstance(cleaned_df, pl.DataFrame)
         # Should remove rows with nulls
         assert len(cleaned_df) < len(test_df)
