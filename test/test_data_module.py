@@ -118,7 +118,7 @@ class TestIntegratedDataModule:
         assert detect_survey_type("nsa_data", None) == "nsa"
         assert detect_survey_type("linear_survey", None) == "linear"
 
-    def test_preprocess_catalog(self):
+    def test_preprocess_catalog_lazy(self, use_streaming=True):
         """Test preprocess_catalog function."""
         # Create test DataFrame with some nulls
         test_df = pl.DataFrame(
@@ -129,7 +129,7 @@ class TestIntegratedDataModule:
             }
         )
 
-        cleaned_df = preprocess_catalog(test_df, clean_null_columns=True)
+        cleaned_df = preprocess_catalog_lazy(test_df, clean_null_columns=True, use_streaming=True)
         assert isinstance(cleaned_df, pl.DataFrame)
         # Should remove rows with nulls
         assert len(cleaned_df) < len(test_df)

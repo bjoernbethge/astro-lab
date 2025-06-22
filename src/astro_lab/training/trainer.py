@@ -33,8 +33,8 @@ from astro_lab.models.config import (
     OutputConfig,
 )
 from astro_lab.training.config import TrainingConfig as FullTrainingConfig
-from astro_lab.utils.memory import comprehensive_cleanup_context, model_training_context
 
+# Removed memory.py - using simple context managers
 from .lightning_module import AstroLightningModule
 
 # Optional imports

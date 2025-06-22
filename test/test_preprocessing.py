@@ -60,13 +60,12 @@ def create_training_splits(
     return df_train, df_val, df_test
 
 
-def preprocess_catalog(
-    df: pl.DataFrame,
+def preprocess_catalog_lazy(df: pl.DataFrame,
     clean_null_columns: bool = True,
     null_threshold: float = 0.95,
     coordinate_columns: Optional[List[str]] = None,
     magnitude_columns: Optional[List[str]] = None,
-) -> pl.DataFrame:
+, use_streaming=True) -> pl.DataFrame:
     """
     Preprocess astronomical catalog data.
 
@@ -299,7 +298,7 @@ class TestPreprocessCatalog:
         )
 
         # Test preprocessing
-        df_clean = preprocess_catalog(df, clean_null_columns=True)
+        df_clean = preprocess_catalog_lazy(df, clean_null_columns=True, use_streaming=True)
 
         # Should remove mostly_null column
         assert "mostly_null" not in df_clean.columns
@@ -321,7 +320,7 @@ class TestPreprocessCatalog:
         )
 
         # With cleaning enabled
-        df_clean = preprocess_catalog(df, clean_null_columns=True)
+        df_clean = preprocess_catalog_lazy(df, clean_null_columns=True, use_streaming=True)
 
         # all_null should be removed (100% null, >= 95% threshold)
         assert "all_null" not in df_clean.columns
@@ -331,7 +330,7 @@ class TestPreprocessCatalog:
         assert "no_null" in df_clean.columns
 
         # With cleaning disabled
-        df_no_clean = preprocess_catalog(df, clean_null_columns=False)
+        df_no_clean = preprocess_catalog_lazy(df, clean_null_columns=False, use_streaming=True)
         assert len(df_no_clean.columns) == len(df.columns)
 
     def test_preprocess_coordinate_columns(self):
@@ -344,7 +343,7 @@ class TestPreprocessCatalog:
             }
         )
 
-        df_clean = preprocess_catalog(df, coordinate_columns=["ra", "dec"])
+        df_clean = preprocess_catalog_lazy(df, coordinate_columns=["ra", "dec"], use_streaming=True)
 
         # Should still have all rows (basic implementation)
         assert len(df_clean) <= len(df)
@@ -359,7 +358,7 @@ class TestPreprocessCatalog:
             }
         )
 
-        df_clean = preprocess_catalog(df, magnitude_columns=["mag_g", "mag_r"])
+        df_clean = preprocess_catalog_lazy(df, magnitude_columns=["mag_g", "mag_r"], use_streaming=True)
 
         # Should handle magnitude data appropriately
         assert len(df_clean) <= len(df)
@@ -516,7 +515,7 @@ class TestIntegrationTests:
         df = pl.DataFrame(catalog_data)
 
         # Step 1: Preprocessing
-        df_clean = preprocess_catalog(df, clean_null_columns=True)
+        df_clean = preprocess_catalog_lazy(df, clean_null_columns=True, use_streaming=True)
 
         # Should remove empty columns
         assert "empty_column" not in df_clean.columns
@@ -584,7 +583,7 @@ class TestIntegrationTests:
         df = pl.read_parquet(parquet_file)
         
         # Test basic preprocessing
-        df_clean = preprocess_catalog(df, clean_null_columns=True)
+        df_clean = preprocess_catalog_lazy(df, clean_null_columns=True, use_streaming=True)
         
         assert len(df_clean) == n_objects
         assert len(df_clean.columns) <= len(df.columns)  # May have removed null columns
@@ -618,7 +617,7 @@ class TestIntegrationTests:
         assert len(df_loaded) == 100
 
         # Test preprocessing directly
-        df_clean = preprocess_catalog(df_loaded, clean_null_columns=True)
+        df_clean = preprocess_catalog_lazy(df_loaded, clean_null_columns=True, use_streaming=True)
         df_train, df_val, df_test = create_training_splits(
             df_clean, test_size=0.2, val_size=0.1, random_state=42
         )
@@ -634,7 +633,7 @@ class TestIntegrationTests:
 
         # Should handle gracefully
         try:
-            result = preprocess_catalog(empty_df)
+            result = preprocess_catalog_lazy(empty_df, use_streaming=True)
             assert len(result) == 0
         except Exception:
             # If it raises an exception, that's also acceptable
@@ -648,7 +647,7 @@ class TestIntegrationTests:
             }
         )
 
-        cleaned = preprocess_catalog(invalid_df, clean_null_columns=True)
+        cleaned = preprocess_catalog_lazy(invalid_df, clean_null_columns=True, use_streaming=True)
         # Should remove all columns or handle gracefully
         assert len(cleaned.columns) >= 0
 
@@ -674,7 +673,7 @@ class TestPerformanceAndScaling:
 
         start_time = time.time()
 
-        df_clean = preprocess_catalog(large_df)
+        df_clean = preprocess_catalog_lazy(large_df, use_streaming=True)
         df_train, df_val, df_test = create_training_splits(df_clean)
 
         elapsed = time.time() - start_time
@@ -704,7 +703,7 @@ class TestPerformanceAndScaling:
         )
 
         # Process without running out of memory
-        df_clean = preprocess_catalog(large_df)
+        df_clean = preprocess_catalog_lazy(large_df, use_streaming=True)
         stats = get_data_statistics(df_clean)
 
         # Verify results

@@ -125,47 +125,9 @@ def get_optimal_num_workers() -> int:
         return min(cpu_count - 1, 8)
 
 
-def optimize_polars_settings():
-    """Optimize Polars settings for performance."""
-    # Enable lazy evaluation for better performance
-    try:
-        # Try newer Polars API
-        pl.Config.set_global_string_cache(True)
-    except AttributeError:
-        try:
-            # Try alternative API
-            pl.Config.set_string_cache(True)
-        except AttributeError:
-            # Fallback: newer versions handle this automatically
-            pass
-
-    # Set memory pool size for better performance
-    try:
-        if hasattr(pl, "set_memory_pool_size"):
-            pl.set_memory_pool_size(1024 * 1024 * 1024)  # 1GB
-    except Exception:
-        # Ignore if not available
-        pass
-
-
-def optimize_torch_settings():
-    """Optimize PyTorch settings for performance."""
-    if torch.cuda.is_available():
-        # Enable memory efficient attention if available
-        if hasattr(torch.backends.cuda, "enable_flash_sdp"):
-            torch.backends.cuda.enable_flash_sdp(True)
-
-        # Enable memory efficient attention
-        if hasattr(torch.backends.cuda, "enable_mem_efficient_sdp"):
-            torch.backends.cuda.enable_mem_efficient_sdp(True)
-
-        # Set memory fraction
-        torch.cuda.set_per_process_memory_fraction(0.9)
-
-
 # Initialize optimizations
-optimize_polars_settings()
-optimize_torch_settings()
+# optimize_polars_settings()  # CAUSES MEMORY LEAKS - removed
+# optimize_torch_settings()   # Keep this separate
 
 
 # =========================================================================
@@ -174,7 +136,7 @@ optimize_torch_settings()
 
 
 def calculate_local_density(
-    positions: torch.Tensor,
+    positions: Union[torch.Tensor, np.ndarray],
     radius_pc: float = 1000.0,
     max_neighbors: int = 100,
 ) -> torch.Tensor:
@@ -208,7 +170,7 @@ def calculate_local_density(
 
 
 def adaptive_cosmic_web_clustering(
-    spatial_tensor: Spatial3DTensor,
+    spatial_tensor: Any,  # Spatial3DTensor or fallback
     coords_3d: np.ndarray,
     scale_mpc: float,
     verbose: bool = True,
@@ -258,7 +220,7 @@ def adaptive_cosmic_web_clustering(
 
 
 def analyze_cosmic_web(
-    survey_tensor: SurveyTensor,
+    survey_tensor: Any,  # SurveyTensor or fallback
     scales_mpc: List[float] = [5.0, 10.0, 20.0, 50.0],
     verbose: bool = True,
 ) -> Dict[str, Any]:
@@ -281,8 +243,21 @@ def analyze_cosmic_web(
     spatial_tensor = survey_tensor.get_spatial_tensor()
     coords_3d = spatial_tensor.cartesian.detach().cpu().numpy()
 
-    # Global metrics
-    total_volume = np.prod(coords_3d.max(axis=0) - coords_3d.min(axis=0))
+    # OPTIMIZED: Early exit for small datasets
+    if len(coords_3d) < 10:
+        logger.warning("⚠️ Dataset too small for cosmic web analysis")
+        return {
+            "survey_name": survey_tensor.survey_name,
+            "n_objects": len(coords_3d),
+            "error": "Dataset too small",
+            "results_by_scale": {},
+        }
+
+    # OPTIMIZED: Cached global metrics computation
+    coord_min = coords_3d.min(axis=0)
+    coord_max = coords_3d.max(axis=0)
+    coord_range = coord_max - coord_min
+    total_volume = np.prod(coord_range)
     global_density = len(coords_3d) / total_volume
 
     if verbose:
@@ -309,17 +284,23 @@ def analyze_cosmic_web(
             n_groups = results["n_clusters"]
             n_noise = results["n_noise"]
 
+            # OPTIMIZED: Vectorized statistics computation
+            if isinstance(local_density, torch.Tensor):
+                local_density_np = local_density.detach().cpu().numpy()
+            else:
+                local_density_np = np.asarray(local_density)
+
             results_summary[scale] = {
                 "n_clusters": n_groups,
                 "n_noise": n_noise,
                 "grouped_fraction": (len(coords_3d) - n_noise) / len(coords_3d),
                 "time_s": cluster_time,
-                "mean_local_density": float(np.mean(local_density)),
-                "density_variation": float(np.std(local_density)),
+                "mean_local_density": float(np.mean(local_density_np)),
+                "density_variation": float(np.std(local_density_np)),
                 "local_density_stats": {
-                    "min": float(np.min(local_density)),
-                    "max": float(np.max(local_density)),
-                    "median": float(np.median(local_density)),
+                    "min": float(np.min(local_density_np)),
+                    "max": float(np.max(local_density_np)),
+                    "median": float(np.median(local_density_np)),
                 },
             }
 

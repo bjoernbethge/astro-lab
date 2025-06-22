@@ -8,6 +8,9 @@ Supports multiple survey types with unified preprocessing and training pipelines
 
 import argparse
 import datetime
+
+# Removed memory.py - using simple gc instead
+import gc
 import json
 import os
 import sys
@@ -33,7 +36,7 @@ from astro_lab.data import (
     load_tng50_data,
     save_splits_to_parquet,
 )
-from astro_lab.data.preprocessing import preprocess_catalog
+from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy
 from astro_lab.models.factory import ModelFactory
 from astro_lab.training.trainer import AstroTrainer
 from astro_lab.utils.config.loader import ConfigLoader
@@ -301,11 +304,6 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 def _cleanup_memory():
     """Clean up memory to prevent leaks from heavy imports."""
     try:
-        import gc
-
-        # Force garbage collection
-        gc.collect()
-
         # Clean up PyTorch CUDA cache if available
         try:
             import torch
@@ -323,9 +321,6 @@ def _cleanup_memory():
             plt.close("all")
         except ImportError:
             pass
-
-        # Final garbage collection
-        gc.collect()
 
     except Exception:
         # Memory cleanup shouldn't fail the entire program
@@ -397,17 +392,24 @@ def _process_tng50(args):
     print(f"🌌 Processing TNG50 simulation: {args.input}")
 
     try:
-        from astro_lab.data.preprocessing import preprocess_catalog
+        from astro_lab.data.preprocessing import (
+            preprocess_catalog,
+            preprocess_catalog_lazy,
+        )
 
         output_dir = args.output or "data/processed/tng50/"
 
-        df = preprocess_catalog(
+        # Use lazy preprocessing for TNG50 data
+        lf = preprocess_catalog_lazy(
             input_path=args.input,
             survey_type="tng50",
             max_samples=args.max_samples,
             output_dir=output_dir,
-            particle_types=args.particle_types,
+            use_streaming=True,
         )
+
+        # Collect the lazy frame to get the actual DataFrame
+        df = lf.collect()
 
         print(f"✅ TNG50 processing completed: {len(df)} particles processed")
         print(f"📁 Output: {output_dir}")
@@ -430,76 +432,101 @@ def _process_single_file(args):
         )
         from astro_lab.data.preprocessing import (
             create_graph_from_dataframe,
-            preprocess_catalog,
+            preprocess_catalog_lazy,
         )
         from astro_lab.utils.config.loader import ConfigLoader
 
-        # Load catalog
-        df = load_catalog(args.input)
-        print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
+        # OPTIMIZED: Use astronomy processing context
+        with astro_processing_context(f"Processing {Path(args.input).name}") as ctx:
+            # Load catalog
+            df = load_catalog(args.input)
+            print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
 
-        # Determine survey type
-        survey_type = args.config or "generic"
+            # Determine survey type
+            survey_type = args.config or "generic"
 
-        # Load survey config if specified
-        config = {}
-        if args.config:
-            try:
-                loader = ConfigLoader()
-                survey_config = loader.get_survey_config(args.config)
-                config = survey_config.get("processing", {})
-                print(f"✅ Using {args.config} survey configuration")
-            except Exception as e:
-                print(f"⚠️  Could not load survey config: {e}")
+            # Load survey config if specified
+            config = {}
+            if args.config:
+                try:
+                    loader = ConfigLoader()
+                    survey_config = loader.get_survey_config(args.config)
+                    config = survey_config.get("processing", {})
+                    print(f"✅ Using {args.config} survey configuration")
+                except Exception as e:
+                    print(f"⚠️  Could not load survey config: {e}")
 
-        # Preprocess
-        df_clean = preprocess_catalog(
-            args.input, survey_type=survey_type, max_samples=args.max_samples
-        )
-        print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
+            # OPTIMIZED: Use lazy preprocessing for large files
+            use_streaming = df.shape[0] > 50_000  # Use streaming for large datasets
 
-        # Handle output
-        output_path = (
-            Path(args.output) if args.output else Path(f"data/processed/{survey_type}/")
-        )
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        # Create splits if requested
-        if args.splits:
-            print("🔄 Creating training splits...")
-            train, val, test = create_training_splits(df_clean)
-
-            dataset_name = Path(args.input).stem
-            save_splits_to_parquet(train, val, test, output_path, dataset_name)
-            create_graph_datasets_from_splits(
-                train,
-                val,
-                test,
-                output_path,
-                dataset_name,
-                k_neighbors=args.k_neighbors,
-            )
-            print(f"💾 Splits and graphs saved to: {output_path}")
-        else:
-            # Save processed catalog and create graph
-            output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
-            df_clean.write_parquet(output_file)
-            print(f"💾 Processed catalog saved to: {output_file}")
-
-            # Create graph
-            graph_file = output_path / f"{Path(args.input).stem}_k{args.k_neighbors}.pt"
-            graph_data = create_graph_from_dataframe(
-                df=df_clean,
-                survey_type=survey_type,
-                k_neighbors=args.k_neighbors,
-                distance_threshold=args.distance_threshold,
-                output_path=graph_file,
-            )
-
-            if graph_data:
-                print(
-                    f"📊 Graph created: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
+            if use_streaming:
+                print("🚀 Using streaming mode for large dataset")
+                lf_clean = preprocess_catalog_lazy(
+                    args.input,
+                    survey_type=survey_type,
+                    max_samples=args.max_samples,
+                    use_streaming=True,
                 )
+                # Collect only if needed for further processing
+                df_clean = lf_clean.collect()
+            else:
+                # Use lazy preprocessing for smaller files too (still more efficient)
+                lf_clean = preprocess_catalog_lazy(
+                    args.input,
+                    survey_type=survey_type,
+                    max_samples=args.max_samples,
+                    use_streaming=False,
+                )
+                df_clean = lf_clean.collect()
+
+            print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
+
+            # Handle output
+            output_path = (
+                Path(args.output)
+                if args.output
+                else Path(f"data/processed/{survey_type}/")
+            )
+            output_path.mkdir(parents=True, exist_ok=True)
+
+            # Create splits if requested
+            if args.splits:
+                print("🔄 Creating training splits...")
+                train, val, test = create_training_splits(df_clean)
+
+                dataset_name = Path(args.input).stem
+                save_splits_to_parquet(train, val, test, output_path, dataset_name)
+                create_graph_datasets_from_splits(
+                    train,
+                    val,
+                    test,
+                    output_path,
+                    dataset_name,
+                    k_neighbors=args.k_neighbors,
+                )
+                print(f"💾 Splits and graphs saved to: {output_path}")
+            else:
+                # Save processed catalog and create graph
+                output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
+                df_clean.write_parquet(output_file)
+                print(f"💾 Processed catalog saved to: {output_file}")
+
+                # Create graph
+                graph_file = (
+                    output_path / f"{Path(args.input).stem}_k{args.k_neighbors}.pt"
+                )
+                graph_data = create_graph_from_dataframe(
+                    df=df_clean,
+                    survey_type=survey_type,
+                    k_neighbors=args.k_neighbors,
+                    distance_threshold=args.distance_threshold,
+                    output_path=graph_file,
+                )
+
+                if graph_data:
+                    print(
+                        f"📊 Graph created: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
+                    )
 
     except Exception as e:
         print(f"❌ Single file processing failed: {e}")
@@ -565,11 +592,13 @@ def _process_all_surveys(args):
                         print(f"  📄 Processing {data_file.name}")
 
                     # Preprocess
-                    df = preprocess_catalog(
+                    lf = preprocess_catalog_lazy(
                         input_path=str(data_file),
                         survey_type=survey,
                         max_samples=args.max_samples,
+                        use_streaming=True,
                     )
+                    df = lf.collect()
 
                     # Save processed data
                     processed_file = (

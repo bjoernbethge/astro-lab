@@ -46,23 +46,23 @@ def get_tensor_bridge():
 
 
 def get_bidirectional_bridge():
-    """Lazy import of bidirectional bridge (loads Blender)."""
-    from .bidirectional_bridge import (
-        BidirectionalPyVistaBlenderBridge,
-        MaterialBridge,
+    """Lazy import of bidirectional bridge (consolidated in tensor_bridge)."""
+    from .tensor_bridge import (
+        BidirectionalTensorBridge,
         SyncConfig,
         create_bidirectional_bridge,
-        quick_convert_blender_to_pyvista,
         quick_convert_pyvista_to_blender,
+        quick_convert_tensor_to_blender,
+        quick_convert_tensor_to_pyvista,
     )
 
     return {
-        "BidirectionalPyVistaBlenderBridge": BidirectionalPyVistaBlenderBridge,
-        "MaterialBridge": MaterialBridge,
+        "BidirectionalTensorBridge": BidirectionalTensorBridge,
         "SyncConfig": SyncConfig,
         "create_bidirectional_bridge": create_bidirectional_bridge,
         "quick_convert_pyvista_to_blender": quick_convert_pyvista_to_blender,
-        "quick_convert_blender_to_pyvista": quick_convert_blender_to_pyvista,
+        "quick_convert_tensor_to_blender": quick_convert_tensor_to_blender,
+        "quick_convert_tensor_to_pyvista": quick_convert_tensor_to_pyvista,
     }
 
 

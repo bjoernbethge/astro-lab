@@ -532,9 +532,7 @@ def preprocess_catalog(
     # Remove completely empty columns
     null_counts = df.null_count()
     columns_to_keep = [
-        col
-        for col in df.columns
-        if null_counts.select(col).item() < df.height * 0.95
+        col for col in df.columns if null_counts.select(col).item() < df.height * 0.95
     ]
     if len(columns_to_keep) < len(df.columns):
         print(

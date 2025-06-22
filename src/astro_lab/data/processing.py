@@ -8,6 +8,37 @@ Handles data cleaning, feature engineering, and preprocessing.
 
 import argparse
 import sys
+
+# Removed memory.py - using simple context managers
+from contextlib import contextmanager
+
+
+# Minimal no-op context managers
+@contextmanager
+def comprehensive_cleanup_context(description: str):
+    yield
+
+
+@contextmanager
+def pytorch_memory_context(description: str):
+    yield
+
+
+@contextmanager
+def memory_tracking_context(description: str):
+    yield
+
+
+@contextmanager
+def file_processing_context(file_path, memory_limit_mb=1000.0):
+    yield {"file_path": file_path, "stats": {}}
+
+
+@contextmanager
+def batch_processing_context(total_items, batch_size=1, memory_threshold_mb=500.0):
+    yield {"total_items": total_items, "stats": {}}
+
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -18,13 +49,6 @@ from pydantic import BaseModel, Field, field_validator
 from sklearn.neighbors import NearestNeighbors
 
 from ..tensors import ClusteringTensor, FeatureTensor, StatisticsTensor, SurveyTensor
-from ..utils.memory import (
-    batch_processing_context,
-    comprehensive_cleanup_context,
-    file_processing_context,
-    memory_tracking_context,
-    pytorch_memory_context,
-)
 from .config import data_config
 
 # Import SimulationTensor as well
@@ -367,12 +391,16 @@ class EnhancedDataProcessor:
 
     def get_processing_stats(self) -> Dict[str, Any]:
         """Get current processing statistics."""
-        from ..utils.memory import get_cuda_memory_stats, get_memory_usage
+        try:
+            import psutil
+
+            current_memory = psutil.Process().memory_info().rss / 1024 / 1024
+        except ImportError:
+            current_memory = 0.0
 
         stats = {
             **self.processing_stats,
-            "current_memory_mb": get_memory_usage(),
-            "cuda_stats": get_cuda_memory_stats(),
+            "current_memory_mb": current_memory,
             "device": str(self.device),
             "config": self.config.dict(),
         }

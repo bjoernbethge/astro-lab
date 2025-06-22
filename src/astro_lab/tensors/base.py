@@ -14,20 +14,24 @@ import torch
 if TYPE_CHECKING:
     from typing import Self
 
+# Removed memory.py - using simple gc instead
+import gc
 import logging
 from contextlib import contextmanager
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 
-from ..utils.memory import (
-    comprehensive_cleanup_context,
-    memory_tracking_context,
-    pytorch_memory_context,
-)
 from .constants import ASTRO  # Import centralized constants
 from .tensor_types import TensorProtocol
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def comprehensive_cleanup_context(description: str):
+    """Minimal no-op context manager."""
+    yield
 
 
 class ValidationMixin:
@@ -83,18 +87,16 @@ class AstroTensorBase(BaseModel, ValidationMixin):
 
     def __init__(self, data: Union[torch.Tensor, np.ndarray], **kwargs):
         """Initialize tensor with memory management."""
-        with comprehensive_cleanup_context("AstroTensor initialization"):
-            # Convert input data to tensor if needed
-            if isinstance(data, np.ndarray):
-                with pytorch_memory_context("NumPy to tensor conversion"):
-                    tensor_data = torch.from_numpy(data).float()
-            elif isinstance(data, torch.Tensor):
-                tensor_data = data
-            else:
-                raise TypeError(f"Unsupported data type: {type(data)}")
+        # Convert input data to tensor if needed
+        if isinstance(data, np.ndarray):
+            tensor_data = torch.from_numpy(data).float()
+        elif isinstance(data, torch.Tensor):
+            tensor_data = data
+        else:
+            raise TypeError(f"Unsupported data type: {type(data)}")
 
-            # Initialize with tensor data
-            super().__init__(_data=tensor_data, **kwargs)
+        # Initialize with tensor data
+        super().__init__(_data=tensor_data, **kwargs)
 
     def _clean_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -233,17 +235,11 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         Yields:
             self: The tensor instance for chaining operations
         """
-        with comprehensive_cleanup_context(operation_name):
-            # Ensure tensor is in optimal state
-            if not self._data.is_contiguous():
-                with pytorch_memory_context("Tensor contiguous optimization"):
-                    self._data = self._data.contiguous()
+        # Ensure tensor is in optimal state
+        if not self._data.is_contiguous():
+            self._data = self._data.contiguous()
 
-            try:
-                yield self
-            finally:
-                # Additional cleanup is handled by the context manager
-                pass
+        yield self
 
     @contextmanager
     def device_transfer_context(self, target_device: Union[str, torch.device]):
@@ -259,19 +255,11 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         original_device = self.device
         target_device = torch.device(target_device)
 
-        with pytorch_memory_context(
-            f"Device transfer: {original_device} -> {target_device}"
-        ):
-            # Transfer to target device
-            if original_device != target_device:
-                self._data = self._data.to(target_device)
+        # Transfer to target device
+        if original_device != target_device:
+            self._data = self._data.to(target_device)
 
-            try:
-                yield self
-            finally:
-                # Optional: transfer back to original device
-                # This can be configured based on use case
-                pass
+        yield self
 
     @contextmanager
     def batch_processing_context(self, batch_size: int = 1000):
@@ -286,15 +274,12 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         """
         total_size = self.shape[0]
 
-        with memory_tracking_context(f"Batch processing: {total_size} items"):
+        def batch_generator():
+            for i in range(0, total_size, batch_size):
+                end_idx = min(i + batch_size, total_size)
+                yield self._data[i:end_idx]
 
-            def batch_generator():
-                for i in range(0, total_size, batch_size):
-                    end_idx = min(i + batch_size, total_size)
-                    with pytorch_memory_context(f"Batch {i // batch_size + 1}"):
-                        yield self._data[i:end_idx]
-
-            yield batch_generator()
+        yield batch_generator()
 
     def optimize_memory_layout(self) -> "Self":
         """Optimize tensor memory layout for better performance."""
