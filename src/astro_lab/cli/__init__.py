@@ -38,7 +38,7 @@ from astro_lab.data import (
     load_catalog,
     save_splits_to_parquet,
 )
-from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy
+from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy, find_or_create_catalog_file, create_graph_from_dataframe
 from astro_lab.models.factory import ModelFactory
 from astro_lab.training.trainer import AstroTrainer
 from astro_lab.utils.config.loader import ConfigLoader
@@ -565,7 +565,7 @@ def _process_single_file(args):
 
             # Create graph
             graph_file = (
-                output_path / f"{Path(args.input).stem}_k{args.k_neighbors}.pt"
+                output_path / f"{Path(args.input).stem}.pt"
             )
             graph_data = create_graph_from_dataframe(
                 df=df_clean,
@@ -593,6 +593,7 @@ def _process_all_surveys(args):
         import subprocess
         import sys
         from pathlib import Path
+        from astro_lab.data.preprocessing import find_or_create_catalog_file, create_graph_from_dataframe, preprocess_catalog_lazy
 
         # Available surveys
         all_surveys = ["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"]
@@ -617,63 +618,54 @@ def _process_all_surveys(args):
             logger.info(f"🔄 Processing {survey.upper()}...")
 
             try:
-                # Use the preprocessing module directly
-                from astro_lab.data.preprocessing import (
-                    create_graph_from_dataframe,
-                    preprocess_catalog,
-                )
-
-                # Find data files for this survey
                 survey_data_dir = Path(f"data/raw/{survey}")
                 if not survey_data_dir.exists():
                     logger.warning(f"⚠️  No data directory found for {survey}: {survey_data_dir}")
                     continue
 
-                data_files = list(survey_data_dir.glob("*.parquet")) + list(
-                    survey_data_dir.glob("*.csv")
-                )
-                if not data_files:
-                    logger.warning(f"⚠️  No data files found for {survey}")
+                try:
+                    data_file = find_or_create_catalog_file(survey, survey_data_dir)
+                except FileNotFoundError as e:
+                    logger.warning(f"⚠️  {e}")
                     continue
 
                 survey_output_dir = output_dir / survey
                 survey_output_dir.mkdir(parents=True, exist_ok=True)
 
-                for data_file in data_files:
-                    if args.verbose:
-                        logger.info(f"  📄 Processing {data_file.name}")
+                if args.verbose:
+                    logger.info(f"  📄 Processing {data_file.name}")
 
-                    # Preprocess
-                    lf = preprocess_catalog_lazy(
-                        input_path=str(data_file),
-                        survey_type=survey,
-                        max_samples=args.max_samples,
-                        use_streaming=True,
-                    )
-                    df = lf.collect()
+                # Preprocess
+                lf = preprocess_catalog_lazy(
+                    input_path=str(data_file),
+                    survey_type=survey,
+                    max_samples=args.max_samples,
+                    use_streaming=True,
+                )
+                df = lf.collect()
 
-                    # Save processed data
-                    processed_file = (
-                        survey_output_dir / f"{data_file.stem}_processed.parquet"
-                    )
-                    df.write_parquet(processed_file)
+                # Save processed data
+                processed_file = (
+                    survey_output_dir / f"{data_file.stem}_processed.parquet"
+                )
+                df.write_parquet(processed_file)
 
-                    # Create graph
-                    graph_file = (
-                        survey_output_dir / f"{data_file.stem}_k{args.k_neighbors}.pt"
-                    )
-                    graph_data = create_graph_from_dataframe(
-                        df=df,
-                        survey_type=survey,
-                        k_neighbors=args.k_neighbors,
-                        distance_threshold=args.distance_threshold,
-                        output_path=graph_file,
-                    )
+                # Create graph
+                graph_file = (
+                    survey_output_dir / f"{survey}.pt"
+                )
+                graph_data = create_graph_from_dataframe(
+                    df=df,
+                    survey_type=survey,
+                    k_neighbors=args.k_neighbors,
+                    distance_threshold=args.distance_threshold,
+                    output_path=graph_file,
+                )
 
-                    if args.verbose and graph_data:
-                        logger.info(
-                            f"    📊 Graph: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
-                        )
+                if args.verbose and graph_data:
+                    logger.info(
+                        f"    📊 Graph: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
+                    )
 
                 logger.info(f"✅ {survey.upper()} processed successfully")
                 successful += 1
@@ -681,6 +673,7 @@ def _process_all_surveys(args):
             except Exception as e:
                 logger.error(f"❌ Error processing {survey.upper()}: {e}")
                 if args.verbose:
+                    import traceback
                     traceback.print_exc()
                 continue
 

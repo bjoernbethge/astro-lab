@@ -24,6 +24,7 @@ from astropy.coordinates import SkyCoord
 from sklearn.neighbors import BallTree, NearestNeighbors
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
+from torch_geometric.data.data import DataEdgeAttr
 
 from .config import data_config
 
@@ -51,6 +52,12 @@ try:
 except ImportError:
     pass
 
+# Add PyG classes to safe globals for torch.load
+torch.serialization.add_safe_globals([
+    torch_geometric.data.data.DataEdgeAttr,
+    torch_geometric.data.data.Data,
+    torch_geometric.data.batch.Batch
+])
 
 # Function defined here to avoid circular import
 def create_graph_datasets_from_splits(
@@ -474,310 +481,204 @@ def _polars_to_survey_tensor(
 class AstroDataset(InMemoryDataset):
     """
     Clean PyTorch Geometric dataset for astronomical data.
-
-    Loads pre-processed .pt files from data/processed/<survey>/processed/.
-    No data processing or generation - only loading existing files.
+    
+    Follows PyG standards: loads pre-processed .pt files.
+    Uses standardized file structure: data/processed/{survey}/{survey}.pt
     """
 
     def __init__(
         self,
-        root: Optional[Union[str, Path]] = None,
-        survey: Optional[str] = None,
-        max_samples: Optional[int] = None,
+        survey: str,
         k_neighbors: int = 8,
-        distance_threshold: float = 50.0,
-        return_tensor: bool = True,
+        max_samples: Optional[int] = None,
+        root: Optional[Union[str, Path]] = None,
         transform: Optional[Any] = None,
-        force_reload: bool = False,
         **kwargs,
     ):
-        """Initialize AstroDataset with survey-specific configuration."""
-        # Set root directory
-        if root is None:
-            root = data_config.processed_dir / (survey or "generic")
-
-        # Store configuration
+        """Initialize AstroDataset with survey name."""
         self.survey = survey
-        self.max_samples = max_samples
         self.k_neighbors = k_neighbors
-        self.distance_threshold = distance_threshold
-        self.return_tensor = return_tensor
+        self.max_samples = max_samples
 
-        # Initialize data attribute before calling parent
-        self._data = None
+        # Standardized root path
+        if root is None:
+            project_root = Path(__file__).parent.parent.parent.parent
+            root = str(project_root / "data" / "processed" / survey)
 
-        # Call parent constructor
-        super().__init__(root, transform, force_reload=force_reload)
-
-        # Set up survey-specific configuration
-        if survey and survey in get_survey_config(survey):
-            config = get_survey_config(survey)
-            self.coord_cols = config.get("coord_cols", ["ra", "dec"])
-            self.mag_cols = config.get("mag_cols", [])
-            self.extra_cols = config.get("extra_cols", [])
-            self.color_pairs = config.get("color_pairs", [])
-            self.tensor_metadata = config
-        else:
-            # Default configuration
-            self.coord_cols = ["ra", "dec"]
-            self.mag_cols = ["mag"]
-            self.extra_cols = []
-            self.color_pairs = []
-            self.tensor_metadata = {}
-
-    @property
-    def data(self):
-        """Get the data attribute."""
-        return self._data
-
-    @data.setter
-    def data(self, value):
-        """Set the data attribute."""
-        self._data = value
+        super().__init__(root, transform)
 
     @property
     def raw_file_names(self) -> List[str]:
-        """Raw file names - not used for .pt loading."""
+        """No raw files needed for .pt loading."""
         return []
 
     @property
     def processed_file_names(self) -> List[str]:
-        """Processed file names for .pt file selection."""
-        suffix = f"_n{self.max_samples}" if self.max_samples else ""
-        tensor_suffix = "_tensor" if self.return_tensor else ""
-        return [f"{self.survey}_k{self.k_neighbors}{suffix}{tensor_suffix}.pt"]
+        """Simple file name: {survey}.pt"""
+        return [f"{self.survey}.pt"]
 
-    def download(self) -> None:
-        """Load dataset from .pt files - no fake data generation."""
-        if self.data is not None:
+    def download(self):
+        """Check if data exists and convert FITS to Parquet if needed - PyG standard method."""
+        graph_path = Path(self.root) / f"{self.survey}.pt"
+        
+        if graph_path.exists():
+            return  # Graph already exists
+        
+        # Check if we need to convert FITS to Parquet first
+        if self.survey == "nsa":
+            self._convert_nsa_fits_to_parquet()
+        
+        # Now check if graph exists
+        if not graph_path.exists():
+            raise FileNotFoundError(
+                f"Graph file not found: {graph_path}\n"
+                f"Run: uv run astro-lab preprocess --surveys {self.survey}"
+            )
+
+    def _convert_nsa_fits_to_parquet(self):
+        """Convert NSA FITS file to Parquet if needed."""
+        from astro_lab.data.utils import load_fits_optimized
+        import polars as pl
+        
+        raw_dir = Path("data/raw/nsa")
+        fits_file = raw_dir / "nsa_v1_0_1.fits"
+        parquet_file = raw_dir / "nsa_v1_0_1.parquet"
+        
+        if parquet_file.exists():
+            logger.info(f"✅ NSA Parquet file already exists: {parquet_file}")
             return
-        self.load(None)  # Load from .pt file
-
-    def _get_survey_paths(self) -> Dict[str, Path]:
-        """Get standardized file paths for survey data."""
-        project_root = Path(__file__).parent.parent.parent.parent
-        survey_dir = project_root / "data" / "processed" / self.survey
-
-        return {
-            "survey_dir": survey_dir,
-            "parquet": survey_dir / f"{self.survey}.parquet",
-            "graph": survey_dir / f"{self.survey}_graph.pt",
-            "metadata": survey_dir / f"{self.survey}_metadata.json",
-        }
-
-    def _load_survey_metadata(self) -> Dict[str, Any]:
-        """Load survey metadata from JSON file."""
-        paths = self._get_survey_paths()
-        metadata_path = paths["metadata"]
-
-        if metadata_path.exists():
-            import json
-
-            try:
-                with open(metadata_path, "r") as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to load metadata from {metadata_path}: {e}")
-
-        # Return default metadata
-        return {
-            "survey_name": self.survey,
-            "features": [],
-            "coordinates": ["ra", "dec"],
-            "data_format": "parquet",
-            "num_samples": 0,
-            "k_neighbors": self.k_neighbors,
-        }
-
-    def _save_survey_metadata(self, metadata: Dict[str, Any]) -> None:
-        """Save survey metadata to JSON file."""
-        paths = self._get_survey_paths()
-        metadata_path = paths["metadata"]
-
-        # Ensure directory exists
-        metadata_path.parent.mkdir(parents=True, exist_ok=True)
-
-        import json
-
+        
+        if not fits_file.exists():
+            raise FileNotFoundError(f"NSA FITS file not found: {fits_file}")
+        
+        logger.info(f"🔄 Converting NSA FITS to Parquet: {fits_file}")
+        
         try:
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
-            logger.info(f"✅ Saved metadata to {metadata_path}")
+            # Load FITS with optimized function
+            table = load_fits_optimized(fits_file, hdu_index=1, max_memory_mb=2000)
+            logger.info(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
+            
+            # Convert to Polars DataFrame
+            df = pl.from_pandas(table.to_pandas())
+            
+            # Save as Parquet
+            df.write_parquet(parquet_file)
+            logger.info(f"✅ Saved NSA Parquet: {parquet_file}")
+            
         except Exception as e:
-            logger.error(f"❌ Failed to save metadata to {metadata_path}: {e}")
-
-    def _load_polars_dataframe(self) -> pl.DataFrame:
-        """Load data as Polars DataFrame from standardized location."""
-        # Try to load from existing PyG data first
-        if (
-            self.data is not None
-            and hasattr(self.data, "x")
-            and hasattr(self.data, "feature_names")
-        ):
-            # Convert PyG Data to DataFrame
-            feature_data = {}
-            for i, name in enumerate(self.data.feature_names):
-                feature_data[name] = self.data.x[:, i].numpy()
-
-            # Add coordinate columns if available
-            if hasattr(self.data, "coord_names") and hasattr(self.data, "pos"):
-                for i, name in enumerate(self.data.coord_names):
-                    feature_data[name] = self.data.pos[:, i].numpy()
-
-            return pl.DataFrame(feature_data)
-
-        # Load from standardized Parquet file
-        paths = self._get_survey_paths()
-        parquet_path = paths["parquet"]
-
-        if parquet_path.exists():
-            logger.info(f"📊 Loading DataFrame from {parquet_path}")
-            try:
-                df = pl.read_parquet(parquet_path)
-                if len(df) > 0:
-                    return df
-            except Exception as e:
-                logger.error(f"❌ Failed to load {parquet_path}: {e}")
-                raise
-
-        # Fallback: search for any .parquet file in survey directories
-        logger.warning(f"⚠️ Standard parquet file not found at {parquet_path}")
-        logger.info("🔍 Searching for any .parquet files in survey directories...")
-
-        search_dirs = [
-            paths["survey_dir"],
-            paths["survey_dir"].parent / "raw" / self.survey,
-        ]
-
-        for search_dir in search_dirs:
-            if search_dir.exists():
-                parquet_files = list(search_dir.glob("*.parquet"))
-                for path in parquet_files:
-                    logger.info(f"📊 Trying to load DataFrame from {path}")
-                    try:
-                        df = pl.read_parquet(path)
-                        if len(df) > 0:
-                            logger.info(
-                                f"✅ Successfully loaded {len(df)} rows from {path.name}"
-                            )
-                            return df
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to load {path}: {e}")
-                        continue
-
-        raise ValueError(f"No valid Parquet files found for survey '{self.survey}'")
-
-    def process(self):
-        """No processing - data should already be processed as .pt files."""
-        raise NotImplementedError(
-            "AstroDataset does not process data. Use pre-processed .pt files from data/processed/<survey>/processed/."
-        )
-
-    def _load_pt_file(self) -> None:
-        """Load .pt file from standardized location."""
-        paths = self._get_survey_paths()
-        graph_file = paths["graph"]
-
-        if not graph_file.exists():
-            raise FileNotFoundError(f"Graph file not found: {graph_file}")
-
-        logger.info(f"📦 Loading graph data from {graph_file}")
-        try:
-            data = torch.load(graph_file, map_location="cpu", weights_only=False)
-
-            # Handle different data formats
-            if isinstance(data, dict) and "data" in data and "slices" in data:
-                self.data, self.slices = data["data"], data["slices"]
-            elif isinstance(data, list):
-                from torch_geometric.data import Data
-
-                valid_data = [
-                    item
-                    for item in data
-                    if isinstance(item, Data) and item.x is not None
-                ]
-                if not valid_data:
-                    raise ValueError("No valid Data objects found")
-                self.data, self.slices = self.collate(valid_data)
-            else:
-                from torch_geometric.data import Data
-
-                if not isinstance(data, Data) or data.x is None:
-                    raise ValueError("Invalid Data object")
-                self.data, self.slices = self.collate([data])
-
-            # Verify that data is not None
-            if self.data is None:
-                raise ValueError("Loaded data is None")
-                
-            # Verify that we have valid samples
-            if len(self) == 0:
-                raise ValueError("Dataset has 0 samples after loading")
-
-            logger.info(f"✅ Successfully loaded {len(self)} graph samples")
-
-        except Exception as e:
-            logger.error(f"❌ Failed to load {graph_file}: {e}")
+            logger.error(f"❌ Failed to convert NSA FITS: {e}")
             raise
 
-    def load(self, path: Union[str, Path]):
-        """Load dataset from standardized .pt file location."""
-        self._load_pt_file()
+    def process(self):
+        """Load existing .pt file - PyG standard method."""
+        graph_path = Path(self.root) / f"{self.survey}.pt"
+        
+        if not graph_path.exists():
+            raise FileNotFoundError(
+                f"Graph file not found: {graph_path}\n"
+                f"Run: uv run astro-lab preprocess --surveys {self.survey}"
+            )
 
-    def __getitem__(self, idx):
-        """Get item from dataset with proper error handling."""
+        logger.info(f"📦 Loading graph from {graph_path}")
+        
+        try:
+            # Use weights_only=False for Graph files containing PyG objects
+            # We trust our own generated files
+            data = torch.load(graph_path, weights_only=False)
+            
+            # Handle different data formats and convert to PyG Data
+            if isinstance(data, Data):
+                # Single PyG Data object - ensure it has required attributes
+                data = self._ensure_pyg_compatibility(data)
+                self.data, self.slices = self.collate([data])
+            elif isinstance(data, dict) and "data" in data and "slices" in data:
+                # Pre-collated data
+                self.data, self.slices = data["data"], data["slices"]
+            elif isinstance(data, list):
+                # List of Data objects
+                valid_data = [self._ensure_pyg_compatibility(item) for item in data if isinstance(item, Data) and item.x is not None]
+                if not valid_data:
+                    raise ValueError("No valid Data objects in list")
+                self.data, self.slices = self.collate(valid_data)
+            else:
+                raise ValueError(f"Unknown data format: {type(data)}")
+                
+            logger.info(f"✅ Loaded {len(self)} samples successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to load {graph_path}: {e}")
+            raise
+
+    def _ensure_pyg_compatibility(self, data: Data) -> Data:
+        """Ensure Data object has all required PyG attributes."""
+        # Ensure required attributes exist
+        if not hasattr(data, 'x') or data.x is None:
+            raise ValueError("Data object must have 'x' attribute (node features)")
+        
+        if not hasattr(data, 'edge_index') or data.edge_index is None:
+            raise ValueError("Data object must have 'edge_index' attribute")
+        
+        # Add missing attributes with defaults
+        if not hasattr(data, 'y') or data.y is None:
+            # Create default labels (node classification)
+            data.y = torch.zeros(data.x.shape[0], dtype=torch.long)
+        
+        if not hasattr(data, 'num_nodes'):
+            data.num_nodes = data.x.shape[0]
+        
+        # Add survey metadata
+        data.survey_name = self.survey
+        data.k_neighbors = self.k_neighbors
+        
+        return data
+
+    def len(self) -> int:
+        """Number of samples in dataset - PyG standard method."""
         if self.data is None:
-            raise RuntimeError("Dataset not loaded. Call download() first.")
+            self.process()
         
-        # Handle slice indexing (e.g., dataset[:8])
-        if isinstance(idx, slice):
-            indices = range(*idx.indices(len(self)))
-            return [self[i] for i in indices]
+        # Handle single graph case
+        if self.slices is None:
+            return 1 if hasattr(self.data, "num_nodes") else 0
         
-        # Handle single index
-        if idx >= len(self):
-            raise IndexError(f"Index {idx} out of range for dataset with {len(self)} samples")
+        # Multiple graphs case
+        return len(self.slices[list(self.slices.keys())[0]]) - 1
+
+    def get(self, idx: int) -> Data:
+        """Get sample by index - PyG standard method."""
+        if self.data is None:
+            self.process()
         
-        # Get the item using parent class method
-        item = super().__getitem__(idx)
+        # Handle single graph case
+        if self.slices is None:
+            if idx == 0:
+                return self.data
+            else:
+                raise IndexError(f"Index {idx} out of range for single graph dataset")
         
-        # Verify item is valid
-        if item is None:
-            raise ValueError(f"Dataset returned None for index {idx}")
-        
-        return item
+        # Multiple graphs case
+        return super().get(idx)
 
     def get_info(self) -> Dict[str, Any]:
         """Get dataset information."""
         if len(self) == 0:
-            return {"error": "Dataset not loaded"}
-
-        data = self[0]
+            return {"error": "Dataset empty"}
+        
+        sample = self[0]
+        
         return {
             "survey": self.survey,
-            "survey_name": data.survey_name,
-            "num_nodes": data.num_nodes,
-            "num_edges": data.edge_index.shape[1],
-            "num_features": data.x.shape[1],
-            "feature_names": data.feature_names,
-            "coordinate_names": data.coord_names,
-            "k_neighbors": data.k_neighbors,
-            "avg_degree": data.edge_index.shape[1] / data.num_nodes,
+            "num_samples": len(self),
+            "num_nodes": sample.num_nodes if hasattr(sample, "num_nodes") else 0,
+            "num_edges": sample.edge_index.shape[1] if hasattr(sample, "edge_index") else 0,
+            "num_features": sample.x.shape[1] if hasattr(sample, "x") else 0,
+            "k_neighbors": self.k_neighbors,
+            "file_path": str(Path(self.root) / f"{self.survey}.pt"),
         }
-
-    def _download(self):
-        """Override _download to load .pt files directly."""
-        if self.data is None:  # Only load if not already loaded
-            self.load(None)
-
-    def _process(self):
-        """Override _process to load .pt files directly."""
-        if self.data is None:  # Only load if not already loaded
-            self.load(None)
 
 
 def load_gaia_data(
-    max_samples: int = 5000,
+    max_samples: Optional[int] = None,
     return_tensor: bool = True,  # 🌟 Default to tensor!
     **kwargs,
 ) -> Union[AstroDataset, "SurveyTensor"]:
@@ -785,7 +686,7 @@ def load_gaia_data(
     Load Gaia DR3 stellar catalog.
 
     Args:
-        max_samples: Maximum number of samples
+        max_samples: Maximum number of samples (optional)
         return_tensor: Return SurveyTensor instead of dataset (recommended!)
         **kwargs: Additional arguments
 
@@ -794,22 +695,18 @@ def load_gaia_data(
     """
     if return_tensor:
         # Create temporary dataset to get DataFrame
-        temp_dataset = AstroDataset(
-            survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
-        )
-        temp_dataset.load(None)  # Load from .pt file
-        df = temp_dataset._load_polars_dataframe()
-        return _polars_to_survey_tensor(df, "gaia", {"max_samples": max_samples})
+        temp_dataset = AstroDataset(survey="gaia", **kwargs)
+        temp_dataset.download()  # Check if data exists
+        # For now, return dataset as tensor - can be enhanced later
+        return temp_dataset
 
-    dataset = AstroDataset(
-        survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
-    )
-    dataset.load(None)  # Load from .pt file
+    dataset = AstroDataset(survey="gaia", **kwargs)
+    dataset.download()  # Check if data exists
     return dataset
 
 
 def load_sdss_data(
-    max_samples: int = 5000,
+    max_samples: Optional[int] = None,
     return_tensor: bool = True,  # 🌟 Default to tensor!
     **kwargs,
 ) -> Union[AstroDataset, "SurveyTensor"]:
@@ -817,7 +714,7 @@ def load_sdss_data(
     Load SDSS DR17 galaxy catalog.
 
     Args:
-        max_samples: Maximum number of samples
+        max_samples: Maximum number of samples (optional)
         return_tensor: Return SurveyTensor instead of dataset (recommended!)
         **kwargs: Additional arguments
 
@@ -825,22 +722,17 @@ def load_sdss_data(
         SurveyTensor with SDSS data or AstroDataset
     """
     if return_tensor:
-        temp_dataset = AstroDataset(
-            survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
-        )
-        temp_dataset.load(None)  # Load from .pt file
-        df = temp_dataset._load_polars_dataframe()
-        return _polars_to_survey_tensor(df, "sdss", {"max_samples": max_samples})
+        temp_dataset = AstroDataset(survey="sdss", **kwargs)
+        temp_dataset.download()  # Check if data exists
+        return temp_dataset
 
-    dataset = AstroDataset(
-        survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
-    )
-    dataset.load(None)  # Load from .pt file
+    dataset = AstroDataset(survey="sdss", **kwargs)
+    dataset.download()  # Check if data exists
     return dataset
 
 
 def load_nsa_data(
-    max_samples: int = 5000,
+    max_samples: Optional[int] = None,
     return_tensor: bool = True,  # 🌟 Default to tensor!
     **kwargs,
 ) -> Union[AstroDataset, "SurveyTensor"]:
@@ -848,7 +740,7 @@ def load_nsa_data(
     Load NSA galaxy catalog.
 
     Args:
-        max_samples: Maximum number of samples
+        max_samples: Maximum number of samples (optional)
         return_tensor: Return SurveyTensor instead of dataset (recommended!)
         **kwargs: Additional arguments
 
@@ -856,17 +748,12 @@ def load_nsa_data(
         SurveyTensor with NSA data or AstroDataset
     """
     if return_tensor:
-        temp_dataset = AstroDataset(
-            survey="nsa", max_samples=max_samples, return_tensor=False, **kwargs
-        )
-        temp_dataset.load(None)  # Load from .pt file
-        df = temp_dataset._load_polars_dataframe()
-        return _polars_to_survey_tensor(df, "nsa", {"max_samples": max_samples})
+        temp_dataset = AstroDataset(survey="nsa", **kwargs)
+        temp_dataset.download()  # Check if data exists
+        return temp_dataset
 
-    dataset = AstroDataset(
-        survey="nsa", max_samples=max_samples, return_tensor=False, **kwargs
-    )
-    dataset.load(None)  # Load from .pt file
+    dataset = AstroDataset(survey="nsa", **kwargs)
+    dataset.download()  # Check if data exists
     return dataset
 
 
@@ -997,9 +884,7 @@ def load_tng50_temporal_data(
         )
 
     # Load PyTorch tensors
-    import torch
-
-    temporal_data = torch.load(data_path, map_location="cpu", weights_only=False)
+    temporal_data = torch.load(data_path, weights_only=False)
 
     # Extract data from temporal structure
     if snapshot_id is not None:

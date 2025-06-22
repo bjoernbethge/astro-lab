@@ -1,10 +1,10 @@
 """
 AstroLab Datasets
-================
+=================
 
-Clean dataset implementations for astronomical data.
+Unified dataset implementations for astronomical data.
 """
 
-from .astro_dataset import AstroDataset
+from ..data.core import AstroDataset
 
 __all__ = ["AstroDataset"]

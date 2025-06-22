@@ -3,7 +3,7 @@ AstroDataModule - Lightning DataModule Implementation
 ====================================================
 
 Clean Lightning DataModule for astronomical data.
-Completely separated from dataset implementation.
+Uses the unified AstroDataset from core.py.
 """
 
 import logging
@@ -13,7 +13,7 @@ import lightning as L
 import torch
 from torch_geometric.loader import DataLoader
 
-from ..datasets import AstroDataset
+from .core import AstroDataset
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class AstroDataModule(L.LightningDataModule):
     Clean Lightning DataModule for astronomical datasets.
 
     Handles train/val/test splits and data loading.
-    Uses AstroDataset for actual data loading.
+    Uses unified AstroDataset from core.py.
     """
 
     def __init__(

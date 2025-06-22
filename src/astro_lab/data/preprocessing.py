@@ -1355,6 +1355,33 @@ def process_survey(
             project_root / "data" / "raw" / f"{survey}.parquet",
         ]
 
+        # Special handling for NSA FITS files
+        if survey == "nsa":
+            nsa_fits = project_root / "data" / "raw" / "nsa" / "nsa_v1_0_1.fits"
+            nsa_parquet = project_root / "data" / "raw" / "nsa" / "nsa_v1_0_1.parquet"
+            
+            # Convert FITS to Parquet if needed
+            if nsa_fits.exists() and not nsa_parquet.exists():
+                logger.info(f"🔄 Converting NSA FITS to Parquet: {nsa_fits}")
+                from astro_lab.data.utils import load_fits_optimized
+                import polars as pl
+                
+                try:
+                    table = load_fits_optimized(nsa_fits, hdu_index=1, max_memory_mb=2000)
+                    logger.info(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
+                    
+                    df = pl.from_pandas(table.to_pandas())
+                    df.write_parquet(nsa_parquet)
+                    logger.info(f"✅ Saved NSA Parquet: {nsa_parquet}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to convert NSA FITS: {e}")
+                    raise
+            
+            # Add NSA parquet to possible sources
+            if nsa_parquet.exists():
+                possible_sources.insert(0, nsa_parquet)
+
         source_path = None
         for path in possible_sources:
             if path.exists():
@@ -1544,6 +1571,45 @@ def process_large_gaia_dataset():
     """Process the large Gaia dataset using GPU k-NN for fast graph creation (legacy)."""
     print("⚠️ Using legacy PyG graph processing. Consider using create_gaia_survey_tensor() instead.")
     return create_gaia_survey_tensor()
+
+
+def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
+    """
+    Sucht nach Parquet/CSV für einen Survey, erzeugt bei FITS automatisch Parquet und gibt den Pfad zurück.
+    """
+    import polars as pl
+    from astro_lab.data.utils import load_fits_optimized
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # 1. Suche Parquet
+    parquet_files = list(data_dir.glob("*.parquet"))
+    if parquet_files:
+        return parquet_files[0]
+
+    # 2. Suche CSV
+    csv_files = list(data_dir.glob("*.csv"))
+    if csv_files:
+        return csv_files[0]
+
+    # 3. Falls NSA und FITS vorhanden, konvertiere
+    if survey == "nsa":
+        fits_file = data_dir / "nsa_v1_0_1.fits"
+        parquet_file = data_dir / "nsa_v1_0_1.parquet"
+        if fits_file.exists():
+            logger.info(f"🔄 Converting NSA FITS to Parquet: {fits_file}")
+            try:
+                table = load_fits_optimized(fits_file, hdu_index=1, max_memory_mb=2000)
+                logger.info(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
+                df = pl.from_pandas(table.to_pandas())
+                df.write_parquet(parquet_file)
+                logger.info(f"✅ Saved NSA Parquet: {parquet_file}")
+                return parquet_file
+            except Exception as e:
+                logger.error(f"❌ Failed to convert NSA FITS: {e}")
+                raise
+    # 4. Kein passendes File gefunden
+    raise FileNotFoundError(f"No suitable data file found for survey '{survey}' in {data_dir}")
 
 
 if __name__ == "__main__":
