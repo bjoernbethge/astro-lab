@@ -14,31 +14,12 @@ import numpy as np
 import torch
 import yaml
 
-# Import all utility modules directly
-from . import blender, config, viz
+# Import core utility modules directly
+from . import config, viz
 
-# Import specific functions
-from .viz import (
-    BlenderZeroCopyBridge,
-    NumpyZeroCopyBridge,
-    PyVistaZeroCopyBridge,
-    TensorProtocol,
-    TNG50Visualizer,
-    ZeroCopyBridge,
-    calculate_graph_metrics,
-    create_spatial_graph,
-    get_tensor_memory_info,
-    list_available_data,
-    load_tng50_gas,
-    load_tng50_stars,
-    optimize_tensor_layout,
-    pinned_memory_context,
-    quick_blender_import,
-    quick_pyvista_plot,
-    spatial_distance_matrix,
-    transfer_to_framework,
-    zero_copy_context,
-)
+# DO NOT import blender automatically - only when explicitly needed
+# DO NOT import viz functions automatically - they load Blender modules
+# Import them manually when needed: from astro_lab.utils.viz import ...
 
 # Check for optional dependencies
 try:
@@ -52,23 +33,35 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Base exports - always available
+# Base exports - always available (minimal to avoid Blender loading)
 __all__ = [
     "config",
     "viz",
-    "blender",
-    "list_available_data",
+    # "blender",  # REMOVED - only import when explicitly needed
+    # "list_available_data",  # REMOVED - loads viz modules with Blender
     "TORCH_GEOMETRIC_AVAILABLE",
     "GRAPH_AVAILABLE",  # For backward compatibility
+    "get_utils_info",
+    "calculate_volume",
+    "calculate_mean_density",
 ]
 
 
 def get_utils_info() -> Dict[str, Any]:
     """Get information about available utilities."""
+    # Check blender availability WITHOUT importing our blender module
+    blender_available = False
+    try:
+        import bpy  # Direct check without loading our blender module
+
+        blender_available = True
+    except ImportError:
+        pass
+
     return {
         "config_available": True,
         "viz_available": True,
-        "blender_available": blender.bpy is not None,
+        "blender_available": blender_available,
         "torch_geometric_available": TORCH_GEOMETRIC_AVAILABLE,
         "graph_available": GRAPH_AVAILABLE,
     }
