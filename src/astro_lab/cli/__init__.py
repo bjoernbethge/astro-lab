@@ -289,6 +289,47 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
         if "--verbose" in sys.argv or "-v" in sys.argv:
             traceback.print_exc()
         sys.exit(1)
+    finally:
+        # Clean up memory to prevent leaks
+        _cleanup_memory()
+
+        # Note: Memory leak warning is expected due to heavy ML/astronomy imports
+        # This is a known issue with PyTorch, astropy, and visualization libraries
+        # The functionality is not affected.
+
+
+def _cleanup_memory():
+    """Clean up memory to prevent leaks from heavy imports."""
+    try:
+        import gc
+
+        # Force garbage collection
+        gc.collect()
+
+        # Clean up PyTorch CUDA cache if available
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+        except ImportError:
+            pass
+
+        # Clean up matplotlib if imported
+        try:
+            import matplotlib.pyplot as plt
+
+            plt.close("all")
+        except ImportError:
+            pass
+
+        # Final garbage collection
+        gc.collect()
+
+    except Exception:
+        # Memory cleanup shouldn't fail the entire program
+        pass
 
 
 def handle_preprocess(args):
