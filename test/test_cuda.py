@@ -12,7 +12,7 @@ import pytest
 import torch
 from torch.utils.data import DataLoader
 
-from astro_lab.data import AstroDataset, create_astro_dataloader
+from astro_lab.data import AstroDataset, create_astro_datamodule
 from astro_lab.data.core import get_optimal_batch_size, get_optimal_device
 from astro_lab.models.astro import AstroSurveyGNN
 from astro_lab.models.utils import create_gaia_classifier
@@ -126,43 +126,13 @@ def test_astro_trainer_gpu():
     # Manually initialize projection head since model has hidden_dim attribute
     lightning_module.projection_head = lightning_module._auto_create_projection_head()
 
-    # Use existing AstroDataset infrastructure for realistic testing
-    print("  Creating AstroDataset for testing...")
-
-    try:
-        # Use the existing create_astro_dataloader from our codebase
-        from astro_lab.data import create_astro_dataloader
-
-        # Create dataloaders using our existing infrastructure
-        train_loader = create_astro_dataloader("gaia", batch_size=16, max_samples=100)
-        val_loader = create_astro_dataloader("gaia", batch_size=16, max_samples=50)
-
-        print(
-            f"  ✓ Created dataloaders: train={len(train_loader)}, val={len(val_loader)}"
-        )
-
-    except Exception as e:
-        print(f"  Warning: Could not create AstroDataset ({e}), using fallback...")
-        try:
-            # Fallback: Create simple test data using our existing utilities
-            from astro_lab.data import AstroDataset
-
-            # Create simple test datasets
-            train_dataset = AstroDataset(
-                survey="gaia", max_samples=100, return_tensor=False
-            )
-            val_dataset = AstroDataset(
-                survey="gaia", max_samples=50, return_tensor=False
-            )
-
-            # Use standard PyTorch DataLoader (not PyGDataLoader)
-            from torch.utils.data import DataLoader
-
-            train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-            val_loader = DataLoader(val_dataset, batch_size=16, shuffle=False)
-        except Exception as e2:
-            print(f"  Warning: Fallback also failed ({e2}), skipping test...")
-            pytest.skip(f"Could not create any dataset: {e2}")
+    # Use the existing create_astro_datamodule from our codebase
+    from astro_lab.data import create_astro_datamodule
+    
+    # Create datamodule and get dataloaders
+    datamodule = create_astro_datamodule("gaia", batch_size=16, max_samples=100)
+    train_loader = datamodule.train_dataloader()
+    val_loader = datamodule.val_dataloader()
 
     # Create trainer with proper configuration
     trainer = AstroTrainer(

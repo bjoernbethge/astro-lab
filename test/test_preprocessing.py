@@ -15,10 +15,8 @@ import torch
 
 # Import basic functionality - preprocessing functions are now in utility scripts
 from astro_lab.data import (
-    SURVEY_CONFIGS,
     AstroDataModule,
     AstroDataset,
-    load_gaia_data,
 )
 
 
