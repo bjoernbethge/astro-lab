@@ -41,38 +41,27 @@ class LayerFactory:
         **kwargs
     ) -> nn.Module:
         """Create a graph convolution layer."""
-        # Filter kwargs für torch_geometric Layer
-        allowed_gcn = {}
-        allowed_gat = {}
-        allowed_sage = {}
-        allowed_transformer = {}
-        # explizit keine output_head, concat, normalize, etc. aus kwargs übernehmen
-        for k, v in kwargs.items():
-            if conv_type == "gcn" and k in ["add_self_loops"]:
-                allowed_gcn[k] = v
-            elif conv_type == "gat" and k in ["edge_dim"]:
-                allowed_gat[k] = v
-            elif conv_type == "sage" and k in ["root_weight"]:
-                allowed_sage[k] = v
-            elif conv_type == "transformer" and k in ["beta"]:
-                allowed_transformer[k] = v
+        # Filter kwargs for torch_geometric Layer
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_kwargs}
+        
+        # Explicitly do not take output_head, concat, normalize, etc. from kwargs
         if conv_type == "gcn":
-            return GCNConv(in_channels, out_channels, **allowed_gcn)
+            return GCNConv(in_channels, out_channels, **filtered_kwargs)
         elif conv_type == "gat":
             head_dim = out_channels // heads
             if head_dim <= 0:
                 raise ValueError(f"out_channels ({out_channels}) must be >= heads ({heads})")
             return GATConv(
-                in_channels, head_dim, heads=heads, dropout=dropout, **allowed_gat
+                in_channels, head_dim, heads=heads, dropout=dropout, **filtered_kwargs
             )
         elif conv_type == "sage":
-            return SAGEConv(in_channels, out_channels, **allowed_sage)
+            return SAGEConv(in_channels, out_channels, **filtered_kwargs)
         elif conv_type == "transformer":
             head_dim = out_channels // heads
             if head_dim <= 0:
                 raise ValueError(f"out_channels ({out_channels}) must be >= heads ({heads})")
             return TransformerConv(
-                in_channels, head_dim, heads=heads, dropout=dropout, **allowed_transformer
+                in_channels, head_dim, heads=heads, dropout=dropout, **filtered_kwargs
             )
         else:
             raise ValueError(f"Unknown conv_type: {conv_type}")

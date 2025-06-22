@@ -1,15 +1,14 @@
 """
-3D Point Cloud Models für Sternkarten
+3D Point Cloud Models for Star Maps
 
-Spezialisierte GNN-Modelle für 3D-Sternverteilungen mit:
-- PointNet++ für hierarchische Strukturen
-- Gravitational Message Passing
-- Multi-Scale Stellar Analysis
-- Adaptive Sterngewichtung
+Specialized GNN models for 3D star distributions with:
+- PointNet++ for hierarchical structures
+- Graph-based clustering for stellar associations
+- Multi-scale feature extraction
+- Temporal evolution modeling
 """
 
-from typing import Dict, List, Optional, Tuple, Union
-
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,11 +22,14 @@ from torch_geometric.nn import (
     radius_graph,
 )
 from torch_geometric.transforms import KNNGraph, SamplePoints
+from typing import Dict, List, Optional, Union, Tuple
 
 from astro_lab.models.base_gnn import BaseAstroGNN
 from astro_lab.tensors import SurveyTensor
 from astro_lab.models.layers import LayerFactory
 
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class GravitationalMessagePassing(MessagePassing):
     """Custom message passing for gravitational interactions between stars."""

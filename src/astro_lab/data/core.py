@@ -168,34 +168,41 @@ optimize_torch_settings()
 
 
 # =========================================================================
-# 🌟 COSMIC WEB ANALYSIS FUNCTIONS - Dichte-basiert für alle Surveys
+# 🌟 COSMIC WEB ANALYSIS FUNCTIONS - Density-based for all surveys
 # =========================================================================
 
-def calculate_local_density(coords_3d: np.ndarray, radius_pc: float = 1_000_000) -> np.ndarray:
+def calculate_local_density(
+    positions: torch.Tensor,
+    radius_pc: float = 1000.0,
+    max_neighbors: int = 100,
+) -> torch.Tensor:
     """
-    Berechne lokale Dichte für jedes Objekt.
+    Calculate local density for each object.
     
     Args:
-        coords_3d: 3D-Koordinaten in Mpc
-        radius_pc: Radius für lokale Dichteberechnung in pc
+        positions: 3D positions (N, 3) in Mpc
+        radius_pc: Radius for local density calculation in pc
+        max_neighbors: Maximum neighbors to consider
         
     Returns:
-        Lokale Dichte für jedes Objekt in obj/pc³
+        Local density for each object in obj/pc³
     """
-    # Konvertiere zu pc für lokale Dichteberechnung
-    coords_pc = coords_3d * 1_000_000  # Mpc zu pc
+    # Convert to pc for local density calculation
+    positions_pc = positions * 1e6  # Mpc to pc
     
-    # BallTree für effiziente Radius-Suchen
-    tree = BallTree(coords_pc, metric='euclidean')
+    # BallTree for efficient radius searches
+    tree = BallTree(positions_pc.numpy())
     
-    # Zähle Nachbarn in Radius für jedes Objekt
-    counts = tree.query_radius(coords_pc, r=radius_pc, count_only=True)
+    # Count neighbors in radius for each object
+    densities = []
+    for i in range(len(positions)):
+        neighbors = tree.query_radius(
+            [positions_pc[i]], r=radius_pc, return_distance=False
+        )[0]
+        density = len(neighbors) / (4/3 * np.pi * radius_pc**3)
+        densities.append(density)
     
-    # Lokale Dichte = Anzahl Nachbarn / Volumen
-    volume = (4/3) * np.pi * radius_pc**3
-    local_density = counts / volume
-    
-    return local_density
+    return torch.tensor(densities, dtype=torch.float32)
 
 
 def adaptive_cosmic_web_clustering(
@@ -522,12 +529,12 @@ SURVEY_CONFIGS = {
     "tng50": {
         "name": "TNG50 Simulation",
         "coord_cols": ["x", "y", "z"],
-        "mag_cols": [],  # Keine Magnituden für Simulation
+        "mag_cols": [],  # No magnitudes for simulation
         "extra_cols": ["masses", "velocities_0", "velocities_1", "velocities_2"],
         "color_pairs": [],
         "default_limit": None,  # Keine Magnitude-Limits
         "url": "tng50",
-        # 🌟 TENSOR METADATA für Simulation
+        # 🌟 TENSOR METADATA for Simulation
         "filter_system": "none",
         "data_release": "TNG50-4",
         "coordinate_system": "cartesian",
@@ -542,7 +549,7 @@ SURVEY_CONFIGS = {
             "velocities_1": 5,
             "velocities_2": 6,
         },
-        # Simulation-spezifische Metadaten
+        # Simulation-specific metadata
         "simulation_metadata": {
             "box_size": 35.0,  # Mpc/h
             "redshift": 0.0,
@@ -554,7 +561,7 @@ SURVEY_CONFIGS = {
     "tng50_temporal": {
         "name": "TNG50 Temporal Simulation",
         "coord_cols": ["x", "y", "z"],
-        "mag_cols": [],  # Keine Magnituden für Simulation
+        "mag_cols": [],  # No magnitudes for simulation
         "extra_cols": [
             "mass",
             "velocity_0",
@@ -569,7 +576,7 @@ SURVEY_CONFIGS = {
         "color_pairs": [],
         "default_limit": None,  # Keine Magnitude-Limits
         "url": "tng50_temporal",
-        # 🌟 TENSOR METADATA für temporale Simulation
+        # 🌟 TENSOR METADATA for temporal simulation
         "filter_system": "none",
         "data_release": "TNG50-4-Temporal",
         "coordinate_system": "cartesian",
@@ -589,15 +596,8 @@ SURVEY_CONFIGS = {
             "time_gyr": 10,
             "scale_factor": 11,
         },
-        # Temporale Simulation-spezifische Metadaten
-        "simulation_metadata": {
-            "box_size": 35.0,  # Mpc/h
-            "num_snapshots": 11,
-            "redshift_range": [0.0, 1.0],
-            "time_range": [0.0, 7.8],  # Gyr
-            "cosmology": "Planck2018",
-            "temporal_evolution": True,
-        },
+        # Temporal simulation-specific metadata
+        "temporal_evolution": True,
     },
 }
 
@@ -654,7 +654,7 @@ def _polars_to_survey_tensor(
 class AstroDataset(InMemoryDataset):
     """
     Clean PyTorch Geometric dataset for astronomical data.
-    
+
     Loads pre-processed .pt files from data/processed/<survey>/processed/.
     No data processing or generation - only loading existing files.
     """
@@ -682,13 +682,13 @@ class AstroDataset(InMemoryDataset):
         self.k_neighbors = k_neighbors
         self.distance_threshold = distance_threshold
         self.return_tensor = return_tensor
-        
+
         # Initialize data attribute before calling parent
         self._data = None
-        
+
         # Call parent constructor
         super().__init__(root, transform, force_reload=force_reload)
-        
+
         # Set up survey-specific configuration
         if survey and survey in SURVEY_CONFIGS:
             config = SURVEY_CONFIGS[survey]

@@ -1,14 +1,19 @@
 """
-AstroLab Data Module - Pure Clean API 🌟
-========================================
+AstroLab Data Module - High-Performance Astronomical Data Processing
 
-Saubere Polars-First Implementation ohne Legacy-Wrapper.
-Perfekt für Prototyping und moderne astronomische ML-Pipelines.
+Modern data loading and processing for astronomical surveys using Polars, PyTorch,
+and specialized astronomical tensors. Perfect for prototyping and modern astronomical ML pipelines.
 
 Quick Start:
     from astro_lab.data import load_gaia_data
     dataset = load_gaia_data(max_samples=5000)  # Done!
 """
+
+import logging
+from pathlib import Path
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # 🌟 PURE CLEAN API - Polars-First Only
 # 🔧 CONFIGURATION SYSTEM

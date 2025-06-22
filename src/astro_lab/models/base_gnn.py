@@ -1,15 +1,14 @@
 """
-Base Graph Neural Network Classes für AstroLab
+Base Graph Neural Network Classes for AstroLab
 
-Gemeinsame Base-Klassen für alle astronomischen GNN-Modelle mit:
-- Einheitliche Graph-Convolution-Layer
-- Feature-Fusion-Module
-- Output-Head-Registry
-- Robuste Error-Handling
+Common base classes for all astronomical GNN models with:
+- Standardized initialization and forward passes
+- Automatic device management
+- Built-in error handling and validation
+- Configurable architecture components
 """
 
-from typing import Any, Dict, List, Literal, Optional, Union
-
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,9 +22,13 @@ from torch_geometric.nn import (
     global_max_pool,
     global_mean_pool,
 )
+from typing import Any, Dict, List, Literal, Optional, Union, Tuple
 
 from astro_lab.models.utils import get_activation, initialize_weights
 from astro_lab.models.layers import LayerFactory
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 ConvType = Literal["gcn", "gat", "sage", "transformer"]
 TaskType = Literal["node_classification", "node_regression", "graph_classification"]

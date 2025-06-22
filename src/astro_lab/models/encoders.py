@@ -1,17 +1,17 @@
 """
-Feature Encoders für AstroLab Tensors
+Feature Encoders for AstroLab Tensors
 
-Spezialisierte Encoder für verschiedene astronomische Datentypen:
-- PhotometryEncoder: Multi-band Photometrie
-- AstrometryEncoder: Astrometrische/räumliche Daten
-- SpectroscopyEncoder: Spektroskopische Daten
-- LightcurveEncoder: Time-series/lightcurve data
+Specialized encoders for different astronomical data types:
+- AstrometryEncoder: Astrometric/spatial data
+- PhotometryEncoder: Photometric/magnitude data
+- SpectroscopyEncoder: Spectral/redshift data
+- MultiModalEncoder: Combined astronomical features
 
-Robuste Implementierung mit automatischen Fallbacks und Error Handling.
+Robust implementation with automatic fallbacks and error handling.
 """
 
 import logging
-from typing import Any, Union
+from typing import Any, Union, Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -26,6 +26,7 @@ from astro_lab.tensors import (
 )
 from astro_lab.models.layers import LayerFactory
 
+# Configure logging
 logger = logging.getLogger(__name__)
 
 

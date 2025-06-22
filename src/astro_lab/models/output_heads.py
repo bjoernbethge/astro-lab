@@ -1,20 +1,23 @@
 """
-Output Head Registry für AstroLab Models
+Output Head Registry for AstroLab Models
 
-Standardisierte Output-Heads für verschiedene astronomische Tasks:
-- Regression: Kontinuierliche Werte (Magnitude, Parallaxe, etc.)
-- Classification: Kategorische Vorhersagen (Sterntyp, Galaxienklasse)
-- Period Detection: Spezielle Heads für Periodenanalyse
-- Multi-Task: Kombinierte Heads für mehrere Aufgaben
+Standardized output heads for different astronomical tasks:
+- Classification: Multi-class galaxy/star classification
+- Regression: Redshift, mass, distance prediction
+- Period Detection: Specialized heads for period analysis
+- Multi-Task: Combined heads for multiple tasks
 """
 
-from typing import Dict, List, Optional, TypedDict
-
+import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from typing import Dict, List, Optional, TypedDict
 
 from astro_lab.models.utils import get_activation
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class ModelOutput(TypedDict):

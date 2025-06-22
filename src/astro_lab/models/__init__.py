@@ -1,8 +1,8 @@
 """
-AstroLab Models Package
+AstroLab Models - Modern Graph Neural Networks for Astronomical Data
 
-Modern Graph Neural Network models für astronomische Daten mit nativer
-AstroLab tensor integration und PyTorch Geometric 2.6+ support.
+Modern Graph Neural Network models for astronomical data with native
+PyTorch Geometric integration and specialized astronomical layers.
 
 Available Models:
 - AstroSurveyGNN: Main survey-specific GNN
@@ -20,6 +20,11 @@ Configuration Management:
 - ModelConfig: Pydantic-based model configuration
 - LayerFactory: Centralized layer creation
 """
+
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Configuration management
 from .config import (

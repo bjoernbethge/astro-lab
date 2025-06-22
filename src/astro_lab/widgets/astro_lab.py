@@ -6,6 +6,7 @@ Provides a unified interface for astronomical data visualization, analysis,
 and interactive exploration using various backends (PyVista, Blender, etc.).
 """
 
+import logging
 import numpy as np
 import torch
 import astropy.units as u
@@ -21,6 +22,9 @@ from ..utils.blender import bpy, AstroLabApi
 
 from pathlib import Path
 from typing import Optional, Union, Any, Callable
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Centralized Blender/Astropy availability checks
 try:
@@ -60,7 +64,7 @@ class AstroPipeline:
 
     def _generate_survey_data(self) -> pl.DataFrame:
         """Generates realistic astronomical survey data using Polars."""
-        print(f"📊 Generating {self.num_galaxies} galaxies with Polars...")
+        logger.info(f"📊 Generating {self.num_galaxies} galaxies with Polars...")
         np.random.seed(42)
 
         # Generate base data
@@ -105,13 +109,13 @@ class AstroPipeline:
             )
         )
 
-        print("✅ Polars DataFrame created.")
+        logger.info("✅ Polars DataFrame created.")
         return df
 
     def get_3d_coordinates(self):
         """Converts 2D + Redshift to 3D coordinates using Astropy."""
         if not ASTROPY_AVAILABLE:
-            print("⚠️ Astropy not available - using simplified coordinates.")
+            logger.warning("⚠️ Astropy not available - using simplified coordinates.")
             # Fallback without Astropy
             ra_array = np.array(self.galaxy_df["ra"].to_numpy())
             dec_array = np.array(self.galaxy_df["dec"].to_numpy())
@@ -119,7 +123,7 @@ class AstroPipeline:
             coords = np.vstack([ra_array, dec_array, redshift_array]).T
             return coords, None
 
-        print("🔭 Converting to 3D coordinates with Astropy...")
+        logger.info("🔭 Converting to 3D coordinates with Astropy...")
 
         # Convert redshift to distance
         redshift_values = self.galaxy_df["redshift"].to_numpy()
@@ -136,12 +140,12 @@ class AstroPipeline:
         # Convert to cartesian coordinates
         coords_xyz = sky_coords.cartesian.xyz.to(u.Mpc).value.T
 
-        print("✅ 3D coordinates calculated.")
+        logger.info("✅ 3D coordinates calculated.")
         return coords_xyz, sky_coords
 
     def create_visualization(self):
         """Creates an interactive 3D visualization with PyVista."""
-        print("🎨 Creating 3D visualization...")
+        logger.info("🎨 Creating 3D visualization...")
 
         coords_xyz, sky_coords = self.get_3d_coordinates()
 
@@ -233,7 +237,7 @@ class AstroLabWidget(AstroPipeline):
             self.data = None
             self.context = None
             self.scene = None
-            print("⚠️ Blender not available - API access disabled.")
+            logger.warning("⚠️ Blender not available - API access disabled.")
             return
 
         try:
@@ -242,14 +246,14 @@ class AstroLabWidget(AstroPipeline):
             self.data = bpy.data
             self.context = bpy.context
             self.scene = bpy.context.scene
-            print("✅ Blender API connected. Access via `widget.al`.")
+            logger.info("✅ Blender API connected. Access via `widget.al`.")
         except Exception as e:
             self.al = None
             self.ops = None
             self.data = None
             self.context = None
             self.scene = None
-            print(f"❌ Failed to connect Blender API: {e}")
+            logger.error(f"❌ Failed to connect Blender API: {e}")
             
     def _setup_bidirectional_bridge(self):
         """Initializes the PyVista-Blender bidirectional bridge."""
@@ -275,13 +279,13 @@ class AstroLabWidget(AstroPipeline):
             Blender object or None if conversion failed
         """
         if not self.bidirectional_bridge_available():
-            print("❌ Bidirectional bridge not available")
+            logger.error("❌ Bidirectional bridge not available")
             return None
             
         try:
             return self.bridge.pyvista_to_blender(mesh, name)
         except Exception as e:
-            print(f"❌ PyVista to Blender conversion failed: {e}")
+            logger.error(f"❌ PyVista to Blender conversion failed: {e}")
             return None
 
     def blender_to_pyvista(self, obj: Any) -> Optional["pv.PolyData"]:
@@ -295,13 +299,13 @@ class AstroLabWidget(AstroPipeline):
             PyVista PolyData mesh or None if conversion failed
         """
         if not self.bidirectional_bridge_available():
-            print("❌ Bidirectional bridge not available")
+            logger.error("❌ Bidirectional bridge not available")
             return None
             
         try:
             return self.bridge.blender_to_pyvista(obj)
         except Exception as e:
-            print(f"❌ Blender to PyVista conversion failed: {e}")
+            logger.error(f"❌ Blender to PyVista conversion failed: {e}")
             return None
 
     def sync_mesh(self, source: Union["pv.PolyData", Any], target: Union["pv.PolyData", Any]):
@@ -313,14 +317,14 @@ class AstroLabWidget(AstroPipeline):
             target: Target mesh (PyVista or Blender)
         """
         if not self.bidirectional_bridge_available():
-            print("❌ Bidirectional bridge not available")
+            logger.error("❌ Bidirectional bridge not available")
             return
             
         try:
             self.bridge.sync_mesh(source, target)
-            print("✅ Mesh synchronized")
+            logger.info("✅ Mesh synchronized")
         except Exception as e:
-            print(f"❌ Mesh synchronization failed: {e}")
+            logger.error(f"❌ Mesh synchronization failed: {e}")
 
     def start_live_sync(self, pyvista_plotter: "pv.Plotter", sync_interval: float = 0.1) -> bool:
         """
@@ -334,27 +338,27 @@ class AstroLabWidget(AstroPipeline):
             True if live sync started successfully
         """
         if not self.bidirectional_bridge_available():
-            print("❌ Bidirectional bridge not available")
+            logger.error("❌ Bidirectional bridge not available")
             return False
             
         if not self.blender_available():
-            print("❌ Blender API not available")
+            logger.error("❌ Blender API not available")
             return False
             
         try:
             success = self.bridge.create_live_sync(pyvista_plotter, self.scene, sync_interval)
             if success:
-                print(f"✅ Live sync started (interval: {sync_interval}s)")
+                logger.info(f"✅ Live sync started (interval: {sync_interval}s)")
             return success
         except Exception as e:
-            print(f"❌ Failed to start live sync: {e}")
+            logger.error(f"❌ Failed to start live sync: {e}")
             return False
 
     def stop_live_sync(self):
         """Stop live synchronization."""
         if self.bidirectional_bridge_available():
             self.bridge.stop_live_sync()
-            print("✅ Live sync stopped")
+            logger.info("✅ Live sync stopped")
 
     def add_sync_callback(self, callback: Callable):
         """Add a callback function to be executed after each sync."""
@@ -375,17 +379,17 @@ class AstroLabWidget(AstroPipeline):
             If True, clears the existing Blender scene.
         """
         if not self.blender_available():
-            print("Blender not available. Cannot create scene.")
+            logger.warning("Blender not available. Cannot create scene.")
             return
 
-        print("🎬 Creating Blender scene...")
+        logger.info("🎬 Creating Blender scene...")
         if clear_existing:
             self.al.core['reset_scene']()
 
         self.al.core['create_camera'](location=(0, -30, 10), target=(0, 0, 0))
         self.al.core['create_light'](light_type='SUN', location=(10, 20, 10), energy=2.5)
         self.al.core['create_cosmic_grid'](scale=(10, 10, 10))
-        print("✅ Blender scene created.")
+        logger.info("✅ Blender scene created.")
 
     def add_astronomical_data_to_blender(
         self, point_size: float = 0.1, use_colors: bool = True
@@ -401,14 +405,14 @@ class AstroLabWidget(AstroPipeline):
             Whether to color points based on redshift.
         """
         if not self.blender_available():
-            print("Blender not available. Cannot add data.")
+            logger.warning("Blender not available. Cannot add data.")
             return
 
-        print("🌠 Adding astronomical data to Blender...")
+        logger.info("🌠 Adding astronomical data to Blender...")
         coords, _ = self.get_3d_coordinates()
 
         if coords is None or len(coords) == 0:
-            print("No 3D coordinate data to add.")
+            logger.warning("No 3D coordinate data to add.")
             return
 
         # Use the advanced geometry node visualizer from the API
@@ -420,7 +424,7 @@ class AstroLabWidget(AstroPipeline):
             redshift_data=self.galaxy_df["redshift"].to_numpy() if use_colors else None
         )
 
-        print("✅ Data added to Blender scene.")
+        logger.info("✅ Data added to Blender scene.")
 
     def _redshift_to_color(self, redshift: float) -> tuple:
         """Convert redshift to RGB color."""
@@ -442,21 +446,21 @@ class AstroLabWidget(AstroPipeline):
             Filename for export
         """
         if not self.blender_available():
-            print("Blender not available. Cannot export scene.")
+            logger.warning("Blender not available. Cannot export scene.")
             return
 
-        print(f"💾 Exporting Blender scene to {filename}...")
+        logger.info(f"💾 Exporting Blender scene to {filename}...")
         try:
             self.ops.wm.save_as_mainfile(filepath=str(Path(filename).resolve()))
-            print("✅ Scene exported successfully.")
+            logger.info("✅ Scene exported successfully.")
         except Exception as e:
-            print(f"❌ Failed to export Blender scene: {e}")
+            logger.error(f"❌ Failed to export Blender scene: {e}")
 
     def load_real_data(self, data_source: Union[str, Path]):
         """Loads real astronomical data using existing loaders. For TNG50, all particle types are combined."""
         data_path = Path(data_source)
 
-        print(f"📂 Loading data: {data_path}")
+        logger.info(f"📂 Loading data: {data_path}")
 
         # Use existing AstroLab loaders
         if "gaia" in str(data_path).lower():
@@ -475,9 +479,9 @@ class AstroLabWidget(AstroPipeline):
                     df = self._tensor_to_polars(tensor, "tng50")
                     df = df.with_columns(pl.lit(ptype).alias("particle_type"))
                     dfs.append(df)
-                    print(f"   ✅ {ptype}: {len(df):,} particles loaded")
+                    logger.info(f"   ✅ {ptype}: {len(df):,} particles loaded")
                 except Exception as e:
-                    print(f"   ⚠️  {ptype} could not be loaded: {e}")
+                    logger.warning(f"   ⚠️  {ptype} could not be loaded: {e}")
             if dfs:
                 self.galaxy_df = pl.concat(dfs, how="vertical")
             else:
@@ -491,7 +495,7 @@ class AstroLabWidget(AstroPipeline):
             else:
                 raise ValueError(f"Unsupported format: {data_path.suffix}")
 
-        print(f"✅ {len(self.galaxy_df):,} objects loaded")
+        logger.info(f"✅ {len(self.galaxy_df):,} objects loaded")
 
     def _tensor_to_polars(self, tensor, survey_type: str) -> pl.DataFrame:
         """Converts AstroLab tensor to Polars DataFrame."""
@@ -577,10 +581,10 @@ class AstroLabWidget(AstroPipeline):
     def add_interactive_controls(self):
         """Adds interactive slider widgets."""
         if not self.plotter:
-            print("⚠️  Create visualization first")
+            logger.warning("⚠️  Create visualization first")
             return self
 
-        print("🎛️  Adding interactive controls...")
+        logger.info("🎛️  Adding interactive controls...")
 
         # Point Size Slider
         def update_point_size(value):
@@ -626,14 +630,14 @@ class AstroLabWidget(AstroPipeline):
         if add_controls:
             self.add_interactive_controls()
 
-        print("🎭 Starting interactive visualization...")
+        logger.info("🎭 Starting interactive visualization...")
         self.plotter.show()
 
         return self
 
     def analyze_data(self):
         """Performs data analysis with Polars."""
-        print("📈 Data analysis with Polars...")
+        logger.info("📈 Data analysis with Polars...")
 
         # Basic statistics
         numeric_cols = [
@@ -650,8 +654,8 @@ class AstroLabWidget(AstroPipeline):
                     pl.col(numeric_cols).count().name.suffix("_count"),
                 ]
             )
-            print("Statistics:")
-            print(stats)
+            logger.info("Statistics:")
+            logger.info(stats)
 
         # Specific astronomical analyses
         if "redshift" in self.galaxy_df.columns:
@@ -663,8 +667,8 @@ class AstroLabWidget(AstroPipeline):
                     pl.col("redshift").count().alias("n_galaxies"),
                 ]
             )
-            print("\nRedshift distribution:")
-            print(z_stats)
+            logger.info("\nRedshift distribution:")
+            logger.info(z_stats)
 
         return self
 
@@ -687,13 +691,13 @@ def load_and_visualize(data_path: str):
 
 def compare_surveys():
     """Compares GAIA and SDSS surveys side-by-side."""
-    print("--- GAIA Survey ---")
+    logger.info("--- GAIA Survey ---")
     gaia_widget = AstroLabWidget(data_source='gaia')
     gaia_plotter = gaia_widget.show(add_controls=False)
     if gaia_plotter:
         gaia_plotter.subplot(0, 0)
 
-    print("\n--- SDSS Survey ---")
+    logger.info("\n--- SDSS Survey ---")
     sdss_widget = AstroLabWidget(data_source='sdss')
     sdss_plotter = sdss_widget.show(add_controls=False)
     if sdss_plotter:
@@ -705,10 +709,10 @@ def compare_surveys():
 
 # Main execution for tests
 if __name__ == "__main__":
-    print("🌌 AstroLab Widget Test")
+    logger.info("🌌 AstroLab Widget Test")
 
     # Demo with simulated data
-    print("\n1. Demo with simulated data:")
+    logger.info("\n1. Demo with simulated data:")
     demo_widget = quick_demo()
 
-    print("\n✨ Test completed!")
+    logger.info("\n✨ Test completed!")
