@@ -319,6 +319,10 @@ class AstroTensorBase(BaseModel, ValidationMixin):
 
             return self
 
+    def memory_info(self) -> Dict[str, Any]:
+        """Get memory information (alias for get_memory_info)."""
+        return self.get_memory_info()
+
     def get_memory_info(self) -> Dict[str, Any]:
         """Get comprehensive memory information for the tensor."""
         storage_size = (

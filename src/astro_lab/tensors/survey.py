@@ -79,6 +79,7 @@ class SurveyTensor(AstroTensorBase, ValidationMixin):
         metadata.update(kwargs)
 
         super().__init__(data, **metadata)
+        self._validate()  # Call validation after initialization
 
     def _validate(self) -> None:
         """Validate survey tensor data with enhanced checks."""

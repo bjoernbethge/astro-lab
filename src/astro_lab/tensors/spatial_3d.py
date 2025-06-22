@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 # Check for optional dependencies
 try:
     import astropy.units as u
-    from astropy.coordinates import Galactic, ICRS, SkyCoord
+    from astropy.coordinates import ICRS, Galactic, SkyCoord
     from astropy.time import Time
 
     ASTROPY_AVAILABLE = True
@@ -42,6 +42,7 @@ try:
     TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
     TORCH_GEOMETRIC_AVAILABLE = False
+
 
 class Spatial3DTensor(AstroTensorBase):
     """
@@ -109,10 +110,21 @@ class Spatial3DTensor(AstroTensorBase):
             **kwargs,
         }
         super().__init__(tensor_data, **metadata)
+        self._validate()  # Call validation after initialization
 
         # Build spatial index if requested
         if spatial_index and SKLEARN_AVAILABLE:
             self._build_spatial_index()
+
+    def _validate(self) -> None:
+        """Validate spatial tensor data."""
+        if len(self._data) == 0:
+            raise ValueError("Spatial tensor data cannot be empty")
+
+        if self._data.shape[-1] != 3:
+            raise ValueError(
+                f"Spatial tensor must have 3 coordinates, got {self._data.shape[-1]}"
+            )
 
     @classmethod  # type: ignore
     def from_spherical(
@@ -329,11 +341,15 @@ class Spatial3DTensor(AstroTensorBase):
                     query, k=min(len(indices), max_neighbors)
                 )[1][0]
             else:
-                distances = np.linalg.norm(self._data.detach().cpu().numpy()[indices] - query, axis=1)
+                distances = np.linalg.norm(
+                    self._data.detach().cpu().numpy()[indices] - query, axis=1
+                )
         else:
             # KDTree
             indices = spatial_index.query_radius(query, r=radius)[0]
-            distances = np.linalg.norm(self._data.detach().cpu().numpy()[indices] - query, axis=1)
+            distances = np.linalg.norm(
+                self._data.detach().cpu().numpy()[indices] - query, axis=1
+            )
 
             if max_neighbors and len(indices) > max_neighbors:
                 sort_idx = np.argsort(distances)[:max_neighbors]
@@ -639,7 +655,8 @@ class Spatial3DTensor(AstroTensorBase):
                     "center_pc": center,
                     "radius_pc": float(distances.max()),
                     "density": float(
-                        cluster_mask.sum() / (4 / 3 * np.pi * max(distances.max(), 1e-6) ** 3)
+                        cluster_mask.sum()
+                        / (4 / 3 * np.pi * max(distances.max(), 1e-6) ** 3)
                     ),
                 }
 
@@ -647,7 +664,9 @@ class Spatial3DTensor(AstroTensorBase):
         logger.info(
             f"   Grouped stars: {len(labels) - n_noise:,} ({(len(labels) - n_noise) / len(labels) * 100:.1f}%)"
         )
-        logger.info(f"   Isolated stars: {n_noise:,} ({n_noise / len(labels) * 100:.1f}%)")
+        logger.info(
+            f"   Isolated stars: {n_noise:,} ({n_noise / len(labels) * 100:.1f}%)"
+        )
 
         return {
             "cluster_labels": labels_tensor,

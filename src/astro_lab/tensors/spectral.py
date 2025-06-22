@@ -61,6 +61,7 @@ class SpectralTensor(AstroTensorBase):
         metadata.update(kwargs)
 
         super().__init__(data, **metadata, tensor_type="spectral")
+        self._validate()  # Call validation after initialization
 
     def _validate(self) -> None:
         """Validate spectral tensor data."""

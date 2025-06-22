@@ -99,107 +99,105 @@ class AstroTrainer(Trainer):
             training_config: Training configuration
             **kwargs: Additional trainer parameters
         """
-        with comprehensive_cleanup_context("AstroTrainer initialization"):
-            # Store configurations
+        # Simple initialization without complex context manager
+        # Store configurations
+        self.training_config = training_config
+        self._lightning_module = lightning_module
+
+        # Create default training config if none provided
+        if training_config is None:
+            from astro_lab.models.config import (
+                EncoderConfig,
+                GraphConfig,
+                ModelConfig,
+                OutputConfig,
+            )
+            from astro_lab.training.config import TrainingConfig
+
+            # Create a minimal model config
+            model_config = ModelConfig(
+                name="default_model",
+                encoder=EncoderConfig(),
+                graph=GraphConfig(),
+                output=OutputConfig(),
+            )
+
+            training_config = TrainingConfig(
+                name="default_training", model=model_config
+            )
             self.training_config = training_config
-            self._lightning_module = lightning_module
 
-            # Create default training config if none provided
-            if training_config is None:
-                from astro_lab.models.config import (
-                    EncoderConfig,
-                    GraphConfig,
-                    ModelConfig,
-                    OutputConfig,
-                )
-                from astro_lab.training.config import TrainingConfig
+        # Validate training config
+        assert isinstance(self.training_config, FullTrainingConfig), (
+            "training_config must be a TrainingConfig instance"
+        )
 
-                # Create a minimal model config
-                model_config = ModelConfig(
-                    name="default_model",
-                    encoder=EncoderConfig(),
-                    graph=GraphConfig(),
-                    output=OutputConfig(),
-                )
+        # Get model config from training config
+        model_config = self.training_config.model
 
-                training_config = TrainingConfig(
-                    name="default_training", model=model_config
-                )
-                self.training_config = training_config
-
-            # Validate training config
-            assert isinstance(self.training_config, FullTrainingConfig), (
-                "training_config must be a TrainingConfig instance"
+        # Create Lightning module if not provided
+        if lightning_module is None:
+            lightning_module = AstroLightningModule(
+                model_config=model_config, training_config=training_config
             )
 
-            # Get model config from training config
-            model_config = self.training_config.model
+        self.astro_module = lightning_module
+        self.experiment_name = self.training_config.logging.experiment_name
+        self.survey = model_config.name if hasattr(model_config, "name") else "unknown"
 
-            # Create Lightning module if not provided
-            if lightning_module is None:
-                lightning_module = AstroLightningModule(
-                    model_config=model_config, training_config=training_config
-                )
+        # Extract hardware configuration
+        accelerator = self.training_config.hardware.accelerator
+        devices = self.training_config.hardware.devices
+        precision = self.training_config.hardware.precision
 
-            self.astro_module = lightning_module
-            self.experiment_name = self.training_config.logging.experiment_name
-            self.survey = (
-                model_config.name if hasattr(model_config, "name") else "unknown"
-            )
+        # Setup checkpoint directory
+        self.checkpoint_dir = self._setup_checkpoint_dir(
+            checkpoint_dir=None,  # Use default from data_config
+            experiment_name=self.experiment_name,
+        )
 
-            # Extract hardware configuration
-            accelerator = self.training_config.hardware.accelerator
-            devices = self.training_config.hardware.devices
-            precision = self.training_config.hardware.precision
+        # Setup callbacks and logger
+        callbacks = self._setup_astro_callbacks(
+            enable_swa=self.training_config.callbacks.swa,
+            patience=self.training_config.callbacks.early_stopping_patience,
+            monitor=self.training_config.callbacks.monitor,
+            mode=self.training_config.callbacks.mode,
+            checkpoint_dir=self.checkpoint_dir,
+        )
+        logger = self._setup_astro_logger()
 
-            # Setup checkpoint directory
-            self.checkpoint_dir = self._setup_checkpoint_dir(
-                checkpoint_dir=None,  # Use default from data_config
-                experiment_name=self.experiment_name,
-            )
+        # Filter kwargs to avoid conflicts
+        filtered_kwargs = {
+            k: v
+            for k, v in kwargs.items()
+            if k not in ["accelerator", "devices", "precision", "max_epochs"]
+        }
 
-            # Setup callbacks and logger
-            callbacks = self._setup_astro_callbacks(
-                enable_swa=self.training_config.callbacks.swa,
-                patience=self.training_config.callbacks.early_stopping_patience,
-                monitor=self.training_config.callbacks.monitor,
-                mode=self.training_config.callbacks.mode,
-                checkpoint_dir=self.checkpoint_dir,
-            )
-            logger = self._setup_astro_logger()
+        # Determine if we should disable Lightning's default logging
+        disable_lightning_logs = (
+            MLFLOW_AVAILABLE
+            and getattr(self.training_config.logging, "use_mlflow", False)
+            and logger is not None
+        )
 
-            # Filter kwargs to avoid conflicts
-            filtered_kwargs = {
-                k: v
-                for k, v in kwargs.items()
-                if k not in ["accelerator", "devices", "precision", "max_epochs"]
-            }
+        # Initialize parent Trainer with modern parameters
+        super().__init__(
+            max_epochs=self.training_config.scheduler.max_epochs,
+            accelerator=accelerator,
+            devices=devices,
+            precision=precision,
+            callbacks=callbacks,
+            logger=logger,
+            # Disable Lightning's default logging since we use MLflow
+            enable_progress_bar=True,
+            enable_model_summary=True,
+            enable_checkpointing=True,
+            # Disable default Lightning logs directory when using MLflow
+            default_root_dir=None if disable_lightning_logs else None,
+            **filtered_kwargs,
+        )
 
-            # Determine if we should disable Lightning's default logging
-            disable_lightning_logs = (
-                MLFLOW_AVAILABLE
-                and getattr(self.training_config.logging, "use_mlflow", False)
-                and logger is not None
-            )
-
-            # Initialize parent Trainer with modern parameters
-            super().__init__(
-                max_epochs=self.training_config.scheduler.max_epochs,
-                accelerator=accelerator,
-                devices=devices,
-                precision=precision,
-                callbacks=callbacks,
-                logger=logger,
-                # Disable Lightning's default logging since we use MLflow
-                enable_progress_bar=True,
-                enable_model_summary=True,
-                enable_checkpointing=True,
-                # Disable default Lightning logs directory when using MLflow
-                default_root_dir=None if disable_lightning_logs else None,
-                **filtered_kwargs,
-            )
-
-            print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
+        print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
 
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str

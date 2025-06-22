@@ -72,6 +72,7 @@ class LightcurveTensor(AstroTensorBase):
         metadata.update(kwargs)
 
         super().__init__(magnitudes, **metadata, tensor_type="lightcurve")
+        self._validate()  # Call validation after initialization
 
     def _validate(self) -> None:
         """Validate lightcurve tensor data."""
