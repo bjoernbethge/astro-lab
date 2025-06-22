@@ -12,26 +12,16 @@ uv sync
 uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 ```
 
-### Basic Usage
-```python
-from astro_lab.data.core import create_cosmic_web_loader
-from astro_lab.utils.viz import CosmographBridge
-
-# Load and analyze Gaia stellar data
-results = create_cosmic_web_loader(survey="gaia", max_samples=500)
-
-# Create interactive 3D visualization
-bridge = CosmographBridge()
-widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
-```
-
-### Training a Model
+### First Steps
 ```bash
-# Create configuration
-astro-lab create-config -o my_experiment.yaml
+# Process data (recommended first step)
+uv run python -m astro_lab.cli process --surveys gaia --max-samples 1000
 
-# Run complete ML workflow (optimize + train)
-astro-lab run -c my_experiment.yaml --auto-optimize
+# Run interactive widget
+uv run python demo_astrolab_widget.py
+
+# Start development environment
+uv run marimo edit
 ```
 
 ## 🌟 Key Features
@@ -41,7 +31,7 @@ astro-lab run -c my_experiment.yaml --auto-optimize
 - **SDSS**: Galaxy surveys and spectra  
 - **NSA**: Galaxy catalogs with distances
 - **TNG50**: Cosmological simulations
-- **NASA Exoplanet Archive**: Confirmed exoplanets
+- **NASA Exoplanet Archive**: Confirmed exoplanets with Gaia crossmatching
 - **LINEAR**: Asteroid light curves
 
 ### 🧠 **Advanced Machine Learning**
@@ -63,7 +53,7 @@ astro-lab run -c my_experiment.yaml --auto-optimize
 - **Real-time physics**: Gravity and repulsion simulation
 - **Blender Integration**: Advanced 3D rendering capabilities
 
-## 📚 Documentation
+## 📚 Documentation & Examples
 
 ### Core Documentation
 - **[Data Loaders](docs/DATA_LOADERS.md)** - Comprehensive guide to loading and processing astronomical data
@@ -76,27 +66,44 @@ astro-lab run -c my_experiment.yaml --auto-optimize
 - **[Exoplanet Pipeline](docs/EXOPLANET_PIPELINE.md)** - Exoplanet detection and analysis
 - **[Exoplanet Cosmic Web](docs/EXOPLANET_COSMIC_WEB.md)** - Exoplanet spatial distribution analysis
 
-## 🛠️ CLI Tools
+### Interactive Widgets
+- **[AstroLab Widget](README_astrolab_widget.md)** - Interactive 3D visualization with Polars, Astropy, and PyVista
+- **[Examples](examples/README.md)** - Ready-to-run examples and tutorials
 
-### Training Workflow
+## 🛠️ CLI Reference
+
+### Data Processing
 ```bash
-# Complete ML workflow (recommended)
-astro-lab run -c config.yaml --auto-optimize
+# Process all surveys
+uv run python -m astro_lab.cli process
 
-# Training only (for production)
-astro-lab train -c config.yaml
+# Process specific surveys
+uv run python -m astro_lab.cli process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
 
-# Optimization only (for experiments)
-astro-lab optimize -c config.yaml -n 50 --update-config
+# Advanced processing
+uv run python -m astro_lab.cli preprocess catalog data/gaia_catalog.parquet --config gaia --splits
+uv run python -m astro_lab.cli preprocess stats data/gaia_catalog.parquet
+uv run python -m astro_lab.cli preprocess browse --survey gaia --details
+```
+
+### Training & Optimization
+```bash
+# Create configuration
+uv run python -m astro_lab.cli config create -o my_experiment.yaml
+
+# Training
+uv run python -m astro_lab.cli train -c my_experiment.yaml
+uv run python -m astro_lab.cli train --dataset gaia --model gaia_classifier --epochs 50
+
+# Hyperparameter optimization
+uv run python -m astro_lab.cli optimize config.yaml --trials 50
 ```
 
 ### Configuration Management
 ```bash
-# Create default configuration
-astro-lab create-config -o my_experiment.yaml
-
-# List available surveys
-astro-lab data list-surveys
+# Show available configurations
+uv run python -m astro_lab.cli config surveys
+uv run python -m astro_lab.cli config show gaia
 ```
 
 ## 🏗️ Architecture
@@ -128,7 +135,6 @@ astro-lab/
 
 ### Stellar Classification
 ```python
-# Train a model for stellar classification
 from astro_lab.models.factory import ModelFactory
 
 model = ModelFactory.create_survey_model(
@@ -141,7 +147,8 @@ model = ModelFactory.create_survey_model(
 
 ### Galaxy Morphology Analysis
 ```python
-# Analyze galaxy structures
+from astro_lab.data.core import create_cosmic_web_loader
+
 results = create_cosmic_web_loader(
     survey="sdss",
     max_samples=1000,
@@ -149,13 +156,17 @@ results = create_cosmic_web_loader(
 )
 ```
 
-### Exoplanet Detection
+### Interactive Visualization
 ```python
-# Process exoplanet data
-from astro_lab.tensors import LightcurveTensor
+from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.utils.viz import CosmographBridge
 
-lightcurves = LightcurveTensor.from_exoplanet_archive()
-# Analyze transit signals and detect new exoplanets
+# Load and analyze Gaia stellar data
+results = create_cosmic_web_loader(survey="gaia", max_samples=500)
+
+# Create interactive 3D visualization
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 ```
 
 ## 🔧 Development
@@ -182,26 +193,6 @@ uv run pytest test/models/ -v
 uv run pytest test/tensors/ -v
 ```
 
-## 📊 Experiment Tracking
-
-All experiments are automatically tracked with MLflow:
-- **Metrics**: Training/validation accuracy, loss curves
-- **Parameters**: Hyperparameters, model configurations
-- **Artifacts**: Model checkpoints, visualizations
-- **Reproducibility**: Complete experiment snapshots
-
-### MLflow Configuration
-```yaml
-mlflow:
-  tracking_uri: ./data/experiments
-  experiment_name: my_experiment
-  experiment_description: "Detailed experiment description"
-  tags:
-    survey: Gaia
-    task: stellar_classification
-    version: v1.0
-```
-
 ## 🐳 Docker Support
 
 ### Quick Start with Docker
@@ -209,36 +200,21 @@ mlflow:
 # Build and start the container
 docker-compose -f docker/docker-compose.yaml up -d
 
-# Access MLflow UI
-open http://localhost:5000
-
-# Access Marimo (if started)
-open http://localhost:2718
+# Access services
+open http://localhost:5000  # MLflow UI
+open http://localhost:2718  # Marimo (if started)
 
 # Run CLI commands in container
-docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab --help
+docker-compose -f docker/docker-compose.yaml exec astro-lab python -m astro_lab.cli process
 ```
 
-### Docker Configuration
-- **MLflow**: Automatically configured with persistent storage in `./data/experiments`
-- **Ports**: 2718 (Marimo), 5000 (MLflow)
-- **Volumes**: 
-  - `./data` → `/app/data` (all data, experiments, artifacts)
-  - `./src` → `/app/src` (source code for development)
-  - `./configs` → `/app/configs` (configuration files)
-  - `./snippets` → `/app/snippets` (development snippets)
+## 📊 Experiment Tracking
 
-### Development with Docker
-```bash
-# Run training in container with local data
-docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab train -c /app/configs/gaia_optimization.yaml
-
-# Access data from container
-docker-compose -f docker/docker-compose.yaml exec astro-lab ls /app/data
-
-# Run interactive development
-docker-compose -f docker/docker-compose.yaml exec astro-lab marimo edit
-```
+All experiments are automatically tracked with MLflow:
+- **Metrics**: Training/validation accuracy, loss curves
+- **Parameters**: Hyperparameters, model configurations
+- **Artifacts**: Model checkpoints, visualizations
+- **Reproducibility**: Complete experiment snapshots
 
 ## 🤝 Contributing
 
@@ -257,4 +233,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Ready to explore the cosmos?** Start with our [Data Loaders Guide](docs/DATA_LOADERS.md) or jump into [Interactive Visualization](docs/COSMOGRAPH_INTEGRATION.md)! 
+**Ready to explore the cosmos?** Start with `uv run python -m astro_lab.cli process` or jump into [Interactive Visualization](docs/COSMOGRAPH_INTEGRATION.md)! 

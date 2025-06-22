@@ -16,17 +16,32 @@ Simple interactive astronomical visualization widget that combines **Polars**, *
 ## 📦 Installation
 
 ```bash
-pip install polars pyvista astropy
+# Install from the main project
+cd astro-lab
+uv sync
+
+# Install required dependencies
+uv pip install polars pyvista astropy
 ```
 
 Optional for Blender integration:
 ```bash
 # Blender as Python module (advanced)
-pip install bpy
+uv pip install bpy
 ```
 
 ## 🚀 Quick Start
 
+### Process Data First
+```bash
+# Process all surveys (recommended)
+uv run python -m astro_lab.cli process
+
+# Or process specific surveys
+uv run python -m astro_lab.cli process --surveys gaia tng50
+```
+
+### Use the Widget
 ```python
 from astro_lab.widgets import AstroLabWidget
 
@@ -35,7 +50,7 @@ widget = AstroLabWidget(num_galaxies=5000)
 widget.show()
 
 # 2. Load real data
-widget = AstroLabWidget(data_source="path/to/gaia_data.parquet")
+widget = AstroLabWidget(data_source="data/processed/gaia/processed/gaia_k8_n1000.pt")
 widget.analyze_data()
 widget.show()
 
@@ -54,13 +69,13 @@ tng_widget, gaia_widget = compare_surveys()
 
 ```bash
 # 1. AstroLab Widget Demo (interactive)
-python -c "from astro_lab.widgets import AstroLabWidget; AstroLabWidget().show()"
+uv run python -c "from astro_lab.widgets import AstroLabWidget; AstroLabWidget().show()"
 
 # 2. Simple 3D scatterplots (all surveys)
-python demo_astrolab_widget.py
+uv run python demo_astrolab_widget.py
 
 # 3. Survey comparison
-python -c "from astro_lab.widgets import compare_surveys; compare_surveys()"
+uv run python -c "from astro_lab.widgets import compare_surveys; compare_surveys()"
 ```
 
 ## 🏗️ Architecture
@@ -90,12 +105,14 @@ AstroLabWidget(AstroPipeline)   # Extended with AstroLab integration
 
 - **Gaia**: Stellar data with parallax → redshift estimation
 - **SDSS**: Galaxy survey with photometry
+- **NSA**: NASA Sloan Atlas galaxies
+- **LINEAR**: Asteroid light curves
 - **TNG50**: Cosmological simulation (3D positions)
   - **PartType0**: Gas particles
   - **PartType1**: Dark matter
   - **PartType4**: Stars
   - **PartType5**: Black holes
-- **TNG50-Temporal**: Temporal evolution with 11 snapshots
+- **Exoplanet**: NASA Exoplanet Archive with Gaia crossmatching
 - **Custom**: Parquet/CSV files
 
 ## 📊 Example Pipeline
@@ -142,10 +159,10 @@ plotter.show()
 ### Import errors
 ```bash
 # Check if astro-lab is installed
-python -c "import astro_lab; print('astro-lab installed successfully')"
+uv run python -c "import astro_lab; print('astro-lab installed successfully')"
 
 # Or install in development mode
-pip install -e .
+uv pip install -e .
 ```
 
 ### Performance issues
@@ -161,10 +178,10 @@ widget.load_real_data("large_catalog.parquet")
 ### Missing dependencies
 ```bash
 # Install all at once
-pip install polars pyvista astropy matplotlib numpy
+uv pip install polars pyvista astropy matplotlib numpy
 
-# Conda alternative
-conda install -c conda-forge polars pyvista astropy
+# Or use the project's dependencies
+uv sync
 ```
 
 ## 🔮 Roadmap
@@ -172,6 +189,7 @@ conda install -c conda-forge polars pyvista astropy
 - [x] **TNG50 Multi-Particle**: All particle types
 - [x] **Temporal Data**: Temporal evolution
 - [x] **Survey Comparison**: Comparisons between datasets
+- [x] **CLI Integration**: Easy data processing
 - [ ] **Streamlit Integration**: Web-based dashboards
 - [ ] **Animation**: Temporal evolution and orbits
 - [ ] **VR/AR**: PyVista VR backend
@@ -180,12 +198,10 @@ conda install -c conda-forge polars pyvista astropy
 
 ## 🤝 Contributing
 
-The widget uses **inheritance** and builds on existing AstroLab components:
+See the [Development Guide](../docs/DEVGUIDE.md) for contribution guidelines.
 
-- `astro_lab.data.core` - Data loaders
-- `astro_lab.widgets.astro_lab` - Main widget implementation
-- Extend easily instead of reinventing! 🎯
+## 📚 Related Documentation
 
----
-
-*"Simple is better than complex"* - The AstroLab Widget elegantly combines modern libraries without unnecessary complexity. 🌟 
+- **[AstroViz](../astro-viz/README.md)** - Specialized visualization package
+- **[Examples](../examples/README.md)** - Ready-to-run examples
+- **[Main Documentation](../README.md)** - Complete framework overview 

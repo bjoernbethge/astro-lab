@@ -1,6 +1,6 @@
 # 🌌 AstroLab Examples
 
-Modern examples demonstrating AstroLab's astronomical data processing capabilities.
+Ready-to-run examples demonstrating AstroLab's astronomical data processing capabilities.
 
 ## 🚀 Quick Start
 
@@ -33,40 +33,17 @@ python examples/modern_data_analysis.py
 - Advanced cross-survey analysis
 - Data export and saving
 
-## 🔧 Processing Scripts
+### `astroquery_example.py`
+**External data integration** using Astroquery:
+- Download data from astronomical databases
+- Process with AstroLab pipeline
+- Cross-match with existing surveys
 
-### Cosmic Web Analyse
-```bash
-# Einzelner Survey
-astro-lab preprocess cosmic-web gaia --max-samples 1000 --output results/
-
-# Alle Surveys
-astro-lab preprocess all-surveys --max-samples 500 --output results/
-
-# Verfügbare Surveys anzeigen
-astro-lab preprocess surveys
-```
-
-### Datenverarbeitung
-```bash
-# Katalog verarbeiten
-astro-lab preprocess process data/catalog.parquet --create-splits --output processed/
-
-# Statistiken anzeigen
-astro-lab preprocess stats data/catalog.parquet --verbose
-
-# Splits laden
-astro-lab preprocess splits processed/ dataset_name
-```
-
-### Download & Training
-```bash
-# Gaia-Daten herunterladen
-astro-lab download gaia --magnitude-limit 12.0
-
-# Model trainieren
-astro-lab train --dataset gaia --model gaia_classifier --epochs 50
-```
+### `blender_widget_example.py`
+**Advanced 3D rendering** with Blender integration:
+- Export visualizations to Blender
+- Create high-quality renders
+- Advanced material and lighting setup
 
 ## 🌌 Available Surveys
 
@@ -76,8 +53,8 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 | **sdss** | Galaxy | SDSS DR17 galaxies | 5.0, 10.0, 20.0, 50.0 Mpc |
 | **nsa** | Galaxy | NASA Sloan Atlas | 5.0, 10.0, 20.0, 50.0 Mpc |
 | **linear** | Solar System | LINEAR asteroids | 5.0, 10.0, 20.0, 50.0 Mpc |
-| **tng** | Simulation | TNG50 cosmological simulation | 5.0, 10.0, 20.0, 50.0 Mpc |
-| **exoplanet** | Planetary | NASA Exoplanet Archive | 10.0, 25.0, 50.0, 100.0 Mpc |
+| **tng50** | Simulation | TNG50 cosmological simulation | 5.0, 10.0, 20.0, 50.0 Mpc |
+| **exoplanet** | Planetary | NASA Exoplanet Archive with Gaia crossmatching | 10.0, 25.0, 50.0, 100.0 Mpc |
 
 ## 🎨 Visualization Examples
 
@@ -107,7 +84,7 @@ color_map = {
     'gaia': '#ffd700',      # Gold for stars
     'sdss': '#4a90e2',      # Blue for galaxies
     'nsa': '#e24a4a',       # Red for NSA
-    'tng': '#00ff00',       # Green for simulation
+    'tng50': '#00ff00',     # Green for simulation
     'linear': '#ff8800',    # Orange for asteroids
     'exoplanet': '#ff00ff'  # Magenta for exoplanets
 }
@@ -164,4 +141,34 @@ torch.save(coords_tensor, "gaia_coordinates.pt")
 with open("gaia_summary.txt", "w") as f:
     f.write(f"Objects: {results['n_objects']:,}\n")
     f.write(f"Volume: {results['total_volume']:.0f} Mpc³\n")
+```
+
+## 📁 Example Structure
+
+```
+examples/
+├── quick_start.py              # Beginner-friendly introduction
+├── modern_data_analysis.py     # Complete feature demonstration
+├── astroquery_example.py       # External data integration
+├── blender_widget_example.py   # Advanced 3D rendering
+├── data_loading/               # Data processing examples
+│   └── data_processing_example.py
+├── training/                   # Model training examples
+├── visualization/              # Visualization examples
+│   ├── cosmograph_polars_example.py
+│   └── polars_data_example.py
+└── advanced/                   # Advanced usage examples
+```
+
+## 🚀 Quick CLI Reference
+
+For detailed CLI documentation, see the [main README](../README.md#-cli-reference).
+
+```bash
+# Process data (required before running examples)
+uv run python -m astro_lab.cli process --surveys gaia --max-samples 1000
+
+# Run examples
+python examples/quick_start.py
+python examples/modern_data_analysis.py
 ```
