@@ -35,6 +35,10 @@ class TensorProtocol(Protocol):
 class PhotometricTensorProtocol(Protocol):
     """Protocol for PhotometricTensor to avoid circular imports."""
 
+    data: torch.Tensor
+    filter_system: str
+    def __len__(self) -> int: ...
+
     @property
     def bands(self) -> List[str]: ...
 
@@ -56,11 +60,12 @@ class PhotometricTensorProtocol(Protocol):
 class Spatial3DTensorProtocol(Protocol):
     """Protocol for Spatial3DTensor to avoid circular imports."""
 
-    @property
-    def cartesian(self) -> torch.Tensor: ...
+    data: torch.Tensor
+    coordinate_system: str
+    def __len__(self) -> int: ...
 
     @property
-    def coordinate_system(self) -> str: ...
+    def cartesian(self) -> torch.Tensor: ...
 
     @property
     def unit(self) -> str: ...

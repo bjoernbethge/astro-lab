@@ -11,10 +11,10 @@ from typing import Any, Dict, List
 # Survey configurations - easily extensible
 SURVEY_CONFIGS = {
     "gaia": {
-        "name": "Gaia DR3",
+        "name": "Gaia DR3 (Minimal)",
         "coord_cols": ["ra", "dec"],
         "mag_cols": ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"],
-        "extra_cols": ["parallax", "pmra", "pmdec"],
+        "extra_cols": [],
         "color_pairs": [
             ("phot_g_mean_mag", "phot_bp_mean_mag"),
             ("phot_bp_mean_mag", "phot_rp_mean_mag"),
@@ -110,7 +110,8 @@ def register_survey(name: str, config: Dict[str, Any]) -> None:
 def get_survey_features(survey: str) -> List[str]:
     """Get all feature columns for a survey."""
     config = get_survey_config(survey)
-    return config["coord_cols"] + config["mag_cols"] + config["extra_cols"]
+    features = config.get("coord_cols", []) + config.get("mag_cols", []) + config.get("extra_cols", [])
+    return features
 
 
 def get_survey_coordinates(survey: str) -> List[str]:

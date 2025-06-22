@@ -216,15 +216,37 @@ class ZeroCopyBridge:
         return optimized
 
     def validate_3d_coordinates(self, tensor: torch.Tensor) -> torch.Tensor:
-        """Validate and reshape tensor for 3D coordinates."""
-        if tensor.shape[-1] != 3:
-            if tensor.shape == torch.Size([3]):
+        """Validate and ensure tensor has correct 3D coordinate format."""
+        # Check if it's a SurveyTensor object
+        if hasattr(tensor, 'survey_name') and hasattr(tensor, 'get_spatial_tensor'):
+            logger.info(f"✅ SurveyTensor detected: {tensor.survey_name}. Extracting spatial coordinates.")
+            try:
+                spatial_tensor = tensor.get_spatial_tensor()
+                if hasattr(spatial_tensor, 'cartesian'):
+                    coords = spatial_tensor.cartesian
+                    logger.info(f"✅ Extracted 3D coordinates from SurveyTensor: {coords.shape}")
+                    tensor = coords
+                else:
+                    raise ValueError("SurveyTensor spatial_tensor has no cartesian attribute")
+            except Exception as e:
+                logger.error(f"❌ Failed to extract spatial coordinates from SurveyTensor: {e}")
+                raise ValueError(f"Failed to extract spatial coordinates from SurveyTensor: {e}")
+
+        # Ensure tensor is 2D with shape [N, 3]
+        if tensor.dim() == 1:
+            if tensor.shape[0] == 3:
                 # Single point [3] -> [1, 3]
                 tensor = tensor.unsqueeze(0)
             else:
+                raise ValueError(f"1D tensor must have 3 elements, got {tensor.shape[0]}")
+        elif tensor.dim() == 2:
+            if tensor.shape[-1] != 3:
                 raise ValueError(
                     f"Expected [..., 3] tensor for coordinates, got {tensor.shape}"
                 )
+        else:
+            raise ValueError(f"Expected 1D or 2D tensor, got {tensor.dim()}D tensor")
+        
         return tensor
 
 

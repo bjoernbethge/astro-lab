@@ -4,7 +4,7 @@ Simplified graph utilities for astronomical data.
 Basic graph construction and analysis tools that work with the new tensor architecture.
 """
 
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -17,9 +17,44 @@ if TYPE_CHECKING:
 
 # Import PyTorch Geometric and sklearn
 from sklearn.cluster import DBSCAN, KMeans
-from sklearn.neighbors import BallTree, NearestNeighbors
 from torch_geometric.data import Data
 from torch_geometric.nn import radius_graph
+
+# GPU-accelerated imports
+import torch_cluster
+
+
+def _gpu_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
+    """
+    Create KNN graph using GPU acceleration with torch_cluster - FAST VERSION.
+    
+    Args:
+        coords: Coordinate tensor [N, 3]
+        k: Number of nearest neighbors
+        **kwargs: Additional arguments (ignored for GPU implementation)
+    
+    Returns:
+        Edge index tensor [2, num_edges]
+    """
+    if len(coords) == 0:
+        return torch.empty((2, 0), dtype=torch.long)
+    
+    # Convert to GPU if available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    coords_gpu = coords.to(device)
+    
+    # Use torch_cluster's knn_graph for GPU acceleration
+    edge_index = torch_cluster.knn_graph(
+        x=coords_gpu, 
+        k=k, 
+        loop=False,  # No self-loops
+        flow='source_to_target'
+    )
+    
+    # Move back to CPU for consistency
+    edge_index = edge_index.cpu()
+    
+    return edge_index
 
 
 def _sklearn_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
@@ -38,23 +73,179 @@ def _sklearn_knn_graph(coords: torch.Tensor, k: int, **kwargs) -> torch.Tensor:
     # Convert to numpy for sklearn
     coords_np = coords.detach().cpu().numpy()
 
-    # Create NearestNeighbors model
-    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm="auto").fit(coords_np)
-
-    # Find k+1 nearest neighbors (including self)
-    distances, indices = nbrs.kneighbors(coords_np)
-
-    # Create edge list (exclude self-connections)
-    edge_list = []
-    for i in range(len(coords_np)):
-        for j in range(1, k + 1):  # Skip first index (self)
-            neighbor_idx = indices[i, j]
-            edge_list.append([i, neighbor_idx])
-
-    # Convert to tensor
-    edge_index = torch.tensor(edge_list, dtype=torch.long).t().contiguous()
+    # Use GPU-accelerated radius search as fallback
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    coords_tensor = torch.tensor(coords_np, dtype=torch.float32, device=device)
+    
+    # Create k-NN graph on GPU
+    edge_index = torch_cluster.knn_graph(
+        x=coords_tensor, 
+        k=k, 
+        loop=False,  # No self-loops
+        flow='source_to_target'
+    )
+    
+    # Move back to CPU for consistency
+    edge_index = edge_index.cpu()
 
     return edge_index
+
+
+def create_knn_graph(coords: torch.Tensor, k: int, use_gpu: bool = True, **kwargs) -> torch.Tensor:
+    """
+    Create KNN graph with GPU acceleration by default.
+    
+    Args:
+        coords: Coordinate tensor [N, 3]
+        k: Number of nearest neighbors
+        use_gpu: Whether to use GPU acceleration (default: True)
+        **kwargs: Additional arguments
+    
+    Returns:
+        Edge index tensor [2, num_edges]
+    """
+    if use_gpu:
+        return _gpu_knn_graph(coords, k, **kwargs)
+    else:
+        return _sklearn_knn_graph(coords, k, **kwargs)
+
+
+def create_radius_graph(coords: torch.Tensor, radius: float, **kwargs) -> torch.Tensor:
+    """
+    Create radius graph using GPU acceleration.
+    
+    Args:
+        coords: Coordinate tensor [N, 3]
+        radius: Radius for neighbor search
+        **kwargs: Additional arguments
+    
+    Returns:
+        Edge index tensor [2, num_edges]
+    """
+    if len(coords) == 0:
+        return torch.empty((2, 0), dtype=torch.long)
+    
+    # Convert to GPU if available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    coords_gpu = coords.to(device)
+    
+    # Use torch_geometric's radius_graph for GPU acceleration
+    edge_index = radius_graph(
+        x=coords_gpu,
+        r=radius,
+        loop=False,  # No self-loops
+        flow='source_to_target'
+    )
+    
+    # Move back to CPU for consistency
+    edge_index = edge_index.cpu()
+    
+    return edge_index
+
+
+def create_astronomical_graph(
+    coords: torch.Tensor,
+    features: Optional[torch.Tensor] = None,
+    k_neighbors: int = 8,
+    radius: Optional[float] = None,
+    **kwargs,
+) -> Data:
+    """
+    Create PyTorch Geometric Data object for astronomical data.
+    
+    Args:
+        coords: Coordinate tensor [N, 3]
+        features: Optional feature tensor [N, F]
+        k_neighbors: Number of nearest neighbors for graph construction
+        radius: Alternative radius for graph construction
+        **kwargs: Additional arguments
+    
+    Returns:
+        PyTorch Geometric Data object
+    """
+    # Create edges
+    if radius is not None:
+        edge_index = create_radius_graph(coords, radius, **kwargs)
+    else:
+        edge_index = create_knn_graph(coords, k_neighbors, **kwargs)
+    
+    # Create node features
+    if features is not None:
+        x = torch.cat([coords, features], dim=1)
+    else:
+        x = coords
+    
+    return Data(x=x, edge_index=edge_index, pos=coords)
+
+
+def analyze_graph_structure(edge_index: torch.Tensor, num_nodes: int) -> Dict[str, Any]:
+    """
+    Analyze graph structure and connectivity.
+    
+    Args:
+        edge_index: Edge index tensor [2, num_edges]
+        num_nodes: Number of nodes in the graph
+    
+    Returns:
+        Dictionary with graph statistics
+    """
+    num_edges = edge_index.shape[1]
+    
+    # Calculate degree distribution
+    degrees = torch.zeros(num_nodes, dtype=torch.long)
+    degrees.scatter_add_(0, edge_index[0], torch.ones(num_edges, dtype=torch.long))
+    
+    # Calculate statistics
+    mean_degree = degrees.float().mean().item()
+    max_degree = degrees.max().item()
+    min_degree = degrees.min().item()
+    
+    # Calculate connectivity
+    isolated_nodes = (degrees == 0).sum().item()
+    connected_nodes = num_nodes - isolated_nodes
+    
+    return {
+        "num_nodes": num_nodes,
+        "num_edges": num_edges,
+        "mean_degree": mean_degree,
+        "max_degree": max_degree,
+        "min_degree": min_degree,
+        "isolated_nodes": isolated_nodes,
+        "connected_nodes": connected_nodes,
+        "connectivity_ratio": connected_nodes / num_nodes if num_nodes > 0 else 0.0,
+    }
+
+
+def cluster_graph_nodes(
+    coords: torch.Tensor,
+    edge_index: torch.Tensor,
+    algorithm: str = "dbscan",
+    **kwargs,
+) -> torch.Tensor:
+    """
+    Cluster nodes in the graph based on spatial proximity.
+    
+    Args:
+        coords: Coordinate tensor [N, 3]
+        edge_index: Edge index tensor [2, num_edges]
+        algorithm: Clustering algorithm ('dbscan', 'kmeans')
+        **kwargs: Additional clustering parameters
+    
+    Returns:
+        Cluster labels tensor [N]
+    """
+    coords_np = coords.detach().cpu().numpy()
+    
+    if algorithm == "dbscan":
+        clusterer = DBSCAN(**kwargs)
+    elif algorithm == "kmeans":
+        n_clusters = kwargs.get("n_clusters", 5)
+        clusterer = KMeans(n_clusters=n_clusters, **kwargs)
+    else:
+        raise ValueError(f"Unknown clustering algorithm: {algorithm}")
+    
+    labels = clusterer.fit_predict(coords_np)
+    return torch.from_numpy(labels)
 
 
 def create_spatial_graph(
@@ -83,8 +274,8 @@ def create_spatial_graph(
 
     # Create edges
     if method == "knn":
-        # Use sklearn-based KNN as fallback
-        edge_index = _sklearn_knn_graph(coords, k=k, **kwargs)
+        # Use GPU-accelerated KNN by default
+        edge_index = _gpu_knn_graph(coords, k=k, **kwargs)
     elif method == "radius":
         edge_index = radius_graph(coords, r=radius, **kwargs)
     else:

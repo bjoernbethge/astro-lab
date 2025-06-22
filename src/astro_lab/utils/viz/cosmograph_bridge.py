@@ -1,45 +1,40 @@
 """
-CosmographBridge - Simple integration of Cosmograph with AstroLab tensors.
+Cosmograph bridge for astronomical data visualization.
 
-Provides a clean interface to create interactive graph visualizations
-from AstroLab spatial tensors and survey data using Polars for data handling.
+Provides seamless integration between AstroLab tensors and Cosmograph 3D visualization.
 """
 
-import warnings
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import numpy as np
 import polars as pl
-
-# Import cosmograph
-# Suppress NumPy warnings for Cosmograph compatibility
-with warnings.catch_warnings():
-    warnings.filterwarnings(
-        "ignore", message="A module that was compiled using NumPy 1.x"
-    )
-    from cosmograph import cosmo
+import torch
+from cosmograph import cosmo
+from sklearn.neighbors import NearestNeighbors
+import torch_cluster
 
 
 class CosmographBridge:
     """
-    Bridge class to create Cosmograph visualizations from AstroLab data.
+    Bridge class for creating Cosmograph visualizations from AstroLab data.
 
-    Provides simple methods to convert spatial tensors and survey data
-    into interactive graph visualizations using Cosmograph.
-    Uses Polars for efficient data handling and converts to pandas only when needed.
+    Provides methods to convert various data sources to Cosmograph format:
+    - Spatial3DTensor objects
+    - Survey data dictionaries
+    - Raw coordinate arrays
+    - Polars DataFrames
     """
 
     def __init__(self):
-        """Initialize the Cosmograph bridge."""
-
+        """Initialize CosmographBridge with default configuration."""
         self.default_config = {
-            "background_color": "#000011",
-            "simulation_gravity": 0.1,
-            "simulation_repulsion": 0.2,
-            "show_labels": True,
-            "show_top_labels_limit": 10,
-            "curved_links": True,
-            "curved_link_weight": 0.3,
+            "width": 800,
+            "height": 600,
+            "background_color": "#000000",
+            "point_size": 3,
+            "link_width": 1,
+            "camera_distance": 100,
+            "camera_rotation": [0, 0, 0],
         }
 
     def from_spatial_tensor(
@@ -207,29 +202,42 @@ class CosmographBridge:
         **kwargs,
     ) -> Any:
         """
-        Create Cosmograph visualization from raw coordinates.
+        Create Cosmograph visualization from coordinate array.
 
         Args:
-            coords: Nx3 array of 3D coordinates
-            edges: Optional Nx2 array of edge indices
-            radius: Radius for neighbor graph if edges not provided
+            coords: Coordinate array [N, 3]
+            edges: Optional edge array [M, 2]
+            radius: Radius for neighbor graph creation
             **kwargs: Additional Cosmograph parameters
 
         Returns:
             Cosmograph widget
         """
         if edges is None:
-            # Create simple neighbor graph using distance
-            from sklearn.neighbors import NearestNeighbors
-
-            nbrs = NearestNeighbors(n_neighbors=5, algorithm="ball_tree").fit(coords)
-            distances, indices = nbrs.kneighbors(coords)
-
+            # Create simple neighbor graph using GPU acceleration
+            # Convert to PyTorch tensor and move to GPU
+            device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
+            
+            # Create k-NN graph on GPU
+            edge_index = torch_cluster.knn_graph(
+                x=coords_tensor, 
+                k=5,  # 5 nearest neighbors
+                loop=False,  # No self-loops
+                flow='source_to_target'
+            )
+            
+            # Move back to CPU and convert to numpy
+            edge_index = edge_index.cpu().numpy()
+            
+            # Calculate distances and filter by radius
             edge_list = []
-            for i in range(len(coords)):
-                for j in range(1, len(indices[i])):
-                    if distances[i][j] <= radius:
-                        edge_list.append([i, indices[i][j]])
+            for i in range(edge_index.shape[1]):
+                src, tgt = edge_index[:, i]
+                dist = np.linalg.norm(coords[src] - coords[tgt])
+                if dist <= radius:
+                    edge_list.append([src, tgt])
+            
             edges = np.array(edge_list, dtype=int)
 
         # Extract coordinates explicitly
@@ -319,17 +327,30 @@ class CosmographBridge:
         else:
             ids = df[id_col].to_list()
 
-        # Create neighbor graph
-        from sklearn.neighbors import NearestNeighbors
-
-        nbrs = NearestNeighbors(n_neighbors=5, algorithm="ball_tree").fit(coords)
-        distances, indices = nbrs.kneighbors(coords)
-
+        # Create neighbor graph using GPU acceleration
+        # Convert to PyTorch tensor and move to GPU
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
+        
+        # Create k-NN graph on GPU
+        edge_index = torch_cluster.knn_graph(
+            x=coords_tensor, 
+            k=5,  # 5 nearest neighbors
+            loop=False,  # No self-loops
+            flow='source_to_target'
+        )
+        
+        # Move back to CPU and convert to numpy
+        edge_index = edge_index.cpu().numpy()
+        
+        # Calculate distances and filter by radius
         edge_list = []
-        for i in range(len(coords)):
-            for j in range(1, len(indices[i])):
-                if distances[i][j] <= radius:
-                    edge_list.append([i, indices[i][j]])
+        for i in range(edge_index.shape[1]):
+            src, tgt = edge_index[:, i]
+            dist = np.linalg.norm(coords[src] - coords[tgt])
+            if dist <= radius:
+                edge_list.append([src, tgt])
+        
         edges = np.array(edge_list, dtype=int)
 
         # Extract coordinates explicitly
