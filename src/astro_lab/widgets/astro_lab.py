@@ -7,21 +7,20 @@ and interactive exploration using various backends (PyVista, Blender, etc.).
 """
 
 import logging
-import numpy as np
-import torch
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
 import astropy.units as u
-from astropy.coordinates import SkyCoord
+import numpy as np
 import polars as pl
 import pyvista as pv
-from typing import Any, Dict, List, Optional, Union, Tuple
+import torch
+from astropy.coordinates import SkyCoord
 
 from ..data.core import create_cosmic_web_loader
 from ..tensors.spatial_3d import Spatial3DTensor
+from ..utils.bpy import AstroLabApi, bpy
 from ..utils.viz.bidirectional_bridge import BidirectionalPyVistaBlenderBridge
-from ..utils.blender import bpy, AstroLabApi
-
-from pathlib import Path
-from typing import Optional, Union, Any, Callable
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -38,9 +37,10 @@ except ImportError:
 try:
     from ..utils.viz.bidirectional_bridge import (
         SyncConfig,
+        quick_convert_blender_to_pyvista,
         quick_convert_pyvista_to_blender,
-        quick_convert_blender_to_pyvista
     )
+
     BIDIRECTIONAL_BRIDGE_AVAILABLE = True
 except ImportError:
     BIDIRECTIONAL_BRIDGE_AVAILABLE = False
@@ -119,7 +119,9 @@ class AstroPipeline:
             # Fallback without Astropy
             ra_array = np.array(self.galaxy_df["ra"].to_numpy())
             dec_array = np.array(self.galaxy_df["dec"].to_numpy())
-            redshift_array = np.array(self.galaxy_df["redshift"].to_numpy()) * 1000  # Scaling
+            redshift_array = (
+                np.array(self.galaxy_df["redshift"].to_numpy()) * 1000
+            )  # Scaling
             coords = np.vstack([ra_array, dec_array, redshift_array]).T
             return coords, None
 
@@ -217,10 +219,10 @@ class AstroLabWidget(AstroPipeline):
 
         self.plotter = None
         self.widgets = {}
-        
+
         # Setup Blender API with proper error handling
         self._setup_blender_api()
-        
+
         # Setup bidirectional bridge
         self._setup_bidirectional_bridge()
 
@@ -254,34 +256,36 @@ class AstroLabWidget(AstroPipeline):
             self.context = None
             self.scene = None
             logger.error(f"❌ Failed to connect Blender API: {e}")
-            
+
     def _setup_bidirectional_bridge(self):
         """Initializes the PyVista-Blender bidirectional bridge."""
         if not self.blender_available() or not BIDIRECTIONAL_BRIDGE_AVAILABLE:
             self.bridge = None
             return
-        
+
         self.bridge = BidirectionalPyVistaBlenderBridge()
 
     def bidirectional_bridge_available(self) -> bool:
         """Check if bidirectional bridge is available."""
         return BIDIRECTIONAL_BRIDGE_AVAILABLE and self.bridge is not None
 
-    def pyvista_to_blender(self, mesh: "pv.PolyData", name: str = "converted_mesh") -> Optional[Any]:
+    def pyvista_to_blender(
+        self, mesh: "pv.PolyData", name: str = "converted_mesh"
+    ) -> Optional[Any]:
         """
         Convert PyVista mesh to Blender object using bidirectional bridge.
-        
+
         Args:
             mesh: PyVista PolyData mesh
             name: Name for the Blender object
-            
+
         Returns:
             Blender object or None if conversion failed
         """
         if not self.bidirectional_bridge_available():
             logger.error("❌ Bidirectional bridge not available")
             return None
-            
+
         try:
             return self.bridge.pyvista_to_blender(mesh, name)
         except Exception as e:
@@ -291,27 +295,29 @@ class AstroLabWidget(AstroPipeline):
     def blender_to_pyvista(self, obj: Any) -> Optional["pv.PolyData"]:
         """
         Convert Blender object to PyVista mesh using bidirectional bridge.
-        
+
         Args:
             obj: Blender object
-            
+
         Returns:
             PyVista PolyData mesh or None if conversion failed
         """
         if not self.bidirectional_bridge_available():
             logger.error("❌ Bidirectional bridge not available")
             return None
-            
+
         try:
             return self.bridge.blender_to_pyvista(obj)
         except Exception as e:
             logger.error(f"❌ Blender to PyVista conversion failed: {e}")
             return None
 
-    def sync_mesh(self, source: Union["pv.PolyData", Any], target: Union["pv.PolyData", Any]):
+    def sync_mesh(
+        self, source: Union["pv.PolyData", Any], target: Union["pv.PolyData", Any]
+    ):
         """
         Synchronize mesh data between PyVista and Blender objects.
-        
+
         Args:
             source: Source mesh (PyVista or Blender)
             target: Target mesh (PyVista or Blender)
@@ -319,34 +325,38 @@ class AstroLabWidget(AstroPipeline):
         if not self.bidirectional_bridge_available():
             logger.error("❌ Bidirectional bridge not available")
             return
-            
+
         try:
             self.bridge.sync_mesh(source, target)
             logger.info("✅ Mesh synchronized")
         except Exception as e:
             logger.error(f"❌ Mesh synchronization failed: {e}")
 
-    def start_live_sync(self, pyvista_plotter: "pv.Plotter", sync_interval: float = 0.1) -> bool:
+    def start_live_sync(
+        self, pyvista_plotter: "pv.Plotter", sync_interval: float = 0.1
+    ) -> bool:
         """
         Start live synchronization between PyVista and Blender.
-        
+
         Args:
             pyvista_plotter: PyVista plotter
             sync_interval: Sync interval in seconds
-            
+
         Returns:
             True if live sync started successfully
         """
         if not self.bidirectional_bridge_available():
             logger.error("❌ Bidirectional bridge not available")
             return False
-            
+
         if not self.blender_available():
             logger.error("❌ Blender API not available")
             return False
-            
+
         try:
-            success = self.bridge.create_live_sync(pyvista_plotter, self.scene, sync_interval)
+            success = self.bridge.create_live_sync(
+                pyvista_plotter, self.scene, sync_interval
+            )
             if success:
                 logger.info(f"✅ Live sync started (interval: {sync_interval}s)")
             return success
@@ -384,11 +394,13 @@ class AstroLabWidget(AstroPipeline):
 
         logger.info("🎬 Creating Blender scene...")
         if clear_existing:
-            self.al.core['reset_scene']()
+            self.al.core["reset_scene"]()
 
-        self.al.core['create_camera'](location=(0, -30, 10), target=(0, 0, 0))
-        self.al.core['create_light'](light_type='SUN', location=(10, 20, 10), energy=2.5)
-        self.al.core['create_cosmic_grid'](scale=(10, 10, 10))
+        self.al.core["create_camera"](location=(0, -30, 10), target=(0, 0, 0))
+        self.al.core["create_light"](
+            light_type="SUN", location=(10, 20, 10), energy=2.5
+        )
+        self.al.core["create_cosmic_grid"](scale=(10, 10, 10))
         logger.info("✅ Blender scene created.")
 
     def add_astronomical_data_to_blender(
@@ -421,7 +433,7 @@ class AstroLabWidget(AstroPipeline):
             obj_name="AstronomicalData",
             point_size=point_size,
             use_colors=use_colors,
-            redshift_data=self.galaxy_df["redshift"].to_numpy() if use_colors else None
+            redshift_data=self.galaxy_df["redshift"].to_numpy() if use_colors else None,
         )
 
         logger.info("✅ Data added to Blender scene.")
@@ -439,7 +451,7 @@ class AstroLabWidget(AstroPipeline):
     def export_blender_scene(self, filename: str = "astronomical_scene.blend"):
         """
         Export the current Blender scene.
-        
+
         Parameters:
         -----------
         filename : str
@@ -569,7 +581,9 @@ class AstroLabWidget(AstroPipeline):
             if "phot_g_mean_mag" in schema and "bp_rp" in schema:
                 df = df.with_columns(
                     [
-                        (pl.col("phot_g_mean_mag") - pl.col("bp_rp")).alias("g_r_color"),
+                        (pl.col("phot_g_mean_mag") - pl.col("bp_rp")).alias(
+                            "g_r_color"
+                        ),
                         (10.0 + np.random.normal(0, 1, len(df))).alias(
                             "log_stellar_mass"
                         ),
@@ -692,17 +706,17 @@ def load_and_visualize(data_path: str):
 def compare_surveys():
     """Compares GAIA and SDSS surveys side-by-side."""
     logger.info("--- GAIA Survey ---")
-    gaia_widget = AstroLabWidget(data_source='gaia')
+    gaia_widget = AstroLabWidget(data_source="gaia")
     gaia_plotter = gaia_widget.show(add_controls=False)
     if gaia_plotter:
         gaia_plotter.subplot(0, 0)
 
     logger.info("\n--- SDSS Survey ---")
-    sdss_widget = AstroLabWidget(data_source='sdss')
+    sdss_widget = AstroLabWidget(data_source="sdss")
     sdss_plotter = sdss_widget.show(add_controls=False)
     if sdss_plotter:
         sdss_plotter.subplot(0, 1)
-        
+
     if gaia_plotter:
         gaia_plotter.show()
 
