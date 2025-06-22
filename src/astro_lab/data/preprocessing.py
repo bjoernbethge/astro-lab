@@ -6,6 +6,7 @@ Handles data preprocessing and graph creation for astronomical surveys.
 Moved from CLI to data module for better organization.
 """
 
+import json
 import logging
 import re
 import time
@@ -18,10 +19,12 @@ import torch
 from sklearn.neighbors import NearestNeighbors
 from torch_geometric.data import Data
 
+from ..utils.config.surveys import get_survey_config, get_survey_features
 from .config import data_config
 from .core import SURVEY_CONFIGS
 
 logger = logging.getLogger(__name__)
+
 
 def preprocess_catalog(
     input_path: Union[str, Path],
@@ -75,6 +78,7 @@ def preprocess_catalog(
         logger.info(f"💾 Saved processed data to {output_path}")
 
     return df_clean
+
 
 def preprocess_catalog_lazy(
     input_path: Union[str, Path],
@@ -145,6 +149,7 @@ def preprocess_catalog_lazy(
 
     return lf_clean
 
+
 def create_graph_from_dataframe(
     df: pl.DataFrame,
     survey_type: str,
@@ -190,6 +195,7 @@ def create_graph_from_dataframe(
         logger.info(f"💾 Saved graph to {output_path}")
 
     return graph_data
+
 
 def create_graph_datasets_from_splits(
     train_df: pl.DataFrame,
@@ -239,6 +245,7 @@ def create_graph_datasets_from_splits(
     )
     return datasets
 
+
 def _apply_survey_preprocessing(df: pl.DataFrame, survey_type: str) -> pl.DataFrame:
     """Apply survey-specific preprocessing."""
     if survey_type == "gaia":
@@ -254,6 +261,7 @@ def _apply_survey_preprocessing(df: pl.DataFrame, survey_type: str) -> pl.DataFr
     else:
         logger.warning(f"⚠️ No specific preprocessing for {survey_type}, using generic")
         return _preprocess_generic_data(df)
+
 
 def _apply_survey_preprocessing_lazy(
     lf: pl.LazyFrame, survey_type: str
@@ -271,6 +279,7 @@ def _apply_survey_preprocessing_lazy(
         return lf  # TNG50 data is already clean
     else:
         return _preprocess_generic_data_lazy(lf)
+
 
 def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess Gaia data."""
@@ -296,6 +305,7 @@ def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:
 
     return df_clean
 
+
 def _preprocess_sdss_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess SDSS data."""
     # Remove rows with missing coordinates and redshift
@@ -307,12 +317,14 @@ def _preprocess_sdss_data(df: pl.DataFrame) -> pl.DataFrame:
 
     return df_clean
 
+
 def _preprocess_nsa_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess NSA data."""
     # Remove rows with missing coordinates
     df_clean = df.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
 
     return df_clean
+
 
 def _preprocess_linear_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess LINEAR data."""
@@ -322,6 +334,7 @@ def _preprocess_linear_data(df: pl.DataFrame) -> pl.DataFrame:
     # Entferne Zeilen mit fehlenden Koordinaten
     df_clean = df.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
     return df_clean
+
 
 def _preprocess_generic_data(df: pl.DataFrame) -> pl.DataFrame:
     """Generic preprocessing for unknown survey types."""
@@ -335,6 +348,7 @@ def _preprocess_generic_data(df: pl.DataFrame) -> pl.DataFrame:
         df_clean = df
 
     return df_clean
+
 
 def _preprocess_gaia_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy Gaia preprocessing."""
@@ -355,6 +369,7 @@ def _preprocess_gaia_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
         ]
     )
 
+
 def _preprocess_sdss_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy SDSS preprocessing."""
     return lf.filter(
@@ -363,9 +378,11 @@ def _preprocess_sdss_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
         & pl.col("z").is_not_null()
     )
 
+
 def _preprocess_nsa_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy NSA preprocessing."""
     return lf.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
+
 
 def _preprocess_linear_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Lazy LINEAR preprocessing."""
@@ -381,10 +398,12 @@ def _preprocess_linear_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
     return lf_renamed.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
 
+
 def _preprocess_generic_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
     """OPTIMIZED: Generic lazy preprocessing."""
     # This is a simplified version - in practice, you'd inspect the schema
     return lf.filter(pl.all_horizontal(pl.all().is_not_null()))
+
 
 def _create_knn_graph(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     """Create k-NN graph from coordinates."""
@@ -415,6 +434,7 @@ def _create_knn_graph(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     edge_index = torch.tensor(np.vstack([sources, targets]), dtype=torch.long)
 
     return edge_index
+
 
 def _create_gaia_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
@@ -466,6 +486,7 @@ def _create_gaia_graph(
 
     return data
 
+
 def _create_sdss_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
@@ -505,6 +526,7 @@ def _create_sdss_graph(
     data.k_neighbors = k_neighbors
 
     return data
+
 
 def _create_nsa_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
@@ -546,6 +568,7 @@ def _create_nsa_graph(
 
     return data
 
+
 def _create_tng50_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
@@ -585,6 +608,7 @@ def _create_tng50_graph(
     data.k_neighbors = k_neighbors
 
     return data
+
 
 def _create_generic_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
@@ -654,6 +678,7 @@ def _create_generic_graph(
     data.k_neighbors = k_neighbors
 
     return data
+
 
 def perform_gaia_crossmatching(
     exoplanet_coords: pl.DataFrame,
@@ -756,6 +781,7 @@ def perform_gaia_crossmatching(
 
     return results
 
+
 def perform_fallback_crossmatching(
     exoplanet_coords: pl.DataFrame,
     gaia_df: pl.DataFrame,
@@ -843,6 +869,7 @@ def perform_fallback_crossmatching(
 
     logger.info(f"✅ Fallback cross-matching completed: {len(matches)} matches found")
     return results
+
 
 def enrich_exoplanets_with_gaia_coordinates(
     exoplanet_df: pl.DataFrame,
@@ -1083,6 +1110,7 @@ def enrich_exoplanets_with_gaia_coordinates(
 
     return enriched_df
 
+
 def _preprocess_exoplanet_data(df: pl.DataFrame) -> pl.DataFrame:
     """Preprocess exoplanet data with coordinate enrichment."""
     logger.info("🔄 Preprocessing exoplanet data with coordinate enrichment")
@@ -1097,3 +1125,252 @@ def _preprocess_exoplanet_data(df: pl.DataFrame) -> pl.DataFrame:
 
     logger.info(f"✅ Preprocessed exoplanet data: {len(df_clean)} objects")
     return df_clean
+
+
+def create_standardized_files(
+    survey: str,
+    input_parquet: Path,
+    output_dir: Optional[Path] = None,
+    k_neighbors: int = 8,
+    max_samples: Optional[int] = None,
+    force: bool = False,
+) -> Dict[str, Path]:
+    """
+    Create standardized files for a survey.
+
+    Creates:
+    - {survey}.parquet (standardized data)
+    - {survey}_graph_k{k}.pt (graph data)
+    - {survey}_metadata.json (metadata)
+
+    Args:
+        survey: Survey name
+        input_parquet: Input parquet file path
+        output_dir: Output directory (default: data/processed/{survey})
+        k_neighbors: Number of neighbors for graph
+        max_samples: Maximum samples to process
+        force: Overwrite existing files
+
+    Returns:
+        Dictionary with paths to created files
+    """
+    # Get survey configuration
+    config = get_survey_config(survey)
+    logger.info(f"📊 Processing {config['name']} data")
+
+    # Setup output directory
+    if output_dir is None:
+        project_root = Path(__file__).parent.parent.parent.parent
+        output_dir = project_root / "data" / "processed" / survey
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Define output files
+    files = {
+        "parquet": output_dir / f"{survey}.parquet",
+        "graph": output_dir / f"{survey}_graph.pt",
+        "metadata": output_dir / f"{survey}_metadata.json",
+    }
+
+    # Check if files exist and force is False
+    if not force:
+        existing = [f for f in files.values() if f.exists()]
+        if existing:
+            logger.info(f"⚠️ Files already exist: {[f.name for f in existing]}")
+            logger.info("Use force=True to overwrite")
+            return files
+
+    # Load input data
+    logger.info(f"📂 Loading data from {input_parquet}")
+    df = pl.read_parquet(input_parquet)
+    logger.info(f"📊 Loaded {len(df)} rows")
+
+    # Apply sampling if requested
+    if max_samples and len(df) > max_samples:
+        df = df.sample(max_samples, seed=42)
+        logger.info(f"📊 Sampled to {len(df)} rows")
+
+    # Save standardized parquet
+    df.write_parquet(files["parquet"])
+    logger.info(f"✅ Saved parquet: {files['parquet']}")
+
+    # Create graph data
+    graph_data = _create_graph_data(df, survey, k_neighbors)
+    torch.save(graph_data, files["graph"])
+    logger.info(f"✅ Saved graph: {files['graph']}")
+
+    # Create metadata
+    metadata = _create_metadata(df, survey, k_neighbors, config)
+    with open(files["metadata"], "w") as f:
+        json.dump(metadata, f, indent=2)
+    logger.info(f"✅ Saved metadata: {files['metadata']}")
+
+    logger.info(f"🎉 Successfully processed {survey} data")
+    return files
+
+
+def _create_graph_data(df: pl.DataFrame, survey: str, k_neighbors: int) -> Data:
+    """Create PyTorch Geometric Data object from DataFrame."""
+    logger.info(f"🔗 Creating graph with k={k_neighbors}")
+
+    # Get numeric columns for features
+    numeric_cols = []
+    for col in df.columns:
+        if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
+            numeric_cols.append(col)
+
+    if not numeric_cols:
+        raise ValueError("No numeric columns found for features")
+
+    logger.info(f"📊 Using {len(numeric_cols)} numeric features")
+
+    # Create feature matrix
+    features = df.select(numeric_cols).to_numpy()
+    features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
+    x = torch.tensor(features, dtype=torch.float32)
+
+    num_nodes = len(df)
+
+    # Create k-NN graph
+    if num_nodes <= 100:
+        # Fully connected for small graphs
+        from itertools import combinations
+
+        edges = list(combinations(range(num_nodes), 2))
+        edge_index = torch.tensor(edges).t()
+        # Make undirected
+        edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
+        logger.info(f"🔗 Created fully connected graph: {edge_index.shape[1]} edges")
+    else:
+        # k-NN graph for larger datasets
+        k = min(k_neighbors, num_nodes - 1)
+        nbrs = NearestNeighbors(n_neighbors=k, metric="euclidean")
+        nbrs.fit(features)
+        distances, indices = nbrs.kneighbors(features)
+
+        # Create edge index
+        sources = torch.arange(num_nodes).repeat_interleave(k)
+        targets = torch.tensor(indices.flatten())
+        edge_index = torch.stack([sources, targets])
+        logger.info(
+            f"🔗 Created k-NN graph: {num_nodes} nodes, {edge_index.shape[1]} edges"
+        )
+
+    # Create labels (discretize first numeric column)
+    if len(numeric_cols) > 0:
+        target_col = features[:, 0]
+        y = torch.tensor(
+            np.digitize(target_col, np.percentile(target_col, [25, 50, 75])),
+            dtype=torch.long,
+        )
+    else:
+        y = torch.zeros(num_nodes, dtype=torch.long)
+
+    # Get coordinate columns
+    coord_names = []
+    if "ra" in df.columns and "dec" in df.columns:
+        coord_names = ["ra", "dec"]
+    elif "x" in df.columns and "y" in df.columns:
+        coord_names = ["x", "y"]
+
+    # Create Data object
+    data = Data(
+        x=x,
+        edge_index=edge_index,
+        y=y,
+        survey_name=survey,
+        feature_names=numeric_cols,
+        coord_names=coord_names,
+        k_neighbors=k_neighbors,
+        num_nodes=num_nodes,
+    )
+
+    return data
+
+
+def _create_metadata(
+    df: pl.DataFrame, survey: str, k_neighbors: int, config: Dict
+) -> Dict:
+    """Create metadata for the survey."""
+    return {
+        "survey_name": survey,
+        "full_name": config["name"],
+        "data_release": config.get("data_release", "unknown"),
+        "num_samples": len(df),
+        "num_features": len(
+            [
+                c
+                for c in df.columns
+                if df[c].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
+            ]
+        ),
+        "coordinate_system": config.get("coordinate_system", "unknown"),
+        "photometric_bands": config.get("photometric_bands", []),
+        "k_neighbors": k_neighbors,
+        "columns": df.columns,
+        "created_with": "astro_lab.data.preprocessing",
+    }
+
+
+def process_survey(
+    survey: str,
+    source_file: Optional[str] = None,
+    k_neighbors: int = 8,
+    max_samples: Optional[int] = None,
+    force: bool = False,
+) -> Dict[str, Path]:
+    """
+    Process a survey with automatic source file detection.
+
+    Args:
+        survey: Survey name
+        source_file: Source parquet file (auto-detected if None)
+        k_neighbors: Number of neighbors for graph
+        max_samples: Maximum samples to process
+        force: Overwrite existing files
+
+    Returns:
+        Dictionary with paths to created files
+    """
+    # Auto-detect source file if not provided
+    if source_file is None:
+        project_root = Path(__file__).parent.parent.parent.parent
+
+        # Try different common locations
+        possible_sources = [
+            project_root
+            / "data"
+            / "processed"
+            / survey
+            / f"{survey}_dr3_bright_all_sky_mag12.0_processed.parquet",
+            project_root
+            / "data"
+            / "raw"
+            / survey
+            / f"{survey}_dr3_bright_all_sky_mag12.0.parquet",
+            project_root / "data" / "processed" / f"{survey}_processed.parquet",
+            project_root / "data" / "raw" / f"{survey}.parquet",
+        ]
+
+        source_path = None
+        for path in possible_sources:
+            if path.exists():
+                source_path = path
+                break
+
+        if source_path is None:
+            raise FileNotFoundError(f"No source file found for survey '{survey}'")
+
+        logger.info(f"📂 Auto-detected source: {source_path}")
+    else:
+        source_path = Path(source_file)
+        if not source_path.exists():
+            raise FileNotFoundError(f"Source file not found: {source_path}")
+
+    return create_standardized_files(
+        survey=survey,
+        input_parquet=source_path,
+        k_neighbors=k_neighbors,
+        max_samples=max_samples,
+        force=force,
+    )

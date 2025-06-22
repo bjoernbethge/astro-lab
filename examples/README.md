@@ -166,7 +166,7 @@ For detailed CLI documentation, see the [main README](../README.md#-cli-referenc
 
 ```bash
 # Process data (required before running examples)
-uv run python -m astro_lab.cli process --surveys gaia --max-samples 1000
+astro-lab process --surveys gaia --max-samples 1000
 
 # Run examples
 python examples/quick_start.py

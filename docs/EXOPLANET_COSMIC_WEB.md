@@ -121,13 +121,13 @@ z = distance_pc * np.sin(dec_rad)
 
 ```bash
 # Process exoplanet data with cosmic web analysis
-uv run python -m astro_lab.cli preprocess cosmic-web exoplanet --max-samples 5000 --scales 10.0 25.0 50.0 --output results/
+astro-lab preprocess cosmic-web exoplanet --max-samples 5000 --scales 10.0 25.0 50.0 --output results/
 
 # Process with verbose logging
-uv run python -m astro_lab.cli preprocess cosmic-web exoplanet --max-samples 5000 --verbose
+astro-lab preprocess cosmic-web exoplanet --max-samples 5000 --verbose
 
 # Process all surveys including exoplanet
-uv run python -m astro_lab.cli preprocess all-surveys --max-samples 500 --output results/
+astro-lab preprocess all-surveys --max-samples 500 --output results/
 ```
 
 ## 📁 Data Products

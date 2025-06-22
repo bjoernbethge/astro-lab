@@ -119,7 +119,7 @@ x = distance_pc * np.cos(dec_rad) * np.cos(ra_rad)
 ```
 
 ### Processing Pipeline Integration
-- **CLI Support**: `uv run python -m astro_lab.cli preprocessing {gaia|nsa} --enable-clustering`
+- **CLI Support**: `astro-lab preprocessing {gaia|nsa} --enable-clustering`
 - **Direct Scripts**: `process_cosmic_web.py` and `process_nsa_cosmic_web.py`
 - **Astropy Integration**: Precise astronomical coordinate handling
 - **Multi-scale Analysis**: DBSCAN clustering at different physical scales

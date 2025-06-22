@@ -227,10 +227,10 @@ print(f"Density variation: {density_results['std_density']:.2e}")
 ### CLI Processing
 ```bash
 # Process Gaia data with cosmic web analysis
-uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000000 --scales 5.0 10.0 20.0 --output results/
+astro-lab preprocess cosmic-web gaia --max-samples 1000000 --scales 5.0 10.0 20.0 --output results/
 
 # Process with verbose logging
-uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000000 --verbose
+astro-lab preprocess cosmic-web gaia --max-samples 1000000 --verbose
 ```
 
 ## 📚 Related Documentation

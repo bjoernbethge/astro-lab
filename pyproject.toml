@@ -45,8 +45,6 @@ dependencies = [
     "astro-viz",
     "lightning-utilities==0.14.3",
     "markupsafe>=3.0.2",
-    "pandas>=1.5,<2.0",
-    "numpy>=1.24,<2.0", # Compatible with pandas and sklearn
     "astrophot>=0.16.13",
 ]
 
@@ -166,7 +164,7 @@ ignore_missing_imports = true
 
 # Console scripts for CLI tools
 [project.scripts]
-astro-lab = "astro_lab.cli:main"
+astro-lab = "astro_lab.cli.__main__:main"
 astro-test = "scripts.run_tests:main"
 
 # Pytest configuration

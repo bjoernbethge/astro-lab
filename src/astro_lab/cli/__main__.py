@@ -8,23 +8,36 @@ Provides a unified interface for all AstroLab operations with proper resource ma
 
 import gc
 import logging
+import os
 import sys
 import warnings
-from contextlib import ExitStack, contextmanager, suppress
+from contextlib import ExitStack, contextmanager, redirect_stderr, redirect_stdout, suppress
+from io import StringIO
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import click
 
-# Configure logging early
+# Suppress annoying warnings from external libraries
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# Suppress specific library warnings
+warnings.filterwarnings("ignore", message=".*data-block.*")
+warnings.filterwarnings("ignore", message=".*Deleted.*")
+warnings.filterwarnings("ignore", message=".*Info:.*")
+
+# Configure logging early - only show important messages
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.WARNING, format="%(message)s"  # Clean, minimal output
 )
 logger = logging.getLogger(__name__)
 
 # =========================================================================
 # Advanced Memory Management with contextlib
 # =========================================================================
+
 
 @contextmanager
 def cuda_memory_context(description: str = "CUDA operation"):
@@ -67,6 +80,7 @@ def cuda_memory_context(description: str = "CUDA operation"):
         except ImportError:
             pass
 
+
 @contextmanager
 def comprehensive_cleanup_context(description: str = "Operation"):
     """
@@ -88,6 +102,7 @@ def comprehensive_cleanup_context(description: str = "Operation"):
             # Comprehensive cleanup sequence
             _perform_comprehensive_cleanup(description, initial_objects)
 
+
 def _perform_comprehensive_cleanup(description: str, initial_objects: int):
     """Perform comprehensive cleanup with proper error handling."""
     cleanup_steps = [
@@ -103,15 +118,15 @@ def _perform_comprehensive_cleanup(description: str, initial_objects: int):
             cleanup_func()
             logger.debug(f"✅ {step_name} completed for {description}")
 
-    # Final memory report
+    # Final memory report (only in debug mode)
     final_objects = len(gc.get_objects())
     object_diff = final_objects - initial_objects
-    if object_diff > 1000:
-        logger.warning(
-            f"Memory context [{description}]: {object_diff} objects not freed"
-        )
-    else:
+    # Only log if really significant memory leak AND in debug mode
+    if object_diff > 10000 and logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"Memory context [{description}]: {object_diff} objects not freed")
+    elif logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Memory context [{description}]: {object_diff} object difference")
+
 
 def _cleanup_pytorch():
     """Clean up PyTorch resources."""
@@ -135,6 +150,7 @@ def _cleanup_pytorch():
     except ImportError:
         pass
 
+
 def _cleanup_matplotlib():
     """Clean up matplotlib resources."""
     try:
@@ -151,6 +167,7 @@ def _cleanup_matplotlib():
     except ImportError:
         pass
 
+
 def _cleanup_blender():
     """Clean up Blender resources."""
     try:
@@ -165,6 +182,7 @@ def _cleanup_blender():
     except ImportError:
         pass
 
+
 def _cleanup_garbage():
     """Perform garbage collection."""
     # Multiple GC passes for thorough cleanup
@@ -175,6 +193,7 @@ def _cleanup_garbage():
 
     # Clear generational garbage collection
     gc.set_debug(0)
+
 
 def _cleanup_system_caches():
     """Clean up system-level caches."""
@@ -196,6 +215,7 @@ def _cleanup_system_caches():
                 for key in list(mod_dict.keys()):
                     if key.startswith("_cache") or key.endswith("_cache"):
                         mod_dict.pop(key, None)
+
 
 @contextmanager
 def error_handling_context(operation_name: str):
@@ -225,9 +245,11 @@ def error_handling_context(operation_name: str):
         logger.debug("Full traceback:", exc_info=True)
         sys.exit(1)
 
+
 # =========================================================================
 # CLI Commands with Resource Management
 # =========================================================================
+
 
 @click.group(invoke_without_command=True)
 @click.pass_context
@@ -243,8 +265,9 @@ def cli(ctx):
             click.echo("  download    - Download survey data")
             click.echo()
             click.echo("Use --help with any command for detailed information.")
-            click.echo("Example: uv run python -m astro_lab.cli preprocess --help")
+            click.echo("Example: astro-lab preprocess --help")
         sys.exit(0)
+
 
 @cli.command()
 @click.argument("input_file", required=False, type=click.Path(exists=True))
@@ -282,9 +305,9 @@ def preprocess(
     This unified command handles all preprocessing tasks with automatic cleanup.
 
     Examples:
-        uv run python -m astro_lab.cli preprocess
-        uv run python -m astro_lab.cli preprocess data/gaia.parquet --config gaia
-        uv run python -m astro_lab.cli preprocess --surveys gaia nsa
+        astro-lab preprocess
+        astro-lab preprocess data/gaia.parquet --config gaia
+        astro-lab preprocess --surveys gaia nsa
     """
     operation_name = "Preprocessing"
 
@@ -342,6 +365,7 @@ def preprocess(
         except ImportError:
             pass
 
+
 @cli.command()
 @click.option("--config", "-c", help="Training configuration file")
 @click.option("--model", "-m", help="Model architecture")
@@ -378,6 +402,7 @@ def train(
 
         logger.info("✅ Training completed successfully!")
 
+
 @cli.command()
 @click.option("--survey", "-s", help="Survey to download (gaia, nsa, sdss)")
 @click.option("--output-dir", "-o", type=click.Path(), help="Output directory")
@@ -405,6 +430,40 @@ def download(survey: Optional[str], output_dir: Optional[str], verbose: bool):
 
         logger.info("✅ Download completed successfully!")
 
+
+@contextmanager
+def suppress_library_output():
+    """Suppress annoying output from external libraries."""
+    # Create string buffers to capture unwanted output
+    stdout_buffer = StringIO()
+    stderr_buffer = StringIO()
+    
+    try:
+        with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
+            yield
+    finally:
+        # Check if there was any important output we should show
+        stdout_content = stdout_buffer.getvalue()
+        stderr_content = stderr_buffer.getvalue()
+        
+        # Filter out known annoying messages
+        annoying_patterns = [
+            "Info: Deleted",
+            "data-block",
+            "Memory context",
+            "objects not freed"
+        ]
+        
+        # Only show output that doesn't match annoying patterns
+        for line in stdout_content.split('\n'):
+            if line.strip() and not any(pattern in line for pattern in annoying_patterns):
+                logger.info(line)
+        
+        for line in stderr_content.split('\n'):
+            if line.strip() and not any(pattern in line for pattern in annoying_patterns):
+                logger.error(line)
+
+
 def main():
     """
     Main entry point with comprehensive resource management.
@@ -412,8 +471,9 @@ def main():
     This function ensures proper cleanup even if the CLI exits unexpectedly.
     """
     try:
-        with comprehensive_cleanup_context("CLI main"):
-            cli()
+        with suppress_library_output():
+            with comprehensive_cleanup_context("CLI main"):
+                cli()
     except SystemExit as e:
         # Handle normal exits gracefully
         if e.code != 0:
@@ -426,6 +486,7 @@ def main():
     finally:
         # Final cleanup message (only visible in debug mode)
         logger.debug("🧹 CLI cleanup completed")
+
 
 if __name__ == "__main__":
     main()

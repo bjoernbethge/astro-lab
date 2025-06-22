@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # 🌟 PURE CLEAN API - Polars-First Only
 # 🔧 CONFIGURATION SYSTEM
+from ..datasets import AstroDataset
 from .config import (
     DataConfig,
     data_config,
@@ -25,26 +26,16 @@ from .config import (
     get_raw_dir,
     get_survey_paths,
 )
-from .core import (
-    # Survey Configuration (for advanced users)
-    SURVEY_CONFIGS,
-    AstroDataModule,
-    # Core Classes
-    AstroDataset,
-    # Factory Functions
-    create_astro_dataloader,
-    create_astro_datamodule,
-    # 🔗 GRAPH CREATION FUNCTIONS - NEW!
-    create_graph_from_dataframe,
-    detect_survey_type,
-    # Convenience Functions for Common Surveys
-    load_gaia_data,  # Stellar catalogs with astrometry
-    load_lightcurve_data,  # Variable stars/lightcurves
-    load_nsa_data,  # NASA Sloan Atlas galaxies
-    load_sdss_data,  # Galaxy photometry & spectroscopy
-    load_tng50_data,
-    load_tng50_temporal_data,  # 🌟 NEW: TNG50 Temporal loader
-)
+
+# Clean separated imports
+from .datamodule import AstroDataModule
+
+
+# Factory function
+def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
+    """Create AstroDataModule for given survey."""
+    return AstroDataModule(survey=survey, **kwargs)
+
 
 # 🔧 MANAGER SUPPORT (for CLI compatibility)
 from .manager import (
@@ -98,7 +89,6 @@ __all__ = [
     "create_graph_from_dataframe",  # Create graph from DataFrame
     "detect_survey_type",  # Auto-detect survey type
     # 🔧 CONFIGURATION
-    "SURVEY_CONFIGS",  # Survey definitions (DRY)
     "DataConfig",  # New centralized config system
     "data_config",  # Global config instance
     "get_survey_paths",  # Get all paths for a survey
@@ -133,7 +123,7 @@ HAS_CLEAN_API = True
 HAS_MANAGER_API = True  # Supporting data manager for CLI
 
 # Supported surveys
-SUPPORTED_SURVEYS = list(SURVEY_CONFIGS.keys())
+SUPPORTED_SURVEYS = ["gaia", "sdss", "nsa", "linear", "tng50"]
 
 # API version
 __version__ = "2.0.0-clean"

@@ -1,24 +1,29 @@
 #!/bin/bash
 
-echo "🚀 AstroLab Setup für Linux"
+echo "🚀 AstroLab Setup for Linux"
 
-# Prüfe ob uv installiert ist
+# Check if uv is installed
 if ! command -v uv &> /dev/null; then
-    echo "📦 uv wird installiert..."
+    echo "📦 Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    # Aktualisiere PATH für aktuelle Session
+    # Update PATH for current session
     export PATH="$HOME/.cargo/bin:$PATH"
 else
-    echo "✅ uv ist bereits installiert"
+    echo "✅ uv is already installed"
 fi
 
 # uv sync
-echo "🔄 Führe uv sync aus..."
+echo "🔄 Running uv sync..."
 uv sync
 
-# PyG Extensions installieren
-echo "🔧 Installiere PyG Extensions..."
+# Install PyG Extensions
+echo "🔧 Installing PyG Extensions..."
 uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
-echo "✅ Setup abgeschlossen!"
-echo "Du kannst jetzt AstroLab verwenden!" 
+# Activate virtual environment
+echo "🔌 Activating virtual environment..."
+source .venv/bin/activate
+
+echo "✅ Setup completed!"
+echo "🎯 Virtual environment is now active. You can now use AstroLab!"
+echo "💡 To activate the environment later, run: source .venv/bin/activate" 

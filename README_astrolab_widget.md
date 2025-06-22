@@ -35,10 +35,10 @@ uv pip install bpy
 ### Process Data First
 ```bash
 # Process all surveys (recommended)
-uv run python -m astro_lab.cli process
+astro-lab process
 
 # Or process specific surveys
-uv run python -m astro_lab.cli process --surveys gaia tng50
+astro-lab process --surveys gaia tng50
 ```
 
 ### Use the Widget

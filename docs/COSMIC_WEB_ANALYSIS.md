@@ -144,25 +144,25 @@ for scale, result in results["results_by_scale"].items():
 ### Single Survey Processing
 ```bash
 # Process Gaia data with cosmic web analysis
-uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000 --scales 5.0 10.0 20.0 --output results/
+astro-lab preprocess cosmic-web gaia --max-samples 1000 --scales 5.0 10.0 20.0 --output results/
 
 # Process SDSS data
-uv run python -m astro_lab.cli preprocess cosmic-web sdss --max-samples 500 --scales 10.0 20.0 50.0 --output results/
+astro-lab preprocess cosmic-web sdss --max-samples 500 --scales 10.0 20.0 50.0 --output results/
 
 # Process TNG50 data
-uv run python -m astro_lab.cli preprocess cosmic-web tng50 --max-samples 1000 --scales 5.0 10.0 20.0 50.0 --output results/
+astro-lab preprocess cosmic-web tng50 --max-samples 1000 --scales 5.0 10.0 20.0 50.0 --output results/
 ```
 
 ### Batch Processing
 ```bash
 # Process all available surveys at once
-uv run python -m astro_lab.cli preprocess all-surveys --max-samples 500 --scales 5.0 10.0 20.0 50.0 --output results/
+astro-lab preprocess all-surveys --max-samples 500 --scales 5.0 10.0 20.0 50.0 --output results/
 
 # List available surveys
-uv run python -m astro_lab.cli preprocess surveys
+astro-lab preprocess surveys
 
 # Enable detailed logging
-uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000 --verbose
+astro-lab preprocess cosmic-web gaia --max-samples 1000 --verbose
 ```
 
 ## ⚡ Performance Optimization

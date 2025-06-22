@@ -1,18 +1,15 @@
 """
-AstroLab CLI - Unified Command Line Interface
-============================================
+AstroLab CLI - Command Line Interface
+====================================
 
-Modern CLI for astronomical data processing and ML training.
-Supports multiple survey types with unified preprocessing and training pipelines.
+Unified command-line interface for AstroLab astronomical machine learning.
+Supports data preprocessing, model training, and hyperparameter optimization.
 """
 
 import argparse
 import datetime
-
-# Removed memory.py - using simple gc instead
-import gc
 import json
-import os
+import logging
 import sys
 import traceback
 import warnings
@@ -22,17 +19,23 @@ from typing import Any, Dict, List, Optional, Union
 import click
 import yaml
 
+# Configure clean logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+logger = logging.getLogger(__name__)
+
+# Removed memory.py - using simple gc instead
+import gc
+import os
+
 from astro_lab.data import (
     AstroDataset,
+    AstroDataManager,
     create_astro_datamodule,
     create_training_splits,
     data_config,
+    data_manager,
     get_data_statistics,
     load_catalog,
-    load_gaia_data,
-    load_nsa_data,
-    load_sdss_data,
-    load_tng50_data,
     save_splits_to_parquet,
 )
 from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy
@@ -48,8 +51,8 @@ __all__ = [
 def main():
     """Main CLI entry point with streamlined interface."""
     # Welcome message
-    print("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory!")
-    print()
+    logger.info("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory!")
+    logger.info("")
 
     parser = argparse.ArgumentParser(
         description="AstroLab - Astronomical Machine Learning Laboratory",
@@ -280,12 +283,12 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
         elif args.command == "config":
             handle_config(args)
         else:
-            print(f"❌ Unknown command: {args.command}")
+            logger.error(f"❌ Unknown command: {args.command}")
             parser.print_help()
     except KeyboardInterrupt:
-        print("\n⏹️  Operation cancelled by user")
+        logger.info("\n⏹️  Operation cancelled by user")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        logger.error(f"❌ Error: {e}")
         if "--verbose" in sys.argv or "-v" in sys.argv:
             traceback.print_exc()
         sys.exit(1)
@@ -326,8 +329,8 @@ def _cleanup_memory():
 
 def handle_preprocess(args):
     """Handle unified preprocess command - easy to use, detailed when needed."""
-    print("🚀 AstroLab - Data Preprocessing")
-    print("=" * 50)
+    logger.info("🚀 AstroLab - Data Preprocessing")
+    logger.info("=" * 50)
 
     try:
         import subprocess
@@ -350,7 +353,7 @@ def handle_preprocess(args):
         _process_all_surveys(args)
 
     except Exception as e:
-        print(f"❌ Error during preprocessing: {e}")
+        logger.error(f"❌ Error during preprocessing: {e}")
         if args.verbose:
             traceback.print_exc()
         sys.exit(1)
@@ -358,31 +361,31 @@ def handle_preprocess(args):
 
 def _show_catalog_stats(input_path: str):
     """Show statistics for a catalog file."""
-    print(f"📊 Analyzing: {input_path}")
+    logger.info(f"📊 Analyzing: {input_path}")
     try:
         from astro_lab.data import get_data_statistics, load_catalog
 
         df = load_catalog(input_path)
         stats = get_data_statistics(df)
 
-        print("📈 Dataset Statistics:")
-        print(f"  • Rows: {stats['n_rows']:,}")
-        print(f"  • Columns: {stats['n_cols']}")
-        print(f"  • Memory: {stats.get('memory_mb', 'N/A')} MB")
+        logger.info("📈 Dataset Statistics:")
+        logger.info(f"  • Rows: {stats['n_rows']:,}")
+        logger.info(f"  • Columns: {stats['n_cols']}")
+        logger.info(f"  • Memory: {stats.get('memory_mb', 'N/A')} MB")
 
         if "columns" in stats:
-            print("  • Column Types:")
+            logger.info("  • Column Types:")
             for col_type, count in stats["columns"].items():
-                print(f"    - {col_type}: {count}")
+                logger.info(f"    - {col_type}: {count}")
 
     except Exception as e:
-        print(f"❌ Error analyzing catalog: {e}")
+        logger.error(f"❌ Error analyzing catalog: {e}")
         raise
 
 
 def _process_tng50(args):
     """Process TNG50 simulation data."""
-    print(f"🌌 Processing TNG50 simulation: {args.input}")
+    logger.info(f"🌌 Processing TNG50 simulation: {args.input}")
 
     try:
         from astro_lab.data.preprocessing import (
@@ -404,17 +407,17 @@ def _process_tng50(args):
         # Collect the lazy frame to get the actual DataFrame
         df = lf.collect()
 
-        print(f"✅ TNG50 processing completed: {len(df)} particles processed")
-        print(f"📁 Output: {output_dir}")
+        logger.info(f"✅ TNG50 processing completed: {len(df)} particles processed")
+        logger.info(f"📁 Output: {output_dir}")
 
     except Exception as e:
-        print(f"❌ TNG50 processing failed: {e}")
+        logger.error(f"❌ TNG50 processing failed: {e}")
         raise
 
 
 def _process_single_file(args):
     """Process a single catalog file."""
-    print(f"📂 Processing single file: {args.input}")
+    logger.info(f"📂 Processing single file: {args.input}")
 
     try:
         from astro_lab.data import (
@@ -428,98 +431,96 @@ def _process_single_file(args):
         )
         from astro_lab.utils.config.loader import ConfigLoader
 
-        # OPTIMIZED: Use astronomy processing context
-        with astro_processing_context(f"Processing {Path(args.input).name}") as ctx:
-            # Load catalog
-            df = load_catalog(args.input)
-            print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
+        # Load catalog
+        df = load_catalog(args.input)
+        logger.info(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
 
-            # Determine survey type
-            survey_type = args.config or "generic"
+        # Determine survey type
+        survey_type = args.config or "generic"
 
-            # Load survey config if specified
-            config = {}
-            if args.config:
-                try:
-                    loader = ConfigLoader()
-                    survey_config = loader.get_survey_config(args.config)
-                    config = survey_config.get("processing", {})
-                    print(f"✅ Using {args.config} survey configuration")
-                except Exception as e:
-                    print(f"⚠️  Could not load survey config: {e}")
+        # Load survey config if specified
+        config = {}
+        if args.config:
+            try:
+                loader = ConfigLoader()
+                survey_config = loader.get_survey_config(args.config)
+                config = survey_config.get("processing", {})
+                logger.info(f"✅ Using {args.config} survey configuration")
+            except Exception as e:
+                logger.warning(f"⚠️  Could not load survey config: {e}")
 
-            # OPTIMIZED: Use lazy preprocessing for large files
-            use_streaming = df.shape[0] > 50_000  # Use streaming for large datasets
+        # OPTIMIZED: Use lazy preprocessing for large files
+        use_streaming = df.shape[0] > 50_000  # Use streaming for large datasets
 
-            if use_streaming:
-                print("🚀 Using streaming mode for large dataset")
-                lf_clean = preprocess_catalog_lazy(
-                    args.input,
-                    survey_type=survey_type,
-                    max_samples=args.max_samples,
-                    use_streaming=True,
-                )
-                # Collect only if needed for further processing
-                df_clean = lf_clean.collect()
-            else:
-                # Use lazy preprocessing for smaller files too (still more efficient)
-                lf_clean = preprocess_catalog_lazy(
-                    args.input,
-                    survey_type=survey_type,
-                    max_samples=args.max_samples,
-                    use_streaming=False,
-                )
-                df_clean = lf_clean.collect()
-
-            print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
-
-            # Handle output
-            output_path = (
-                Path(args.output)
-                if args.output
-                else Path(f"data/processed/{survey_type}/")
+        if use_streaming:
+            logger.info("🚀 Using streaming mode for large dataset")
+            lf_clean = preprocess_catalog_lazy(
+                args.input,
+                survey_type=survey_type,
+                max_samples=args.max_samples,
+                use_streaming=True,
             )
-            output_path.mkdir(parents=True, exist_ok=True)
+            # Collect only if needed for further processing
+            df_clean = lf_clean.collect()
+        else:
+            # Use lazy preprocessing for smaller files too (still more efficient)
+            lf_clean = preprocess_catalog_lazy(
+                args.input,
+                survey_type=survey_type,
+                max_samples=args.max_samples,
+                use_streaming=False,
+            )
+            df_clean = lf_clean.collect()
 
-            # Create splits if requested
-            if args.splits:
-                print("🔄 Creating training splits...")
-                train, val, test = create_training_splits(df_clean)
+        logger.info(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
 
-                dataset_name = Path(args.input).stem
-                save_splits_to_parquet(train, val, test, output_path, dataset_name)
-                print(f"💾 Splits and graphs saved to: {output_path}")
-            else:
-                # Save processed catalog and create graph
-                output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
-                df_clean.write_parquet(output_file)
-                print(f"💾 Processed catalog saved to: {output_file}")
+        # Handle output
+        output_path = (
+            Path(args.output)
+            if args.output
+            else Path(f"data/processed/{survey_type}/")
+        )
+        output_path.mkdir(parents=True, exist_ok=True)
 
-                # Create graph
-                graph_file = (
-                    output_path / f"{Path(args.input).stem}_k{args.k_neighbors}.pt"
+        # Create splits if requested
+        if args.splits:
+            logger.info("🔄 Creating training splits...")
+            train, val, test = create_training_splits(df_clean)
+
+            dataset_name = Path(args.input).stem
+            save_splits_to_parquet(train, val, test, output_path, dataset_name)
+            logger.info(f"💾 Splits and graphs saved to: {output_path}")
+        else:
+            # Save processed catalog and create graph
+            output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
+            df_clean.write_parquet(output_file)
+            logger.info(f"💾 Processed catalog saved to: {output_file}")
+
+            # Create graph
+            graph_file = (
+                output_path / f"{Path(args.input).stem}_k{args.k_neighbors}.pt"
+            )
+            graph_data = create_graph_from_dataframe(
+                df=df_clean,
+                survey_type=survey_type,
+                k_neighbors=args.k_neighbors,
+                distance_threshold=args.distance_threshold,
+                output_path=graph_file,
+            )
+
+            if graph_data:
+                logger.info(
+                    f"📊 Graph created: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
                 )
-                graph_data = create_graph_from_dataframe(
-                    df=df_clean,
-                    survey_type=survey_type,
-                    k_neighbors=args.k_neighbors,
-                    distance_threshold=args.distance_threshold,
-                    output_path=graph_file,
-                )
-
-                if graph_data:
-                    print(
-                        f"📊 Graph created: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
-                    )
 
     except Exception as e:
-        print(f"❌ Single file processing failed: {e}")
+        logger.error(f"❌ Single file processing failed: {e}")
         raise
 
 
 def _process_all_surveys(args):
     """Process all surveys (batch mode)."""
-    print("🌟 Batch processing mode - processing all surveys")
+    logger.info("🌟 Batch processing mode - processing all surveys")
 
     try:
         import subprocess
@@ -532,12 +533,12 @@ def _process_all_surveys(args):
         # Determine surveys to process
         surveys_to_process = args.surveys if args.surveys else all_surveys
 
-        print(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
-        print(
+        logger.info(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
+        logger.info(
             f"🔧 Parameters: k={args.k_neighbors}, max_samples={args.max_samples or 'all'}"
         )
-        print(f"📁 Output: {args.output_dir}")
-        print()
+        logger.info(f"📁 Output: {args.output_dir}")
+        logger.info("")
 
         # Create output directory
         output_dir = Path(args.output_dir)
@@ -546,7 +547,7 @@ def _process_all_surveys(args):
         # Process each survey
         successful = 0
         for survey in surveys_to_process:
-            print(f"🔄 Processing {survey.upper()}...")
+            logger.info(f"🔄 Processing {survey.upper()}...")
 
             try:
                 # Use the preprocessing module directly
@@ -558,14 +559,14 @@ def _process_all_surveys(args):
                 # Find data files for this survey
                 survey_data_dir = Path(f"data/raw/{survey}")
                 if not survey_data_dir.exists():
-                    print(f"⚠️  No data directory found for {survey}: {survey_data_dir}")
+                    logger.warning(f"⚠️  No data directory found for {survey}: {survey_data_dir}")
                     continue
 
                 data_files = list(survey_data_dir.glob("*.parquet")) + list(
                     survey_data_dir.glob("*.csv")
                 )
                 if not data_files:
-                    print(f"⚠️  No data files found for {survey}")
+                    logger.warning(f"⚠️  No data files found for {survey}")
                     continue
 
                 survey_output_dir = output_dir / survey
@@ -573,7 +574,7 @@ def _process_all_surveys(args):
 
                 for data_file in data_files:
                     if args.verbose:
-                        print(f"  📄 Processing {data_file.name}")
+                        logger.info(f"  📄 Processing {data_file.name}")
 
                     # Preprocess
                     lf = preprocess_catalog_lazy(
@@ -603,95 +604,95 @@ def _process_all_surveys(args):
                     )
 
                     if args.verbose and graph_data:
-                        print(
+                        logger.info(
                             f"    📊 Graph: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
                         )
 
-                print(f"✅ {survey.upper()} processed successfully")
+                logger.info(f"✅ {survey.upper()} processed successfully")
                 successful += 1
 
             except Exception as e:
-                print(f"❌ Error processing {survey.upper()}: {e}")
+                logger.error(f"❌ Error processing {survey.upper()}: {e}")
                 if args.verbose:
                     traceback.print_exc()
                 continue
 
-        print()
-        print(
+        logger.info("")
+        logger.info(
             f"🎉 Batch processing completed! ({successful}/{len(surveys_to_process)} surveys successful)"
         )
-        print(f"📁 Processed data in: {output_dir}")
+        logger.info(f"📁 Processed data in: {output_dir}")
 
         # Show summary
-        print("\n📊 Summary:")
+        logger.info("\n📊 Summary:")
         for survey in surveys_to_process:
             survey_dir = output_dir / survey
             if survey_dir.exists():
                 pt_files = list(survey_dir.glob("*.pt"))
                 parquet_files = list(survey_dir.glob("*_processed.parquet"))
-                print(
+                logger.info(
                     f"   {survey.upper()}: {len(parquet_files)} processed files, {len(pt_files)} graphs"
                 )
             else:
-                print(f"   {survey.upper()}: No processed data found")
+                logger.info(f"   {survey.upper()}: No processed data found")
 
     except Exception as e:
-        print(f"❌ Error during batch processing: {e}")
+        logger.error(f"❌ Error during batch processing: {e}")
         raise
 
 
 def handle_download(args):
     """Handle download command."""
     if not args.download_action:
-        print("❌ Download action required. Use --help for options.")
+        logger.error("❌ Download action required. Use --help for options.")
         return
 
     try:
         from astro_lab.data import download_bright_all_sky, list_catalogs
 
         if args.download_action == "gaia":
-            print(f"🌟 Downloading Gaia DR3 data (mag < {args.magnitude_limit})")
+            logger.info(f"🌟 Downloading Gaia DR3 data (mag < {args.magnitude_limit})")
             try:
                 result = download_bright_all_sky(magnitude_limit=args.magnitude_limit)
-                print(f"✅ Success: {result}")
+                logger.info(f"✅ Success: {result}")
             except Exception as e:
-                print(f"❌ Error: {e}")
+                logger.error(f"❌ Error: {e}")
                 sys.exit(1)
 
         elif args.download_action == "list":
-            print("📋 Available datasets:")
+            logger.info("📋 Available datasets:")
             try:
                 catalogs = list_catalogs()
-                print(catalogs)
+                logger.info(catalogs)
             except Exception as e:
-                print(f"❌ Error: {e}")
+                logger.error(f"❌ Error: {e}")
     except Exception as e:
-        print(f"❌ Error in download command: {e}")
+        logger.error(f"❌ Error in download command: {e}")
         sys.exit(1)
 
 
 def handle_train(args):
     """Handle train command with new unified architecture."""
-    from .train import create_default_config, optimize_from_config, train_from_config
+    from .optimize import create_default_config, optimize_from_config, train_from_config
 
     if args.config:
         # Config-based training (preferred method)
         if not Path(args.config).exists():
-            print(f"❌ Configuration file not found: {args.config}")
+            logger.error(f"❌ Configuration file not found: {args.config}")
             return
 
         try:
-            print(f"🚀 Starting training with: {args.config}")
+            logger.info(f"🚀 Starting training with: {args.config}")
             train_from_config(args.config)
         except Exception as e:
-            print(f"❌ Training failed: {e}")
+            logger.error(f"❌ Training failed: {e}")
             sys.exit(1)
 
     else:
         # Quick train mode (requires dataset and model)
         if not args.dataset or not args.model:
-            print("❌ For quick train, --dataset and --model are required")
-            print("💡 Or use --config for full configuration support")
+            logger.error("❌ For quick train, --dataset and --model are required")
+            logger.info("💡 Or use --config for full configuration support")
             return
 
         # Create temporary config for quick training using new architecture
@@ -757,10 +758,10 @@ def handle_train(args):
                 json.dump(quick_config, f, indent=2)
 
         try:
-            print(f"🚀 Quick training: {args.dataset} + {args.model}")
+            logger.info(f"🚀 Quick training: {args.dataset} + {args.model}")
             train_from_config(temp_config_path)
         except Exception as e:
-            print(f"❌ Training failed: {e}")
+            logger.error(f"❌ Training failed: {e}")
             sys.exit(1)
         finally:
             Path(temp_config_path).unlink(missing_ok=True)
@@ -768,19 +769,19 @@ def handle_train(args):
 
 def handle_optimize(args):
     """Handle optimize command for hyperparameter optimization."""
-    from .train import optimize_from_config
+    from .optimize import optimize_from_config
 
     if not Path(args.config).exists():
-        print(f"❌ Configuration file not found: {args.config}")
+        logger.error(f"❌ Configuration file not found: {args.config}")
         return
 
     try:
-        print(f"🎯 Starting hyperparameter optimization with: {args.config}")
-        print(f"🔄 Running {args.trials} trials...")
+        logger.info(f"🎯 Starting hyperparameter optimization with: {args.config}")
+        logger.info(f"🔄 Running {args.trials} trials...")
 
         # Override experiment name if provided
         if args.experiment_name:
-            print(f"📝 Using experiment name: {args.experiment_name}")
+            logger.info(f"📝 Using experiment name: {args.experiment_name}")
 
         optimize_from_config(
             config_path=args.config,
@@ -789,7 +790,7 @@ def handle_optimize(args):
         )
 
     except Exception as e:
-        print(f"❌ Optimization failed: {e}")
+        logger.error(f"❌ Optimization failed: {e}")
         traceback.print_exc()
         sys.exit(1)
 
@@ -797,61 +798,48 @@ def handle_optimize(args):
 def handle_config(args):
     """Handle config command."""
     if not args.config_action:
-        print("❌ Config action required. Use --help for options.")
+        logger.error("❌ Config action required. Use --help for options.")
         return
 
-    from .train import create_default_config
+    from .optimize import create_default_config
 
     if args.config_action == "create":
-        print(f"📝 Creating default configuration: {args.output}")
+        logger.info(f"📝 Creating default configuration: {args.output}")
         create_default_config(args.output)
 
     elif args.config_action == "surveys":
-        print("🌌 Available survey configurations:")
+        logger.info("🌌 Available survey configurations:")
         try:
             loader = ConfigLoader()
             surveys = loader.list_available_surveys()
 
             if not surveys:
-                print("   No survey configurations found in configs/surveys/")
+                logger.info("   No survey configurations found in configs/surveys/")
             else:
                 for survey in surveys:
-                    print(f"   • {survey}")
+                    logger.info(f"   • {survey}")
 
-            print("\n💡 Use 'astro-lab config show <survey>' to see details")
+            logger.info("\n💡 Use 'astro-lab config show <survey>' to see details")
         except Exception as e:
-            print(f"❌ Error listing surveys: {e}")
+            logger.error(f"❌ Error listing surveys: {e}")
             traceback.print_exc()
 
     elif args.config_action == "show":
-        print(f"📊 Survey configuration: {args.survey}")
+        logger.info(f"📊 Survey configuration: {args.survey}")
         try:
             loader = ConfigLoader()
             survey_config = loader.get_survey_config(args.survey)
 
-            print(f"   Survey: {survey_config['name']}")
-            print(f"   Description: {survey_config['description']}")
-            print(f"   Features: {len(survey_config['features'])}")
-
-            if "graph" in survey_config:
-                graph_config = survey_config["graph"]
-                print(f"   K-neighbors: {graph_config.get('k_neighbors', 'N/A')}")
-                print(
-                    f"   Distance metric: {graph_config.get('distance_metric', 'N/A')}"
-                )
-
-            if "processing" in survey_config:
-                proc_config = survey_config["processing"]
-                print(
-                    f"   Normalize features: {proc_config.get('normalize_features', 'N/A')}"
-                )
-
-            print("\n📋 Available features:")
-            for feature in survey_config["features"]:
-                print(f"   • {feature}")
+            logger.info(f"   Survey: {survey_config['name']}")
+            logger.info(f"   Description: {survey_config['description']}")
+            logger.info(f"   Features: {len(survey_config['features'])}")
+            if "columns" in stats:
+                logger.info("   • Column Types:")
+                for col_type, count in stats["columns"].items():
+                    logger.info(f"     - {col_type}: {count}")
 
         except Exception as e:
-            print(f"❌ Error showing survey config: {e}")
+            logger.error(f"❌ Error showing survey config: {e}")
 
     elif args.config_action == "model":
         handle_model_config(args)
@@ -866,47 +854,47 @@ def handle_model_config(args):
     )
 
     if args.action == "list":
-        print("🏗️ Available model configurations:")
+        logger.info("🏗️ Available model configurations:")
         configs = list_predefined_configs()
         for config_name in configs:
-            print(f"   • {config_name}")
-        print("\n💡 Use 'astro-lab config model show <name>' to see details")
+            logger.info(f"   • {config_name}")
+        logger.info("\n💡 Use 'astro-lab config model show <name>' to see details")
 
     elif args.action == "show":
         if not args.name:
-            print("❌ Model name required for show action")
+            logger.error("❌ Model name required for show action")
             return
 
         try:
             config = get_predefined_config(args.name)
-            print(f"🏗️ Model configuration: {args.name}")
-            print(f"   Name: {config.name}")
-            print(f"   Description: {config.description}")
-            print(f"   Version: {config.version}")
+            logger.info(f"🏗️ Model configuration: {args.name}")
+            logger.info(f"   Name: {config.name}")
+            logger.info(f"   Description: {config.description}")
+            logger.info(f"   Version: {config.version}")
 
-            print("\n📊 Encoder settings:")
-            print(f"   • Photometry: {config.encoder.use_photometry}")
-            print(f"   • Astrometry: {config.encoder.use_astrometry}")
-            print(f"   • Spectroscopy: {config.encoder.use_spectroscopy}")
+            logger.info("\n📊 Encoder settings:")
+            logger.info(f"   • Photometry: {config.encoder.use_photometry}")
+            logger.info(f"   • Astrometry: {config.encoder.use_astrometry}")
+            logger.info(f"   • Spectroscopy: {config.encoder.use_spectroscopy}")
 
-            print("\n🕸️ Graph settings:")
-            print(f"   • Conv type: {config.graph.conv_type}")
-            print(f"   • Hidden dim: {config.graph.hidden_dim}")
-            print(f"   • Num layers: {config.graph.num_layers}")
-            print(f"   • Dropout: {config.graph.dropout}")
+            logger.info("\n🕸️ Graph settings:")
+            logger.info(f"   • Conv type: {config.graph.conv_type}")
+            logger.info(f"   • Hidden dim: {config.graph.hidden_dim}")
+            logger.info(f"   • Num layers: {config.graph.num_layers}")
+            logger.info(f"   • Dropout: {config.graph.dropout}")
 
-            print("\n🎯 Output settings:")
-            print(f"   • Task: {config.output.task}")
-            print(f"   • Output dim: {config.output.output_dim}")
-            print(f"   • Pooling: {config.output.pooling}")
+            logger.info("\n🎯 Output settings:")
+            logger.info(f"   • Task: {config.output.task}")
+            logger.info(f"   • Output dim: {config.output.output_dim}")
+            logger.info(f"   • Pooling: {config.output.pooling}")
 
         except KeyError:
-            print(f"❌ Model configuration '{args.name}' not found")
-            print("💡 Use 'astro-lab config model list' to see available configs")
+            logger.error(f"❌ Model configuration '{args.name}' not found")
+            logger.info("💡 Use 'astro-lab config model list' to see available configs")
 
     elif args.action == "create":
         if not args.name:
-            print("❌ Model name required for create action")
+            logger.error("❌ Model name required for create action")
             return
 
         try:
@@ -922,13 +910,13 @@ def handle_model_config(args):
                     # Fallback to json if yaml is not available
                     json.dump(config_dict, f, indent=2)
 
-            print(f"✅ Model configuration saved to: {output_file}")
-            print("💡 You can now use this config in your training:")
-            print(f"   astro-lab train --config {output_file}")
+            logger.info(f"✅ Model configuration saved to: {output_file}")
+            logger.info("💡 You can now use this config in your training:")
+            logger.info(f"   astro-lab train --config {output_file}")
 
         except KeyError:
-            print(f"❌ Model configuration '{args.name}' not found")
-            print("💡 Use 'astro-lab config model list' to see available configs")
+            logger.error(f"❌ Model configuration '{args.name}' not found")
+            logger.info("💡 Use 'astro-lab config model list' to see available configs")
 
 
 if __name__ == "__main__":

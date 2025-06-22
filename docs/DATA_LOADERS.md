@@ -241,37 +241,37 @@ trainer.fit(model, datamodule)
 ### Data Processing
 ```bash
 # Process all surveys (recommended)
-uv run python -m astro_lab.cli process
+astro-lab process
 
 # Process specific surveys
-uv run python -m astro_lab.cli process --surveys gaia nsa --max-samples 10000
+astro-lab process --surveys gaia nsa --max-samples 10000
 
 # Advanced processing
-uv run python -m astro_lab.cli preprocess catalog data/gaia_catalog.parquet --config gaia --splits
+astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits
 ```
 
 ### Cosmic Web Analysis
 ```bash
 # Analyze Gaia cosmic web
-uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 10000
+astro-lab preprocess cosmic-web gaia --max-samples 10000
 
 # Multi-scale analysis
-uv run python -m astro_lab.cli preprocess cosmic-web nsa --scales 5.0 10.0 20.0 50.0
+astro-lab preprocess cosmic-web nsa --scales 5.0 10.0 20.0 50.0
 
 # Process all surveys
-uv run python -m astro_lab.cli preprocess all-surveys --max-samples 500 --output results/
+astro-lab preprocess all-surveys --max-samples 500 --output results/
 ```
 
 ### Data Management
 ```bash
 # Show statistics
-uv run python -m astro_lab.cli preprocess stats data/gaia_catalog.parquet --verbose
+astro-lab preprocess stats data/gaia_catalog.parquet --verbose
 
 # Browse data
-uv run python -m astro_lab.cli preprocess browse --survey gaia --details
+astro-lab preprocess browse --survey gaia --details
 
 # List available surveys
-uv run python -m astro_lab.cli config surveys
+astro-lab config surveys
 ```
 
 ## ⚡ Performance Tips

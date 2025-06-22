@@ -10,6 +10,7 @@ import gc
 import logging
 import os
 import shutil
+import warnings
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
@@ -58,8 +59,13 @@ PrecisionType = Union[
     int,
 ]
 
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+# Suppress warnings - import warnings was already done above
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 class AstroTrainer(Trainer):
     """
@@ -181,7 +187,7 @@ class AstroTrainer(Trainer):
             **filtered_kwargs,
         )
 
-        print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
+        logger.info(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
 
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str

@@ -15,7 +15,7 @@ uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/
 ### First Steps
 ```bash
 # Process data (recommended first step)
-uv run python -m astro_lab.cli process --surveys gaia --max-samples 1000
+astro-lab process --surveys gaia --max-samples 1000
 
 # Run interactive widget
 uv run python demo_astrolab_widget.py
@@ -75,35 +75,35 @@ uv run marimo edit
 ### Data Processing
 ```bash
 # Process all surveys
-uv run python -m astro_lab.cli process
+astro-lab process
 
 # Process specific surveys
-uv run python -m astro_lab.cli process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
+astro-lab process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
 
 # Advanced processing
-uv run python -m astro_lab.cli preprocess catalog data/gaia_catalog.parquet --config gaia --splits
-uv run python -m astro_lab.cli preprocess stats data/gaia_catalog.parquet
-uv run python -m astro_lab.cli preprocess browse --survey gaia --details
+astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits
+astro-lab preprocess stats data/gaia_catalog.parquet
+astro-lab preprocess browse --survey gaia --details
 ```
 
 ### Training & Optimization
 ```bash
 # Create configuration
-uv run python -m astro_lab.cli config create -o my_experiment.yaml
+astro-lab config create -o my_experiment.yaml
 
 # Training
-uv run python -m astro_lab.cli train -c my_experiment.yaml
-uv run python -m astro_lab.cli train --dataset gaia --model gaia_classifier --epochs 50
+astro-lab train -c my_experiment.yaml
+astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 
 # Hyperparameter optimization
-uv run python -m astro_lab.cli optimize config.yaml --trials 50
+astro-lab optimize config.yaml --trials 50
 ```
 
 ### Configuration Management
 ```bash
 # Show available configurations
-uv run python -m astro_lab.cli config surveys
-uv run python -m astro_lab.cli config show gaia
+astro-lab config surveys
+astro-lab config show gaia
 ```
 
 ## 🏗️ Architecture
@@ -233,4 +233,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Ready to explore the cosmos?** Start with `uv run python -m astro_lab.cli process` or jump into [Interactive Visualization](docs/COSMOGRAPH_INTEGRATION.md)! 
+**Ready to explore the cosmos?** Start with `astro-lab process` or jump into [Interactive Visualization](docs/COSMOGRAPH_INTEGRATION.md)! 

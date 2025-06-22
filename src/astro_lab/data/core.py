@@ -735,13 +735,67 @@ class AstroDataset(InMemoryDataset):
             return
         self.load(None)  # Load from .pt file
 
-    def _load_polars_dataframe(self) -> pl.DataFrame:
-        """Load data as Polars DataFrame - only from real .pt files."""
-        if self.data is None:
-            self.load(None)  # Load from .pt file
+    def _get_survey_paths(self) -> Dict[str, Path]:
+        """Get standardized file paths for survey data."""
+        project_root = Path(__file__).parent.parent.parent.parent
+        survey_dir = project_root / "data" / "processed" / self.survey
 
-        # Convert PyG Data to Polars DataFrame if needed
-        if hasattr(self.data, "x") and hasattr(self.data, "feature_names"):
+        return {
+            "survey_dir": survey_dir,
+            "parquet": survey_dir / f"{self.survey}.parquet",
+            "graph": survey_dir / f"{self.survey}_graph.pt",
+            "metadata": survey_dir / f"{self.survey}_metadata.json",
+        }
+
+    def _load_survey_metadata(self) -> Dict[str, Any]:
+        """Load survey metadata from JSON file."""
+        paths = self._get_survey_paths()
+        metadata_path = paths["metadata"]
+
+        if metadata_path.exists():
+            import json
+
+            try:
+                with open(metadata_path, "r") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load metadata from {metadata_path}: {e}")
+
+        # Return default metadata
+        return {
+            "survey_name": self.survey,
+            "features": [],
+            "coordinates": ["ra", "dec"],
+            "data_format": "parquet",
+            "num_samples": 0,
+            "k_neighbors": self.k_neighbors,
+        }
+
+    def _save_survey_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Save survey metadata to JSON file."""
+        paths = self._get_survey_paths()
+        metadata_path = paths["metadata"]
+
+        # Ensure directory exists
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+
+        import json
+
+        try:
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+            logger.info(f"✅ Saved metadata to {metadata_path}")
+        except Exception as e:
+            logger.error(f"❌ Failed to save metadata to {metadata_path}: {e}")
+
+    def _load_polars_dataframe(self) -> pl.DataFrame:
+        """Load data as Polars DataFrame from standardized location."""
+        # Try to load from existing PyG data first
+        if (
+            self.data is not None
+            and hasattr(self.data, "x")
+            and hasattr(self.data, "feature_names")
+        ):
             # Convert PyG Data to DataFrame
             feature_data = {}
             for i, name in enumerate(self.data.feature_names):
@@ -753,8 +807,47 @@ class AstroDataset(InMemoryDataset):
                     feature_data[name] = self.data.pos[:, i].numpy()
 
             return pl.DataFrame(feature_data)
-        else:
-            raise ValueError("Data is not in expected PyG format")
+
+        # Load from standardized Parquet file
+        paths = self._get_survey_paths()
+        parquet_path = paths["parquet"]
+
+        if parquet_path.exists():
+            logger.info(f"📊 Loading DataFrame from {parquet_path}")
+            try:
+                df = pl.read_parquet(parquet_path)
+                if len(df) > 0:
+                    return df
+            except Exception as e:
+                logger.error(f"❌ Failed to load {parquet_path}: {e}")
+                raise
+
+        # Fallback: search for any .parquet file in survey directories
+        logger.warning(f"⚠️ Standard parquet file not found at {parquet_path}")
+        logger.info("🔍 Searching for any .parquet files in survey directories...")
+
+        search_dirs = [
+            paths["survey_dir"],
+            paths["survey_dir"].parent / "raw" / self.survey,
+        ]
+
+        for search_dir in search_dirs:
+            if search_dir.exists():
+                parquet_files = list(search_dir.glob("*.parquet"))
+                for path in parquet_files:
+                    logger.info(f"📊 Trying to load DataFrame from {path}")
+                    try:
+                        df = pl.read_parquet(path)
+                        if len(df) > 0:
+                            logger.info(
+                                f"✅ Successfully loaded {len(df)} rows from {path.name}"
+                            )
+                            return df
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to load {path}: {e}")
+                        continue
+
+        raise ValueError(f"No valid Parquet files found for survey '{self.survey}'")
 
     def process(self):
         """No processing - data should already be processed as .pt files."""
@@ -762,80 +855,48 @@ class AstroDataset(InMemoryDataset):
             "AstroDataset does not process data. Use pre-processed .pt files from data/processed/<survey>/processed/."
         )
 
-    def _find_best_pt_file(self) -> Optional[Path]:
-        """Find the best matching .pt file based on max_samples and k_neighbors."""
-        # Use project root for data path - go up 4 levels from core.py to get to project root
-        project_root = Path(__file__).parent.parent.parent.parent
-        processed_dir = project_root / "data" / "processed" / self.survey / "processed"
+    def _load_pt_file(self) -> None:
+        """Load .pt file from standardized location."""
+        paths = self._get_survey_paths()
+        graph_file = paths["graph"]
 
-        # Add test data directory for testing
-        test_data_dir = (
-            project_root
-            / "test"
-            / "tensors"
-            / "data"
-            / "processed"
-            / self.survey
-            / "processed"
-        )
-        possible_dirs = [processed_dir]
-        if test_data_dir.exists():
-            possible_dirs.insert(0, test_data_dir)  # Prioritize test data
+        if not graph_file.exists():
+            raise FileNotFoundError(f"Graph file not found: {graph_file}")
 
-        all_files = []
-        for processed_dir in possible_dirs:
-            if not processed_dir.exists():
-                continue
-            patterns = [
-                f"{self.survey}_graph_k{self.k_neighbors}_n*.pt",  # New format: gaia_graph_k8_n100.pt
-                f"{self.survey}_k{self.k_neighbors}_n*.pt",  # Old format: gaia_k8_n100.pt
-                f"{self.survey}_graph_k{self.k_neighbors}.pt",  # New format: gaia_graph_k8.pt
-                f"{self.survey}_k{self.k_neighbors}.pt",  # Old format: gaia_k8.pt
-                f"{self.survey}_mag*.pt",  # Magnitude-based files
-            ]
-            for pattern in patterns:
-                files = list(processed_dir.glob(pattern))
-                all_files.extend(files)
-        if not all_files:
-            return None
+        logger.info(f"📦 Loading graph data from {graph_file}")
+        try:
+            data = torch.load(graph_file, map_location="cpu", weights_only=False)
 
-        def extract_n(f):
-            m = re.search(r"_n(\d+)", f.name)
-            if m:
-                return int(m.group(1))
-            return f.stat().st_size
+            # Handle different data formats
+            if isinstance(data, dict) and "data" in data and "slices" in data:
+                self.data, self.slices = data["data"], data["slices"]
+            elif isinstance(data, list):
+                from torch_geometric.data import Data
 
-        all_files = sorted(all_files, key=extract_n)
-        best = None
-        for f in all_files:
-            n = extract_n(f)
-            if self.max_samples is None or n <= self.max_samples:
-                best = f
+                valid_data = [
+                    item
+                    for item in data
+                    if isinstance(item, Data) and item.x is not None
+                ]
+                if not valid_data:
+                    raise ValueError("No valid Data objects found")
+                self.data, self.slices = self.collate(valid_data)
             else:
-                break
-        return best or all_files[-1]  # fallback: largest
+                from torch_geometric.data import Data
+
+                if not isinstance(data, Data) or data.x is None:
+                    raise ValueError("Invalid Data object")
+                self.data, self.slices = self.collate([data])
+
+            logger.info(f"✅ Successfully loaded {len(self)} graph samples")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to load {graph_file}: {e}")
+            raise
 
     def load(self, path: Union[str, Path]):
-        """Load dataset from .pt file."""
-        pt_file = self._find_best_pt_file()
-        if pt_file and pt_file.exists():
-            logger.info(f"📦 Loading graph data from {pt_file}")
-            data = torch.load(pt_file)
-
-            if isinstance(data, list):
-                self.data, self.slices = self.collate(data)
-            elif isinstance(data, dict) and "data" in data and "slices" in data:
-                self.data, self.slices = data["data"], data["slices"]
-            else:
-                # fallback: treat as single Data object
-                self.data, self.slices = self.collate([data])
-            return
-
-        # No .pt file found
-        raise FileNotFoundError(
-            f"No suitable .pt file found for {self.survey} (k={self.k_neighbors}, n={self.max_samples}). "
-            f"Please ensure data is pre-processed and available in data/processed/{self.survey}/processed/."
-        )
+        """Load dataset from standardized .pt file location."""
+        self._load_pt_file()
 
     def get_info(self) -> Dict[str, Any]:
         """Get dataset information."""
@@ -857,11 +918,13 @@ class AstroDataset(InMemoryDataset):
 
     def _download(self):
         """Override _download to load .pt files directly."""
-        self.load(None)  # Load from .pt file - no fallback to fake data
+        if self.data is None:  # Only load if not already loaded
+            self.load(None)
 
     def _process(self):
         """Override _process to load .pt files directly."""
-        self.load(None)  # Load from .pt file - no fallback to fake data
+        if self.data is None:  # Only load if not already loaded
+            self.load(None)
 
 
 class AstroDataModule(L.LightningDataModule):
@@ -945,29 +1008,53 @@ class AstroDataModule(L.LightningDataModule):
             print(f"🚀 Moved data to {self.device}")
 
     def train_dataloader(self):
+        # Ensure dataset is loaded and valid
+        if len(self.dataset) == 0:
+            raise ValueError("Dataset is empty")
+
+        data = self.dataset[0]
+        if data is None:
+            raise ValueError("Dataset contains None values")
+
         return DataLoader(
-            [self.dataset[0]],
+            [data],
             batch_size=1,  # Graph datasets use batch_size=1
-            num_workers=self.num_workers,
-            persistent_workers=self.num_workers > 0,
+            num_workers=0,  # Disable multiprocessing to avoid worker issues
+            persistent_workers=False,
             pin_memory=self.device.type == "cuda",
         )
 
     def val_dataloader(self):
+        # Ensure dataset is loaded and valid
+        if len(self.dataset) == 0:
+            raise ValueError("Dataset is empty")
+
+        data = self.dataset[0]
+        if data is None:
+            raise ValueError("Dataset contains None values")
+
         return DataLoader(
-            [self.dataset[0]],
+            [data],
             batch_size=1,
-            num_workers=self.num_workers,
-            persistent_workers=self.num_workers > 0,
+            num_workers=0,  # Disable multiprocessing to avoid worker issues
+            persistent_workers=False,
             pin_memory=self.device.type == "cuda",
         )
 
     def test_dataloader(self):
+        # Ensure dataset is loaded and valid
+        if len(self.dataset) == 0:
+            raise ValueError("Dataset is empty")
+
+        data = self.dataset[0]
+        if data is None:
+            raise ValueError("Dataset contains None values")
+
         return DataLoader(
-            [self.dataset[0]],
+            [data],
             batch_size=1,
-            num_workers=self.num_workers,
-            persistent_workers=self.num_workers > 0,
+            num_workers=0,  # Disable multiprocessing to avoid worker issues
+            persistent_workers=False,
             pin_memory=self.device.type == "cuda",
         )
 

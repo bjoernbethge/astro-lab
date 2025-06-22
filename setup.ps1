@@ -1,24 +1,30 @@
 #!/usr/bin/env pwsh
 
-Write-Host "🚀 AstroLab Setup für Windows" -ForegroundColor Green
+Write-Host "🚀 AstroLab Setup for Windows" -ForegroundColor Green
 
-# Prüfe ob uv installiert ist
+# Check if uv is installed
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-    Write-Host "📦 uv wird installiert..." -ForegroundColor Yellow
+    Write-Host "📦 Installing uv..." -ForegroundColor Yellow
     powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-    # Aktualisiere PATH für aktuelle Session
+    # Update PATH for current session
     $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
-} else {
-    Write-Host "✅ uv ist bereits installiert" -ForegroundColor Green
+}
+else {
+    Write-Host "✅ uv is already installed" -ForegroundColor Green
 }
 
 # uv sync
-Write-Host "🔄 Führe uv sync aus..." -ForegroundColor Yellow
+Write-Host "🔄 Running uv sync..." -ForegroundColor Yellow
 uv sync
 
-# PyG Extensions installieren
-Write-Host "🔧 Installiere PyG Extensions..." -ForegroundColor Yellow
+# Install PyG Extensions
+Write-Host "🔧 Installing PyG Extensions..." -ForegroundColor Yellow
 uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
-Write-Host "✅ Setup abgeschlossen!" -ForegroundColor Green
-Write-Host "Du kannst jetzt AstroLab verwenden!" -ForegroundColor Cyan 
+# Activate virtual environment
+Write-Host "🔌 Activating virtual environment..." -ForegroundColor Yellow
+& ".\.venv\Scripts\Activate.ps1"
+
+Write-Host "✅ Setup completed!" -ForegroundColor Green
+Write-Host "🎯 Virtual environment is now active. You can now use AstroLab!" -ForegroundColor Cyan
+Write-Host "💡 To activate the environment later, run: .\.venv\Scripts\Activate.ps1" -ForegroundColor Blue 
