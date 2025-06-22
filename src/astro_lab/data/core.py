@@ -46,11 +46,28 @@ from astro_lab.tensors import (
     SurveyTensor,
 )
 
+
+# Function defined here to avoid circular import
+def create_graph_datasets_from_splits(
+    train_indices: List[int],
+    val_indices: List[int],
+    test_indices: List[int],
+    data_list: List[Data],
+    **kwargs,
+) -> Tuple[List[Data], List[Data], List[Data]]:
+    """Create graph datasets from train/val/test splits."""
+    train_data = [data_list[i] for i in train_indices]
+    val_data = [data_list[i] for i in val_indices]
+    test_data = [data_list[i] for i in test_indices]
+    return train_data, val_data, test_data
+
+
 # PyTorch Geometric integration - core dependency
 
 # =========================================================================
 # 🚀 PERFORMANCE OPTIMIZATION - CUDA, Polars, PyTorch 2025 Best Practices
 # =========================================================================
+
 
 def get_optimal_device() -> torch.device:
     """Get optimal device with CUDA optimization."""
@@ -65,6 +82,7 @@ def get_optimal_device() -> torch.device:
         return torch.device("cuda:0")
     else:
         return torch.device("cpu")
+
 
 def get_optimal_batch_size(
     dataset_size: int, model_complexity: int = 64, memory_safety_factor: float = 0.8
@@ -100,6 +118,7 @@ def get_optimal_batch_size(
         # CPU: use smaller batches
         return min(dataset_size, 32)
 
+
 def get_optimal_num_workers() -> int:
     """Get optimal number of workers for DataLoader."""
     cpu_count = os.cpu_count() or 4
@@ -111,6 +130,7 @@ def get_optimal_num_workers() -> int:
         # CPU: more workers for parallel processing
         return min(cpu_count - 1, 8)
 
+
 # Initialize optimizations
 # optimize_polars_settings()  # CAUSES MEMORY LEAKS - removed
 # optimize_torch_settings()   # Keep this separate
@@ -118,6 +138,7 @@ def get_optimal_num_workers() -> int:
 # =========================================================================
 # 🌟 COSMIC WEB ANALYSIS FUNCTIONS - Density-based for all surveys
 # =========================================================================
+
 
 def calculate_local_density(
     positions: Union[torch.Tensor, np.ndarray],
@@ -151,6 +172,7 @@ def calculate_local_density(
     densities = neighbor_counts / volume
 
     return torch.tensor(densities, dtype=torch.float32)
+
 
 def adaptive_cosmic_web_clustering(
     spatial_tensor: Any,  # Spatial3DTensor or fallback
@@ -200,6 +222,7 @@ def adaptive_cosmic_web_clustering(
     )
 
     return results, local_density
+
 
 def analyze_cosmic_web(
     survey_tensor: Any,  # SurveyTensor or fallback
@@ -306,6 +329,7 @@ def analyze_cosmic_web(
         "results_by_scale": results_summary,
     }
 
+
 def create_cosmic_web_loader(
     survey: str,
     max_samples: Optional[int] = None,
@@ -395,6 +419,7 @@ def create_cosmic_web_loader(
     results = analyze_cosmic_web(survey_tensor, scales_mpc=scales_mpc, verbose=True)
 
     return results
+
 
 # Survey configurations - DRY principle with TENSOR METADATA
 SURVEY_CONFIGS = {
@@ -580,6 +605,7 @@ SURVEY_CONFIGS = {
     },
 }
 
+
 def _polars_to_survey_tensor(
     df: pl.DataFrame, survey: str, survey_metadata: Optional[Dict[str, Any]] = None
 ) -> Any:
@@ -594,7 +620,7 @@ def _polars_to_survey_tensor(
     Returns:
         SurveyTensor with properly configured metadata
     """
-    
+
     if survey not in SURVEY_CONFIGS:
         raise ValueError(f"Survey {survey} not supported")
 
@@ -625,6 +651,7 @@ def _polars_to_survey_tensor(
         metadata["survey_metadata"].update(survey_metadata)
 
     return SurveyTensor(data=tensor_data, **metadata)
+
 
 class AstroDataset(InMemoryDataset):
     """
@@ -836,6 +863,7 @@ class AstroDataset(InMemoryDataset):
         """Override _process to load .pt files directly."""
         self.load(None)  # Load from .pt file - no fallback to fake data
 
+
 class AstroDataModule(L.LightningDataModule):
     """
     Clean Lightning DataModule for astronomical data.
@@ -943,6 +971,7 @@ class AstroDataModule(L.LightningDataModule):
             pin_memory=self.device.type == "cuda",
         )
 
+
 # Factory function - replaces all the individual create_* functions
 def create_astro_dataloader(survey: str, batch_size: int = 1, **kwargs) -> DataLoader:
     """
@@ -953,6 +982,7 @@ def create_astro_dataloader(survey: str, batch_size: int = 1, **kwargs) -> DataL
     dataset = AstroDataset(survey=survey, **kwargs)
     return DataLoader(dataset, batch_size=batch_size)
 
+
 def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
     """
     Universal factory for astronomical data modules.
@@ -961,7 +991,9 @@ def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
     """
     return AstroDataModule(survey=survey, **kwargs)
 
+
 # 🌟 ENHANCED LOAD FUNCTIONS with automatic tensor conversion
+
 
 def load_gaia_data(
     max_samples: int = 5000,
@@ -996,6 +1028,7 @@ def load_gaia_data(
 
     return dataset
 
+
 def load_sdss_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
@@ -1029,6 +1062,7 @@ def load_sdss_data(
 
     return dataset
 
+
 def load_nsa_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
@@ -1061,6 +1095,7 @@ def load_nsa_data(
     dataset.load(None)  # Load from .pt file
 
     return dataset
+
 
 def load_lightcurve_data(
     max_samples: int = 5000,
@@ -1105,6 +1140,7 @@ def load_lightcurve_data(
         return_tensor=return_tensor,
         **kwargs,
     )
+
 
 def load_tng50_data(
     max_samples: Optional[int] = None,
@@ -1162,6 +1198,7 @@ def load_tng50_data(
         return dataset.get_spatial_tensor()
 
     return dataset
+
 
 def load_tng50_temporal_data(
     max_samples: Optional[int] = None, snapshot_id: Optional[int] = None
@@ -1555,6 +1592,7 @@ def load_tng50_temporal_data(
 
     return dataset
 
+
 def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
     """
     Detect survey type from filename and columns.
@@ -1606,6 +1644,7 @@ def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
     else:
         return "generic"
 
+
 def create_graph_from_dataframe(
     df: pl.DataFrame,
     survey_type: str,
@@ -1628,7 +1667,7 @@ def create_graph_from_dataframe(
     Returns:
         PyTorch Geometric Data object or None if PyG not available
     """
-    
+
     coords = df.select(coord_cols).to_numpy()
     all_features = df.to_numpy()
 
@@ -1704,6 +1743,7 @@ def create_graph_from_dataframe(
         num_nodes=len(all_features),
     )
 
+
 def benchmark_performance(
     survey: str = "linear", max_samples: int = 1000, verbose: bool = True
 ) -> Dict[str, Any]:
@@ -1778,6 +1818,7 @@ def benchmark_performance(
             "error": str(e),
             "success": False,
         }
+
 
 def print_performance_info():
     """Print current performance configuration."""

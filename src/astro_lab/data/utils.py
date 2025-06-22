@@ -21,21 +21,9 @@ from astropy.table import Table
 from .config import data_config
 
 # Try to import astropy for FITS handling
-try:
-    from astropy.io import fits
-    from astropy.table import Table
+# Import astropy for FITS data
 
-    ASTROPY_AVAILABLE = True
-except ImportError:
-    ASTROPY_AVAILABLE = False
-
-# Try to import astroquery for external data
-try:
-    import astroquery
-
-    ASTROQUERY_AVAILABLE = True
-except ImportError:
-    ASTROQUERY_AVAILABLE = False
+# Import astroquery for external data
 
 
 def get_data_dir() -> Path:
@@ -52,7 +40,7 @@ def get_data_dir() -> Path:
 
 def check_astroquery_available() -> bool:
     """Check if astroquery is available for data downloads."""
-    return ASTROQUERY_AVAILABLE
+    return True
 
 
 def get_data_statistics(df: pl.DataFrame) -> Dict[str, Any]:
@@ -137,10 +125,6 @@ def load_fits_optimized(
     Returns:
         Loaded data as ndarray or Table
     """
-    if not ASTROPY_AVAILABLE:
-        print("astropy not available for FITS loading")
-        return None
-
     fits_path = Path(fits_path)
     if not fits_path.exists():
         print(f"FITS file not found: {fits_path}")
@@ -203,10 +187,6 @@ def load_fits_table_optimized(
     Returns:
         Loaded table as DataFrame or Table
     """
-    if not ASTROPY_AVAILABLE:
-        print("astropy not available for FITS loading")
-        return None
-
     fits_path = Path(fits_path)
     if not fits_path.exists():
         print(f"FITS file not found: {fits_path}")
@@ -280,8 +260,6 @@ def get_fits_info(fits_path: Union[str, Path]) -> Dict[str, Any]:
     Returns:
         Dictionary with file information
     """
-    if not ASTROPY_AVAILABLE:
-        return {"error": "astropy not available"}
 
     fits_path = Path(fits_path)
     if not fits_path.exists():
