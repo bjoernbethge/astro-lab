@@ -70,6 +70,7 @@ class OrbitTensor(AstroTensorBase):
         metadata.update(kwargs)
 
         super().__init__(data, **metadata, tensor_type="orbital")
+        self._validate()  # Call validation after initialization
 
         # Set default mu based on attractor if not provided
         if mu is None:

@@ -52,6 +52,7 @@ class PhotometricTensor(AstroTensorBase):
         metadata.update(kwargs)
 
         super().__init__(data, **metadata, tensor_type="photometric")
+        self._validate()  # Call validation after initialization
 
     def _validate(self) -> None:
         """Validate photometric tensor data."""

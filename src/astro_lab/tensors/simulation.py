@@ -20,6 +20,7 @@ from .base import AstroTensorBase
 # Optional dependencies with fallbacks
 try:
     import scipy.integrate
+
     SCIPY_AVAILABLE = True
 except ImportError:
     SCIPY_AVAILABLE = False
@@ -30,7 +31,7 @@ logger = logging.getLogger(__name__)
 class SimulationTensor(AstroTensorBase):
     """
     Tensor for cosmological simulation data with integrated cosmology.
-    
+
     Handles:
     - Particle positions, velocities, masses
     - Cosmological calculations (redshift, distances, age)
@@ -40,18 +41,18 @@ class SimulationTensor(AstroTensorBase):
     """
 
     _metadata_fields = [
-        "simulation_name",      # "TNG50", "Illustris", etc.
-        "particle_type",        # "gas", "dark_matter", "stars", "black_holes"
-        "box_size",            # Simulation box size
-        "redshift",            # Simulation redshift
-        "scale_factor",        # Cosmological scale factor
-        "cosmology",           # Cosmological parameters
-        "snap_num",            # Snapshot number
-        "hubble_param",        # Hubble parameter
-        "time",                # Simulation time
-        "mass_table",          # Mass table for particles
-        "periodic_boundaries", # Whether boundaries are periodic
-        "feature_names",       # Names of features in x tensor
+        "simulation_name",  # "TNG50", "Illustris", etc.
+        "particle_type",  # "gas", "dark_matter", "stars", "black_holes"
+        "box_size",  # Simulation box size
+        "redshift",  # Simulation redshift
+        "scale_factor",  # Cosmological scale factor
+        "cosmology",  # Cosmological parameters
+        "snap_num",  # Snapshot number
+        "hubble_param",  # Hubble parameter
+        "time",  # Simulation time
+        "mass_table",  # Mass table for particles
+        "periodic_boundaries",  # Whether boundaries are periodic
+        "feature_names",  # Names of features in x tensor
     ]
 
     def __init__(
@@ -83,7 +84,9 @@ class SimulationTensor(AstroTensorBase):
         # Convert to tensors
         pos_tensor = torch.as_tensor(positions, dtype=torch.float32)
         if pos_tensor.shape[-1] != 3:
-            raise ValueError(f"Positions must have shape [..., 3], got {pos_tensor.shape}")
+            raise ValueError(
+                f"Positions must have shape [..., 3], got {pos_tensor.shape}"
+            )
 
         # Store main data as positions with clean metadata
         super().__init__(
@@ -117,12 +120,14 @@ class SimulationTensor(AstroTensorBase):
         self._update_cosmological_metadata()
 
         logger.info(f"🌌 SimulationTensor created: {simulation_name} {particle_type}")
-        logger.info(f"   {len(positions)} particles, z={redshift:.3f}, box={box_size:.1f}")
+        logger.info(
+            f"   {len(positions)} particles, z={redshift:.3f}, box={box_size:.1f}"
+        )
 
     def _update_cosmological_metadata(self) -> None:
         """Update cosmological metadata based on redshift."""
         z = self.get_metadata("redshift", 0.0)
-        
+
         # Calculate cosmological quantities
         scale_factor = 1.0 / (1.0 + z) if z >= 0 else 1.0
         age = self._cosmology.age_of_universe(z)
@@ -181,17 +186,15 @@ class SimulationTensor(AstroTensorBase):
         return self._cosmology
 
     def periodic_distance(
-        self, 
-        pos1: Union[torch.Tensor, int], 
-        pos2: Union[torch.Tensor, int]
+        self, pos1: Union[torch.Tensor, int], pos2: Union[torch.Tensor, int]
     ) -> torch.Tensor:
         """
         Calculate distance with periodic boundary conditions.
-        
+
         Args:
             pos1: Position tensor [3] or [N, 3], or particle index
             pos2: Position tensor [3] or [N, 3], or particle index
-            
+
         Returns:
             Minimum distance accounting for periodic boundaries
         """
@@ -226,16 +229,16 @@ class SimulationTensor(AstroTensorBase):
     def get_particle_subset(self, mask: torch.Tensor) -> "SimulationTensor":
         """
         Get subset of particles based on boolean mask.
-        
+
         Args:
             mask: Boolean mask [N]
-            
+
         Returns:
             New SimulationTensor with selected particles
         """
         new_positions = self.positions[mask]
         new_features = self.features[mask] if self.features is not None else None
-        
+
         # Filter edge_index if present (more complex)
         new_edge_index = None
         if self.edge_index is not None:
@@ -243,13 +246,15 @@ class SimulationTensor(AstroTensorBase):
             logger.warning("Edge filtering not implemented - edges will be removed")
 
         # Extract metadata without tensor_type to avoid conflicts
-        subset_metadata = {k: v for k, v in self._metadata.items() if k != 'tensor_type'}
-        
+        subset_metadata = {
+            k: v for k, v in self._metadata.items() if k != "tensor_type"
+        }
+
         return SimulationTensor(
             positions=new_positions,
             features=new_features,
             edge_index=new_edge_index,
-            **subset_metadata
+            **subset_metadata,
         )
 
     def calculate_center_of_mass(self) -> torch.Tensor:
@@ -257,17 +262,19 @@ class SimulationTensor(AstroTensorBase):
         if self.features is not None and self.features.shape[1] > 0:
             # Assume first feature is mass
             masses = self.features[:, 0]
-            com = torch.sum(self.positions * masses.unsqueeze(-1), dim=0) / torch.sum(masses)
+            com = torch.sum(self.positions * masses.unsqueeze(-1), dim=0) / torch.sum(
+                masses
+            )
         else:
             # Equal mass assumption
             com = torch.mean(self.positions, dim=0)
-        
+
         return com
 
     def to_torch_geometric(self) -> "torch_geometric.data.Data":
         """
         Convert to PyTorch Geometric Data object.
-        
+
         Returns:
             PyTorch Geometric Data object
         """
@@ -281,7 +288,7 @@ class SimulationTensor(AstroTensorBase):
             x=self.features,
             edge_index=self.edge_index,
         )
-        
+
         # Add metadata as attributes
         for key, value in self._metadata.items():
             if isinstance(value, (int, float, str, bool)):
@@ -290,41 +297,108 @@ class SimulationTensor(AstroTensorBase):
         return data
 
     @classmethod
-    def from_torch_geometric(cls, data: "torch_geometric.data.Data", **kwargs) -> "SimulationTensor":
+    def from_torch_geometric(
+        cls, data: "torch_geometric.data.Data", **kwargs
+    ) -> "SimulationTensor":
         """
         Create SimulationTensor from PyTorch Geometric Data object.
-        
+
         Args:
             data: PyTorch Geometric Data object
             **kwargs: Additional metadata
-            
+
         Returns:
             New SimulationTensor
         """
         # Extract core data
         positions = data.pos
-        features = getattr(data, 'x', None)
-        edge_index = getattr(data, 'edge_index', None)
+        features = getattr(data, "x", None)
+        edge_index = getattr(data, "edge_index", None)
 
         # Extract metadata from data attributes
         metadata = {}
-        for attr in ['simulation_name', 'particle_type', 'box_size', 'redshift']:
+        for attr in ["simulation_name", "particle_type", "box_size", "redshift"]:
             if hasattr(data, attr):
                 metadata[attr] = getattr(data, attr)
 
         metadata.update(kwargs)
 
         return cls(
-            positions=positions,
-            features=features,
-            edge_index=edge_index,
-            **metadata
+            positions=positions, features=features, edge_index=edge_index, **metadata
         )
 
     def update_redshift(self, new_redshift: float) -> None:
         """Update redshift and recalculate cosmological quantities."""
         self.update_metadata(redshift=new_redshift)
         self._update_cosmological_metadata()
+
+    def to_pyvista(self, scalars: Optional[torch.Tensor] = None) -> Any:
+        """
+        Convert to PyVista PolyData for visualization.
+
+        Args:
+            scalars: Optional scalar values for coloring particles
+
+        Returns:
+            PyVista PolyData object
+        """
+        try:
+            import pyvista as pv
+        except ImportError:
+            raise ImportError("PyVista required for visualization")
+
+        # Convert positions to numpy
+        points = self.positions.detach().cpu().numpy()
+
+        # Create point cloud
+        mesh = pv.PolyData(points)
+
+        # Add scalars if provided
+        if scalars is not None:
+            scalar_data = scalars.detach().cpu().numpy()
+            mesh["scalars"] = scalar_data
+        elif self.features is not None and self.features.shape[1] > 0:
+            # Use first feature as scalars (e.g., mass)
+            mesh["mass"] = self.features[:, 0].detach().cpu().numpy()
+
+        # Add metadata
+        mesh.field_data["simulation"] = self.simulation_name
+        mesh.field_data["particle_type"] = self.particle_type
+        mesh.field_data["redshift"] = self.redshift
+
+        return mesh
+
+    def to_blender(self, name: str = "simulation") -> Dict[str, Any]:
+        """
+        Convert to Blender-compatible format.
+
+        Args:
+            name: Name for the Blender object
+
+        Returns:
+            Dictionary with Blender mesh data
+        """
+        # Convert positions to numpy
+        points = self.positions.detach().cpu().numpy()
+
+        # Create simple point cloud representation
+        result = {
+            "vertices": points,
+            "faces": [],  # Point cloud has no faces
+            "name": name,
+            "metadata": {
+                "simulation": self.simulation_name,
+                "particle_type": self.particle_type,
+                "redshift": self.redshift,
+                "num_particles": self.num_particles,
+            },
+        }
+
+        # Add scalars if available
+        if self.features is not None and self.features.shape[1] > 0:
+            result["vertex_colors"] = self.features[:, 0].detach().cpu().numpy()
+
+        return result
 
     def __repr__(self) -> str:
         """String representation."""
@@ -338,7 +412,7 @@ class SimulationTensor(AstroTensorBase):
 class CosmologyCalculator:
     """
     Lightweight cosmology calculator integrated with SimulationTensor.
-    
+
     Provides cosmological distance calculations, age of universe,
     and Hubble parameter for simulation analysis.
     """
@@ -361,25 +435,29 @@ class CosmologyCalculator:
         if abs(total_omega - 1.0) > 1e-6:
             logger.warning(f"Omega parameters don't sum to 1: {total_omega:.6f}")
 
-    def hubble_parameter(self, z: Union[float, np.ndarray, torch.Tensor]) -> Union[float, np.ndarray, torch.Tensor]:
+    def hubble_parameter(
+        self, z: Union[float, np.ndarray, torch.Tensor]
+    ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate Hubble parameter H(z)."""
         if isinstance(z, torch.Tensor):
             E_z = torch.sqrt(
-                self.Omega_m * (1 + z)**3 
-                + self.Omega_k * (1 + z)**2 
+                self.Omega_m * (1 + z) ** 3
+                + self.Omega_k * (1 + z) ** 2
                 + self.Omega_Lambda
             )
             return self.H0 * E_z
         else:
             z = np.asarray(z)
             E_z = np.sqrt(
-                self.Omega_m * (1 + z)**3 
-                + self.Omega_k * (1 + z)**2 
+                self.Omega_m * (1 + z) ** 3
+                + self.Omega_k * (1 + z) ** 2
                 + self.Omega_Lambda
             )
             return self.H0 * E_z
 
-    def comoving_distance(self, z: Union[float, np.ndarray, torch.Tensor]) -> Union[float, np.ndarray, torch.Tensor]:
+    def comoving_distance(
+        self, z: Union[float, np.ndarray, torch.Tensor]
+    ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate comoving distance to redshift z."""
         if SCIPY_AVAILABLE:
             return self._comoving_distance_scipy(z)
@@ -389,10 +467,10 @@ class CosmologyCalculator:
     def _comoving_distance_scipy(self, z):
         """Calculate comoving distance using scipy integration."""
         c_km_s = 299792.458  # Speed of light in km/s
-        
+
         def integrand(z_prime):
             return 1.0 / self.hubble_parameter(z_prime) * self.H0
-        
+
         if np.isscalar(z):
             result, _ = scipy.integrate.quad(integrand, 0, z)
             return c_km_s * result
@@ -407,42 +485,50 @@ class CosmologyCalculator:
     def _comoving_distance_fallback(self, z):
         """Calculate comoving distance using simple trapezoid integration."""
         c_km_s = 299792.458  # Speed of light in km/s
-        
+
         z = np.asarray(z)
         scalar_input = z.ndim == 0
         z = np.atleast_1d(z)
-        
+
         results = []
         for z_val in z:
             if z_val <= 0:
                 results.append(0.0)
                 continue
-                
+
             # Simple trapezoid rule integration
             n_steps = max(100, int(z_val * 50))  # Adaptive step size
             z_grid = np.linspace(0, z_val, n_steps + 1)
             integrand = 1.0 / (self.hubble_parameter(z_grid) / self.H0)
-            
+
             # Trapezoid rule
             dz = z_grid[1] - z_grid[0]
-            integral = dz * (0.5 * integrand[0] + np.sum(integrand[1:-1]) + 0.5 * integrand[-1])
-            
+            integral = dz * (
+                0.5 * integrand[0] + np.sum(integrand[1:-1]) + 0.5 * integrand[-1]
+            )
+
             results.append(c_km_s * integral)
-        
+
         results = np.array(results)
         return results[0] if scalar_input else results
 
-    def angular_diameter_distance(self, z: Union[float, np.ndarray, torch.Tensor]) -> Union[float, np.ndarray, torch.Tensor]:
+    def angular_diameter_distance(
+        self, z: Union[float, np.ndarray, torch.Tensor]
+    ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate angular diameter distance."""
         D_c = self.comoving_distance(z)
         return D_c / (1 + z)
 
-    def luminosity_distance(self, z: Union[float, np.ndarray, torch.Tensor]) -> Union[float, np.ndarray, torch.Tensor]:
+    def luminosity_distance(
+        self, z: Union[float, np.ndarray, torch.Tensor]
+    ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate luminosity distance."""
         D_c = self.comoving_distance(z)
         return D_c * (1 + z)
 
-    def age_of_universe(self, z: Union[float, np.ndarray, torch.Tensor] = 0) -> Union[float, np.ndarray, torch.Tensor]:
+    def age_of_universe(
+        self, z: Union[float, np.ndarray, torch.Tensor] = 0
+    ) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate age of universe at redshift z."""
         if SCIPY_AVAILABLE:
             return self._age_scipy(z)
@@ -452,10 +538,10 @@ class CosmologyCalculator:
     def _age_scipy(self, z):
         """Calculate age using scipy integration."""
         H0_s = self.H0 / 3.086e19  # Convert to 1/s
-        
+
         def integrand(z_prime):
             return 1.0 / ((1 + z_prime) * self.hubble_parameter(z_prime) / self.H0)
-        
+
         if np.isscalar(z):
             result, _ = scipy.integrate.quad(integrand, z, np.inf)
             return result / H0_s / (365.25 * 24 * 3600 * 1e9)  # Convert to Gyr
@@ -470,10 +556,10 @@ class CosmologyCalculator:
         """Calculate age using simple approximation."""
         # Simple approximation: t ≈ 2/(3*H0) in flat universe
         H0_gyr = self.H0 / 97.8  # Convert to 1/Gyr
-        return 2.0 / (3.0 * H0_gyr * np.sqrt(self.Omega_m) * (1 + z)**(3/2))
+        return 2.0 / (3.0 * H0_gyr * np.sqrt(self.Omega_m) * (1 + z) ** (3 / 2))
 
 
 __all__ = [
     "SimulationTensor",
     "CosmologyCalculator",
-] 
+]

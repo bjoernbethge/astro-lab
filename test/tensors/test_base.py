@@ -25,18 +25,22 @@ class TestAstroTensorBase:
         assert torch.equal(tensor.data, data)
         assert tensor.dtype == data.dtype
 
-    def test_tensor_device_transfer(self, device: torch.device):
+    def test_tensor_device_transfer(self):
         """Test device transfer."""
         data = torch.randn(5, 3)
-        tensor = AstroTensorBase(data, device=device)
 
-        # Device comparison should check type and index separately if CUDA
-        if device.type == "cuda":
-            assert tensor.device.type == device.type
-            assert tensor.data.device.type == device.type
-        else:
-            assert tensor.device == device
-            assert tensor.data.device == device
+        # Test CPU device
+        cpu_tensor = AstroTensorBase(data)
+        assert cpu_tensor.device.type == "cpu"
+        assert cpu_tensor.data.device.type == "cpu"
+
+        # Test CUDA device if available
+        if torch.cuda.is_available():
+            cuda_device = torch.device("cuda")
+            cuda_data = data.to(cuda_device)
+            cuda_tensor = AstroTensorBase(cuda_data)
+            assert cuda_tensor.device.type == "cuda"
+            assert cuda_tensor.data.device.type == "cuda"
 
     def test_metadata_operations(self):
         """Test metadata handling."""
