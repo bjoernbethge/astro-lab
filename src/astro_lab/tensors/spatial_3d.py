@@ -5,8 +5,10 @@ This module defines the Spatial3DTensor for representing and manipulating
 from __future__ import annotations
 
 import torch
+import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
+from typing import Any
 
 from .base import AstroTensorBase
 
@@ -16,7 +18,7 @@ class Spatial3DTensor(AstroTensorBase):
     This is a simplified, robust version for core functionality.
     """
 
-    def __init__(self, data: torch.Tensor, **kwargs):
+    def __init__(self, data: torch.Tensor, coordinate_system: str = "icrs", unit: str = "kpc", epoch: float = 2000.0, **kwargs):
         """
         Initializes the Spatial3DTensor.
         Expects a tensor of shape (N, 3) for N points.
@@ -27,6 +29,11 @@ class Spatial3DTensor(AstroTensorBase):
             raise ValueError(f"Expected a tensor of shape (N, 3), but got {data.shape}")
         
         super().__init__(data, **kwargs)
+        
+        # Store metadata
+        self._coordinate_system = coordinate_system
+        self._unit = unit
+        self._epoch = epoch
 
     @classmethod
     def from_cartesian(
@@ -55,27 +62,39 @@ class Spatial3DTensor(AstroTensorBase):
         Creates a Spatial3DTensor from spherical coordinates (RA, Dec, distance).
         Uses astropy for robust conversion.
         """
-        if not (ra.shape == dec.shape == distance.shape):
+        # Handle case where a single tensor is passed
+        if isinstance(ra, torch.Tensor) and ra.ndim == 2 and ra.shape[1] == 3:
+            # Single tensor with shape (N, 3) containing [ra, dec, distance]
+            ra_coords = ra[:, 0]
+            dec_coords = ra[:, 1]
+            distance_coords = ra[:, 2]
+        else:
+            # Separate tensors
+            ra_coords = ra
+            dec_coords = dec
+            distance_coords = distance
+
+        if not (ra_coords.shape == dec_coords.shape == distance_coords.shape):
             raise ValueError("ra, dec, and distance tensors must have the same shape.")
 
         # Convert to numpy for astropy, ensuring they are detached from graph
-        ra_np = ra.detach().cpu().numpy()
-        dec_np = dec.detach().cpu().numpy()
-        dist_np = distance.detach().cpu().numpy()
+        ra_np = ra_coords.detach().cpu().numpy()
+        dec_np = dec_coords.detach().cpu().numpy()
+        dist_np = distance_coords.detach().cpu().numpy()
         
         # Use astropy SkyCoord for conversion
         # We assume distance is given in parsecs, a common unit in Gaia data.
         coords = SkyCoord(
             ra=ra_np * u.Unit(angular_unit),
             dec=dec_np * u.Unit(angular_unit),
-            distance=dist_np * u.pc,
+            distance=dist_np * u.parsec,
             frame='icrs'
         )
         
         cartesian = coords.cartesian
-        x = torch.from_numpy(cartesian.x.value).to(ra.device, dtype=ra.dtype)
-        y = torch.from_numpy(cartesian.y.value).to(ra.device, dtype=ra.dtype)
-        z = torch.from_numpy(cartesian.z.value).to(ra.device, dtype=ra.dtype)
+        x = torch.from_numpy(cartesian.x.value).to(ra_coords.device, dtype=ra_coords.dtype)
+        y = torch.from_numpy(cartesian.y.value).to(ra_coords.device, dtype=ra_coords.dtype)
+        z = torch.from_numpy(cartesian.z.value).to(ra_coords.device, dtype=ra_coords.dtype)
         
         return cls.from_cartesian(x, y, z, **kwargs)
         
@@ -93,6 +112,110 @@ class Spatial3DTensor(AstroTensorBase):
     def z(self) -> torch.Tensor:
         """Returns the z-coordinates."""
         return self.data[:, 2]
+
+    @property
+    def cartesian(self) -> torch.Tensor:
+        """Returns the cartesian coordinates."""
+        return self.data
+
+    @property
+    def coordinate_system(self) -> str:
+        """Returns the coordinate system."""
+        return self._coordinate_system
+
+    @property
+    def unit(self) -> str:
+        """Returns the unit."""
+        return self._unit
+
+    @property
+    def epoch(self) -> float:
+        """Returns the epoch."""
+        return self._epoch
+
+    def distance_to_origin(self) -> torch.Tensor:
+        """Calculate distance to origin for all points."""
+        return torch.norm(self.data, dim=1)
+
+    def query_neighbors(self, query_point: torch.Tensor, radius: float) -> tuple[torch.Tensor, torch.Tensor]:
+        """Query neighbors within a radius."""
+        distances = torch.norm(self.data - query_point, dim=1)
+        mask = distances <= radius
+        neighbors = torch.where(mask)[0]
+        neighbor_distances = distances[mask]
+        return neighbors, neighbor_distances
+
+    def to_spherical(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Convert to spherical coordinates (RA, Dec, distance)."""
+        # Convert to numpy for astropy
+        x_np = self.x.detach().cpu().numpy()
+        y_np = self.y.detach().cpu().numpy()
+        z_np = self.z.detach().cpu().numpy()
+        
+        # Use astropy for conversion
+        coords = SkyCoord(
+            x=x_np * u.kiloparsec,
+            y=y_np * u.kiloparsec,
+            z=z_np * u.kiloparsec,
+            frame='icrs',
+            representation_type='cartesian'
+        )
+        
+        # Extract spherical coordinates using the correct representation
+        spherical = coords.spherical
+        ra = torch.from_numpy(spherical.lon.deg).to(self.device, dtype=self.dtype)
+        dec = torch.from_numpy(spherical.lat.deg).to(self.device, dtype=self.dtype)
+        distance = torch.from_numpy(spherical.distance.kiloparsec).to(self.device, dtype=self.dtype)
+        
+        return ra, dec, distance
+
+    def angular_separation(self, other: "Spatial3DTensor") -> torch.Tensor:
+        """Calculate angular separation between this and another tensor."""
+        # Convert both to spherical coordinates
+        ra1, dec1, _ = self.to_spherical()
+        ra2, dec2, _ = other.to_spherical()
+        
+        # Calculate angular separation using spherical trigonometry
+        cos_sep = torch.sin(dec1 * np.pi/180) * torch.sin(dec2 * np.pi/180) + \
+                  torch.cos(dec1 * np.pi/180) * torch.cos(dec2 * np.pi/180) * \
+                  torch.cos((ra1 - ra2) * np.pi/180)
+        
+        # Clamp to avoid numerical issues
+        cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
+        separation = torch.acos(cos_sep) * 180 / np.pi
+        
+        return separation
+
+    def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:
+        """Perform cone search around a center point."""
+        # Convert center to spherical coordinates
+        center_tensor = Spatial3DTensor(center.unsqueeze(0))
+        center_ra, center_dec, _ = center_tensor.to_spherical()
+        
+        # Convert all points to spherical
+        ra, dec, _ = self.to_spherical()
+        
+        # Calculate angular separation from center
+        cos_sep = torch.sin(center_dec * np.pi/180) * torch.sin(dec * np.pi/180) + \
+                  torch.cos(center_dec * np.pi/180) * torch.cos(dec * np.pi/180) * \
+                  torch.cos((center_ra - ra) * np.pi/180)
+        
+        cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
+        separation = torch.acos(cos_sep) * 180 / np.pi
+        
+        # Return indices of points within radius
+        return torch.where(separation <= radius_deg)[0]
+
+    def get_metadata(self, key: str) -> Any:
+        """Get metadata value by key."""
+        if key == "unit":
+            return self._unit
+        elif key == "coordinate_system":
+            return self._coordinate_system
+        elif key == "epoch":
+            return self._epoch
+        else:
+            return super().get_metadata(key) if hasattr(super(), 'get_metadata') else None
 
     def __repr__(self) -> str:
         return f"Spatial3DTensor(points={self.shape[0]}, device='{self.device}')"

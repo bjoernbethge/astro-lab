@@ -18,10 +18,10 @@ import lightning as L
 import numpy as np
 import polars as pl
 import torch
+import torch_cluster
 import torch_geometric
 import torch_geometric.transforms as T
 from astropy.coordinates import SkyCoord
-from sklearn.neighbors import BallTree, NearestNeighbors
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import DataEdgeAttr
@@ -158,7 +158,7 @@ def calculate_local_density(
     max_neighbors: int = 100,
 ) -> torch.Tensor:
     """
-    Calculate local density for each object.
+    Calculate local density for each object using GPU acceleration.
 
     Args:
         positions: 3D positions (N, 3) in Mpc
@@ -171,17 +171,28 @@ def calculate_local_density(
     # Convert to pc for local density calculation
     positions_pc = positions * 1e6  # Mpc to pc
 
-    # BallTree for efficient radius searches
-    tree = BallTree(positions_pc.numpy())
-
-    # OPTIMIZED: Use query_radius with count_only for better performance
-    neighbor_counts = tree.query_radius(
-        positions_pc.numpy(), r=radius_pc, count_only=True
+    # Use GPU-accelerated radius search
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    positions_tensor = torch.tensor(positions_pc, dtype=torch.float32, device=device)
+    
+    # Create radius graph
+    edge_index = torch_cluster.radius_graph(
+        x=positions_tensor,
+        r=radius_pc,
+        loop=False,
+        flow='source_to_target'
     )
+    
+    # Count neighbors for each point
+    neighbor_counts = []
+    for i in range(len(positions_pc)):
+        # Count edges where this point is the source
+        n_neighbors = (edge_index[0] == i).sum().item()
+        neighbor_counts.append(n_neighbors)
 
-    # OPTIMIZED: Vectorized density calculation
+    # Vectorized density calculation
     volume = (4 / 3) * np.pi * (radius_pc**3)
-    densities = neighbor_counts / volume
+    densities = np.array(neighbor_counts) / volume
 
     return torch.tensor(densities, dtype=torch.float32)
 
@@ -401,7 +412,7 @@ def create_cosmic_web_loader(
         if not hasattr(survey_tensor, "get_spatial_tensor"):
             # Create SurveyTensor from TNG data
             coords = survey_tensor[0].pos.detach().cpu().numpy()
-            survey_tensor = Spatial3DTensor(coords, unit="Mpc")
+            survey_tensor = Spatial3DTensor(data=coords, unit="Mpc")
     elif survey == "exoplanet":
         # Load exoplanet data
         data_path = Path(
@@ -526,7 +537,14 @@ class AstroDataset(InMemoryDataset):
         
         # Check if we need to convert FITS to Parquet first
         if self.survey == "nsa":
-            self._convert_nsa_fits_to_parquet()
+            from astro_lab.data.utils import convert_nsa_fits_to_parquet
+            
+            raw_dir = Path("data/raw/nsa")
+            fits_file = raw_dir / "nsa_v1_0_1.fits"
+            parquet_file = raw_dir / "nsa.parquet"
+            
+            if fits_file.exists() and not parquet_file.exists():
+                convert_nsa_fits_to_parquet(fits_file, parquet_file)
         
         # Now check if graph exists
         if not graph_path.exists():
@@ -534,40 +552,6 @@ class AstroDataset(InMemoryDataset):
                 f"Graph file not found: {graph_path}\n"
                 f"Run: uv run astro-lab preprocess --surveys {self.survey}"
             )
-
-    def _convert_nsa_fits_to_parquet(self):
-        """Convert NSA FITS file to Parquet if needed."""
-        from astro_lab.data.utils import load_fits_optimized
-        import polars as pl
-        
-        raw_dir = Path("data/raw/nsa")
-        fits_file = raw_dir / "nsa_v1_0_1.fits"
-        parquet_file = raw_dir / "nsa_v1_0_1.parquet"
-        
-        if parquet_file.exists():
-            logger.info(f"✅ NSA Parquet file already exists: {parquet_file}")
-            return
-        
-        if not fits_file.exists():
-            raise FileNotFoundError(f"NSA FITS file not found: {fits_file}")
-        
-        logger.info(f"🔄 Converting NSA FITS to Parquet: {fits_file}")
-        
-        try:
-            # Load FITS with optimized function
-            table = load_fits_optimized(fits_file, hdu_index=1, max_memory_mb=2000)
-            logger.info(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
-            
-            # Convert to Polars DataFrame
-            df = pl.from_pandas(table.to_pandas())
-            
-            # Save as Parquet
-            df.write_parquet(parquet_file)
-            logger.info(f"✅ Saved NSA Parquet: {parquet_file}")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to convert NSA FITS: {e}")
-            raise
 
     def process(self):
         """Load existing .pt file - PyG standard method."""
@@ -634,25 +618,25 @@ class AstroDataset(InMemoryDataset):
 
     def len(self) -> int:
         """Number of samples in dataset - PyG standard method."""
-        if self.data is None:
+        if not hasattr(self, '_data') or self._data is None:
             self.process()
         
         # Handle single graph case
         if self.slices is None:
-            return 1 if hasattr(self.data, "num_nodes") else 0
+            return 1 if hasattr(self._data, "num_nodes") else 0
         
         # Multiple graphs case
         return len(self.slices[list(self.slices.keys())[0]]) - 1
 
     def get(self, idx: int) -> Data:
         """Get sample by index - PyG standard method."""
-        if self.data is None:
+        if not hasattr(self, '_data') or self._data is None:
             self.process()
         
         # Handle single graph case
         if self.slices is None:
             if idx == 0:
-                return self.data
+                return self._data
             else:
                 raise IndexError(f"Index {idx} out of range for single graph dataset")
         
@@ -828,7 +812,7 @@ def load_tng50_data(
             survey="tng50", max_samples=max_samples, return_tensor=False
         )
         dataset.download()  # Generate demo data
-        dataset.data = dataset._load_polars_dataframe()
+        # Don't set dataset.data directly - let PyG handle it properly
         return dataset
 
     # Load with Polars
@@ -1312,11 +1296,11 @@ def create_graph_from_dataframe(
     **kwargs,
 ) -> Optional[Data]:
     """
-    Create PyTorch Geometric graph from Polars DataFrame.
-
+    Create graph from dataframe using GPU acceleration.
+    
     Args:
-        df: Input DataFrame
-        survey_type: Type of survey ('nsa', 'gaia', 'sdss', 'generic')
+        df: Input dataframe
+        survey_type: Type of survey (gaia, sdss, nsa, tng50, etc.)
         k_neighbors: Number of neighbors for graph construction
         distance_threshold: Distance threshold for edges
         output_path: Optional path to save graph
@@ -1339,14 +1323,51 @@ def create_graph_from_dataframe(
         f"   📊 Coordinate range: Z[{coords[:, 2].min():.2f}, {coords[:, 2].max():.2f}]"
     )
 
-    # For TNG50, use 3D distance in comoving coordinates
-    # Distance threshold is in simulation units (Mpc/h)
-    nn = NearestNeighbors(n_neighbors=min(k_neighbors + 1, len(df)), metric="euclidean")
-    nn.fit(coords)
-    distances, indices = nn.kneighbors(coords)
-
-    # Create edge list (exclude self-connections)
-    edge_list = []
+    # Use GPU-accelerated k-NN graph creation
+    try:
+        import torch_cluster
+        
+        # Convert to PyTorch tensor and move to GPU
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
+        
+        # Create k-NN graph on GPU
+        edge_index = torch_cluster.knn_graph(
+            x=coords_tensor, 
+            k=min(k_neighbors, len(df) - 1),  # Ensure k doesn't exceed dataset size
+            loop=False,  # No self-loops
+            flow='source_to_target'
+        )
+        
+        # Move back to CPU
+        edge_index = edge_index.cpu()
+        
+        # Convert to edge list format for distance filtering
+        edge_list = edge_index.t().numpy()
+        
+        print(f"   🚀 Created GPU k-NN graph: {len(df):,} nodes, {len(edge_list):,} edges")
+        
+    except ImportError:
+        # Fallback to sklearn if torch_cluster not available
+        print("   ⚠️ torch_cluster not available, using sklearn fallback")
+        nn = NearestNeighbors(n_neighbors=min(k_neighbors + 1, len(df)), metric="euclidean")
+        nn.fit(coords)
+        distances, indices = nn.kneighbors(coords)
+        
+        # Create edge list (exclude self-connections)
+        edge_list = []
+        for i, (dists, neighs) in enumerate(zip(distances, indices)):
+            for dist, neigh in zip(dists[1:], neighs[1:]):  # Skip self
+                if dist <= distance_threshold:
+                    edge_list.append([i, neigh])
+        
+        if not edge_list:
+            print(f"   ⚠️ No edges found with distance threshold {distance_threshold}")
+            # Create a minimal graph with self-loops
+            edge_list = [[i, i] for i in range(min(10, len(df)))]
+    
+    # Filter edges by distance threshold
+    filtered_edges = []
     edge_distances = []
     edge_velocities = []  # Store relative velocities as edge features
 
@@ -1357,25 +1378,27 @@ def create_graph_from_dataframe(
     if has_velocities:
         velocities = df.select(vel_cols).to_numpy()
 
-    for i, (dists, neighs) in enumerate(zip(distances, indices)):
-        for dist, neigh in zip(dists[1:], neighs[1:]):  # Skip self
+    for edge in edge_list:
+        i, j = edge
+        if i != j:  # Skip self-loops
+            dist = np.linalg.norm(coords[i] - coords[j])
             if dist <= distance_threshold:
-                edge_list.append([i, neigh])
+                filtered_edges.append([i, j])
                 edge_distances.append(dist)
 
                 # Add relative velocity as edge feature if available
                 if has_velocities:
-                    rel_velocity = np.linalg.norm(velocities[i] - velocities[neigh])
+                    rel_velocity = np.linalg.norm(velocities[i] - velocities[j])
                     edge_velocities.append(rel_velocity)
 
-    if not edge_list:
+    if not filtered_edges:
         print(f"   ⚠️ No edges found with distance threshold {distance_threshold}")
         # Create a minimal graph with self-loops
-        edge_list = [[i, i] for i in range(min(10, len(df)))]
-        edge_distances = [0.0] * len(edge_list)
-        edge_velocities = [0.0] * len(edge_list) if has_velocities else []
+        filtered_edges = [[i, i] for i in range(min(10, len(df)))]
+        edge_distances = [0.0] * len(filtered_edges)
+        edge_velocities = [0.0] * len(filtered_edges) if has_velocities else []
 
-    edge_index = torch.tensor(np.array(edge_list).T, dtype=torch.long)
+    edge_index = torch.tensor(np.array(filtered_edges).T, dtype=torch.long)
 
     # Create edge attributes (distance + relative velocity if available)
     if has_velocities and edge_velocities:
@@ -1387,7 +1410,7 @@ def create_graph_from_dataframe(
 
     node_features = torch.tensor(all_features, dtype=torch.float)
 
-    print(f"   ✅ TNG50 Graph: {len(all_features):,} nodes, {len(edge_list):,} edges")
+    print(f"   ✅ {survey_type.upper()} Graph: {len(all_features):,} nodes, {len(filtered_edges):,} edges")
     if has_velocities:
         print("   📊 Edge features: distance + relative velocity")
     else:

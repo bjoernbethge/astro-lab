@@ -179,7 +179,7 @@ def train_from_config(config_path: str) -> None:
                 logger.info(f"🔄 Set output_dim to {model_params['output_dim']} from detected classes")
 
 
-            
+
             model = ModelFactory.create_survey_model(
                 survey=survey, 
                 task=task, 

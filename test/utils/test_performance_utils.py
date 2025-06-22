@@ -19,7 +19,7 @@ class TestPerformanceUtilities:
         # Create large dataset on device
         n_objects = 10000
         positions = torch.randn(n_objects, 3, device=device) * 100
-        spatial_tensor = Spatial3DTensor(positions, unit="Mpc")
+        spatial_tensor = Spatial3DTensor(data=positions, unit="Mpc")
         # Test memory info
         memory_info = spatial_tensor.memory_info()
         assert isinstance(memory_info, dict)
@@ -39,7 +39,7 @@ class TestPerformanceUtilities:
         # Process each batch element
         results = []
         for i in range(batch_size):
-            spatial_tensor = Spatial3DTensor(batch_data[i], unit="kpc")
+            spatial_tensor = Spatial3DTensor(data=batch_data[i], unit="kpc")
             results.append(spatial_tensor.shape[0])
             assert spatial_tensor.device.type == device.type
         assert len(results) == batch_size
@@ -55,7 +55,7 @@ class TestPerformanceUtilities:
         n_objects = 50000
         # Create data on GPU
         positions = torch.randn(n_objects, 3, device=device)
-        spatial_tensor = Spatial3DTensor(positions, unit="Mpc")
+        spatial_tensor = Spatial3DTensor(data=positions, unit="Mpc")
         assert spatial_tensor.device.type == "cuda"
         # Test memory transfer
         cpu_tensor = spatial_tensor.cpu()

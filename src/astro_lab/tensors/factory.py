@@ -68,7 +68,10 @@ class TensorFactory:
             logger.info(f"Created 3D spatial tensor with {len(ra)} objects")
 
         return Spatial3DTensor(
-            data=data, coordinate_system=coordinate_system, unit=unit, **kwargs
+            data=data,
+            coordinate_system=coordinate_system,
+            unit=unit,
+            **kwargs
         )
 
     @staticmethod
@@ -319,26 +322,83 @@ class TensorFactory:
 
     @staticmethod
     def create_survey(
-        data: Union[torch.Tensor, Dict[str, Any]], survey_name: str, **kwargs
-    ):
-        """Create survey tensor."""
-        try:
-            from .survey import SurveyTensor
-        except ImportError:
-            raise ImportError("SurveyTensor not available")
+        data: Union[torch.Tensor, np.ndarray], survey_name: str, **kwargs
+    ) -> "SurveyTensor":
+        """
+        Create a SurveyTensor from a raw data tensor using survey configuration.
 
-        if isinstance(data, dict):
-            data_tensor = torch.stack(
-                [
-                    torch.as_tensor(data[col], dtype=torch.float32)
-                    for col in data.keys()
-                ],
-                dim=1,
+        This method intelligently splits the raw data tensor into spatial,
+        photometric, and feature components based on the survey's configuration file.
+
+        Args:
+            data: A 2D tensor where columns correspond to different features.
+            survey_name: The name of the survey (e.g., 'gaia', 'sdss').
+            **kwargs: Additional metadata for the SurveyTensor.
+
+        Returns:
+            An initialized SurveyTensor with structured sub-tensors.
+        """
+        from ..utils.config.surveys import get_survey_config, get_survey_features
+        from .survey import SurveyTensor
+        from .photometric import PhotometricTensor
+        from .spatial_3d import Spatial3DTensor
+
+        data = torch.as_tensor(data, dtype=torch.float32)
+        if data.dim() != 2:
+            raise ValueError("Input data for SurveyTensor must be a 2D tensor.")
+
+        config = get_survey_config(survey_name)
+        all_features = get_survey_features(survey_name)
+
+        if data.shape[1] != len(all_features):
+            raise ValueError(
+                f"Data tensor has {data.shape[1]} columns, but survey config "
+                f"'{survey_name}' expects {len(all_features)} features."
             )
-        else:
-            data_tensor = torch.as_tensor(data, dtype=torch.float32)
 
-        return SurveyTensor(data=data_tensor, survey_name=survey_name, **kwargs)
+        # Create a mapping from feature name to column index
+        feature_to_idx = {name: i for i, name in enumerate(all_features)}
+
+        # Extract Spatial Data
+        coord_indices = [feature_to_idx[name] for name in config["coord_cols"]]
+        spatial_data_raw = data[:, coord_indices]
+        
+        # Extract Photometric Data
+        mag_indices = [feature_to_idx[name] for name in config["mag_cols"]]
+        photometric_data_raw = data[:, mag_indices]
+
+        # Extract Extra Features
+        feature_indices = [feature_to_idx[name] for name in config["extra_cols"]]
+        feature_data = data[:, feature_indices]
+        
+        # Create Spatial3DTensor
+        spatial_tensor = Spatial3DTensor(
+            data=spatial_data_raw,
+            coordinate_system=config["coordinate_system"],
+            unit="deg" # Assuming degrees for RA/Dec
+        )
+
+        # Create PhotometricTensor
+        photometric_tensor = PhotometricTensor(
+            data=photometric_data_raw,
+            bands=config["photometric_bands"],
+            filter_system=config["filter_system"],
+        )
+
+        logger.info(
+            f"Created SurveyTensor '{survey_name}': {data.shape[0]} objects, "
+            f"{len(coord_indices)} spatial, {len(mag_indices)} photometric, "
+            f"{len(feature_indices)} other features."
+        )
+
+        # Create and return the structured SurveyTensor using a dictionary for Pydantic
+        return SurveyTensor(
+            spatial=spatial_tensor,
+            photometric=photometric_tensor,
+            features=feature_data,
+            survey_name=survey_name,
+            **kwargs,
+        )
 
     @staticmethod
     def from_astropy_table(table, tensor_type: str = "survey", **kwargs):

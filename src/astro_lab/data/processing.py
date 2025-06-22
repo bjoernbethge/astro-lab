@@ -46,7 +46,6 @@ import numpy as np
 import polars as pl
 import torch
 from pydantic import BaseModel, Field, field_validator
-from sklearn.neighbors import NearestNeighbors
 
 # Import SimulationTensor as well
 from ..tensors import (

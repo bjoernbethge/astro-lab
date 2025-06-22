@@ -17,6 +17,7 @@ import torch
 import torch_geometric
 from astropy.io import fits
 from astropy.table import Table
+from astropy.wcs import WCS
 
 from .config import data_config
 
@@ -749,6 +750,235 @@ def test_nsa_tensor_compatibility():
     except Exception as e:
         print(f"❌ NSA tensor compatibility test failed: {e}")
         return False
+
+
+def convert_nsa_fits_to_parquet(
+    fits_path: Union[str, Path],
+    parquet_path: Union[str, Path],
+    features: Optional[List[str]] = None,
+    max_memory_mb: float = 2000.0,
+) -> Path:
+    """
+    Centralized NSA FITS to Parquet conversion function.
+    
+    Args:
+        fits_path: Path to NSA FITS file
+        parquet_path: Output Parquet file path
+        features: List of features to extract (if None, uses all numeric columns)
+        max_memory_mb: Memory limit for FITS loading
+        
+    Returns:
+        Path to created Parquet file
+    """
+    fits_path = Path(fits_path)
+    parquet_path = Path(parquet_path)
+    
+    if parquet_path.exists():
+        print(f"✅ NSA Parquet file already exists: {parquet_path}")
+        return parquet_path
+    
+    if not fits_path.exists():
+        raise FileNotFoundError(f"NSA FITS file not found: {fits_path}")
+    
+    print(f"🔄 Converting NSA FITS to Parquet: {fits_path}")
+    
+    try:
+        # Load FITS with optimized function
+        table = load_fits_optimized(str(fits_path), hdu_index=1, max_memory_mb=max_memory_mb)
+        if table is None:
+            raise ValueError("Failed to load FITS table")
+            
+        print(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
+        
+        # Convert to Polars DataFrame using existing optimized function
+        df = load_fits_optimized(str(fits_path), hdu_index=1, max_memory_mb=max_memory_mb, as_polars=True)
+        if df is None:
+            raise ValueError("Failed to convert FITS to Polars DataFrame")
+        
+        # Filter features if specified
+        if features:
+            available_features = [f.lower() for f in features if f.lower() in df.columns]
+            missing_features = [f for f in features if f.lower() not in df.columns]
+            if missing_features:
+                print(f"⚠️ Missing features: {missing_features}")
+            df = df.select(available_features)
+            print(f"📋 Selected {len(available_features)} features")
+        
+        # Save as Parquet
+        df.write_parquet(str(parquet_path))
+        print(f"✅ Saved NSA Parquet: {parquet_path} ({len(df)} rows, {len(df.columns)} columns)")
+        
+        return parquet_path
+        
+    except Exception as e:
+        print(f"❌ Failed to convert NSA FITS: {e}")
+        raise
+
+
+def extract_fits_image_data(fits_path: Union[str, Path], hdu_index: int = 0) -> Dict[str, Any]:
+    """
+    Extract image data and metadata from FITS file.
+    
+    Args:
+        fits_path: Path to FITS file
+        hdu_index: HDU index to extract (default: 0)
+        
+    Returns:
+        Dictionary containing:
+        - image_data: 2D numpy array of image data
+        - header: FITS header information
+        - wcs: World Coordinate System info (if available)
+        - metadata: Extracted metadata
+    """
+    try:
+        from astropy.io import fits
+        from astropy.wcs import WCS
+        import numpy as np
+        
+        with fits.open(fits_path) as hdul:
+            hdu = hdul[hdu_index]
+            
+            # Extract image data
+            image_data = hdu.data
+            if image_data is None:
+                raise ValueError(f"No image data found in HDU {hdu_index}")
+            
+            # Extract header
+            header = hdu.header
+            
+            # Try to extract WCS information
+            wcs = None
+            try:
+                wcs = WCS(header)
+            except Exception as e:
+                logger.warning(f"Could not extract WCS: {e}")
+            
+            # Extract useful metadata
+            metadata = {
+                'filename': str(fits_path),
+                'hdu_index': hdu_index,
+                'shape': image_data.shape,
+                'dtype': str(image_data.dtype),
+                'min_value': float(np.min(image_data)),
+                'max_value': float(np.max(image_data)),
+                'mean_value': float(np.mean(image_data)),
+                'std_value': float(np.std(image_data)),
+            }
+            
+            # Extract common FITS keywords
+            common_keys = ['OBJECT', 'TELESCOP', 'INSTRUME', 'FILTER', 'EXPTIME', 
+                          'DATE-OBS', 'RA', 'DEC', 'EQUINOX', 'CRVAL1', 'CRVAL2']
+            
+            for key in common_keys:
+                if key in header:
+                    try:
+                        metadata[key] = header[key]
+                    except:
+                        pass
+            
+            return {
+                'image_data': image_data,
+                'header': header,
+                'wcs': wcs,
+                'metadata': metadata
+            }
+            
+    except Exception as e:
+        logger.error(f"Failed to extract FITS image data: {e}")
+        raise
+
+
+def create_image_tensor_from_fits(fits_path: Union[str, Path], 
+                                 normalize: bool = True,
+                                 **kwargs) -> torch.Tensor:
+    """
+    Create a tensor from FITS image data.
+    
+    Args:
+        fits_path: Path to FITS file
+        normalize: Whether to normalize the image data
+        **kwargs: Additional arguments for extract_fits_image_data
+        
+    Returns:
+        torch.Tensor with image data
+    """
+    try:
+        import torch
+        
+        # Extract image data
+        fits_data = extract_fits_image_data(fits_path, **kwargs)
+        image_data = fits_data['image_data']
+        
+        # Convert to tensor
+        tensor = torch.tensor(image_data, dtype=torch.float32)
+        
+        # Normalize if requested
+        if normalize:
+            tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min())
+        
+        return tensor
+        
+    except Exception as e:
+        logger.error(f"Failed to create image tensor from FITS: {e}")
+        raise
+
+
+def visualize_fits_image(fits_path: Union[str, Path], 
+                        backend: str = 'matplotlib',
+                        **kwargs) -> Any:
+    """
+    Visualize FITS image using different backends.
+    
+    Args:
+        fits_path: Path to FITS file
+        backend: Visualization backend ('matplotlib', 'plotly', 'bpy')
+        **kwargs: Additional arguments
+        
+    Returns:
+        Visualization object
+    """
+    try:
+        fits_data = extract_fits_image_data(fits_path)
+        image_data = fits_data['image_data']
+        
+        if backend == 'matplotlib':
+            import matplotlib.pyplot as plt
+            from matplotlib.colors import LogNorm
+            
+            plt.figure(figsize=(10, 8))
+            plt.imshow(image_data, cmap='viridis', norm=LogNorm())
+            plt.colorbar(label='Intensity')
+            plt.title(f"FITS Image: {fits_data['metadata']['filename']}")
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.show()
+            return plt.gcf()
+            
+        elif backend == 'plotly':
+            import plotly.graph_objects as go
+            
+            fig = go.Figure(data=go.Heatmap(
+                z=image_data,
+                colorscale='Viridis',
+                zmin=image_data.min(),
+                zmax=image_data.max()
+            ))
+            
+            fig.update_layout(
+                title=f"FITS Image: {fits_data['metadata']['filename']}",
+                xaxis_title='X',
+                yaxis_title='Y'
+            )
+            
+            fig.show()
+            return fig
+            
+        else:
+            raise ValueError(f"Unsupported backend: {backend}")
+            
+    except Exception as e:
+        logger.error(f"Failed to visualize FITS image: {e}")
+        raise
 
 
 if __name__ == "__main__":

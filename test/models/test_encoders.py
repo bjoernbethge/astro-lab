@@ -163,7 +163,9 @@ class TestAstrometryEncoder:
 
         # Create real Spatial3DTensor
         coordinates = torch.randn(12, 3)  # RA, Dec, distance
-        spatial_tensor = Spatial3DTensor(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], coordinate_system="icrs")
+        x, y, z = coordinates[:,0], coordinates[:,1], coordinates[:,2]
+        data = torch.stack([x, y, z], dim=-1)
+        spatial_tensor = Spatial3DTensor(data, coordinate_system="icrs")
 
         output = encoder(spatial_tensor)
         assert output.shape == (12, 32)
@@ -175,7 +177,9 @@ class TestAstrometryEncoder:
 
         # Test with 3D coordinates (Spatial3DTensor requires exactly 3 dimensions)
         coordinates = torch.randn(8, 3)
-        spatial_tensor = Spatial3DTensor(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], coordinate_system="galactic")
+        x, y, z = coordinates[:,0], coordinates[:,1], coordinates[:,2]
+        data = torch.stack([x, y, z], dim=-1)
+        spatial_tensor = Spatial3DTensor(data, coordinate_system="galactic")
 
         output = encoder(spatial_tensor)
         assert output.shape == (8, 24)
@@ -186,8 +190,10 @@ class TestAstrometryEncoder:
         encoder = AstrometryEncoder(output_dim=32)
 
         # Test with 3D coordinates (Spatial3DTensor requires 3D coordinates)
-        coordinates = torch.randn(10, 3)  # x, y, z coordinates
-        spatial_tensor = Spatial3DTensor(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], coordinate_system="icrs")
+        coordinates = torch.randn(10, 3)
+        x, y, z = coordinates[:,0], coordinates[:,1], coordinates[:,2]
+        data = torch.stack([x, y, z], dim=-1)
+        spatial_tensor = Spatial3DTensor(data, coordinate_system="icrs")
 
         output = encoder(spatial_tensor)
         assert output.shape == (10, 32)
@@ -341,9 +347,8 @@ class TestEncoderIntegration:
         photometry_data = PhotometricTensor(
             data=torch.randn(batch_size, 5), bands=["u", "g", "r", "i", "z"]
         )
-        astrometry_data = Spatial3DTensor(
-            x=torch.randn(batch_size), y=torch.randn(batch_size), z=torch.randn(batch_size), coordinate_system="icrs"
-        )
+        astrometry_data = torch.randn(batch_size, 3)
+        spatial_tensor = Spatial3DTensor(astrometry_data)
         spectroscopy_data = SpectralTensor(
             data=torch.randn(batch_size, 1000),
             wavelengths=torch.linspace(4000, 7000, 1000),
@@ -363,7 +368,7 @@ class TestEncoderIntegration:
         lightcurve_output = torch.cat(lightcurve_outputs, dim=0)
 
         photometry_output = photometry_encoder(photometry_data)
-        astrometry_output = astrometry_encoder(astrometry_data)
+        astrometry_output = astrometry_encoder(spatial_tensor)
         spectroscopy_output = spectroscopy_encoder(spectroscopy_data)
 
         # All should have same output shape
@@ -385,12 +390,11 @@ class TestEncoderIntegration:
         photometry_data = PhotometricTensor(
             data=torch.randn(batch_size, 5), bands=["u", "g", "r", "i", "z"]
         )
-        astrometry_data = Spatial3DTensor(
-            x=torch.randn(batch_size), y=torch.randn(batch_size), z=torch.randn(batch_size), coordinate_system="galactic"
-        )
+        astrometry_data = torch.randn(batch_size, 3)
+        spatial_tensor = Spatial3DTensor(astrometry_data)
 
         photometry_features = photometry_encoder(photometry_data)
-        astrometry_features = astrometry_encoder(astrometry_data)
+        astrometry_features = astrometry_encoder(spatial_tensor)
 
         # Combine features (simple concatenation)
         combined_features = torch.cat([photometry_features, astrometry_features], dim=1)
@@ -445,10 +449,9 @@ class TestEncoderErrorHandling:
         encoder = AstrometryEncoder(output_dim=24)
 
         # Test with minimal valid batch instead
-        minimal_data = Spatial3DTensor(
-            x=torch.randn(1), y=torch.randn(1), z=torch.randn(1), coordinate_system="icrs"
-        )
-        output = encoder(minimal_data)
+        minimal_data = torch.randn(1, 3)
+        spatial_tensor = Spatial3DTensor(minimal_data)
+        output = encoder(spatial_tensor)
         assert output.shape == (1, 24)
 
     def test_single_object_handling(self):

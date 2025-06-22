@@ -201,7 +201,13 @@ TENSOR_ARCHITECTURE = {
 # Convenience factory functions
 def create_spatial_tensor(*args, **kwargs):
     """Create spatial tensor."""
-    return Spatial3DTensor(*args, **kwargs)
+    if len(args) == 3:  # x, y, z
+        data = torch.stack(args, dim=-1)
+        return Spatial3DTensor(data=data, **kwargs)
+    elif len(args) == 1:  # data tensor
+        return Spatial3DTensor(data=args[0], **kwargs)
+    else:
+        raise ValueError("Spatial3DTensor requires either 3 coordinates (x,y,z) or 1 data tensor")
 
 def create_photometric_tensor(*args, **kwargs):
     """Create photometric tensor."""
@@ -230,7 +236,7 @@ def from_astrometric_data(ra, dec, parallax=None, pmra=None, pmdec=None, **kwarg
     coordinates = torch.stack([ra, dec, torch.zeros_like(ra)], dim=1)
 
     return Spatial3DTensor(
-        coordinates=coordinates,
+        data=coordinates,
         ra=ra,
         dec=dec,
         parallax=parallax,

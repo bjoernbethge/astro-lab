@@ -16,11 +16,20 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+# Configure AstroPhot logging before any imports
+os.environ.setdefault('ASTROPHOT_LOG_LEVEL', 'ERROR')
+os.environ.setdefault('ASTROPHOT_LOG_FILE', '')
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
 class DataConfig:
-    """Centralized data configuration for AstroLab."""
+    """
+    Centralized data configuration for AstroLab.
+    
+    Manages all data paths, directory structures, and configuration
+    for astronomical data processing and analysis.
+    """
 
     def __init__(self, base_dir: Union[str, Path] = "data"):
         self.base_dir = Path(base_dir)

@@ -17,7 +17,8 @@ class TestSpatial3DTensor:
         coords = torch.randn(100, 3)  # [N, 3]
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         
-        tensor = Spatial3DTensor(x, y, z)
+        data = torch.stack([x, y, z], dim=-1)
+        tensor = Spatial3DTensor(data)
         
         assert tensor.shape == (100, 3)
         assert tensor.cartesian.shape == (100, 3)
@@ -34,7 +35,8 @@ class TestSpatial3DTensor:
         ])
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         
-        tensor = Spatial3DTensor(x, y, z)
+        data = torch.stack([x, y, z], dim=-1)
+        tensor = Spatial3DTensor(data)
         
         # Test distance to origin
         distances = tensor.distance_to_origin()
@@ -47,7 +49,8 @@ class TestSpatial3DTensor:
         # Create test coordinates
         coords = torch.randn(50, 3)
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
-        tensor = Spatial3DTensor(x, y, z)
+        data = torch.stack([x, y, z], dim=-1)
+        tensor = Spatial3DTensor(data)
         
         # Query neighbors
         query_point = torch.randn(3)
@@ -62,7 +65,8 @@ class TestSpatial3DTensor:
         # Create test coordinates
         coords = torch.randn(20, 3)
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
-        tensor = Spatial3DTensor(x, y, z)
+        data = torch.stack([x, y, z], dim=-1)
+        tensor = Spatial3DTensor(data)
         
         # Test spherical transformation
         ra, dec, distance = tensor.to_spherical()
@@ -79,7 +83,8 @@ class TestSpatial3DTensor:
         """Test coordinate system properties."""
         coords = torch.randn(10, 3)
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
-        tensor = Spatial3DTensor(x, y, z, coordinate_system="galactic", unit="kpc")
+        data = torch.stack([x, y, z], dim=-1)
+        tensor = Spatial3DTensor(data, coordinate_system="galactic", unit="kpc")
         
         assert tensor.coordinate_system == "galactic"
         assert tensor.unit == "kpc"
@@ -95,7 +100,7 @@ class TestSpatial3DTensor:
         
         assert tensor.shape == (3, 3)
         assert tensor.coordinate_system == "icrs"
-        assert tensor.unit == "Mpc"
+        assert tensor.unit == "kpc"  # Default unit
 
     def test_angular_separation(self):
         """Test angular separation calculation."""
@@ -106,8 +111,10 @@ class TestSpatial3DTensor:
         x1, y1, z1 = coords1[:, 0], coords1[:, 1], coords1[:, 2]
         x2, y2, z2 = coords2[:, 0], coords2[:, 1], coords2[:, 2]
         
-        tensor1 = Spatial3DTensor(x1, y1, z1)
-        tensor2 = Spatial3DTensor(x2, y2, z2)
+        data1 = torch.stack([x1, y1, z1], dim=-1)
+        tensor1 = Spatial3DTensor(data1)
+        data2 = torch.stack([x2, y2, z2], dim=-1)
+        tensor2 = Spatial3DTensor(data2)
         
         # Calculate angular separation
         separation = tensor1.angular_separation(tensor2)
@@ -120,7 +127,8 @@ class TestSpatial3DTensor:
         """Test cone search functionality."""
         coords = torch.randn(100, 3)
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
-        tensor = Spatial3DTensor(x, y, z)
+        data = torch.stack([x, y, z], dim=-1)
+        tensor = Spatial3DTensor(data)
         
         # Perform cone search
         center = torch.tensor([0.0, 0.0, 1.0])

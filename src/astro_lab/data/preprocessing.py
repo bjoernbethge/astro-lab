@@ -13,17 +13,49 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+import h5py
 import numpy as np
+import pandas as pd
 import polars as pl
 import torch
-from sklearn.neighbors import NearestNeighbors
+import yaml
 from torch_geometric.data import Data
+import os
+import torch_cluster
 
-from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
+from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys, SURVEY_CONFIGS
 from .config import data_config
 
 logger = logging.getLogger(__name__)
 
+# Survey alias mapping (extend as needed)
+SURVEY_ALIASES = {
+    "tng50-4": "tng50",
+    "TNG50-4": "tng50",
+    "TNG50": "tng50",
+}
+
+def find_survey_data_dir(survey: str) -> Path:
+    """
+    Find the data directory for a given survey name (case-insensitive, with alias support).
+    Searches data/raw/ for a matching directory.
+    Returns the Path if found, else raises FileNotFoundError.
+    """
+    survey_norm = SURVEY_ALIASES.get(survey.lower(), survey.lower())
+    data_root = Path("data/raw")
+    if not data_root.exists():
+        raise FileNotFoundError(f"data/raw directory does not exist: {data_root}")
+    # Search for exact or case-insensitive match
+    for d in data_root.iterdir():
+        if d.is_dir() and d.name.lower() == survey_norm:
+            logger.info(f"[find_survey_data_dir] Found survey directory: {d}")
+            return d
+    # Fallback: try alias mapping
+    for d in data_root.iterdir():
+        if d.is_dir() and d.name.lower() in SURVEY_ALIASES.values() and survey_norm in d.name.lower():
+            logger.info(f"[find_survey_data_dir] Found survey directory (alias): {d}")
+            return d
+    raise FileNotFoundError(f"No data directory found for survey '{survey}' (normalized: '{survey_norm}') in {data_root}")
 
 def preprocess_catalog(
     input_path: Union[str, Path],
@@ -407,7 +439,7 @@ def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     """Create k-NN graph using GPU acceleration - ONLY GPU VERSION."""
     if len(coords) == 0:
         return torch.empty((2, 0), dtype=torch.long)
-    
+
     n_nodes = len(coords)
     logger.info(f"🚀 Creating GPU k-NN graph for {n_nodes:,} nodes with k={k_neighbors}")
     
@@ -429,10 +461,8 @@ def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
         
         # Move back to CPU if needed for consistency
         edge_index = edge_index.cpu()
-        
         logger.info(f"✅ Created GPU k-NN graph: {n_nodes:,} nodes, {edge_index.shape[1]:,} edges")
         return edge_index
-        
     except ImportError:
         logger.error("❌ torch-cluster not available - GPU acceleration required!")
         raise ImportError("torch-cluster required for GPU k-NN graph creation")
@@ -1145,7 +1175,7 @@ def create_standardized_files(
 
     Creates:
     - {survey}.parquet (standardized data)
-    - {survey}_graph_k{k}.pt (graph data)
+    - {survey}.pt (graph data)
     - {survey}_metadata.json (metadata)
 
     Args:
@@ -1173,7 +1203,7 @@ def create_standardized_files(
     # Define output files
     files = {
         "parquet": output_dir / f"{survey}.parquet",
-        "graph": output_dir / f"{survey}_graph.pt",
+        "graph": output_dir / f"{survey}.pt",
         "metadata": output_dir / f"{survey}_metadata.json",
     }
 
@@ -1192,11 +1222,11 @@ def create_standardized_files(
     
     # Use ALL stars - no sampling limitation
     print(f"📊 Using all {len(df):,} stars for graph processing")
-    
+
     # Extract coordinates and features
     coords = df.select(["ra", "dec"]).to_numpy()
     print(f"📍 Coordinates shape: {coords.shape}")
-    
+
     # Create graph data
     graph_data = _create_graph_data(df, survey, k_neighbors)
     torch.save(graph_data, files["graph"])
@@ -1245,18 +1275,26 @@ def _create_graph_data(df: pl.DataFrame, survey: str, k_neighbors: int) -> Data:
         edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=1)
         logger.info(f"🔗 Created fully connected graph: {edge_index.shape[1]} edges")
     else:
-        # k-NN graph for larger datasets
+        # k-NN graph for larger datasets using GPU acceleration
         k = min(k_neighbors, num_nodes - 1)
-        nbrs = NearestNeighbors(n_neighbors=k, metric="euclidean")
-        nbrs.fit(features)
-        distances, indices = nbrs.kneighbors(features)
+        
+        # Convert features to PyTorch tensor and move to GPU
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        features_tensor = torch.tensor(features, dtype=torch.float32, device=device)
 
-        # Create edge index
-        sources = torch.arange(num_nodes).repeat_interleave(k)
-        targets = torch.tensor(indices.flatten())
-        edge_index = torch.stack([sources, targets])
+        # Create k-NN graph on GPU
+        edge_index = torch_cluster.knn_graph(
+            x=features_tensor, 
+            k=k, 
+            loop=False,  # No self-loops
+            flow='source_to_target'
+        )
+        
+        # Move back to CPU
+        edge_index = edge_index.cpu()
+        
         logger.info(
-            f"🔗 Created k-NN graph: {num_nodes} nodes, {edge_index.shape[1]} edges"
+            f"🚀 Created GPU k-NN graph: {num_nodes} nodes, {edge_index.shape[1]} edges"
         )
 
     # Create labels (discretize first numeric column)
@@ -1358,25 +1396,18 @@ def process_survey(
         # Special handling for NSA FITS files
         if survey == "nsa":
             nsa_fits = project_root / "data" / "raw" / "nsa" / "nsa_v1_0_1.fits"
-            nsa_parquet = project_root / "data" / "raw" / "nsa" / "nsa_v1_0_1.parquet"
+            nsa_parquet = project_root / "data" / "raw" / "nsa" / "nsa.parquet"
             
-            # Convert FITS to Parquet if needed
+            # Convert FITS to Parquet if needed using centralized function
             if nsa_fits.exists() and not nsa_parquet.exists():
-                logger.info(f"🔄 Converting NSA FITS to Parquet: {nsa_fits}")
-                from astro_lab.data.utils import load_fits_optimized
-                import polars as pl
+                from astro_lab.data.utils import convert_nsa_fits_to_parquet
+                from astro_lab.data.config import get_survey_config
                 
-                try:
-                    table = load_fits_optimized(nsa_fits, hdu_index=1, max_memory_mb=2000)
-                    logger.info(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
-                    
-                    df = pl.from_pandas(table.to_pandas())
-                    df.write_parquet(nsa_parquet)
-                    logger.info(f"✅ Saved NSA Parquet: {nsa_parquet}")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Failed to convert NSA FITS: {e}")
-                    raise
+                # Get NSA features from config
+                nsa_config = get_survey_config("nsa")
+                features = nsa_config.get("features", [])
+                
+                convert_nsa_fits_to_parquet(nsa_fits, nsa_parquet, features)
             
             # Add NSA parquet to possible sources
             if nsa_parquet.exists():
@@ -1594,21 +1625,139 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
 
     # 3. Falls NSA und FITS vorhanden, konvertiere
     if survey == "nsa":
-        fits_file = data_dir / "nsa_v1_0_1.fits"
-        parquet_file = data_dir / "nsa_v1_0_1.parquet"
-        if fits_file.exists():
-            logger.info(f"🔄 Converting NSA FITS to Parquet: {fits_file}")
-            try:
-                table = load_fits_optimized(fits_file, hdu_index=1, max_memory_mb=2000)
-                logger.info(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
-                df = pl.from_pandas(table.to_pandas())
-                df.write_parquet(parquet_file)
-                logger.info(f"✅ Saved NSA Parquet: {parquet_file}")
-                return parquet_file
-            except Exception as e:
-                logger.error(f"❌ Failed to convert NSA FITS: {e}")
-                raise
-    # 4. Kein passendes File gefunden
+        fits_files = list(data_dir.glob("*.fits"))
+        if fits_files:
+            fits_path = fits_files[0]
+            parquet_path = data_dir / f"{survey}_v1_0_1.parquet"
+            if not parquet_path.exists():
+                from astro_lab.data.utils import convert_nsa_fits_to_parquet
+                from astro_lab.data.config import get_survey_config
+                
+                # Get NSA features from config
+                nsa_config = get_survey_config("nsa")
+                features = nsa_config.get("features", [])
+                
+                convert_nsa_fits_to_parquet(fits_path, parquet_path, features)
+            
+            return parquet_path
+
+    # 4. Falls TNG50 und HDF5-Dateien vorhanden, konvertiere zu Time Series
+    elif survey in ["tng50", "tng50-4"]:
+        # Suche nach TNG50 HDF5-Dateien in verschiedenen Verzeichnissen
+        possible_dirs = [
+            data_dir,
+            data_dir.parent / "TNG50-4" / "output" / "snapdir_099",
+            data_dir.parent / "tng50",
+        ]
+        
+        hdf5_files = []
+        for search_dir in possible_dirs:
+            if search_dir.exists():
+                hdf5_files = list(search_dir.glob("snap_099.*.hdf5"))
+                if hdf5_files:
+                    logger.info(f"�� TNG50 HDF5-Dateien gefunden in: {search_dir}")
+                    break
+        
+        if hdf5_files:
+            # Sortiere nach Snapshot-Nummer
+            hdf5_files.sort(key=lambda x: int(x.stem.split('.')[-1]))
+            parquet_path = data_dir / f"{survey}_timeseries.parquet"
+            
+            if not parquet_path.exists():
+                logger.info(f"🔄 Converting TNG50 Time Series: {len(hdf5_files)} Snapshots")
+                try:
+                    from astro_lab.data.manager import AstroDataManager
+                    
+                    # Konsolidierte TNG50 Time Series Verarbeitung
+                    all_snapshots = []
+                    
+                    for i, hdf5_file in enumerate(hdf5_files):
+                        logger.info(f"📊 Processing snapshot {i+1}/{len(hdf5_files)}: {hdf5_file.name}")
+                        
+                        try:
+                            with h5py.File(hdf5_file, "r") as f:
+                                # Extrahiere Zeitstempel aus Dateinamen (snap_099.5.hdf5 -> 5)
+                                snapshot_id = int(hdf5_file.stem.split('.')[-1])
+                                
+                                # Verwende vorhandene import_tng50_hdf5 Logik, aber für Time Series
+                                data_dict = {}
+                                
+                                # Suche nach PartType0 (Gas) - Hauptkomponente
+                                if "PartType0" in f:
+                                    group = f["PartType0"]
+                                    
+                                    # Koordinaten (essentiell)
+                                    if "Coordinates" in group:
+                                        coords = np.array(group["Coordinates"][:])
+                                        data_dict["x"] = coords[:, 0]
+                                        data_dict["y"] = coords[:, 1]
+                                        data_dict["z"] = coords[:, 2]
+                                    
+                                    # Andere Felder
+                                    for field in ["Masses", "Velocities", "Density", "Temperature", "Metallicity"]:
+                                        if field in group:
+                                            data = np.array(group[field][:])
+                                            
+                                            # Sanitize field name
+                                            col_name = field.lower()
+                                            if col_name.endswith("es"):
+                                                col_name = col_name[:-2]
+                                            elif col_name.endswith("s"):
+                                                col_name = col_name[:-1]
+                                            
+                                            if data.ndim > 1:
+                                                # Vector quantities
+                                                for j in range(data.shape[1]):
+                                                    data_dict[f"{col_name}_{j}"] = data[:, j]
+                                            else:
+                                                data_dict[col_name] = data
+                                
+                                # Füge Time Series Metadaten hinzu
+                                data_dict["snapshot_id"] = snapshot_id
+                                data_dict["time_step"] = i
+                                
+                                # Kosmologische Parameter (falls verfügbar)
+                                if "Header" in f:
+                                    header = f["Header"]
+                                    if "Redshift" in header:
+                                        data_dict["redshift"] = header["Redshift"][0]
+                                    if "Time" in header:
+                                        data_dict["time_gyr"] = header["Time"][0]
+                                    if "ScaleFactor" in header:
+                                        data_dict["scale_factor"] = header["ScaleFactor"][0]
+                                
+                                # Erstelle DataFrame für diesen Snapshot
+                                df_snapshot = pl.DataFrame(data_dict)
+                                all_snapshots.append(df_snapshot)
+                                
+                                logger.info(f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} Partikel, {len(df_snapshot.columns)} Spalten")
+                                
+                        except Exception as e:
+                            logger.warning(f"⚠️ Fehler beim Laden von {hdf5_file.name}: {e}")
+                            continue
+                    
+                    if all_snapshots:
+                        # Kombiniere alle Snapshots zu einem Time Series DataFrame
+                        combined_df = pl.concat(all_snapshots)
+                        
+                        # Speichere als Time Series Parquet
+                        combined_df.write_parquet(str(parquet_path))
+                        
+                        logger.info(f"✅ TNG50 Time Series Parquet gespeichert: {parquet_path}")
+                        logger.info(f"   {len(combined_df)} Partikel über {len(hdf5_files)} Zeitschritte")
+                        logger.info(f"   Spalten: {combined_df.columns}")
+                        
+                        return parquet_path
+                    else:
+                        raise ValueError("Keine gültigen TNG50 Snapshots gefunden")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Failed to convert TNG50 Time Series: {e}")
+                    raise
+            else:
+                return parquet_path
+
+    # 4. Keine Daten gefunden
     raise FileNotFoundError(f"No suitable data file found for survey '{survey}' in {data_dir}")
 
 

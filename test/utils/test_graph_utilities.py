@@ -31,7 +31,7 @@ class TestGraphUtilities:
         # Create test data
         n_points = 50
         positions = np.random.rand(n_points, 3) * 10
-        spatial_tensor = Spatial3DTensor(positions, unit="pc")
+        spatial_tensor = Spatial3DTensor(data=positions, unit="pc")
 
         # Create k-NN graph
         data = create_spatial_graph(
