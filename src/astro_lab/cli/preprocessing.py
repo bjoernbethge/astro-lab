@@ -92,7 +92,7 @@ def create_graph(input_path: str, survey: str, output_path: Optional[str], k_nei
         
         # Determine output path
         if output_path is None:
-            output_path = f"data/processed/{survey}/processed/{survey}_graph_k{k_neighbors}.pt"
+            output_path = f"data/processed/{survey}/processed/{survey}_k{k_neighbors}.pt"
         
         # Call data module graph creation function
         graph_data = create_graph_from_dataframe(
@@ -156,9 +156,9 @@ def process_all(input_dir: str, survey: str, output_dir: Optional[str], k_neighb
             
             # Create graph
             if output_dir:
-                graph_path = Path(output_dir) / f"{file_path.stem}_graph_k{k_neighbors}.pt"
+                graph_path = Path(output_dir) / f"{file_path.stem}_k{k_neighbors}.pt"
             else:
-                graph_path = Path(f"data/processed/{survey}/processed/{file_path.stem}_graph_k{k_neighbors}.pt")
+                graph_path = Path(f"data/processed/{survey}/processed/{file_path.stem}_k{k_neighbors}.pt")
             
             graph_data = create_graph_from_dataframe(
                 df=df,

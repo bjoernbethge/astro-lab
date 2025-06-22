@@ -31,6 +31,14 @@ from astro_lab.data import (
 from astro_lab.models.factory import ModelFactory
 from astro_lab.training.trainer import AstroTrainer
 from astro_lab.utils.config.loader import ConfigLoader
+from astro_lab.data import (
+    create_graph_datasets_from_splits,
+    create_training_splits,
+    get_data_statistics,
+    load_catalog,
+    save_splits_to_parquet,
+)
+from astro_lab.data.preprocessing import preprocess_catalog
 
 __all__ = [
     "main",
@@ -49,13 +57,23 @@ def main():
         epilog="""
 🚀 Available Commands:
 
+astro-lab process         Simple processing of all surveys (recommended)
 astro-lab download       Download astronomical datasets
-astro-lab preprocess     Datenvorverarbeitung und Graph-Erstellung
-astro-lab train          ML-Model Training mit Lightning + MLflow
-astro-lab optimize       Hyperparameter-Optimierung mit Optuna
-astro-lab config         Konfigurationsverwaltung
+astro-lab preprocess     Data preprocessing and graph creation
+astro-lab train          ML-Model Training with Lightning + MLflow
+astro-lab optimize       Hyperparameter optimization with Optuna
+astro-lab config         Configuration management
 
-📖 Beispiele:
+📖 Examples:
+
+# Simple processing of all surveys
+astro-lab process
+
+# Process specific surveys
+astro-lab process --surveys gaia nsa
+
+# With additional parameters
+astro-lab process --k-neighbors 8 --max-samples 10000
 
 # Download Gaia DR3 bright stars
 astro-lab download gaia --magnitude-limit 12.0
@@ -77,7 +95,7 @@ astro-lab train --config my_config.yaml
 # Quick training without config
 astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 
-# Survey-spezifische Configs anzeigen
+# Survey-specific configs
 astro-lab config surveys
 
 💡 Use 'astro-lab <command> --help' for detailed options!
@@ -88,6 +106,43 @@ astro-lab config surveys
 
     # Add subcommands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # 🌟 NEW: Simple process command
+    process_parser = subparsers.add_parser(
+        "process", help="Simple processing of all surveys"
+    )
+    process_parser.add_argument(
+        "--surveys", 
+        nargs="+", 
+        choices=["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"],
+        help="Process specific surveys (default: all)"
+    )
+    process_parser.add_argument(
+        "--k-neighbors", 
+        type=int, 
+        default=8,
+        help="Number of K-neighbors for graph creation (default: 8)"
+    )
+    process_parser.add_argument(
+        "--max-samples", 
+        type=int,
+        help="Maximum number of samples per survey (default: all)"
+    )
+    process_parser.add_argument(
+        "--output-dir", 
+        default="data/processed",
+        help="Output directory (default: data/processed)"
+    )
+    process_parser.add_argument(
+        "--force", 
+        action="store_true",
+        help="Overwrite existing data"
+    )
+    process_parser.add_argument(
+        "--verbose", 
+        action="store_true",
+        help="Detailed output"
+    )
 
     # Download subcommand
     download_parser = subparsers.add_parser(
@@ -226,7 +281,9 @@ astro-lab config surveys
         sys.exit(0)
 
     # Route to appropriate command handler
-    if args.command == "download":
+    if args.command == "process":
+        handle_process(args)
+    elif args.command == "download":
         handle_download(args)
     elif args.command == "preprocess":
         handle_preprocess(args)
@@ -236,6 +293,97 @@ astro-lab config surveys
         handle_optimize(args)
     elif args.command == "config":
         handle_config(args)
+
+
+def handle_process(args):
+    """Handle simple process command for all surveys."""
+    print("🚀 AstroLab - Simple Survey Processing")
+    print("=" * 50)
+    
+    try:
+        from pathlib import Path
+        import subprocess
+        import sys
+        
+        # Available surveys
+        all_surveys = ["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"]
+        
+        # Determine surveys to process
+        surveys_to_process = args.surveys if args.surveys else all_surveys
+        
+        print(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
+        print(f"🔧 Parameters: k={args.k_neighbors}, max_samples={args.max_samples or 'all'}")
+        print(f"📁 Output: {args.output_dir}")
+        print()
+        
+        # Create output directory
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Process each survey
+        for survey in surveys_to_process:
+            print(f"🔄 Processing {survey.upper()}...")
+            
+            # Build CLI command
+            cmd = [
+                sys.executable, "-m", "astro_lab.cli.preprocessing",
+                survey,
+                "--output", str(output_dir / survey),
+                "--k-neighbors", str(args.k_neighbors)
+            ]
+            
+            # Add additional parameters
+            if args.max_samples:
+                cmd.extend(["--max-samples", str(args.max_samples)])
+            
+            if args.force:
+                cmd.append("--force")
+            
+            if args.verbose:
+                cmd.append("--verbose")
+            
+            try:
+                # Execute command
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=not args.verbose,
+                    text=True,
+                    check=True
+                )
+                
+                if args.verbose:
+                    print(result.stdout)
+                else:
+                    print(f"✅ {survey.upper()} processed successfully")
+                    
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Error processing {survey.upper()}: {e}")
+                if e.stdout:
+                    print(f"   Stdout: {e.stdout}")
+                if e.stderr:
+                    print(f"   Stderr: {e.stderr}")
+                continue
+            except FileNotFoundError:
+                print(f"❌ Preprocessing module not found for {survey}")
+                continue
+        
+        print()
+        print("🎉 Survey processing completed!")
+        print(f"📁 Processed data in: {output_dir}")
+        
+        # Show summary
+        print("\n📊 Summary:")
+        for survey in surveys_to_process:
+            survey_dir = output_dir / survey / "processed"
+            if survey_dir.exists():
+                pt_files = list(survey_dir.glob("*.pt"))
+                print(f"   {survey.upper()}: {len(pt_files)} .pt files")
+            else:
+                print(f"   {survey.upper()}: No processed data found")
+        
+    except Exception as e:
+        print(f"❌ Error during processing: {e}")
+        sys.exit(1)
 
 
 def handle_download(args):
@@ -282,7 +430,6 @@ def handle_preprocess(args):
             create_training_splits,
             get_data_statistics,
             load_catalog,
-            preprocess_catalog,
             save_splits_to_parquet,
         )
         from astro_lab.utils.config import ConfigLoader
@@ -310,7 +457,8 @@ def handle_preprocess(args):
                     print(f"⚠️  Could not load survey config: {e}")
 
             # Preprocess with config
-            df_clean = preprocess_catalog(df, **config)
+            survey_type = args.config if args.config else "generic"
+            df_clean = preprocess_catalog(args.input, survey_type=survey_type)
             print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
 
             # Create splits if requested

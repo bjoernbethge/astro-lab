@@ -21,6 +21,9 @@ import polars as pl
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
+# Import AstroDataset for fixtures
+from astro_lab.data.core import AstroDataset
+
 # Suppress common warnings during testing
 warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
@@ -117,155 +120,156 @@ def device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# Real data fixtures
+# Real data fixtures - direct path access
 @pytest.fixture(scope="session")
-def gaia_data_available(data_dir: Path) -> bool:
-    """Check if Gaia data is available."""
+def gaia_data_path(data_dir: Path) -> Optional[Path]:
+    """Get path to real Gaia data file."""
     gaia_dir = data_dir / "raw" / "gaia"
     if not gaia_dir.exists():
-        # Create demo Gaia data
-        gaia_dir.mkdir(parents=True, exist_ok=True)
-        _create_demo_gaia_data(gaia_dir)
-    return True
-
-
-@pytest.fixture(scope="session")
-def nsa_data_available(data_dir: Path) -> bool:
-    """Check if NSA data is available."""
-    nsa_dir = data_dir / "raw" / "nsa"
-    if not nsa_dir.exists():
-        # Create demo NSA data
-        nsa_dir.mkdir(parents=True, exist_ok=True)
-        _create_demo_nsa_data(nsa_dir)
-    return True
-
-
-@pytest.fixture(scope="session")
-def exoplanet_data_available(data_dir: Path) -> bool:
-    """Check if exoplanet data is available."""
-    exo_dir = data_dir / "raw" / "exoplanet"
-    if not exo_dir.exists():
-        # Create demo exoplanet data
-        exo_dir.mkdir(parents=True, exist_ok=True)
-        _create_demo_exoplanet_data(exo_dir)
-    return True
-
-
-@pytest.fixture(scope="session")
-def linear_data_available(data_dir: Path) -> bool:
-    """Check if LINEAR data is available."""
-    linear_dir = data_dir / "raw" / "linear"
-    if not linear_dir.exists():
-        # Create demo LINEAR data
-        linear_dir.mkdir(parents=True, exist_ok=True)
-        _create_demo_linear_data(linear_dir)
-    return True
-
-
-@pytest.fixture(scope="session")
-def rrlyrae_data_available(data_dir: Path) -> bool:
-    """Check if RR Lyrae data is available."""
-    rr_files = [
-        data_dir / "RRLyrae.fit",
-        data_dir / "processed" / "rrlyrae_real_data_cleaned.parquet"
-    ]
-    return any(f.exists() for f in rr_files)
-
-
-@pytest.fixture(scope="session")
-def gaia_data_path(data_dir: Path, gaia_data_available: bool) -> Optional[Path]:
-    """Get path to Gaia data file."""
-    if not gaia_data_available:
-        return None
+        pytest.skip("Gaia data directory not found")
     
     # Prefer the smaller mag10.0 file for testing
-    mag10_file = data_dir / "raw" / "gaia" / "gaia_dr3_bright_all_sky_mag10.0.parquet"
+    mag10_file = gaia_dir / "gaia_dr3_bright_all_sky_mag10.0.parquet"
     if mag10_file.exists():
         return mag10_file
     
-    mag12_file = data_dir / "raw" / "gaia" / "gaia_dr3_bright_all_sky_mag12.0.parquet"
+    mag12_file = gaia_dir / "gaia_dr3_bright_all_sky_mag12.0.parquet"
     if mag12_file.exists():
         return mag12_file
     
-    return None
+    pytest.skip("No Gaia data files found")
 
 
 @pytest.fixture(scope="session")
-def nsa_data_path(data_dir: Path, nsa_data_available: bool) -> Optional[Path]:
-    """Get path to NSA data file."""
-    if not nsa_data_available:
-        return None
+def nsa_data_path(data_dir: Path) -> Optional[Path]:
+    """Get path to real NSA data file."""
+    nsa_dir = data_dir / "raw" / "nsa"
+    if not nsa_dir.exists():
+        pytest.skip("NSA data directory not found")
     
     # Prefer processed parquet files for testing
     processed_file = data_dir / "nsa_processed.parquet"
     if processed_file.exists():
         return processed_file
     
-    # Fallback to other available files
-    other_files = [
-        data_dir / "nsa_v0_1_2.fits",
-        data_dir / "datasets" / "nsa" / "catalog_sample_50.parquet",
-        data_dir / "processed" / "nsa" / "nsa_catalog.parquet"
-    ]
+    # Check for raw FITS files
+    nsa_v0_file = nsa_dir / "nsa_v0_1_2.fits"
+    if nsa_v0_file.exists():
+        return nsa_v0_file
     
-    for file_path in other_files:
-        if file_path.exists():
-            return file_path
+    nsa_v1_file = nsa_dir / "nsa_v1_0_1.fits"
+    if nsa_v1_file.exists():
+        return nsa_v1_file
     
-    return None
+    pytest.skip("No NSA data files found")
 
 
 @pytest.fixture(scope="session")
-def exoplanet_data_path(data_dir: Path, exoplanet_data_available: bool) -> Optional[Path]:
-    """Get path to exoplanet data file."""
-    if not exoplanet_data_available:
-        return None
+def exoplanet_data_path(data_dir: Path) -> Optional[Path]:
+    """Get path to real exoplanet data file."""
+    exo_dir = data_dir / "raw" / "exoplanet"
+    if not exo_dir.exists():
+        pytest.skip("Exoplanet data directory not found")
     
-    exo_file = data_dir / "processed" / "exoplanet_graphs" / "raw" / "confirmed_exoplanets.parquet"
+    exo_file = exo_dir / "confirmed_exoplanets.parquet"
     if exo_file.exists():
         return exo_file
     
-    return None
+    pytest.skip("No exoplanet data files found")
+
+
+@pytest.fixture(scope="session")
+def linear_data_path(data_dir: Path) -> Optional[Path]:
+    """Get path to real LINEAR data file."""
+    linear_dir = data_dir / "raw" / "linear"
+    if not linear_dir.exists():
+        pytest.skip("LINEAR data directory not found")
+    
+    # Check for compressed data files
+    linear_tar = data_dir / "raw" / "allLINEARfinal_dat.tar.gz"
+    if linear_tar.exists():
+        return linear_tar
+    
+    linear_targets = data_dir / "raw" / "allLINEARfinal_targets.dat.gz"
+    if linear_targets.exists():
+        return linear_targets
+    
+    pytest.skip("No LINEAR data files found")
+
+
+@pytest.fixture(scope="session")
+def rrlyrae_data_path(data_dir: Path) -> Optional[Path]:
+    """Get path to real RR Lyrae data file."""
+    rr_files = [
+        data_dir / "RRLyrae.fit",
+        data_dir / "processed" / "rrlyrae_real_data_cleaned.parquet"
+    ]
+    
+    for rr_file in rr_files:
+        if rr_file.exists():
+            return rr_file
+    
+    pytest.skip("No RR Lyrae data files found")
+
+
+# AstroDataset fixtures - direct dataset creation
+@pytest.fixture(scope="session")
+def gaia_dataset():
+    """Create Gaia AstroDataset fixture using processed data."""
+    try:
+        # Use a smaller processed file for testing (n100 exists)
+        return AstroDataset(survey="gaia", max_samples=100, k_neighbors=8)
+    except Exception as e:
+        pytest.skip(f"Could not create Gaia dataset: {e}")
+
+
+@pytest.fixture(scope="session")
+def nsa_dataset():
+    """Create NSA AstroDataset fixture using processed data."""
+    try:
+        return AstroDataset(survey="nsa", max_samples=50, k_neighbors=8)
+    except Exception as e:
+        pytest.skip(f"Could not create NSA dataset: {e}")
+
+
+@pytest.fixture(scope="session")
+def exoplanet_dataset():
+    """Create Exoplanet AstroDataset fixture using processed data."""
+    try:
+        return AstroDataset(survey="exoplanet", max_samples=30, k_neighbors=8)
+    except Exception as e:
+        pytest.skip(f"Could not create Exoplanet dataset: {e}")
+
+
+@pytest.fixture(scope="session")
+def linear_dataset():
+    """Create LINEAR AstroDataset fixture using processed data."""
+    try:
+        return AstroDataset(survey="linear", max_samples=50, k_neighbors=8)
+    except Exception as e:
+        pytest.skip(f"Could not create LINEAR dataset: {e}")
+
+
+@pytest.fixture(scope="session")
+def rrlyrae_dataset():
+    """Create RR Lyrae AstroDataset fixture using processed data."""
+    try:
+        return AstroDataset(survey="rrlyrae", max_samples=20, k_neighbors=8)
+    except Exception as e:
+        pytest.skip(f"Could not create RR Lyrae dataset: {e}")
 
 
 @pytest.fixture(scope="session")
 def multiple_datasets_available(
-    gaia_data_available: bool, 
-    nsa_data_available: bool, 
-    exoplanet_data_available: bool
+    gaia_dataset, 
+    nsa_dataset, 
+    exoplanet_dataset
 ) -> bool:
-    """Check if multiple datasets are available for integration testing."""
-    return gaia_data_available and nsa_data_available and exoplanet_data_available
+    """Check if multiple datasets are available."""
+    return all([gaia_dataset, nsa_dataset, exoplanet_dataset])
 
 
-@pytest.fixture
-def skip_if_no_gaia_data(gaia_data_available: bool):
-    """Skip test if Gaia data is not available."""
-    if not gaia_data_available:
-        pytest.skip("Gaia data not available")
-
-
-@pytest.fixture
-def skip_if_no_nsa_data(nsa_data_available: bool):
-    """Skip test if NSA data is not available."""
-    if not nsa_data_available:
-        pytest.skip("NSA data not available")
-
-
-@pytest.fixture
-def skip_if_no_exoplanet_data(exoplanet_data_available: bool):
-    """Skip test if exoplanet data is not available."""
-    if not exoplanet_data_available:
-        pytest.skip("Exoplanet data not available")
-
-
-@pytest.fixture
-def skip_if_no_multiple_datasets(multiple_datasets_available: bool):
-    """Skip test if multiple datasets are not available."""
-    if not multiple_datasets_available:
-        pytest.skip("Multiple datasets not available")
-
-
+# Utility fixtures
 @pytest.fixture
 def skip_if_no_cuda():
     """Skip test if CUDA is not available."""
@@ -421,81 +425,3 @@ def pytest_sessionfinish(session, exitstatus):
     
     # Force garbage collection
     gc.collect()
-
-
-def _create_demo_gaia_data(gaia_dir: Path):
-    """Create demo Gaia data for testing."""
-    import polars as pl
-    import numpy as np
-    
-    n_objects = 1000
-    demo_data = {
-        "ra": np.random.uniform(0, 360, n_objects),
-        "dec": np.random.uniform(-90, 90, n_objects),
-        "phot_g_mean_mag": np.random.normal(15, 2, n_objects),
-        "phot_bp_mean_mag": np.random.normal(15.5, 2, n_objects),
-        "phot_rp_mean_mag": np.random.normal(14.5, 2, n_objects),
-        "parallax": np.random.exponential(1, n_objects),
-        "pmra": np.random.normal(0, 10, n_objects),
-        "pmdec": np.random.normal(0, 10, n_objects),
-    }
-    
-    df = pl.DataFrame(demo_data)
-    df.write_parquet(gaia_dir / "gaia_dr3_bright_all_sky_mag10.0.parquet")
-
-
-def _create_demo_nsa_data(nsa_dir: Path):
-    """Create demo NSA data for testing."""
-    import polars as pl
-    import numpy as np
-    
-    n_objects = 500
-    demo_data = {
-        "ra": np.random.uniform(0, 360, n_objects),
-        "dec": np.random.uniform(-90, 90, n_objects),
-        "z": np.random.exponential(0.1, n_objects),
-        "PETROMAG_R": np.random.normal(17, 2, n_objects),
-        "PETROMAG_G": np.random.normal(18, 2, n_objects),
-        "PETROMAG_I": np.random.normal(16, 2, n_objects),
-        "MASS": np.random.normal(10.5, 0.5, n_objects),
-    }
-    
-    df = pl.DataFrame(demo_data)
-    df.write_parquet(nsa_dir / "nsa_v1_0_1.parquet")
-
-
-def _create_demo_exoplanet_data(exo_dir: Path):
-    """Create demo exoplanet data for testing."""
-    import polars as pl
-    import numpy as np
-    
-    n_objects = 200
-    demo_data = {
-        "pl_name": [f"Planet_{i}" for i in range(n_objects)],
-        "hostname": [f"Star_{i}" for i in range(n_objects)],
-        "sy_dist": np.random.exponential(100, n_objects),
-        "pl_orbper": np.random.exponential(365, n_objects),
-        "pl_massj": np.random.exponential(1, n_objects),
-        "pl_radj": np.random.exponential(1, n_objects),
-    }
-    
-    df = pl.DataFrame(demo_data)
-    df.write_parquet(exo_dir / "confirmed_exoplanets.parquet")
-
-
-def _create_demo_linear_data(linear_dir: Path):
-    """Create demo LINEAR data for testing."""
-    import polars as pl
-    import numpy as np
-    
-    n_objects = 300
-    demo_data = {
-        "ra": np.random.uniform(0, 360, n_objects),
-        "dec": np.random.uniform(-90, 90, n_objects),
-        "mag_mean": np.random.normal(16, 2, n_objects),
-        "period": np.random.exponential(10, n_objects),
-        "amplitude": np.random.exponential(0.5, n_objects),
-    }
-    
-    df = pl.DataFrame(demo_data)
-    df.write_parquet(linear_dir / "linear_raw.parquet")

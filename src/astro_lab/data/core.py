@@ -725,33 +725,34 @@ class AstroDataset(InMemoryDataset):
         """Processed file names for .pt file selection."""
         suffix = f"_n{self.max_samples}" if self.max_samples else ""
         tensor_suffix = "_tensor" if self.return_tensor else ""
-        return [f"{self.survey}_graph_k{self.k_neighbors}{suffix}{tensor_suffix}.pt"]
+        return [f"{self.survey}_k{self.k_neighbors}{suffix}{tensor_suffix}.pt"]
 
     def download(self) -> None:
-        """Download or generate dataset data."""
+        """Load dataset from .pt files - no fake data generation."""
         if self.data is not None:
             return
-
-        if self.survey:
-            # Use survey-specific data generation
-            self._generate_survey_data()
-        else:
-            # Generate demo data
-            self._generate_demo_data()
+        self.load(None)  # Load from .pt file
 
     def _load_polars_dataframe(self) -> pl.DataFrame:
-        """Load data as Polars DataFrame for compatibility."""
+        """Load data as Polars DataFrame - only from real .pt files."""
         if self.data is None:
-            self.download()
+            self.load(None)  # Load from .pt file
         
-        if isinstance(self.data, pl.DataFrame):
-            return self.data
-        elif hasattr(self.data, 'to_pandas'):
-            # Convert to Polars if it's a pandas DataFrame
-            return pl.from_pandas(self.data.to_pandas())
+        # Convert PyG Data to Polars DataFrame if needed
+        if hasattr(self.data, 'x') and hasattr(self.data, 'feature_names'):
+            # Convert PyG Data to DataFrame
+            feature_data = {}
+            for i, name in enumerate(self.data.feature_names):
+                feature_data[name] = self.data.x[:, i].numpy()
+            
+            # Add coordinate columns if available
+            if hasattr(self.data, 'coord_names') and hasattr(self.data, 'pos'):
+                for i, name in enumerate(self.data.coord_names):
+                    feature_data[name] = self.data.pos[:, i].numpy()
+            
+            return pl.DataFrame(feature_data)
         else:
-            # Fallback: create empty DataFrame
-            return pl.DataFrame()
+            raise ValueError("Data is not in expected PyG format")
 
     def process(self):
         """No processing - data should already be processed as .pt files."""
@@ -761,32 +762,45 @@ class AstroDataset(InMemoryDataset):
 
     def _find_best_pt_file(self) -> Optional[Path]:
         """Find the best matching .pt file based on max_samples and k_neighbors."""
-        processed_dir = Path(f"data/processed/{self.survey}/processed")
-        if not processed_dir.exists():
+        # Use project root for data path
+        project_root = Path(__file__).parent.parent.parent
+        processed_dir = project_root / "data" / "processed" / self.survey / "processed"
+        
+        # Add test data directory for testing
+        test_data_dir = project_root / "test" / "tensors" / "data" / "processed" / self.survey / "processed"
+        possible_dirs = [processed_dir]
+        if test_data_dir.exists():
+            possible_dirs.insert(0, test_data_dir)  # Prioritize test data
+        
+        all_files = []
+        for processed_dir in possible_dirs:
+            if not processed_dir.exists():
+                continue
+            patterns = [
+                f"{self.survey}_k{self.k_neighbors}_n*.pt",
+                f"{self.survey}_k{self.k_neighbors}.pt",
+                f"{self.survey}_mag*.pt",
+            ]
+            for pattern in patterns:
+                files = list(processed_dir.glob(pattern))
+                all_files.extend(files)
+        if not all_files:
             return None
-            
-        files = list(processed_dir.glob(f"{self.survey}_graph_k{self.k_neighbors}_n*.pt"))
-        if not files:
-            return None
-            
-        # Sort by sample size (n) ascending
         def extract_n(f):
             import re
             m = re.search(r"_n(\d+)", f.name)
-            return int(m.group(1)) if m else 0
-            
-        files = sorted(files, key=extract_n)
-        
-        # Find the largest file <= max_samples
+            if m:
+                return int(m.group(1))
+            return f.stat().st_size
+        all_files = sorted(all_files, key=extract_n)
         best = None
-        for f in files:
+        for f in all_files:
             n = extract_n(f)
             if self.max_samples is None or n <= self.max_samples:
                 best = f
             else:
                 break
-                
-        return best or files[-1]  # fallback: largest
+        return best or all_files[-1]  # fallback: largest
 
     def load(self, path: Union[str, Path]):
         """Load dataset from .pt file."""
@@ -828,121 +842,13 @@ class AstroDataset(InMemoryDataset):
             "avg_degree": data.edge_index.shape[1] / data.num_nodes,
         }
 
-    def _generate_survey_data(self) -> None:
-        """Generate survey-specific demo data."""
-        if self.survey == "gaia":
-            self._generate_gaia_demo_data()
-        elif self.survey == "sdss":
-            self._generate_sdss_demo_data()
-        elif self.survey == "nsa":
-            self._generate_nsa_demo_data()
-        elif self.survey == "linear":
-            self._generate_linear_demo_data()
-        elif self.survey == "tng50":
-            self._generate_tng50_demo_data()
-        else:
-            self._generate_demo_data()
+    def _download(self):
+        """Override _download to load .pt files directly."""
+        self.load(None)  # Load from .pt file - no fallback to fake data
 
-    def _generate_demo_data(self) -> None:
-        """Generate generic demo data."""
-        n_samples = self.max_samples or 1000
-        
-        # Create demo DataFrame
-        demo_data = {
-            "ra": np.random.uniform(0, 360, n_samples),
-            "dec": np.random.uniform(-90, 90, n_samples),
-            "mag": np.random.normal(15, 2, n_samples),
-            "parallax": np.random.exponential(1, n_samples),
-            "pmra": np.random.normal(0, 10, n_samples),
-            "pmdec": np.random.normal(0, 10, n_samples),
-        }
-        
-        self.data = pl.DataFrame(demo_data)
-        logger.info(f"📊 Generated demo data: {len(self.data)} samples")
-
-    def _generate_gaia_demo_data(self) -> None:
-        """Generate Gaia-specific demo data."""
-        n_samples = self.max_samples or 1000
-        
-        demo_data = {
-            "ra": np.random.uniform(0, 360, n_samples),
-            "dec": np.random.uniform(-90, 90, n_samples),
-            "phot_g_mean_mag": np.random.normal(15, 2, n_samples),
-            "phot_bp_mean_mag": np.random.normal(15.5, 2, n_samples),
-            "phot_rp_mean_mag": np.random.normal(14.5, 2, n_samples),
-            "parallax": np.random.exponential(1, n_samples),
-            "pmra": np.random.normal(0, 10, n_samples),
-            "pmdec": np.random.normal(0, 10, n_samples),
-        }
-        
-        self.data = pl.DataFrame(demo_data)
-        logger.info(f"📊 Generated Gaia demo data: {len(self.data)} samples")
-
-    def _generate_sdss_demo_data(self) -> None:
-        """Generate SDSS-specific demo data."""
-        n_samples = self.max_samples or 1000
-        
-        demo_data = {
-            "ra": np.random.uniform(0, 360, n_samples),
-            "dec": np.random.uniform(-90, 90, n_samples),
-            "modelmag_u": np.random.normal(20, 2, n_samples),
-            "modelmag_g": np.random.normal(19, 2, n_samples),
-            "modelmag_r": np.random.normal(18, 2, n_samples),
-            "modelmag_i": np.random.normal(17, 2, n_samples),
-            "modelmag_z": np.random.normal(16, 2, n_samples),
-        }
-        
-        self.data = pl.DataFrame(demo_data)
-        logger.info(f"📊 Generated SDSS demo data: {len(self.data)} samples")
-
-    def _generate_nsa_demo_data(self) -> None:
-        """Generate NSA-specific demo data."""
-        n_samples = self.max_samples or 1000
-        
-        demo_data = {
-            "ra": np.random.uniform(0, 360, n_samples),
-            "dec": np.random.uniform(-90, 90, n_samples),
-            "z": np.random.exponential(0.1, n_samples),
-            "PETROMAG_R": np.random.normal(17, 2, n_samples),
-            "PETROMAG_G": np.random.normal(18, 2, n_samples),
-            "PETROMAG_I": np.random.normal(16, 2, n_samples),
-            "MASS": np.random.normal(10.5, 0.5, n_samples),
-        }
-        
-        self.data = pl.DataFrame(demo_data)
-        logger.info(f"📊 Generated NSA demo data: {len(self.data)} samples")
-
-    def _generate_linear_demo_data(self) -> None:
-        """Generate LINEAR-specific demo data."""
-        n_samples = self.max_samples or 1000
-        
-        demo_data = {
-            "ra": np.random.uniform(0, 360, n_samples),
-            "dec": np.random.uniform(-90, 90, n_samples),
-            "mag_mean": np.random.normal(16, 2, n_samples),
-            "period": np.random.exponential(10, n_samples),
-            "amplitude": np.random.exponential(0.5, n_samples),
-        }
-        
-        self.data = pl.DataFrame(demo_data)
-        logger.info(f"📊 Generated LINEAR demo data: {len(self.data)} samples")
-
-    def _generate_tng50_demo_data(self) -> None:
-        """Generate TNG50-specific demo data."""
-        n_samples = self.max_samples or 1000
-        
-        demo_data = {
-            "x": np.random.normal(0, 50, n_samples),
-            "y": np.random.normal(0, 50, n_samples),
-            "z": np.random.normal(0, 50, n_samples),
-            "vx": np.random.normal(0, 200, n_samples),
-            "vy": np.random.normal(0, 200, n_samples),
-            "vz": np.random.normal(0, 200, n_samples),
-            "mass": np.random.exponential(1e8, n_samples),
-        }
-        
-        self.data = pl.DataFrame(demo_data)
-        logger.info(f"📊 Generated TNG50 demo data: {len(self.data)} samples")
+    def _process(self):
+        """Override _process to load .pt files directly."""
+        self.load(None)  # Load from .pt file - no fallback to fake data
 
 
 class AstroDataModule(L.LightningDataModule):
@@ -1097,18 +1003,15 @@ def load_gaia_data(
         temp_dataset = AstroDataset(
             survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
         )
-        temp_dataset.download()  # Ensure data is generated
+        temp_dataset.load(None)  # Load from .pt file
         df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "gaia", {"max_samples": max_samples})
 
-    # Create AstroDataset with survey parameter and set DataFrame
+    # Create AstroDataset with survey parameter
     dataset = AstroDataset(
         survey="gaia", max_samples=max_samples, return_tensor=False, **kwargs
     )
-    dataset.download()  # Ensure data is generated
-
-    # Set the DataFrame as the data attribute
-    dataset.data = dataset._load_polars_dataframe()
+    dataset.load(None)  # Load from .pt file
 
     return dataset
 
@@ -1134,18 +1037,15 @@ def load_sdss_data(
         temp_dataset = AstroDataset(
             survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
         )
-        temp_dataset.download()
+        temp_dataset.load(None)  # Load from .pt file
         df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "sdss", {"max_samples": max_samples})
 
-    # Create AstroDataset with survey parameter and set DataFrame
+    # Create AstroDataset with survey parameter
     dataset = AstroDataset(
         survey="sdss", max_samples=max_samples, return_tensor=False, **kwargs
     )
-    dataset.download()
-
-    # Set the DataFrame as the data attribute
-    dataset.data = dataset._load_polars_dataframe()
+    dataset.load(None)  # Load from .pt file
 
     return dataset
 
@@ -1156,7 +1056,7 @@ def load_nsa_data(
     **kwargs,
 ) -> Union[AstroDataset, "SurveyTensor"]:
     """
-    Load NASA Sloan Atlas galaxy catalog.
+    Load NSA galaxy catalog.
 
     Args:
         max_samples: Maximum number of samples
@@ -1167,20 +1067,21 @@ def load_nsa_data(
         SurveyTensor with NSA data or AstroDataset for legacy use
     """
     if return_tensor and TENSOR_INTEGRATION_AVAILABLE:
-        dataset = AstroDataset(
+        # Create temporary dataset to get DataFrame
+        temp_dataset = AstroDataset(
             survey="nsa", max_samples=max_samples, return_tensor=False, **kwargs
         )
-        dataset.download()
-        df = dataset._load_polars_dataframe()
+        temp_dataset.load(None)  # Load from .pt file
+        df = temp_dataset._load_polars_dataframe()
         return _polars_to_survey_tensor(df, "nsa", {"max_samples": max_samples})
 
-    return AstroDataset(
-        survey="nsa",
-        k_neighbors=5,
-        max_samples=max_samples,
-        return_tensor=return_tensor,
-        **kwargs,
+    # Create AstroDataset with survey parameter
+    dataset = AstroDataset(
+        survey="nsa", max_samples=max_samples, return_tensor=False, **kwargs
     )
+    dataset.load(None)  # Load from .pt file
+
+    return dataset
 
 
 def load_lightcurve_data(
@@ -1823,7 +1724,9 @@ def create_graph_datasets_from_splits(
                 graph_dir = output_path / f"graphs_{split_name}"
                 graph_dir.mkdir(exist_ok=True)
 
-                graph_file = graph_dir / f"{dataset_name}_{split_name}.pt"
+                # Use unified naming scheme: {survey}_k{k}_n{n}.pt
+                n_samples = len(df)
+                graph_file = graph_dir / f"{dataset_name}_k{k_neighbors}_n{n_samples}.pt"
                 torch.save(graph_data, graph_file)
                 print(f"   💾 Saved to: {graph_file}")
 

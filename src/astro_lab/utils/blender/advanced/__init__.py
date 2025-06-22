@@ -17,12 +17,12 @@ import bmesh
 import bpy
 import numpy as np
 
-from .futuristic_materials import create_futuristic_material
-from .geometry_nodes import create_geometry_nodes_setup
-from .physics import setup_physics_simulation
-from .post_processing import apply_post_processing
-from .shaders import create_astronomical_shader
-from .volumetrics import create_volumetric_effect
+from .futuristic_materials import FuturisticMaterials
+from .geometry_nodes import ProceduralAstronomy, AstronomicalMaterials
+from .physics import OrbitalMechanics, GravitationalSimulation, PhysicsShaders
+from .post_processing import PostProcessingSuite, ArtisticFilters
+from .shaders import AstronomicalShaders
+from .volumetrics import VolumetricAstronomy, VolumetricShaders
 
 # Set environment variable for NumPy 2.x compatibility with bpy
 os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'

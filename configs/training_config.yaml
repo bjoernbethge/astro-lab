@@ -1,0 +1,19 @@
+data:
+  batch_size: 32
+  dataset: gaia
+  max_samples: 1000
+  return_tensor: true
+mlflow:
+  experiment_name: default_experiment
+  tracking_uri: file:./mlruns
+model:
+  name: gaia_classifier
+  params:
+    dropout: 0.1
+    hidden_dim: 128
+    num_layers: 3
+  type: AstroSurveyGNN
+training:
+  experiment_name: default_experiment
+  learning_rate: 0.001
+  max_epochs: 100

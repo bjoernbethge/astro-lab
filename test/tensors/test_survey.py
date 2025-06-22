@@ -148,58 +148,37 @@ class TestSurveyTensorDatasetIntegration:
     """Test SurveyTensor integration with dataset classes."""
 
     @pytest.mark.slow
-    def test_gaia_survey_tensor_integration(self, skip_if_no_gaia_data, gaia_data_path):
+    def test_gaia_survey_tensor_integration(self, gaia_dataset):
         """Test Gaia dataset SurveyTensor integration."""
-        try:
-            dataset = AstroDataset(survey="gaia", max_samples=100)
-            assert len(dataset) > 0
+        assert len(gaia_dataset) > 0
 
-            # Test basic dataset functionality
-            first_item = dataset[0]
-            assert hasattr(first_item, "x")  # PyG Data object
-        except Exception:
-            pytest.skip("Gaia data not available for testing")
+        # Test basic dataset functionality
+        first_item = gaia_dataset[0]
+        assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
-    def test_nsa_survey_tensor_integration(self, skip_if_no_nsa_data, nsa_data_path):
+    def test_nsa_survey_tensor_integration(self, nsa_dataset):
         """Test NSA dataset SurveyTensor integration."""
-        try:
-            dataset = AstroDataset(survey="nsa", max_samples=50)
-            assert len(dataset) > 0
+        assert len(nsa_dataset) > 0
 
-            # Test basic dataset functionality
-            first_item = dataset[0]
-            assert hasattr(first_item, "x")  # PyG Data object
-        except Exception:
-            pytest.skip("NSA data not available for testing")
+        # Test basic dataset functionality
+        first_item = nsa_dataset[0]
+        assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
-    def test_exoplanet_survey_tensor_integration(
-        self, skip_if_no_exoplanet_data, exoplanet_data_path
-    ):
+    def test_exoplanet_survey_tensor_integration(self, exoplanet_dataset):
         """Test Exoplanet dataset SurveyTensor integration."""
-        try:
-            dataset = AstroDataset(survey="linear", max_samples=30)
-            assert len(dataset) > 0
+        assert len(exoplanet_dataset) > 0
 
-            # Test basic dataset functionality
-            first_item = dataset[0]
-            assert hasattr(first_item, "x")  # PyG Data object
-        except Exception:
-            pytest.skip("Exoplanet data not available for testing")
+        # Test basic dataset functionality
+        first_item = exoplanet_dataset[0]
+        assert hasattr(first_item, "x")  # PyG Data object
 
-    def test_cross_survey_operations(self, skip_if_no_multiple_datasets):
+    def test_cross_survey_operations(self, gaia_dataset, nsa_dataset):
         """Test cross-survey tensor operations."""
-        try:
-            # Create multiple survey datasets
-            gaia_dataset = AstroDataset(survey="gaia", max_samples=50)
-            nsa_dataset = AstroDataset(survey="nsa", max_samples=50)
-
-            # Basic functionality test
-            assert len(gaia_dataset) > 0
-            assert len(nsa_dataset) > 0
-        except Exception:
-            pytest.skip("Multiple datasets not available for testing")
+        # Basic functionality test
+        assert len(gaia_dataset) > 0
+        assert len(nsa_dataset) > 0
 
     def test_survey_tensor_quality_cuts(self):
         """Test survey tensor quality cuts."""
