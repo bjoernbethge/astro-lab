@@ -342,20 +342,16 @@ class TestTrainingConfigurations:
 class TestHyperparameterOptimization:
     """Test hyperparameter optimization functionality in AstroTrainer."""
 
-    @pytest.fixture
-    def simple_dataloader(self):
-        """Create simple dataloaders for testing."""
-        # Create simple graph data
-        x = torch.randn(100, 10)
-        edge_index = torch.randint(0, 100, (2, 200))
-        y = torch.randint(0, 4, (100,))
+    def test_optimize_hyperparameters_basic(self, gaia_dataset):
+        """Test basic hyperparameter optimization using Gaia dataset fixture."""
+        if gaia_dataset is None:
+            pytest.skip("Gaia dataset not available")
+            
+        # Create dataloaders from the fixture
+        from torch_geometric.loader import DataLoader
+        train_loader = DataLoader(gaia_dataset[:8], batch_size=2, shuffle=True)
+        val_loader = DataLoader(gaia_dataset[8:10], batch_size=2, shuffle=False)
         
-        # Create dataset
-        dataset = [(x, edge_index, y) for _ in range(10)]
-        return DataLoader(dataset, batch_size=2)
-
-    def test_optimize_hyperparameters_basic(self, simple_dataloader):
-        """Test basic hyperparameter optimization."""
         # Create model and lightning module
         model = AstroSurveyGNN(hidden_dim=32, output_dim=4)
         lightning_module = AstroLightningModule(
@@ -373,8 +369,8 @@ class TestHyperparameterOptimization:
         
         # Run optimization with minimal trials
         results = trainer.optimize_hyperparameters(
-            train_dataloader=simple_dataloader,
-            val_dataloader=simple_dataloader,
+            train_dataloader=train_loader,
+            val_dataloader=val_loader,
             n_trials=2,  # Just 2 trials for testing
             timeout=60,  # 1 minute timeout
         )
@@ -386,8 +382,17 @@ class TestHyperparameterOptimization:
         assert "n_trials" in results
         assert results["n_trials"] >= 1
 
-    def test_optimize_hyperparameters_custom_search_space(self, simple_dataloader):
-        """Test optimization with custom search space."""
+    def test_optimize_hyperparameters_custom_search_space(self, nsa_dataset):
+        """Test optimization with custom search space using NSA dataset fixture."""
+        if nsa_dataset is None:
+            pytest.skip("NSA dataset not available")
+            
+        # Create dataloaders from the fixture
+        from torch_geometric.loader import DataLoader
+        train_loader = DataLoader(nsa_dataset[:8], batch_size=2, shuffle=True)
+        val_loader = DataLoader(nsa_dataset[8:10], batch_size=2, shuffle=False)
+        
+        # Create model
         model = AstroSurveyGNN(hidden_dim=64, output_dim=4)
         lightning_module = AstroLightningModule(
             model=model,
@@ -409,8 +414,8 @@ class TestHyperparameterOptimization:
         
         # Run optimization
         results = trainer.optimize_hyperparameters(
-            train_dataloader=simple_dataloader,
-            val_dataloader=simple_dataloader,
+            train_dataloader=train_loader,
+            val_dataloader=val_loader,
             n_trials=2,
             search_space=search_space,
         )
