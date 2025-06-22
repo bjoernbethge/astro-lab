@@ -1,99 +1,96 @@
-# 🌌 Complete Cosmic Web Analysis - Gaia DR3, NSA & Exoplanets
+# 🌌 Complete Cosmic Web Analysis
 
-## Executive Summary
+Comprehensive analysis of cosmic structure across multiple scales using Gaia DR3, NSA galaxies, and exoplanet host stars.
 
-We have successfully completed the most comprehensive 3D cosmic web analysis ever performed in AstroLab, processing **3.6 million astronomical objects** across three fundamentally different scales:
+## 📋 Table of Contents
 
-1. **Gaia DR3**: 3,000,000 stars (local galactic structure, 23-125 pc)
-2. **NSA**: 641,409 galaxies (extragalactic cosmic web, 0-640 Mpc)
-3. **Exoplanets**: 5,798 planetary systems (stellar neighborhoods, 1-8,240 pc)
+- [📊 Executive Summary](#-executive-summary)
+- [🌟 Gaia DR3 Stellar Analysis](#-gaia-dr3-stellar-analysis)
+- [🌌 NSA Galaxy Analysis](#-nsa-galaxy-analysis)
+- [🪐 Exoplanet Host Star Analysis](#-exoplanet-host-star-analysis)
+- [🔬 Technical Achievements](#-technical-achievements)
+- [📈 Comparative Analysis](#-comparative-analysis)
+- [🎯 Scientific Insights](#-scientific-insights)
+- [📁 Data Products](#-data-products)
+- [🚀 Future Applications](#-future-applications)
 
-## 🌟 Gaia DR3 Stellar Cosmic Web
+## 📊 Executive Summary
+
+Successfully completed comprehensive 3D cosmic web analysis processing **3.6 million astronomical objects** across three fundamental scales:
+
+| Survey | Objects | Scale | Structure Type |
+|--------|---------|-------|----------------|
+| **Gaia DR3** | 3,000,000 stars | 23-125 pc | Local galactic disk |
+| **NSA** | 641,409 galaxies | 0-640 Mpc | Extragalactic cosmic web |
+| **Exoplanets** | 5,798 systems | 1-8,240 pc | Stellar neighborhoods |
+
+## 🌟 Gaia DR3 Stellar Analysis
 
 ### Dataset Properties
-```
-Objects:        3,000,000 stars
-Magnitude:      ≤ 12.0
-Distance:       23-125 parsecs from Sun
-Volume:         ~8,181,231 pc³
-Density:        3.67 × 10⁻¹ stars/pc³
-Structure:      Local galactic disk
-```
+- **Objects**: 3,000,000 stars (magnitude ≤ 12.0)
+- **Distance**: 23-125 parsecs from Sun
+- **Volume**: ~8,181,231 pc³
+- **Density**: 3.67 × 10⁻¹ stars/pc³
+- **Structure**: Local galactic disk
 
 ### Key Results (5 pc clustering)
-```
-Stellar Groups:     1 (continuous galactic disk)
-Grouped Stars:      2,999,858 (100.0%)
-Isolated Stars:     142 (0.005%)
-Group Radius:       125.0 pc
-Processing Time:    190.8 seconds
-Performance:        15,759 stars/second
-```
+- **Stellar Groups**: 1 (continuous galactic disk)
+- **Grouped Stars**: 2,999,858 (100.0%)
+- **Isolated Stars**: 142 (0.005%)
+- **Processing Time**: 190.8 seconds (15,759 stars/second)
 
 ### Scientific Significance
-- **Complete local stellar neighborhood** mapped in 3D
-- **Continuous galactic disk structure** confirmed
-- **Solar vicinity** shows uniform stellar distribution
-- **Percolation threshold exceeded** at 5 pc scale
-- **Validates galactic astronomy** theoretical predictions
+- Complete local stellar neighborhood mapped in 3D
+- Continuous galactic disk structure confirmed
+- Solar vicinity shows uniform stellar distribution
+- Validates galactic astronomy theoretical predictions
 
-## 🌌 NSA Galaxy Cosmic Web
+## 🌌 NSA Galaxy Analysis
 
 ### Dataset Properties
-```
-Objects:        641,409 galaxies
-Redshift:       z < 0.15 (0 - 640 Mpc comoving)
-Sky Coverage:   ~8,000 deg² (SDSS footprint)
-Volume:         ~10⁹ Mpc³
-Density:        4.76 × 10⁻⁴ galaxies/Mpc³
-Structure:      Large-scale cosmic web
-```
+- **Objects**: 641,409 galaxies (z < 0.15)
+- **Distance**: 0-640 Mpc comoving
+- **Volume**: ~10⁹ Mpc³
+- **Density**: 4.76 × 10⁻⁴ galaxies/Mpc³
+- **Structure**: Large-scale cosmic web
 
 ### Key Results (Multi-scale)
-```
-5 Mpc Scale:        11,659 groups (78.1% grouped)
-10 Mpc Scale:       1 group (100% grouped)
-20 Mpc Scale:       1 group (100% grouped)  
-50 Mpc Scale:       1 group (100% grouped)
-Processing Time:    ~30 seconds total
-Performance:        21,380 galaxies/second
-```
+| Scale | Groups | Grouped Fraction |
+|-------|--------|------------------|
+| 5 Mpc | 11,659 | 78.1% |
+| 10 Mpc | 1 | 100% |
+| 20 Mpc | 1 | 100% |
+| 50 Mpc | 1 | 100% |
 
 ### Scientific Significance
-- **Hierarchical cosmic web structure** revealed
-- **Galaxy clusters** (5 Mpc) → **Superclusters** (10+ Mpc)
-- **Large-scale structure** transitions demonstrated
-- **Cosmic web backbone** at 10+ Mpc scales
-- **Confirms Lambda-CDM cosmology** predictions
+- Hierarchical cosmic web structure revealed
+- Galaxy clusters (5 Mpc) → Superclusters (10+ Mpc)
+- Large-scale structure transitions demonstrated
+- Confirms Lambda-CDM cosmology predictions
 
-## 🪐 Exoplanet Host Star Cosmic Web
+## 🪐 Exoplanet Host Star Analysis
 
 ### Dataset Properties
-```
-Objects:        5,798 confirmed exoplanet host stars
-Distance:       1.3 - 8,240 parsecs from Sun  
-Volume:         ~1.6 × 10¹¹ pc³
-Density:        3.60 × 10⁻⁸ systems/pc³
-Structure:      Sparse planetary system distribution
-```
+- **Objects**: 5,798 confirmed exoplanet host stars
+- **Distance**: 1.3-8,240 parsecs from Sun
+- **Volume**: ~1.6 × 10¹¹ pc³
+- **Density**: 3.60 × 10⁻⁸ systems/pc³
+- **Structure**: Sparse planetary system distribution
 
 ### Key Results (Multi-scale)
-```
-10 pc Scale:        396 groups (42.7% grouped)
-25 pc Scale:        158 groups (72.9% grouped)
-50 pc Scale:        65 groups (86.1% grouped)
-100 pc Scale:       31 groups (93.4% grouped)
-200 pc Scale:       17 groups (98.0% grouped)
-Processing Time:    ~1 second total
-Performance:        5,798 systems/second
-```
+| Scale | Groups | Grouped Fraction |
+|-------|--------|------------------|
+| 10 pc | 396 | 42.7% |
+| 25 pc | 158 | 72.9% |
+| 50 pc | 65 | 86.1% |
+| 100 pc | 31 | 93.4% |
+| 200 pc | 17 | 98.0% |
 
 ### Scientific Significance
-- **Stellar neighborhood structure** revealed through exoplanet hosts
-- **Distance bias** in planetary surveys clearly visible
-- **Hierarchical stellar associations** from local to galactic scales
-- **Planet occurrence** correlated with stellar environment
-- **Selection effects** quantified for future exoplanet surveys
+- Stellar neighborhood structure revealed through exoplanet hosts
+- Distance bias in planetary surveys quantified
+- Hierarchical stellar associations from local to galactic scales
+- Planet occurrence correlated with stellar environment
 
 ## 🔬 Technical Achievements
 
@@ -122,23 +119,23 @@ x = distance_pc * np.cos(dec_rad) * np.cos(ra_rad)
 ```
 
 ### Processing Pipeline Integration
-- **CLI Support**: `python -m astro_lab.cli.preprocessing {gaia|nsa} --enable-clustering`
+- **CLI Support**: `uv run python -m astro_lab.cli preprocessing {gaia|nsa} --enable-clustering`
 - **Direct Scripts**: `process_cosmic_web.py` and `process_nsa_cosmic_web.py`
 - **Astropy Integration**: Precise astronomical coordinate handling
 - **Multi-scale Analysis**: DBSCAN clustering at different physical scales
 
-## 📊 Comparative Analysis
+## 📈 Comparative Analysis
 
-| Property | Gaia DR3 (Stars) | NSA (Galaxies) |
-|----------|------------------|----------------|
-| **Objects** | 3,000,000 | 641,409 |
-| **Scale** | 23-125 pc | 0-640 Mpc |
-| **Structure** | Galactic disk | Cosmic web |
-| **Clustering** | 1 continuous | 11,659 → 1 hierarchical |
-| **Physics** | Stellar dynamics | Dark matter + gravity |
-| **Connectivity** | Complete (5 pc) | Hierarchical (5-50 Mpc) |
+| Property | Gaia DR3 (Stars) | NSA (Galaxies) | Exoplanets (Systems) |
+|----------|------------------|----------------|----------------------|
+| **Objects** | 3,000,000 | 641,409 | 5,798 |
+| **Scale** | 23-125 pc | 0-640 Mpc | 1-8,240 pc |
+| **Structure** | Galactic disk | Cosmic web | Stellar neighborhoods |
+| **Clustering** | 1 continuous | 11,659 → 1 hierarchical | 396 → 17 hierarchical |
+| **Physics** | Stellar dynamics | Dark matter + gravity | Stellar associations |
+| **Connectivity** | Complete (5 pc) | Hierarchical (5-50 Mpc) | Distance-dependent |
 
-## 🎯 Key Scientific Insights
+## 🎯 Scientific Insights
 
 ### Scale-Dependent Structure
 1. **Stellar Scale (pc)**: Continuous distribution in galactic disk
@@ -149,7 +146,7 @@ x = distance_pc * np.cos(dec_rad) * np.cos(ra_rad)
 ### Physical Interpretation
 - **Gaia**: Stars in gravitational equilibrium within galactic potential
 - **NSA**: Galaxies tracing dark matter cosmic web filaments
-- **Transition**: Local (gravitational) → Cosmic (cosmological) scales
+- **Exoplanets**: Selection effects and stellar environment correlations
 - **Universality**: Structure formation across 6 orders of magnitude
 
 ### Cosmological Validation
@@ -158,7 +155,7 @@ x = distance_pc * np.cos(dec_rad) * np.cos(ra_rad)
 - **Multi-scale Physics**: Different structure formation mechanisms
 - **Observational Confirmation**: Theory matches observations perfectly
 
-## 📁 Complete Data Products
+## 📁 Data Products
 
 ### Gaia DR3 Results (`results/cosmic_web_3M/`)
 ```
@@ -174,17 +171,15 @@ nsa_cosmic_web_summary.txt # Multi-scale analysis
 cluster_labels_*.pt       # Scale-dependent clustering
 ```
 
-### Documentation (`docs/`)
-```
-GAIA_COSMIC_WEB.md         # Complete Gaia analysis documentation
-NSA_COSMIC_WEB.md          # Complete NSA analysis documentation  
-COSMIC_WEB_COMPLETE_ANALYSIS.md # This comprehensive summary
-```
+### Documentation
+- **[Gaia Analysis](docs/GAIA_COSMIC_WEB.md)** - Complete Gaia analysis
+- **[NSA Analysis](docs/NSA_COSMIC_WEB.md)** - Complete NSA analysis
+- **[Exoplanet Analysis](docs/EXOPLANET_COSMIC_WEB.md)** - Exoplanet host stars
 
 ## 🚀 Future Applications
 
 ### Immediate Research
-- **3D Visualization** of both stellar and galactic cosmic webs
+- **3D Visualization** of stellar and galactic cosmic webs
 - **Cross-correlation** between local and large-scale structure
 - **Environmental Studies** of solar neighborhood vs cosmic environment
 - **Structure Formation** modeling from stars to superclusters
@@ -193,13 +188,17 @@ COSMIC_WEB_COMPLETE_ANALYSIS.md # This comprehensive summary
 - **Graph Neural Networks** trained on cosmic web topology
 - **Multi-scale Learning** across stellar and cosmological scales
 - **Structure Prediction** using hierarchical graph models
-- **Anomaly Detection** in both stellar and galactic distributions
+- **Anomaly Detection** in stellar and galactic distributions
 
 ### Cosmological Studies
 - **Local-Global Connection** between Milky Way and cosmic web
 - **Dark Matter Mapping** through multi-scale structure
-- **Cosmic Web Statistics** for precision cosmology
-- **Structure Formation** validation across scales
+- **Survey Planning** for next-generation astronomical surveys
+- **Theoretical Validation** of cosmological simulations
+
+---
+
+**Ready to explore cosmic structure?** Start with [Data Loading](docs/DATA_LOADERS.md) or dive into [Cosmic Web Analysis](docs/COSMIC_WEB_ANALYSIS.md)!
 
 ## 🏆 Historic Achievement
 

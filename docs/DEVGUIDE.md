@@ -2,6 +2,19 @@
 
 Comprehensive guide for contributing to AstroLab development and setting up your development environment.
 
+## 📋 Table of Contents
+
+- [🚀 Quick Setup](#-quick-setup)
+- [🏗️ Project Architecture](#️-project-architecture)
+- [🧪 Development Workflow](#-development-workflow)
+- [📝 Contributing Guidelines](#-contributing-guidelines)
+- [🔬 Adding New Features](#-adding-new-features)
+- [🐛 Debugging & Testing](#-debugging--testing)
+- [⚡ Performance Optimization](#-performance-optimization)
+- [📚 Documentation Standards](#-documentation-standards)
+- [🚀 Release Process](#-release-process)
+- [📚 Related Documentation](#-related-documentation)
+
 ## 🚀 Quick Setup
 
 ### Prerequisites
@@ -67,10 +80,9 @@ src/astro_lab/
 uv shell
 
 # Install development dependencies
-uv pip install pytest pytest-cov black isort mypy
+uv pip install pytest pytest-cov black isort mypy pre-commit
 
 # Setup pre-commit hooks
-uv pip install pre-commit
 pre-commit install
 ```
 
@@ -98,7 +110,6 @@ uv run pytest --cov=src/astro_lab --cov-report=html
 # Run specific test categories
 uv run pytest test/models/ -v
 uv run pytest test/tensors/ -v
-uv run pytest test/training/ -v
 ```
 
 ### 4. Interactive Development
@@ -160,9 +171,9 @@ refactor: simplify CLI argument parsing
 3. **Operations**: Implement required tensor operations
 4. **Tests**: Add comprehensive tensor tests
 
-## 🐛 Debugging
+## 🐛 Debugging & Testing
 
-### Common Issues
+### Common Debugging Commands
 ```bash
 # CUDA issues
 uv run python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}')"
@@ -177,7 +188,7 @@ uv run python -c "import astro_lab; print('Import successful')"
 ### Debug Mode
 ```bash
 # Run with debug logging
-astro-lab train -c config.yaml --verbose
+uv run python -m astro_lab.cli train -c config.yaml --verbose
 
 # Run tests with debug output
 uv run pytest -v -s --tb=short
@@ -198,11 +209,22 @@ stats.sort_stats('cumulative')
 stats.print_stats(10)
 ```
 
-## 📊 Performance Optimization
+### End-to-End Testing
+```bash
+# Test complete training pipeline
+uv run python -m astro_lab.cli train -c configs/gaia_optimization.yaml --epochs 1
+
+# Test data loading pipeline
+uv run python -c "from astro_lab.data.core import create_cosmic_web_loader; create_cosmic_web_loader('gaia', max_samples=100)"
+```
+
+## ⚡ Performance Optimization
 
 ### GPU Optimization
 ```python
 # Use mixed precision training
+from astro_lab.training import AstroTrainer
+
 trainer = AstroTrainer(
     precision="16-mixed",
     accelerator="gpu",
@@ -210,6 +232,8 @@ trainer = AstroTrainer(
 )
 
 # Optimize batch size
+from astro_lab.data import create_astro_datamodule
+
 datamodule = create_astro_datamodule(
     dataset="gaia",
     batch_size=64,  # Adjust based on GPU memory
@@ -220,6 +244,8 @@ datamodule = create_astro_datamodule(
 ### Memory Management
 ```python
 # Use gradient checkpointing for large models
+from astro_lab.models import AstroSurveyGNN
+
 model = AstroSurveyGNN(
     hidden_dim=512,
     num_layers=6,
@@ -229,25 +255,6 @@ model = AstroSurveyGNN(
 # Optimize tensor operations
 from astro_lab.tensors import optimize_memory_usage
 optimized_data = optimize_memory_usage(data, precision="float16")
-```
-
-## 🔗 Integration Testing
-
-### End-to-End Testing
-```bash
-# Test complete training pipeline
-astro-lab run -c configs/gaia_optimization.yaml --epochs 1
-
-# Test data loading pipeline
-uv run python -c "from astro_lab.data.core import create_cosmic_web_loader; create_cosmic_web_loader('gaia', max_samples=100)"
-```
-
-### Cross-Platform Testing
-```bash
-# Test on different platforms
-uv run pytest test/ --platform=linux
-uv run pytest test/ --platform=windows
-uv run pytest test/ --platform=macos
 ```
 
 ## 📚 Documentation Standards
@@ -290,11 +297,21 @@ git push origin v1.0.0
 - [ ] Release notes written
 - [ ] PyPI package built (if applicable)
 
-## 🔗 Related Documentation
+## 📚 Related Documentation
 
-- **[Data Loaders](docs/DATA_LOADERS.md)**: Data processing and loading
-- **[Cosmograph Integration](docs/COSMOGRAPH_INTEGRATION.md)**: Interactive visualization
-- **[Training Guide](../README.md#training-workflow)**: Machine learning workflows
+### Core Documentation
+- **[Data Loaders](DATA_LOADERS.md)** - Data processing and loading
+- **[Cosmic Web Analysis](COSMIC_WEB_ANALYSIS.md)** - Complete analysis framework
+- **[Cosmograph Integration](COSMOGRAPH_INTEGRATION.md)** - Interactive visualization
+
+### Survey-Specific Guides
+- **[Gaia Cosmic Web](GAIA_COSMIC_WEB.md)** - Stellar structure analysis
+- **[SDSS/NSA Analysis](NSA_COSMIC_WEB.md)** - Galaxy survey analysis
+- **[Exoplanet Pipeline](EXOPLANET_PIPELINE.md)** - Exoplanet detection workflows
+
+### Main Documentation
+- **[Main README](../README.md)** - Complete framework overview
+- **[Examples](../examples/README.md)** - Ready-to-run examples
 
 ## 🤝 Community Guidelines
 
@@ -310,4 +327,4 @@ git push origin v1.0.0
 
 ---
 
-**Ready to contribute?** Start with a [good first issue](https://github.com/bjoernbethge/astro-lab/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or explore the [Data Loaders Guide](docs/DATA_LOADERS.md)! 
+**Ready to contribute?** Start with a [good first issue](https://github.com/bjoernbethge/astro-lab/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or explore the [Data Loaders Guide](DATA_LOADERS.md)! 

@@ -1,6 +1,18 @@
-# 🌌 Cosmic Web Analysis with AstroLab
+# 🌌 Cosmic Web Analysis
 
 Comprehensive guide to cosmic web analysis using AstroLab's advanced data processing and visualization capabilities.
+
+## 📋 Table of Contents
+
+- [🚀 Quick Start](#-quick-start)
+- [📊 Available Surveys](#-available-surveys)
+- [🔧 Analysis Pipeline](#-analysis-pipeline)
+- [🎨 Visualization](#-visualization)
+- [📈 Results & Statistics](#-results--statistics)
+- [🛠️ CLI Commands](#️-cli-commands)
+- [⚡ Performance Optimization](#-performance-optimization)
+- [🔬 Scientific Applications](#-scientific-applications)
+- [📚 Related Documentation](#-related-documentation)
 
 ## 🚀 Quick Start
 
@@ -22,38 +34,22 @@ widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 
 ## 📊 Available Surveys
 
-### 🌟 Stellar Surveys
-- **Gaia DR3**: Stellar catalogs with proper motions and photometry
-- **LINEAR**: Asteroid light curves and variable stars
+| Survey | Type | Description | Optimal Scales (Mpc) |
+|--------|------|-------------|----------------------|
+| **Gaia** | Stellar | Stellar catalogs with proper motions | 1.0, 2.0, 5.0, 10.0 |
+| **SDSS** | Galaxy | Galaxy photometry and spectroscopy | 5.0, 10.0, 20.0, 50.0 |
+| **NSA** | Galaxy | Galaxy catalogs with distances | 5.0, 10.0, 20.0, 50.0 |
+| **TNG50** | Simulation | Cosmological simulation particles | 5.0, 10.0, 20.0, 50.0 |
+| **LINEAR** | Solar System | Asteroid light curves | 5.0, 10.0, 20.0, 50.0 |
+| **Exoplanet** | Planetary | NASA Exoplanet Archive | 10.0, 25.0, 50.0, 100.0 |
 
-### 🌌 Galaxy Surveys
-- **SDSS DR17**: Galaxy photometry and spectroscopy
-- **NSA**: Galaxy catalogs with distance measurements
+## 🔧 Analysis Pipeline
 
-### 🪐 Exoplanet Data
-- **NASA Exoplanet Archive**: Confirmed exoplanet systems
-
-### 🌌 Cosmological Simulations
-- **TNG50**: IllustrisTNG cosmological simulation particles
-
-## 🔧 Data Processing Pipeline
-
-### 1. Raw Data Loading
-```python
-from astro_lab.data.core import load_gaia_data
-
-# Load raw survey data
-gaia_tensor = load_gaia_data(
-    max_samples=10000,
-    return_tensor=True
-)
-```
-
-### 2. Cosmic Web Analysis
+### 1. Data Loading
 ```python
 from astro_lab.data.core import create_cosmic_web_loader
 
-# Perform cosmic web analysis
+# Single survey analysis
 results = create_cosmic_web_loader(
     survey="gaia",
     max_samples=1000,
@@ -62,6 +58,20 @@ results = create_cosmic_web_loader(
 
 print(f"Found {results['n_objects']} objects")
 print(f"Volume: {results['total_volume']:.0f} Mpc³")
+```
+
+### 2. Multi-Survey Comparison
+```python
+# Compare different surveys
+surveys = ["gaia", "sdss", "nsa", "tng50"]
+all_results = {}
+
+for survey in surveys:
+    all_results[survey] = create_cosmic_web_loader(
+        survey=survey,
+        max_samples=500,
+        scales_mpc=[5.0, 10.0, 20.0]
+    )
 ```
 
 ### 3. Tensor Creation
@@ -90,7 +100,7 @@ widget = bridge.from_cosmic_web_results(
 
 ### Multi-Survey Comparison
 ```python
-# Compare different surveys
+# Compare different surveys visually
 surveys = ["gaia", "sdss", "nsa", "tng50"]
 widgets = []
 
@@ -100,7 +110,7 @@ for survey in surveys:
     widgets.append(widget)
 ```
 
-## 📈 Analysis Results
+## 📈 Results & Statistics
 
 ### Statistical Analysis
 ```python
@@ -129,45 +139,33 @@ for scale, result in results["results_by_scale"].items():
     print(f"  Variation: {result['density_variation']:.2e}")
 ```
 
-## 🛠️ CLI Usage
+## 🛠️ CLI Commands
 
-### Process Single Survey
+### Single Survey Processing
 ```bash
 # Process Gaia data with cosmic web analysis
-astro-lab preprocess cosmic-web gaia --max-samples 1000 --scales 5.0 10.0 20.0 --output results/
+uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000 --scales 5.0 10.0 20.0 --output results/
 
 # Process SDSS data
-astro-lab preprocess cosmic-web sdss --max-samples 500 --scales 10.0 20.0 50.0 --output results/
+uv run python -m astro_lab.cli preprocess cosmic-web sdss --max-samples 500 --scales 10.0 20.0 50.0 --output results/
 
 # Process TNG50 data
-astro-lab preprocess cosmic-web tng50 --max-samples 1000 --scales 5.0 10.0 20.0 50.0 --output results/
+uv run python -m astro_lab.cli preprocess cosmic-web tng50 --max-samples 1000 --scales 5.0 10.0 20.0 50.0 --output results/
 ```
 
-### Process All Surveys
+### Batch Processing
 ```bash
 # Process all available surveys at once
-astro-lab preprocess all-surveys --max-samples 500 --scales 5.0 10.0 20.0 50.0 --output results/
+uv run python -m astro_lab.cli preprocess all-surveys --max-samples 500 --scales 5.0 10.0 20.0 50.0 --output results/
+
+# List available surveys
+uv run python -m astro_lab.cli preprocess surveys
+
+# Enable detailed logging
+uv run python -m astro_lab.cli preprocess cosmic-web gaia --max-samples 1000 --verbose
 ```
 
-### List Available Surveys
-```bash
-# Show all available surveys and their descriptions
-astro-lab preprocess surveys
-```
-
-### Verbose Logging
-```bash
-# Enable detailed logging for debugging
-astro-lab preprocess cosmic-web gaia --max-samples 1000 --verbose
-```
-
-### Interactive Analysis
-```bash
-# Start interactive session
-python -c "from astro_lab.data.core import create_cosmic_web_loader; create_cosmic_web_loader('gaia', max_samples=1000)"
-```
-
-## 📊 Performance Optimization
+## ⚡ Performance Optimization
 
 ### Memory Management
 ```python
@@ -265,17 +263,6 @@ The cosmic web analysis automatically adapts clustering parameters based on loca
 - **Adaptive min_samples**: Minimum group size based on local density
 - **Multi-scale analysis**: Different spatial scales for comprehensive analysis
 
-### Logging and Monitoring
-```bash
-# Standard logging (INFO level)
-astro-lab preprocess cosmic-web gaia
-# Output: 14:30:15 - astro_lab_cli - INFO - 🌌 Cosmic Web Analysis for survey: gaia
-
-# Verbose logging (DEBUG level)
-astro-lab preprocess cosmic-web gaia --verbose
-# Output: 14:30:15 - astro_lab_cli - DEBUG - Loading coordinates...
-```
-
 ### Output Structure
 ```
 results/
@@ -288,10 +275,19 @@ results/
 
 ## 📚 Related Documentation
 
-- **[Data Loaders](DATA_LOADERS.md)**: Comprehensive data loading guide
-- **[Cosmograph Integration](COSMOGRAPH_INTEGRATION.md)**: Interactive visualization
-- **[CLI Usage](CLI_USAGE.md)**: Command-line interface guide
-- **[Development Guide](DEVGUIDE.md)**: Contributing guidelines
+### Core Documentation
+- **[Data Loaders](DATA_LOADERS.md)** - Comprehensive data loading guide
+- **[Cosmograph Integration](COSMOGRAPH_INTEGRATION.md)** - Interactive visualization
+- **[Development Guide](DEVGUIDE.md)** - Contributing guidelines
+
+### Survey-Specific Guides
+- **[Gaia Cosmic Web](GAIA_COSMIC_WEB.md)** - Stellar structure analysis
+- **[SDSS/NSA Analysis](NSA_COSMIC_WEB.md)** - Galaxy survey analysis
+- **[Exoplanet Pipeline](EXOPLANET_PIPELINE.md)** - Exoplanet detection workflows
+
+### Main Documentation
+- **[Main README](../README.md)** - Complete framework overview
+- **[Examples](../examples/README.md)** - Ready-to-run examples
 
 ## 🎯 Use Cases
 
