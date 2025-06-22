@@ -255,23 +255,15 @@ class TestFeatureTensorIntegration:
 
     def test_sklearn_integration(self):
         """Test integration with sklearn when available."""
-        try:
-            from sklearn.preprocessing import StandardScaler
+        from sklearn.preprocessing import StandardScaler
 
-            sklearn_available = True
-        except ImportError:
-            sklearn_available = False
+        # Create test data
+        data = np.random.randn(100, 5)
+        tensor = FeatureTensor(data)
 
-        if sklearn_available:
-            # Create test data
-            data = np.random.randn(100, 5)
-            tensor = FeatureTensor(data)
-
-            # Test sklearn-based scaling
-            scaled = tensor.scale_features(method="standard")
-            assert scaled is not None
-        else:
-            pytest.skip("sklearn not available")
+        # Test sklearn-based scaling
+        scaled = tensor.scale_features(method="standard")
+        assert scaled is not None
 
     def test_survey_tensor_integration(self):
         """Test integration with SurveyTensor."""
