@@ -453,12 +453,12 @@ class AstroLabWidget(AstroPipeline):
             print(f"❌ Failed to export Blender scene: {e}")
 
     def load_real_data(self, data_source: Union[str, Path]):
-        """Lädt echte astronomische Daten mit bestehenden Loadern. Für TNG50 werden alle Partikeltypen kombiniert."""
+        """Loads real astronomical data using existing loaders. For TNG50, all particle types are combined."""
         data_path = Path(data_source)
 
-        print(f"📂 Lade Daten: {data_path}")
+        print(f"📂 Loading data: {data_path}")
 
-        # Verwende bestehende AstroLab-Loader
+        # Use existing AstroLab loaders
         if "gaia" in str(data_path).lower():
             tensor = load_gaia_data(max_samples=10000)
             self.galaxy_df = self._tensor_to_polars(tensor, "gaia")
@@ -466,7 +466,7 @@ class AstroLabWidget(AstroPipeline):
             tensor = load_sdss_data(max_samples=10000)
             self.galaxy_df = self._tensor_to_polars(tensor, "sdss")
         elif "tng50" in str(data_path).lower():
-            # Alle Partikeltypen laden und kombinieren
+            # Load and combine all particle types
             particle_types = ["PartType0", "PartType1", "PartType4", "PartType5"]
             dfs = []
             for ptype in particle_types:
@@ -475,15 +475,15 @@ class AstroLabWidget(AstroPipeline):
                     df = self._tensor_to_polars(tensor, "tng50")
                     df = df.with_columns(pl.lit(ptype).alias("particle_type"))
                     dfs.append(df)
-                    print(f"   ✅ {ptype}: {len(df):,} Partikel geladen")
+                    print(f"   ✅ {ptype}: {len(df):,} particles loaded")
                 except Exception as e:
-                    print(f"   ⚠️  {ptype} konnte nicht geladen werden: {e}")
+                    print(f"   ⚠️  {ptype} could not be loaded: {e}")
             if dfs:
                 self.galaxy_df = pl.concat(dfs, how="vertical")
             else:
-                raise RuntimeError("Keine TNG50-Partikeltypen konnten geladen werden!")
+                raise RuntimeError("No TNG50 particle types could be loaded!")
         else:
-            # Fallback: direkt mit Polars laden
+            # Fallback: load directly with Polars
             if data_path.suffix == ".parquet":
                 self.galaxy_df = pl.read_parquet(data_path)
             elif data_path.suffix == ".csv":
@@ -491,10 +491,10 @@ class AstroLabWidget(AstroPipeline):
             else:
                 raise ValueError(f"Unsupported format: {data_path.suffix}")
 
-        print(f"✅ {len(self.galaxy_df):,} Objekte geladen")
+        print(f"✅ {len(self.galaxy_df):,} objects loaded")
 
     def _tensor_to_polars(self, tensor, survey_type: str) -> pl.DataFrame:
-        """Konvertiert AstroLab-Tensor zu Polars DataFrame."""
+        """Converts AstroLab tensor to Polars DataFrame."""
         if hasattr(tensor, "data"):
             data = tensor.data.numpy()
         elif hasattr(tensor, "positions"):
@@ -546,22 +546,22 @@ class AstroLabWidget(AstroPipeline):
 
         df = pl.DataFrame(data, schema=schema)
 
-        # Feature-Engineering für astronomische Daten
+        # Feature engineering for astronomical data
         if survey_type in ["gaia", "sdss"] and "ra" in schema and "dec" in schema:
             if "redshift" not in schema:
-                # Für Gaia: Redshift aus Parallax schätzen
+                # For Gaia: Estimate redshift from parallax
                 if "parallax" in schema:
                     df = df.with_columns(
                         (1.0 / (pl.col("parallax") * 1000)).alias("distance_pc")
                     ).with_columns(
                         (pl.col("distance_pc") / 1e6 * 0.1).alias(
                             "redshift"
-                        )  # Grobe Schätzung
+                        )  # Rough estimate
                     )
                 else:
                     df = df.with_columns(pl.lit(0.1).alias("redshift"))
 
-            # Stellarmasse schätzen
+            # Estimate stellar mass
             if "phot_g_mean_mag" in schema and "bp_rp" in schema:
                 df = df.with_columns(
                     [
@@ -575,12 +575,12 @@ class AstroLabWidget(AstroPipeline):
         return df
 
     def add_interactive_controls(self):
-        """Fügt interaktive Slider-Widgets hinzu."""
+        """Adds interactive slider widgets."""
         if not self.plotter:
-            print("⚠️  Erstelle zuerst eine Visualisierung")
+            print("⚠️  Create visualization first")
             return self
 
-        print("🎛️  Füge interaktive Controls hinzu...")
+        print("🎛️  Adding interactive controls...")
 
         # Point Size Slider
         def update_point_size(value):
@@ -620,22 +620,22 @@ class AstroLabWidget(AstroPipeline):
         return self
 
     def show(self, add_controls: bool = True):
-        """Zeigt die interaktive Visualisierung an."""
+        """Shows the interactive visualization."""
         self.plotter = self.create_visualization()
 
         if add_controls:
             self.add_interactive_controls()
 
-        print("🎭 Starte interaktive Visualisierung...")
+        print("🎭 Starting interactive visualization...")
         self.plotter.show()
 
         return self
 
     def analyze_data(self):
-        """Führt Datenanalyse mit Polars durch."""
-        print("📈 Datenanalyse mit Polars...")
+        """Performs data analysis with Polars."""
+        print("📈 Data analysis with Polars...")
 
-        # Basis-Statistiken
+        # Basic statistics
         numeric_cols = [
             col
             for col, dtype in self.galaxy_df.schema.items()
@@ -650,10 +650,10 @@ class AstroLabWidget(AstroPipeline):
                     pl.col(numeric_cols).count().name.suffix("_count"),
                 ]
             )
-            print("Statistiken:")
+            print("Statistics:")
             print(stats)
 
-        # Spezielle astronomische Analysen
+        # Specific astronomical analyses
         if "redshift" in self.galaxy_df.columns:
             z_stats = self.galaxy_df.select(
                 [
@@ -663,7 +663,7 @@ class AstroLabWidget(AstroPipeline):
                     pl.col("redshift").count().alias("n_galaxies"),
                 ]
             )
-            print("\nRedshift-Verteilung:")
+            print("\nRedshift distribution:")
             print(z_stats)
 
         return self
@@ -671,14 +671,14 @@ class AstroLabWidget(AstroPipeline):
 
 # 🎯 Convenience Functions
 def quick_demo():
-    """Erstellt schnell eine Demo-Visualisierung."""
+    """Creates a quick demo visualization."""
     widget = AstroLabWidget(num_galaxies=5000)
     widget.show()
     return widget
 
 
 def load_and_visualize(data_path: str):
-    """Lädt echte Daten und visualisiert sie."""
+    """Loads real data and visualizes it."""
     widget = AstroLabWidget(data_source=data_path)
     widget.analyze_data()
     widget.show()
@@ -703,12 +703,12 @@ def compare_surveys():
         gaia_plotter.show()
 
 
-# Hauptausführung für Tests
+# Main execution for tests
 if __name__ == "__main__":
     print("🌌 AstroLab Widget Test")
 
-    # Demo mit simulierten Daten
-    print("\n1. Demo mit simulierten Daten:")
+    # Demo with simulated data
+    print("\n1. Demo with simulated data:")
     demo_widget = quick_demo()
 
-    print("\n✨ Test abgeschlossen!")
+    print("\n✨ Test completed!")
