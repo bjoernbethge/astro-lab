@@ -9,24 +9,19 @@ luminosity functions, correlation functions, and error estimation.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import torch
-
-from .base import AstroTensorBase
 
 # Optional dependencies
-try:
-    import scipy.integrate as integrate
-    import scipy.interpolate as interpolate
-    import scipy.stats as stats
-
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-
+import scipy.integrate as integrate
+import scipy.interpolate as interpolate
+import scipy.stats as stats
+import torch
+from scipy.stats import binned_statistic
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.neighbors import BallTree
 from sklearn.utils import resample
-from scipy.stats import binned_statistic
+
+from .base import AstroTensorBase
+
 
 class StatisticsTensor(AstroTensorBase):
     """
@@ -372,7 +367,7 @@ class StatisticsTensor(AstroTensorBase):
         Returns:
             Dictionary with error estimates
         """
-        
+
         if function_name not in self.get_metadata("computed_functions", {}):
             # Try to recompute the function with the given name and same bins as original if possible
             bins = 10

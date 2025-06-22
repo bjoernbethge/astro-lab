@@ -9,6 +9,7 @@ proper handling of uncertainties and multi-survey matching.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import scipy.spatial.distance as distance
 import torch
 from sklearn.cluster import DBSCAN, KMeans
 
@@ -17,12 +18,6 @@ from sklearn.neighbors import BallTree
 
 from .base import AstroTensorBase
 
-try:
-    import scipy.spatial.distance as distance
-
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
 
 class CrossMatchTensor(AstroTensorBase):
     """
@@ -198,7 +193,7 @@ class CrossMatchTensor(AstroTensorBase):
         Returns:
             Dictionary with match results
         """
-        
+
         cat_a = self.catalog_a_data
         cat_b = self.catalog_b_data
 
@@ -551,7 +546,7 @@ class CrossMatchTensor(AstroTensorBase):
         self, coords_a: torch.Tensor, coords_b: torch.Tensor, tolerance: float
     ) -> List[Dict[str, Any]]:
         """Find nearest neighbor matches."""
-        
+
         tree = BallTree(coords_b.cpu().numpy(), metric="euclidean")
         distances, indices = tree.query(coords_a.cpu().numpy(), k=1)
 

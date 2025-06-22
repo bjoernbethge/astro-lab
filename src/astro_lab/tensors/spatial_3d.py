@@ -19,20 +19,14 @@ from .base import AstroTensorBase
 logger = logging.getLogger(__name__)
 
 # Check for optional dependencies
-try:
-    import astropy.units as u
-    from astropy.coordinates import ICRS, Galactic, SkyCoord
-    from astropy.time import Time
-
-    ASTROPY_AVAILABLE = True
-except ImportError:
-    ASTROPY_AVAILABLE = False
-
+import astropy.units as u
+import torch_geometric
+from astropy.coordinates import ICRS, Galactic, SkyCoord
+from astropy.time import Time
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.neighbors import BallTree
-
-import torch_geometric
 from torch_geometric.data import Data
+
 
 class Spatial3DTensor(AstroTensorBase):
     """
@@ -103,7 +97,7 @@ class Spatial3DTensor(AstroTensorBase):
         self._validate()  # Call validation after initialization
 
         # Build spatial index if requested
-        if spatial_index and SKLEARN_AVAILABLE:
+        if spatial_index:
             self._build_spatial_index()
 
     def _validate(self) -> None:
@@ -185,7 +179,7 @@ class Spatial3DTensor(AstroTensorBase):
         cls, skycoord: Any, unit: str = "Mpc", **kwargs
     ) -> "Spatial3DTensor":
         """Create from astropy SkyCoord object."""
-        
+
         try:
             # Simple extraction without complex unit handling
             ra, dec, distance = (
@@ -258,7 +252,7 @@ class Spatial3DTensor(AstroTensorBase):
 
     def to_astropy(self) -> Any:
         """Convert to astropy SkyCoord object."""
-        
+
         ra, dec, distance = self.to_spherical()
 
         # Simple conversion without complex units
@@ -274,8 +268,7 @@ class Spatial3DTensor(AstroTensorBase):
 
     def _build_spatial_index(self) -> None:
         """Build spatial index for fast neighbor queries."""
-        
-        
+
         pos = self._data
 
         # Create edges using sklearn
@@ -357,7 +350,6 @@ class Spatial3DTensor(AstroTensorBase):
         if target_system == self.coordinate_system:
             return self
 
-        
         # Convert via astropy
         skycoord = self.to_astropy()
 
@@ -400,7 +392,7 @@ class Spatial3DTensor(AstroTensorBase):
         Returns:
             Dictionary with cluster labels, statistics, and cosmic web features
         """
-        
+
         from sklearn.cluster import AgglomerativeClustering
 
         # Get 3D coordinates in parsecs - Fix CUDA tensor conversion
@@ -482,7 +474,7 @@ class Spatial3DTensor(AstroTensorBase):
         Returns:
             Local density for each star (stars per cubic parsec)
         """
-        
+
         from sklearn.neighbors import NearestNeighbors
 
         # Get coordinates in parsecs - Fix CUDA tensor conversion

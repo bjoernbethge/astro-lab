@@ -9,23 +9,18 @@ galaxy clusters, stellar associations, and large-scale structure.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import scipy.spatial.distance as distance
 import torch
 from scipy import stats
+from scipy.sparse import csr_matrix
 from scipy.spatial.distance import pdist, squareform
 from sklearn.cluster import DBSCAN, KMeans
 
 # Optional dependencies
 from sklearn.neighbors import BallTree, NearestNeighbors
-from scipy.sparse import csr_matrix
 
 from .base import AstroTensorBase
 
-try:
-    import scipy.spatial.distance as distance
-
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
 
 class ClusteringTensor(AstroTensorBase):
     """
@@ -143,7 +138,7 @@ class ClusteringTensor(AstroTensorBase):
         Returns:
             Cluster labels (-1 for noise)
         """
-        
+
         # Auto-estimate eps if not provided
         if eps is None:
             eps = self._estimate_eps(min_samples)
@@ -244,7 +239,7 @@ class ClusteringTensor(AstroTensorBase):
         Returns:
             Group labels (-1 for isolated objects)
         """
-        
+
         positions = self.positions.cpu().numpy()
 
         # Build neighbor graph
@@ -319,7 +314,7 @@ class ClusteringTensor(AstroTensorBase):
         Returns:
             Cluster labels
         """
-        
+
         # Use both positions and features if available
         if self.features is not None:
             data = self._data.cpu().numpy()
@@ -467,9 +462,6 @@ class ClusteringTensor(AstroTensorBase):
     # Helper methods
     def _estimate_eps(self, min_samples: int) -> float:
         """Estimate optimal eps parameter for DBSCAN."""
-        if not SKLEARN_AVAILABLE:
-            return 1.0
-
         positions = self.positions.cpu().numpy()
 
         # Use k-distance graph method

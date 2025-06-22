@@ -13,19 +13,15 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+
+# Optional dependencies with fallbacks
+import scipy.integrate
 import torch
 
 from .base import AstroTensorBase
 
-# Optional dependencies with fallbacks
-try:
-    import scipy.integrate
-
-    SCIPY_AVAILABLE = True
-except ImportError:
-    SCIPY_AVAILABLE = False
-
 logger = logging.getLogger(__name__)
+
 
 class SimulationTensor(AstroTensorBase):
     """
@@ -407,6 +403,7 @@ class SimulationTensor(AstroTensorBase):
             f"box={self.box_size:.1f})"
         )
 
+
 class CosmologyCalculator:
     """
     Lightweight cosmology calculator integrated with SimulationTensor.
@@ -549,6 +546,7 @@ class CosmologyCalculator:
         # Simple approximation: t ≈ 2/(3*H0) in flat universe
         H0_gyr = self.H0 / 97.8  # Convert to 1/Gyr
         return 2.0 / (3.0 * H0_gyr * np.sqrt(self.Omega_m) * (1 + z) ** (3 / 2))
+
 
 __all__ = [
     "SimulationTensor",
