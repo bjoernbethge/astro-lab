@@ -39,11 +39,18 @@ python examples/modern_data_analysis.py
 - Process with AstroLab pipeline
 - Cross-match with existing surveys
 
+### `nsa_processing_example.py`
+**NSA galaxy survey processing**:
+- Load and process NSA galaxy data
+- Demonstrate survey-specific features
+- Show data analysis capabilities
+
 ### `blender_widget_example.py`
 **Advanced 3D rendering** with Blender integration:
 - Export visualizations to Blender
 - Create high-quality renders
 - Advanced material and lighting setup
+- Uses TensorBridge for data conversion
 
 ## 🌌 Available Surveys
 
@@ -150,15 +157,8 @@ examples/
 ├── quick_start.py              # Beginner-friendly introduction
 ├── modern_data_analysis.py     # Complete feature demonstration
 ├── astroquery_example.py       # External data integration
-├── blender_widget_example.py   # Advanced 3D rendering
-├── data_loading/               # Data processing examples
-│   └── data_processing_example.py
-├── training/                   # Model training examples
-│   └── hyperparameter_optimization.py  # Hyperparameter optimization with AstroTrainer
-├── visualization/              # Visualization examples
-│   ├── cosmograph_polars_example.py
-│   └── polars_data_example.py
-└── advanced/                   # Advanced usage examples
+├── nsa_processing_example.py   # NSA survey processing
+└── blender_widget_example.py   # Advanced 3D rendering with Blender
 ```
 
 ## 🚀 Quick CLI Reference
@@ -172,4 +172,4 @@ astro-lab process --surveys gaia --max-samples 1000
 # Run examples
 python examples/quick_start.py
 python examples/modern_data_analysis.py
-```
+``` 
