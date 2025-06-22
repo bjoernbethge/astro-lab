@@ -9,11 +9,12 @@ import pytest
 import torch
 import torch.nn as nn
 from torch_geometric.data import Batch, Data
+from torch.utils.data import DataLoader, TensorDataset
 
 from astro_lab.models.astro import AstroSurveyGNN
 from astro_lab.models.factory import ModelFactory
 from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
-from astro_lab.training import AstroLightningModule
+from astro_lab.training import AstroLightningModule, AstroTrainer
 
 
 class TestAstroLightningModule:
@@ -336,3 +337,85 @@ class TestTrainingConfigurations:
             except (ImportError, AttributeError):
                 # Task might not be fully implemented
                 pass
+
+
+class TestHyperparameterOptimization:
+    """Test hyperparameter optimization functionality in AstroTrainer."""
+
+    @pytest.fixture
+    def simple_dataloader(self):
+        """Create simple dataloaders for testing."""
+        # Create simple graph data
+        x = torch.randn(100, 10)
+        edge_index = torch.randint(0, 100, (2, 200))
+        y = torch.randint(0, 4, (100,))
+        
+        # Create dataset
+        dataset = [(x, edge_index, y) for _ in range(10)]
+        return DataLoader(dataset, batch_size=2)
+
+    def test_optimize_hyperparameters_basic(self, simple_dataloader):
+        """Test basic hyperparameter optimization."""
+        # Create model and lightning module
+        model = AstroSurveyGNN(hidden_dim=32, output_dim=4)
+        lightning_module = AstroLightningModule(
+            model=model,
+            task_type="classification",
+            learning_rate=1e-3
+        )
+        
+        # Create trainer
+        trainer = AstroTrainer(
+            lightning_module=lightning_module,
+            max_epochs=2,  # Very short for testing
+            enable_progress_bar=False,
+        )
+        
+        # Run optimization with minimal trials
+        results = trainer.optimize_hyperparameters(
+            train_dataloader=simple_dataloader,
+            val_dataloader=simple_dataloader,
+            n_trials=2,  # Just 2 trials for testing
+            timeout=60,  # 1 minute timeout
+        )
+        
+        # Check results
+        assert isinstance(results, dict)
+        assert "best_params" in results
+        assert "best_value" in results
+        assert "n_trials" in results
+        assert results["n_trials"] >= 1
+
+    def test_optimize_hyperparameters_custom_search_space(self, simple_dataloader):
+        """Test optimization with custom search space."""
+        model = AstroSurveyGNN(hidden_dim=64, output_dim=4)
+        lightning_module = AstroLightningModule(
+            model=model,
+            task_type="classification"
+        )
+        
+        trainer = AstroTrainer(
+            lightning_module=lightning_module,
+            max_epochs=1,
+            enable_progress_bar=False,
+        )
+        
+        # Define custom search space
+        search_space = {
+            "learning_rate": {"type": "float", "low": 1e-4, "high": 1e-2, "log": True},
+            "hidden_dim": {"type": "int", "low": 32, "high": 128},
+            "dropout": {"type": "float", "low": 0.1, "high": 0.3},
+        }
+        
+        # Run optimization
+        results = trainer.optimize_hyperparameters(
+            train_dataloader=simple_dataloader,
+            val_dataloader=simple_dataloader,
+            n_trials=2,
+            search_space=search_space,
+        )
+        
+        # Check that custom parameters were optimized
+        assert "learning_rate" in results["best_params"]
+        assert "hidden_dim" in results["best_params"]
+        assert "dropout" in results["best_params"]

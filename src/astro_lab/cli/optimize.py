@@ -173,11 +173,13 @@ def train_from_config(config_path: str) -> None:
             task = model_config.get("task", "stellar_classification")
             model_params = model_config.get("params", {})
 
-            # Ensure output_dim is set
-            if 'output_dim' not in model_params or model_params['output_dim'] is None:
-                model_params['output_dim'] = num_classes or 8  # Fallback
-                logger.info(f"🔄 Set output_dim to {model_params['output_dim']}")
+            # Use the detected num_classes if available
+            if num_classes is not None and ('output_dim' not in model_params or model_params['output_dim'] is None):
+                model_params['output_dim'] = num_classes
+                logger.info(f"🔄 Set output_dim to {model_params['output_dim']} from detected classes")
 
+
+            
             model = ModelFactory.create_survey_model(
                 survey=survey, 
                 task=task, 
@@ -309,14 +311,19 @@ def optimize_from_config(
         model_config = loader.get_model_config()
         survey = model_config.get("survey", "gaia")
         task = model_config.get("task", "stellar_classification")
-        model = ModelFactory.create_survey_model(survey=survey, task=task, **model_config.get("params", {}))
+        model_params = model_config.get("params", {})
+        
+        # Use params from config - they should already have the correct output_dim
+        logger.info(f"📋 Model params from config: {model_params}")
+        
+        model = ModelFactory.create_survey_model(survey=survey, task=task, **model_params)
         
         training_config = loader.get_training_config()
         lightning_module = AstroLightningModule(
             model=model,
             task_type="classification",
             learning_rate=training_config.get("learning_rate", 1e-3),
-            num_classes=model_config.get("params", {}).get("output_dim", 8),
+            num_classes=model_params.get("output_dim", 8),
         )
         
         trainer = AstroTrainer(
@@ -560,14 +567,19 @@ def run_optimization(loader: ConfigLoader, config: Dict[str, Any], n_trials: int
         model_config = loader.get_model_config()
         survey = model_config.get("survey", "gaia")
         task = model_config.get("task", "stellar_classification")
-        model = ModelFactory.create_survey_model(survey=survey, task=task, **model_config.get("params", {}))
+        model_params = model_config.get("params", {})
+        
+        # Use params from config - they should already have the correct output_dim
+        logger.info(f"📋 Model params from config: {model_params}")
+        
+        model = ModelFactory.create_survey_model(survey=survey, task=task, **model_params)
         
         training_config = loader.get_training_config()
         lightning_module = AstroLightningModule(
             model=model,
             task_type="classification",
             learning_rate=training_config.get("learning_rate", 1e-3),
-            num_classes=model_config.get("params", {}).get("output_dim", 8),
+            num_classes=model_params.get("output_dim", 8),
         )
         
         trainer = AstroTrainer(

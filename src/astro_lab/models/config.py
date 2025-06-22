@@ -62,7 +62,7 @@ class OutputConfig(BaseModel):
     """Configuration for output heads."""
     
     task: TaskType = "node_classification"
-    output_dim: int = Field(default=1, ge=1)
+    output_dim: Optional[int] = Field(default=None, ge=1)  # None = auto-detect from data
     pooling: PoolingType = "mean"
     use_attention: bool = False
     attention_dim: Optional[int] = None

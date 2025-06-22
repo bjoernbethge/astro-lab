@@ -603,104 +603,133 @@ class AstroTrainer(Trainer):
         n_trials: int = 50,
         timeout: Optional[int] = None,
         search_space: Optional[Dict[str, Any]] = None,
-        **optuna_kwargs,
-    ) -> Any:
+        monitor: str = "val_loss",
+        **kwargs,
+    ) -> Dict[str, Any]:
         """
-        Optimize hyperparameters using Optuna.
+        Optimize hyperparameters using Optuna directly in AstroTrainer.
 
         Args:
             train_dataloader: Training data loader
             val_dataloader: Validation data loader
             n_trials: Number of optimization trials
-            timeout: Optimization timeout
-            search_space: Hyperparameter search space
-            **optuna_kwargs: Additional Optuna parameters
+            timeout: Optimization timeout in seconds
+            search_space: Custom hyperparameter search space
+            monitor: Metric to optimize
+            **kwargs: Additional arguments
 
         Returns:
-            Optimization results
+            Dictionary with best parameters and results
         """
-        # Optuna is now always available
-
-        def model_factory(trial):
-            # Get the original model configuration
-            original_config = self.training_config.model
-
-            # Create new config with trial parameters
+        import optuna
+        from optuna.integration.pytorch_lightning import PyTorchLightningPruningCallback
+        
+        # Create Optuna study
+        study = optuna.create_study(
+            direction="minimize" if "loss" in monitor else "maximize",
+            pruner=optuna.pruners.MedianPruner(n_startup_trials=5)
+        )
+        
+        def objective(trial):
+            # Suggest hyperparameters
             if search_space:
-                # Use provided search space
-                trial_params = {}
-                for param_name, param_config in search_space.items():
-                    if param_config["type"] == "float":
-                        trial_params[param_name] = trial.suggest_float(
-                            param_name, param_config["low"], param_config["high"]
-                        )
-                    elif param_config["type"] == "int":
-                        trial_params[param_name] = trial.suggest_int(
-                            param_name, param_config["low"], param_config["high"]
-                        )
-                    elif param_config["type"] == "categorical":
-                        trial_params[param_name] = trial.suggest_categorical(
-                            param_name, param_config["choices"]
-                        )
+                # Use custom search space
+                params = {}
+                for name, config in search_space.items():
+                    if config["type"] == "float":
+                        params[name] = trial.suggest_float(name, config["low"], config["high"], log=config.get("log", False))
+                    elif config["type"] == "int":
+                        params[name] = trial.suggest_int(name, config["low"], config["high"])
+                    elif config["type"] == "categorical":
+                        params[name] = trial.suggest_categorical(name, config["choices"])
             else:
-                # Use default search space
-                trial_params = {
-                    "learning_rate": trial.suggest_float(
-                        "learning_rate", 1e-5, 1e-2, log=True
-                    ),
+                # Default search space
+                params = {
+                    "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
                     "hidden_dim": trial.suggest_int("hidden_dim", 64, 512),
                     "num_layers": trial.suggest_int("num_layers", 2, 6),
                     "dropout": trial.suggest_float("dropout", 0.1, 0.5),
+                    "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
                 }
-
-            # Create new model config with trial parameters
-            new_config = ModelConfig(
-                name=original_config.name,
-                encoder=original_config.encoder,
-                graph=GraphConfig(
-                    conv_type=original_config.graph.conv_type,
-                    hidden_dim=trial_params.get(
-                        "hidden_dim", original_config.graph.hidden_dim
-                    ),
-                    num_layers=trial_params.get(
-                        "num_layers", original_config.graph.num_layers
-                    ),
-                    dropout=trial_params.get("dropout", original_config.graph.dropout),
-                ),
-                output=original_config.output,
+            
+            # Create model with trial parameters
+            model_config = self.astro_module.model_config
+            if model_config:
+                # Update existing config
+                model_config.graph.hidden_dim = params.get("hidden_dim", model_config.graph.hidden_dim)
+                model_config.graph.num_layers = params.get("num_layers", model_config.graph.num_layers)
+                model_config.graph.dropout = params.get("dropout", model_config.graph.dropout)
+                
+                # Create new model
+                model = self.astro_module._create_model_from_config(model_config)
+            else:
+                # Create from scratch
+                from astro_lab.models.astro import AstroSurveyGNN
+                model = AstroSurveyGNN(
+                    input_dim=self.astro_module.model.input_dim,
+                    hidden_dim=params.get("hidden_dim", 128),
+                    output_dim=self.astro_module.model.output_dim,
+                    num_layers=params.get("num_layers", 3),
+                    dropout=params.get("dropout", 0.2),
+                    conv_type="gcn"
+                )
+            
+            # Create new Lightning module for this trial
+            trial_module = AstroLightningModule(
+                model=model,
+                task_type=self.astro_module.task_type,
+                learning_rate=params.get("learning_rate", 1e-3),
+                weight_decay=params.get("weight_decay", 1e-4),
+                num_classes=self.astro_module.num_classes,
             )
-
-            # Create new training config
-            new_training_config = FullTrainingConfig(
-                name=f"{self.training_config.name}_optuna",
-                model=new_config,
-                scheduler=self.training_config.scheduler,
-                hardware=self.training_config.hardware,
-                callbacks=self.training_config.callbacks,
-                logging=self.training_config.logging,
+            
+            # Create trial trainer with minimal callbacks
+            trial_trainer = Trainer(
+                max_epochs=20,  # Shorter for optimization
+                accelerator=self.accelerator,
+                devices=1,  # Single device for optimization
+                enable_checkpointing=False,
+                enable_progress_bar=False,
+                callbacks=[
+                    EarlyStopping(monitor=monitor, patience=3, mode="min" if "loss" in monitor else "max"),
+                    PyTorchLightningPruningCallback(trial, monitor=monitor)
+                ],
+                logger=False,  # Disable logging during optimization
             )
-
-            # Create new lightning module
-            return AstroLightningModule(
-                model_config=new_config,
-                training_config=new_training_config,
-                learning_rate=trial_params.get("learning_rate", 1e-3),
-            )
-
-        # Create Optuna trainer
-        from .optuna_trainer import OptunaTrainer
-        optuna_trainer = OptunaTrainer(
-            model_factory=model_factory,
-            train_dataloader=train_dataloader,
-            val_dataloader=val_dataloader,
-            **optuna_kwargs,
-        )
-
+            
+            # Train and evaluate
+            try:
+                trial_trainer.fit(trial_module, train_dataloader, val_dataloader)
+                
+                # Get validation metric
+                val_metric = trial_trainer.callback_metrics.get(monitor, float("inf"))
+                return float(val_metric) if hasattr(val_metric, "item") else val_metric
+                
+            except optuna.TrialPruned:
+                raise
+            except Exception as e:
+                print(f"Trial failed: {e}")
+                return float("inf") if "loss" in monitor else float("-inf")
+        
         # Run optimization
-        return optuna_trainer.optimize(
-            n_trials=n_trials,
-            timeout=timeout,
-        )
+        print(f"🔍 Starting hyperparameter optimization with {n_trials} trials...")
+        study.optimize(objective, n_trials=n_trials, timeout=timeout)
+        
+        # Get best parameters
+        best_params = study.best_params
+        best_value = study.best_value
+        
+        print(f"✅ Optimization complete!")
+        print(f"📊 Best value: {best_value:.4f}")
+        print(f"🎯 Best parameters: {best_params}")
+        
+        # Return results
+        return {
+            "best_params": best_params,
+            "best_value": best_value,
+            "n_trials": len(study.trials),
+            "study": study
+        }
 
     def load_from_checkpoint(self, checkpoint_path: str) -> AstroLightningModule:
         """Load model from checkpoint."""

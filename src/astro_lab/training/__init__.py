@@ -22,15 +22,11 @@ from .mlflow_logger import AstroMLflowLogger
 # Import training components
 from .trainer import AstroTrainer
 
-# OptunaTrainer imported on demand to avoid circular imports
-try:
-    from .optuna_trainer import OptunaTrainer
-except ImportError:
-    OptunaTrainer = None
+# OptunaTrainer removed - functionality integrated into AstroTrainer
+OptunaTrainer = None
 
 __all__ = [
     "AstroTrainer",
     "AstroLightningModule",
     "AstroMLflowLogger",
-    "OptunaTrainer",
 ]

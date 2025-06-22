@@ -7,7 +7,7 @@ model:
   params:
     input_dim: 16 # Standard Gaia features
     hidden_dim: 128 # Good balance
-    output_dim: 4 # Will be auto-detected
+    output_dim: 4 # Astronomical classification: Main_Sequence, Red_Giant, White_Dwarf, Binary_System
     num_layers: 3
     dropout: 0.2 # Reasonable dropout
     use_batch_norm: true

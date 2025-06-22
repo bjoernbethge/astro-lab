@@ -154,6 +154,7 @@ examples/
 ├── data_loading/               # Data processing examples
 │   └── data_processing_example.py
 ├── training/                   # Model training examples
+│   └── hyperparameter_optimization.py  # Hyperparameter optimization with AstroTrainer
 ├── visualization/              # Visualization examples
 │   ├── cosmograph_polars_example.py
 │   └── polars_data_example.py
