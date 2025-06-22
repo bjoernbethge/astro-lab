@@ -13,32 +13,30 @@ import os
 import sys
 import traceback
 import warnings
-import yaml
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import click
+import yaml
 
 from astro_lab.data import (
     AstroDataset,
     create_astro_datamodule,
+    create_graph_datasets_from_splits,
+    create_training_splits,
     data_config,
+    get_data_statistics,
+    load_catalog,
     load_gaia_data,
     load_nsa_data,
     load_sdss_data,
     load_tng50_data,
-)
-from astro_lab.models.factory import ModelFactory
-from astro_lab.training.trainer import AstroTrainer
-from astro_lab.utils.config.loader import ConfigLoader
-from astro_lab.data import (
-    create_graph_datasets_from_splits,
-    create_training_splits,
-    get_data_statistics,
-    load_catalog,
     save_splits_to_parquet,
 )
 from astro_lab.data.preprocessing import preprocess_catalog
+from astro_lab.models.factory import ModelFactory
+from astro_lab.training.trainer import AstroTrainer
+from astro_lab.utils.config.loader import ConfigLoader
 
 __all__ = [
     "main",
@@ -50,53 +48,45 @@ def main():
     # Welcome message
     print("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory!")
     print()
-    
+
     parser = argparse.ArgumentParser(
         description="AstroLab - Astronomical Machine Learning Laboratory",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 🚀 Available Commands:
 
-astro-lab process         Simple processing of all surveys (recommended)
-astro-lab download       Download astronomical datasets
-astro-lab preprocess     Data preprocessing and graph creation
-astro-lab train          ML-Model Training with Lightning + MLflow
-astro-lab optimize       Hyperparameter optimization with Optuna
-astro-lab config         Configuration management
+astro-lab preprocess         Easy preprocessing - process all surveys or specific files
+astro-lab download          Download astronomical datasets
+astro-lab train             ML-Model Training with Lightning + MLflow
+astro-lab optimize          Hyperparameter optimization with Optuna
+astro-lab config            Configuration management
 
 📖 Examples:
 
-# Simple processing of all surveys
-astro-lab process
+# Easy: Process all surveys with defaults
+astro-lab preprocess
 
 # Process specific surveys
-astro-lab process --surveys gaia nsa
+astro-lab preprocess --surveys gaia nsa
 
-# With additional parameters
-astro-lab process --k-neighbors 8 --max-samples 10000
+# Process specific file with survey config
+astro-lab preprocess data/gaia_catalog.parquet --config gaia
+
+# With detailed parameters
+astro-lab preprocess --surveys gaia --k-neighbors 8 --max-samples 10000 --splits
+
+# Show catalog statistics
+astro-lab preprocess data/catalog.parquet --stats-only
+
+# Process TNG50 simulation
+astro-lab preprocess data/snap_099.0.hdf5 --tng50 --particle-types PartType4
 
 # Download Gaia DR3 bright stars
 astro-lab download gaia --magnitude-limit 12.0
 
-# Preprocess catalog with survey config
-astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits --output data/processed/
-
-# Show catalog statistics
-astro-lab preprocess stats data/gaia_catalog.parquet
-
-# Process TNG50 simulation (uses full CLI)
-astro-lab preprocess tng50 data/snap_099.0.hdf5 --particle-types PartType4 --output data/tng50/
-
-# Create and edit default config
-astro-lab config create --output my_config.yaml
-# Then edit and train:
+# Training
 astro-lab train --config my_config.yaml
-
-# Quick training without config
 astro-lab train --dataset gaia --model gaia_classifier --epochs 50
-
-# Survey-specific configs
-astro-lab config surveys
 
 💡 Use 'astro-lab <command> --help' for detailed options!
         """,
@@ -107,41 +97,85 @@ astro-lab config surveys
     # Add subcommands
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # 🌟 NEW: Simple process command
-    process_parser = subparsers.add_parser(
-        "process", help="Simple processing of all surveys"
+    # 🌟 UNIFIED: Preprocess command (easy to use, detailed when needed)
+    preprocess_parser = subparsers.add_parser(
+        "preprocess",
+        help="Data preprocessing and graph creation (easy to use, detailed when needed)",
     )
-    process_parser.add_argument(
-        "--surveys", 
-        nargs="+", 
+
+    # Optional input file (if not provided, processes all surveys)
+    preprocess_parser.add_argument(
+        "input",
+        nargs="?",
+        help="Input file to process (optional - if not provided, processes all surveys)",
+    )
+
+    # Survey selection (for batch processing or single file)
+    preprocess_parser.add_argument(
+        "--surveys",
+        nargs="+",
         choices=["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"],
-        help="Process specific surveys (default: all)"
+        help="Process specific surveys (default: all available surveys)",
     )
-    process_parser.add_argument(
-        "--k-neighbors", 
-        type=int, 
-        default=8,
-        help="Number of K-neighbors for graph creation (default: 8)"
+
+    # Survey configuration for single files
+    preprocess_parser.add_argument(
+        "--config",
+        "-c",
+        help="Survey configuration for single file processing (gaia, sdss, nsa, etc.)",
     )
-    process_parser.add_argument(
-        "--max-samples", 
-        type=int,
-        help="Maximum number of samples per survey (default: all)"
+
+    # Output options
+    preprocess_parser.add_argument(
+        "--output", "-o", help="Output directory or file path"
     )
-    process_parser.add_argument(
-        "--output-dir", 
+    preprocess_parser.add_argument(
+        "--output-dir",
         default="data/processed",
-        help="Output directory (default: data/processed)"
+        help="Output directory for batch processing (default: data/processed)",
     )
-    process_parser.add_argument(
-        "--force", 
-        action="store_true",
-        help="Overwrite existing data"
+
+    # Processing parameters
+    preprocess_parser.add_argument(
+        "--k-neighbors",
+        "-k",
+        type=int,
+        default=8,
+        help="Number of K-neighbors for graph creation (default: 8)",
     )
-    process_parser.add_argument(
-        "--verbose", 
-        action="store_true",
-        help="Detailed output"
+    preprocess_parser.add_argument(
+        "--distance-threshold",
+        "-d",
+        type=float,
+        default=50.0,
+        help="Distance threshold for edges (default: 50.0)",
+    )
+    preprocess_parser.add_argument(
+        "--max-samples", "-n", type=int, help="Maximum number of samples (default: all)"
+    )
+
+    # Special modes
+    preprocess_parser.add_argument(
+        "--splits", action="store_true", help="Create train/val/test splits"
+    )
+    preprocess_parser.add_argument(
+        "--stats-only", action="store_true", help="Only show statistics, don't process"
+    )
+    preprocess_parser.add_argument(
+        "--tng50", action="store_true", help="Process as TNG50 simulation data"
+    )
+    preprocess_parser.add_argument(
+        "--particle-types",
+        default="PartType4",
+        help="Particle types for TNG50 processing (default: PartType4)",
+    )
+
+    # Control options
+    preprocess_parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing data"
+    )
+    preprocess_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Detailed output"
     )
 
     # Download subcommand
@@ -162,70 +196,9 @@ astro-lab config surveys
 
     download_subparsers.add_parser("list", help="List available datasets")
 
-    # Preprocess subcommand
-    preprocess_parser = subparsers.add_parser(
-        "preprocess", help="Data preprocessing and graph creation"
-    )
-    preprocess_subparsers = preprocess_parser.add_subparsers(
-        dest="preprocess_action", help="Preprocessing actions"
-    )
-
-    # Quick catalog processing
-    catalog_parser = preprocess_subparsers.add_parser(
-        "catalog", help="Process astronomical catalog"
-    )
-    catalog_parser.add_argument("input", help="Input catalog file")
-    catalog_parser.add_argument("--output", "-o", help="Output directory")
-    catalog_parser.add_argument(
-        "--config", "-c", help="Survey configuration (gaia, sdss, etc.)"
-    )
-    catalog_parser.add_argument(
-        "--splits", action="store_true", help="Create train/val/test splits"
-    )
-
-    # TNG50 processing
-    tng50_parser = preprocess_subparsers.add_parser(
-        "tng50", help="Process TNG50 simulation"
-    )
-    tng50_parser.add_argument("input", help="TNG50 snapshot file")
-    tng50_parser.add_argument("--output", "-o", help="Output directory")
-    tng50_parser.add_argument(
-        "--particle-types", default="PartType4", help="Particle types to process"
-    )
-
-    # Stats
-    stats_parser = preprocess_subparsers.add_parser(
-        "stats", help="Show catalog statistics"
-    )
-    stats_parser.add_argument("input", help="Input catalog file")
-
-    # Browse raw data
-    browse_parser = preprocess_subparsers.add_parser(
-        "browse", help="Browse raw data directory"
-    )
-    browse_parser.add_argument(
-        "--path", default="data/raw", help="Path to browse (default: data/raw)"
-    )
-    browse_parser.add_argument(
-        "--survey", help="Browse specific survey (gaia, sdss, etc.)"
-    )
-    browse_parser.add_argument(
-        "--details", action="store_true", help="Show detailed file information"
-    )
-
     # Train subcommand
     train_parser = subparsers.add_parser("train", help="Train ML models")
     train_parser.add_argument("--config", "-c", help="Configuration file path")
-
-    # Optimize subcommand (dedicated)
-    optimize_parser = subparsers.add_parser(
-        "optimize", help="Run hyperparameter optimization"
-    )
-    optimize_parser.add_argument("config", help="Configuration file path")
-    optimize_parser.add_argument(
-        "--trials", type=int, default=10, help="Number of optimization trials"
-    )
-    optimize_parser.add_argument("--experiment-name", help="Override experiment name")
     train_parser.add_argument(
         "--dataset", choices=["gaia", "sdss", "nsa"], help="Dataset to use"
     )
@@ -249,6 +222,16 @@ astro-lab config surveys
         "--experiment-name", default="quick_train", help="Experiment name"
     )
 
+    # Optimize subcommand
+    optimize_parser = subparsers.add_parser(
+        "optimize", help="Run hyperparameter optimization"
+    )
+    optimize_parser.add_argument("config", help="Configuration file path")
+    optimize_parser.add_argument(
+        "--trials", type=int, default=10, help="Number of optimization trials"
+    )
+    optimize_parser.add_argument("--experiment-name", help="Override experiment name")
+
     # Config subcommand
     config_parser = subparsers.add_parser("config", help="Configuration management")
     config_subparsers = config_parser.add_subparsers(
@@ -267,9 +250,13 @@ astro-lab config surveys
     show_parser = config_subparsers.add_parser("show", help="Show survey configuration")
     show_parser.add_argument("survey", help="Survey name (e.g., gaia, sdss)")
 
-    # 🌟 NEW: Model config subcommand
-    model_parser = config_subparsers.add_parser("model", help="Model configuration management")
-    model_parser.add_argument("action", choices=["list", "show", "create"], help="Model config action")
+    # Model config subcommand
+    model_parser = config_subparsers.add_parser(
+        "model", help="Model configuration management"
+    )
+    model_parser.add_argument(
+        "action", choices=["list", "show", "create"], help="Model config action"
+    )
     model_parser.add_argument("--name", help="Model config name")
     model_parser.add_argument("--output", "-o", help="Output file for create action")
 
@@ -278,112 +265,325 @@ astro-lab config surveys
     # If no command provided, show help
     if not args.command:
         parser.print_help()
-        sys.exit(0)
+        return
 
-    # Route to appropriate command handler
-    if args.command == "process":
-        handle_process(args)
-    elif args.command == "download":
-        handle_download(args)
-    elif args.command == "preprocess":
-        handle_preprocess(args)
-    elif args.command == "train":
-        handle_train(args)
-    elif args.command == "optimize":
-        handle_optimize(args)
-    elif args.command == "config":
-        handle_config(args)
-
-
-def handle_process(args):
-    """Handle simple process command for all surveys."""
-    print("🚀 AstroLab - Simple Survey Processing")
-    print("=" * 50)
-    
+    # Route to appropriate handler
     try:
-        from pathlib import Path
+        if args.command == "preprocess":
+            handle_preprocess(args)
+        elif args.command == "download":
+            handle_download(args)
+        elif args.command == "train":
+            handle_train(args)
+        elif args.command == "optimize":
+            handle_optimize(args)
+        elif args.command == "config":
+            handle_config(args)
+        else:
+            print(f"❌ Unknown command: {args.command}")
+            parser.print_help()
+    except KeyboardInterrupt:
+        print("\n⏹️  Operation cancelled by user")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        if "--verbose" in sys.argv or "-v" in sys.argv:
+            traceback.print_exc()
+        sys.exit(1)
+
+
+def handle_preprocess(args):
+    """Handle unified preprocess command - easy to use, detailed when needed."""
+    print("🚀 AstroLab - Data Preprocessing")
+    print("=" * 50)
+
+    try:
         import subprocess
         import sys
-        
+        from pathlib import Path
+
+        # Determine processing mode
+        if args.stats_only and args.input:
+            # Stats-only mode for single file
+            _show_catalog_stats(args.input)
+            return
+
+        if args.tng50 and args.input:
+            # TNG50 processing mode
+            _process_tng50(args)
+            return
+
+        if args.input:
+            # Single file processing mode
+            _process_single_file(args)
+            return
+
+        # Batch processing mode (no input file provided)
+        _process_all_surveys(args)
+
+    except Exception as e:
+        print(f"❌ Error during preprocessing: {e}")
+        if args.verbose:
+            traceback.print_exc()
+        sys.exit(1)
+
+
+def _show_catalog_stats(input_path: str):
+    """Show statistics for a catalog file."""
+    print(f"📊 Analyzing: {input_path}")
+    try:
+        from astro_lab.data import get_data_statistics, load_catalog
+
+        df = load_catalog(input_path)
+        stats = get_data_statistics(df)
+
+        print("📈 Dataset Statistics:")
+        print(f"  • Rows: {stats['n_rows']:,}")
+        print(f"  • Columns: {stats['n_cols']}")
+        print(f"  • Memory: {stats.get('memory_mb', 'N/A')} MB")
+
+        if "columns" in stats:
+            print("  • Column Types:")
+            for col_type, count in stats["columns"].items():
+                print(f"    - {col_type}: {count}")
+
+    except Exception as e:
+        print(f"❌ Error analyzing catalog: {e}")
+        raise
+
+
+def _process_tng50(args):
+    """Process TNG50 simulation data."""
+    print(f"🌌 Processing TNG50 simulation: {args.input}")
+
+    try:
+        from astro_lab.data.preprocessing import preprocess_catalog
+
+        output_dir = args.output or "data/processed/tng50/"
+
+        df = preprocess_catalog(
+            input_path=args.input,
+            survey_type="tng50",
+            max_samples=args.max_samples,
+            output_dir=output_dir,
+            particle_types=args.particle_types,
+        )
+
+        print(f"✅ TNG50 processing completed: {len(df)} particles processed")
+        print(f"📁 Output: {output_dir}")
+
+    except Exception as e:
+        print(f"❌ TNG50 processing failed: {e}")
+        raise
+
+
+def _process_single_file(args):
+    """Process a single catalog file."""
+    print(f"📂 Processing single file: {args.input}")
+
+    try:
+        from astro_lab.data import (
+            create_graph_datasets_from_splits,
+            create_training_splits,
+            load_catalog,
+            save_splits_to_parquet,
+        )
+        from astro_lab.data.preprocessing import (
+            create_graph_from_dataframe,
+            preprocess_catalog,
+        )
+        from astro_lab.utils.config.loader import ConfigLoader
+
+        # Load catalog
+        df = load_catalog(args.input)
+        print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
+
+        # Determine survey type
+        survey_type = args.config or "generic"
+
+        # Load survey config if specified
+        config = {}
+        if args.config:
+            try:
+                loader = ConfigLoader()
+                survey_config = loader.get_survey_config(args.config)
+                config = survey_config.get("processing", {})
+                print(f"✅ Using {args.config} survey configuration")
+            except Exception as e:
+                print(f"⚠️  Could not load survey config: {e}")
+
+        # Preprocess
+        df_clean = preprocess_catalog(
+            args.input, survey_type=survey_type, max_samples=args.max_samples
+        )
+        print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
+
+        # Handle output
+        output_path = (
+            Path(args.output) if args.output else Path(f"data/processed/{survey_type}/")
+        )
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Create splits if requested
+        if args.splits:
+            print("🔄 Creating training splits...")
+            train, val, test = create_training_splits(df_clean)
+
+            dataset_name = Path(args.input).stem
+            save_splits_to_parquet(train, val, test, output_path, dataset_name)
+            create_graph_datasets_from_splits(
+                train,
+                val,
+                test,
+                output_path,
+                dataset_name,
+                k_neighbors=args.k_neighbors,
+            )
+            print(f"💾 Splits and graphs saved to: {output_path}")
+        else:
+            # Save processed catalog and create graph
+            output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
+            df_clean.write_parquet(output_file)
+            print(f"💾 Processed catalog saved to: {output_file}")
+
+            # Create graph
+            graph_file = output_path / f"{Path(args.input).stem}_k{args.k_neighbors}.pt"
+            graph_data = create_graph_from_dataframe(
+                df=df_clean,
+                survey_type=survey_type,
+                k_neighbors=args.k_neighbors,
+                distance_threshold=args.distance_threshold,
+                output_path=graph_file,
+            )
+
+            if graph_data:
+                print(
+                    f"📊 Graph created: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
+                )
+
+    except Exception as e:
+        print(f"❌ Single file processing failed: {e}")
+        raise
+
+
+def _process_all_surveys(args):
+    """Process all surveys (batch mode)."""
+    print("🌟 Batch processing mode - processing all surveys")
+
+    try:
+        import subprocess
+        import sys
+        from pathlib import Path
+
         # Available surveys
         all_surveys = ["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"]
-        
+
         # Determine surveys to process
         surveys_to_process = args.surveys if args.surveys else all_surveys
-        
+
         print(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
-        print(f"🔧 Parameters: k={args.k_neighbors}, max_samples={args.max_samples or 'all'}")
+        print(
+            f"🔧 Parameters: k={args.k_neighbors}, max_samples={args.max_samples or 'all'}"
+        )
         print(f"📁 Output: {args.output_dir}")
         print()
-        
+
         # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Process each survey
+        successful = 0
         for survey in surveys_to_process:
             print(f"🔄 Processing {survey.upper()}...")
-            
-            # Build CLI command
-            cmd = [
-                sys.executable, "-m", "astro_lab.cli.preprocessing",
-                survey,
-                "--output", str(output_dir / survey),
-                "--k-neighbors", str(args.k_neighbors)
-            ]
-            
-            # Add additional parameters
-            if args.max_samples:
-                cmd.extend(["--max-samples", str(args.max_samples)])
-            
-            if args.force:
-                cmd.append("--force")
-            
-            if args.verbose:
-                cmd.append("--verbose")
-            
+
             try:
-                # Execute command
-                result = subprocess.run(
-                    cmd, 
-                    capture_output=not args.verbose,
-                    text=True,
-                    check=True
+                # Use the preprocessing module directly
+                from astro_lab.data.preprocessing import (
+                    create_graph_from_dataframe,
+                    preprocess_catalog,
                 )
-                
-                if args.verbose:
-                    print(result.stdout)
-                else:
-                    print(f"✅ {survey.upper()} processed successfully")
-                    
-            except subprocess.CalledProcessError as e:
+
+                # Find data files for this survey
+                survey_data_dir = Path(f"data/raw/{survey}")
+                if not survey_data_dir.exists():
+                    print(f"⚠️  No data directory found for {survey}: {survey_data_dir}")
+                    continue
+
+                data_files = list(survey_data_dir.glob("*.parquet")) + list(
+                    survey_data_dir.glob("*.csv")
+                )
+                if not data_files:
+                    print(f"⚠️  No data files found for {survey}")
+                    continue
+
+                survey_output_dir = output_dir / survey
+                survey_output_dir.mkdir(parents=True, exist_ok=True)
+
+                for data_file in data_files:
+                    if args.verbose:
+                        print(f"  📄 Processing {data_file.name}")
+
+                    # Preprocess
+                    df = preprocess_catalog(
+                        input_path=str(data_file),
+                        survey_type=survey,
+                        max_samples=args.max_samples,
+                    )
+
+                    # Save processed data
+                    processed_file = (
+                        survey_output_dir / f"{data_file.stem}_processed.parquet"
+                    )
+                    df.write_parquet(processed_file)
+
+                    # Create graph
+                    graph_file = (
+                        survey_output_dir / f"{data_file.stem}_k{args.k_neighbors}.pt"
+                    )
+                    graph_data = create_graph_from_dataframe(
+                        df=df,
+                        survey_type=survey,
+                        k_neighbors=args.k_neighbors,
+                        distance_threshold=args.distance_threshold,
+                        output_path=graph_file,
+                    )
+
+                    if args.verbose and graph_data:
+                        print(
+                            f"    📊 Graph: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
+                        )
+
+                print(f"✅ {survey.upper()} processed successfully")
+                successful += 1
+
+            except Exception as e:
                 print(f"❌ Error processing {survey.upper()}: {e}")
-                if e.stdout:
-                    print(f"   Stdout: {e.stdout}")
-                if e.stderr:
-                    print(f"   Stderr: {e.stderr}")
+                if args.verbose:
+                    traceback.print_exc()
                 continue
-            except FileNotFoundError:
-                print(f"❌ Preprocessing module not found for {survey}")
-                continue
-        
+
         print()
-        print("🎉 Survey processing completed!")
+        print(
+            f"🎉 Batch processing completed! ({successful}/{len(surveys_to_process)} surveys successful)"
+        )
         print(f"📁 Processed data in: {output_dir}")
-        
+
         # Show summary
         print("\n📊 Summary:")
         for survey in surveys_to_process:
-            survey_dir = output_dir / survey / "processed"
+            survey_dir = output_dir / survey
             if survey_dir.exists():
                 pt_files = list(survey_dir.glob("*.pt"))
-                print(f"   {survey.upper()}: {len(pt_files)} .pt files")
+                parquet_files = list(survey_dir.glob("*_processed.parquet"))
+                print(
+                    f"   {survey.upper()}: {len(parquet_files)} processed files, {len(pt_files)} graphs"
+                )
             else:
                 print(f"   {survey.upper()}: No processed data found")
-        
+
     except Exception as e:
-        print(f"❌ Error during processing: {e}")
-        sys.exit(1)
+        print(f"❌ Error during batch processing: {e}")
+        raise
 
 
 def handle_download(args):
@@ -416,186 +616,6 @@ def handle_download(args):
         sys.exit(1)
 
 
-def handle_preprocess(args):
-    """Handle preprocess command with config-based approach."""
-    if not args.preprocess_action:
-        print("❌ Preprocessing action required. Use --help for options.")
-        return
-
-    try:
-        from pathlib import Path
-
-        from astro_lab.data import (
-            create_graph_datasets_from_splits,
-            create_training_splits,
-            get_data_statistics,
-            load_catalog,
-            save_splits_to_parquet,
-        )
-        from astro_lab.utils.config import ConfigLoader
-
-        if args.preprocess_action == "catalog":
-            print(f"📂 Processing catalog: {args.input}")
-
-            # Load catalog
-            try:
-                df = load_catalog(args.input)
-                print(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
-            except Exception as e:
-                print(f"❌ Error loading catalog: {e}")
-                return
-
-            # Load survey config if specified
-            config = {}
-            if args.config:
-                try:
-                    loader = ConfigLoader()
-                    survey_config = loader.get_survey_config(args.config)
-                    config = survey_config.get("processing", {})
-                    print(f"✅ Using {args.config} survey configuration")
-                except Exception as e:
-                    print(f"⚠️  Could not load survey config: {e}")
-
-            # Preprocess with config
-            survey_type = args.config if args.config else "generic"
-            df_clean = preprocess_catalog(args.input, survey_type=survey_type)
-            print(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
-
-            # Create splits if requested
-            if args.splits:
-                print("🔄 Creating training splits...")
-                train, val, test = create_training_splits(df_clean)
-
-                if args.output:
-                    output_path = Path(args.output)
-                    output_path.mkdir(parents=True, exist_ok=True)
-                    dataset_name = Path(args.input).stem
-
-                    save_splits_to_parquet(train, val, test, output_path, dataset_name)
-                    create_graph_datasets_from_splits(
-                        train, val, test, output_path, dataset_name
-                    )
-                    print(f"💾 Splits and graphs saved to: {output_path}")
-
-            elif args.output:
-                # Save processed catalog
-                output_path = Path(args.output)
-                if output_path.is_dir():
-                    output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
-                else:
-                    output_file = output_path
-
-                df_clean.write_parquet(output_file)
-                print(f"💾 Processed catalog saved to: {output_file}")
-
-        elif args.preprocess_action == "stats":
-            print(f"📊 Analyzing: {args.input}")
-            try:
-                df = load_catalog(args.input)
-                stats = get_data_statistics(df)
-                print("📈 Dataset Statistics:")
-                print(f"  • Rows: {stats['n_rows']:,}")
-                print(f"  • Columns: {stats['n_columns']}")
-                print(f"  • Memory: {stats['memory_usage_mb']:.1f} MB")
-            except Exception as e:
-                print(f"❌ Error: {e}")
-
-        elif args.preprocess_action == "browse":
-            base_path = Path(args.path)
-            if not base_path.exists():
-                print(f"❌ Path not found: {base_path}")
-                return
-
-            if args.survey:
-                # Browse specific survey
-                survey_path = base_path / args.survey
-                if not survey_path.exists():
-                    print(f"❌ Survey path not found: {survey_path}")
-                    return
-                browse_path = survey_path
-            else:
-                browse_path = base_path
-
-            print(f"📂 Browsing: {browse_path}")
-            print("=" * 50)
-
-            try:
-                items = list(browse_path.iterdir())
-                dirs = [item for item in items if item.is_dir()]
-                files = [item for item in items if item.is_file()]
-
-                # Show directories first
-                if dirs:
-                    print("📁 Directories:")
-                    for dir_item in sorted(dirs):
-                        try:
-                            subdir_count = len(
-                                [x for x in dir_item.iterdir() if x.is_dir()]
-                            )
-                            file_count = len([x for x in dir_item.iterdir() if x.is_file()])
-                            print(
-                                f"   📁 {dir_item.name}/ ({file_count} files, {subdir_count} subdirs)"
-                            )
-                        except PermissionError:
-                            print(f"   📁 {dir_item.name}/ (access denied)")
-
-                # Show files
-                if files:
-                    print("\n📄 Files:")
-                    total_size = 0
-                    file_info_list = []
-
-                    # Collect all file information first
-                    for file_item in sorted(files):
-                        try:
-                            size_mb = file_item.stat().st_size / (1024 * 1024)
-                            total_size += size_mb
-
-                            if args.details:
-                                modified = file_item.stat().st_mtime
-                                mod_time = datetime.datetime.fromtimestamp(
-                                    modified
-                                ).strftime("%Y-%m-%d %H:%M")
-                                file_info_list.append(
-                                    f"   📄 {file_item.name} ({size_mb:.1f} MB, {mod_time})"
-                                )
-                            else:
-                                file_info_list.append(
-                                    f"   📄 {file_item.name} ({size_mb:.1f} MB)"
-                                )
-                        except (OSError, PermissionError) as e:
-                            file_info_list.append(
-                                f"   📄 {file_item.name} (error reading file: {e})"
-                            )
-
-                    # Print all file information at once
-                    for file_info in file_info_list:
-                        print(file_info)
-
-                    print(f"\n📊 Total: {len(files)} files, {total_size:.1f} MB")
-
-                if not dirs and not files:
-                    print("   (empty directory)")
-
-            except Exception as e:
-                print(f"❌ Error browsing directory: {e}")
-
-        elif args.preprocess_action == "tng50":
-            print(f"🌌 Processing TNG50: {args.input}")
-            print("💡 TNG50 processing requires the full preprocessing CLI:")
-            print(f"   python -m astro_lab.cli.preprocessing tng50 {args.input}")
-            if args.output:
-                print(f"   --output {args.output}")
-            if args.particle_types != "PartType4":
-                print(f"   --particle-types {args.particle_types}")
-
-        else:
-            print(f"❌ Unknown preprocessing action: {args.preprocess_action}")
-    except Exception as e:
-        print(f"❌ Error in preprocess command: {e}")
-        sys.exit(1)
-
-
 def handle_train(args):
     """Handle train command with new unified architecture."""
     from .train import create_default_config, optimize_from_config, train_from_config
@@ -621,8 +641,13 @@ def handle_train(args):
             return
 
         # Create temporary config for quick training using new architecture
-        from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
-        
+        from astro_lab.models.config import (
+            EncoderConfig,
+            GraphConfig,
+            ModelConfig,
+            OutputConfig,
+        )
+
         # Create model config using new structure
         model_config = ModelConfig(
             name=f"{args.model}_quick",
@@ -780,56 +805,60 @@ def handle_config(args):
 
 def handle_model_config(args):
     """Handle model configuration management."""
-    from astro_lab.models.config import list_predefined_configs, get_predefined_config, ModelConfig
-    
+    from astro_lab.models.config import (
+        ModelConfig,
+        get_predefined_config,
+        list_predefined_configs,
+    )
+
     if args.action == "list":
         print("🏗️ Available model configurations:")
         configs = list_predefined_configs()
         for config_name in configs:
             print(f"   • {config_name}")
         print("\n💡 Use 'astro-lab config model show <name>' to see details")
-        
+
     elif args.action == "show":
         if not args.name:
             print("❌ Model name required for show action")
             return
-            
+
         try:
             config = get_predefined_config(args.name)
             print(f"🏗️ Model configuration: {args.name}")
             print(f"   Name: {config.name}")
             print(f"   Description: {config.description}")
             print(f"   Version: {config.version}")
-            
-            print(f"\n📊 Encoder settings:")
+
+            print("\n📊 Encoder settings:")
             print(f"   • Photometry: {config.encoder.use_photometry}")
             print(f"   • Astrometry: {config.encoder.use_astrometry}")
             print(f"   • Spectroscopy: {config.encoder.use_spectroscopy}")
-            
-            print(f"\n🕸️ Graph settings:")
+
+            print("\n🕸️ Graph settings:")
             print(f"   • Conv type: {config.graph.conv_type}")
             print(f"   • Hidden dim: {config.graph.hidden_dim}")
             print(f"   • Num layers: {config.graph.num_layers}")
             print(f"   • Dropout: {config.graph.dropout}")
-            
-            print(f"\n🎯 Output settings:")
+
+            print("\n🎯 Output settings:")
             print(f"   • Task: {config.output.task}")
             print(f"   • Output dim: {config.output.output_dim}")
             print(f"   • Pooling: {config.output.pooling}")
-            
+
         except KeyError:
             print(f"❌ Model configuration '{args.name}' not found")
             print("💡 Use 'astro-lab config model list' to see available configs")
-            
+
     elif args.action == "create":
         if not args.name:
             print("❌ Model name required for create action")
             return
-            
+
         try:
             config = get_predefined_config(args.name)
             output_file = args.output or f"{args.name}_config.yaml"
-            
+
             # Convert to dict and save
             config_dict = config.dict()
             with open(output_file, "w") as f:
@@ -838,11 +867,11 @@ def handle_model_config(args):
                 except (AttributeError, ImportError):
                     # Fallback to json if yaml is not available
                     json.dump(config_dict, f, indent=2)
-                
+
             print(f"✅ Model configuration saved to: {output_file}")
-            print(f"💡 You can now use this config in your training:")
+            print("💡 You can now use this config in your training:")
             print(f"   astro-lab train --config {output_file}")
-            
+
         except KeyError:
             print(f"❌ Model configuration '{args.name}' not found")
             print("💡 Use 'astro-lab config model list' to see available configs")
@@ -850,4 +879,3 @@ def handle_model_config(args):
 
 if __name__ == "__main__":
     main()
-
