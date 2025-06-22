@@ -86,13 +86,14 @@ class TestAstroDataManager:
             assert "size_mb" in catalogs.columns
             assert "path" in catalogs.columns
 
-    @pytest.mark.skipif(
-        not Path("data/raw/gaia/gaia_dr3_bright_all_sky_mag10.0.parquet").exists(),
-        reason="Real Gaia data not available",
-    )
-    def test_load_real_gaia_data(self):
+    def test_load_real_gaia_data(self, gaia_data_path):
         """Test loading actual Gaia bright star catalog."""
-        df = load_gaia_bright_stars(magnitude_limit=10.0)
+        if gaia_data_path is None:
+            pytest.skip("Real Gaia data not available")
+
+        df = load_gaia_bright_stars(
+            magnitude_limit=12.0
+        )  # Use 12.0 since we have mag12.0 data
 
         assert isinstance(df, pl.DataFrame)
         assert len(df) > 0
@@ -180,11 +181,11 @@ class TestIntegratedDataModule:
         total = len(train) + len(val) + len(test)
         assert total == len(test_df)
 
-    @pytest.mark.skipif(
-        not Path("data/raw/gaia").exists(), reason="Gaia data not available"
-    )
-    def test_load_gaia_data_integrated(self):
+    def test_load_gaia_data_integrated(self, gaia_data_path):
         """Test load_gaia_data function with integrated approach."""
+        if gaia_data_path is None:
+            pytest.skip("Gaia data not available")
+
         try:
             dataset = load_gaia_data(max_samples=20, return_tensor=False)
             assert len(dataset) <= 20
@@ -192,11 +193,11 @@ class TestIntegratedDataModule:
         except FileNotFoundError as e:
             pytest.skip(f"Could not create Gaia dataset: {e}")
 
-    @pytest.mark.skipif(
-        not Path("data/raw/nsa").exists(), reason="NSA data not available"
-    )
-    def test_load_nsa_data_integrated(self):
+    def test_load_nsa_data_integrated(self, nsa_data_path):
         """Test load_nsa_data function with integrated approach."""
+        if nsa_data_path is None:
+            pytest.skip("NSA data not available")
+
         try:
             dataset = load_nsa_data(max_samples=20, return_tensor=False)
             assert len(dataset) <= 20
@@ -208,11 +209,11 @@ class TestIntegratedDataModule:
 class TestCosmicWebAnalysis:
     """Test cosmic web analysis functions."""
 
-    @pytest.mark.skipif(
-        not Path("data/raw/linear").exists(), reason="LINEAR data not available"
-    )
-    def test_cosmic_web_loader_linear(self):
+    def test_cosmic_web_loader_linear(self, linear_data_path):
         """Test create_cosmic_web_loader with LINEAR data (device-agnostic)."""
+        if linear_data_path is None:
+            pytest.skip("LINEAR data not available")
+
         device = get_optimal_device()
         try:
             results = create_cosmic_web_loader(
@@ -246,11 +247,11 @@ class TestCosmicWebAnalysis:
         except Exception as e:
             pytest.skip(f"Cosmic web analysis not available: {e}")
 
-    @pytest.mark.skipif(
-        not Path("data/raw/gaia").exists(), reason="Gaia data not available"
-    )
-    def test_cosmic_web_loader_gaia(self):
+    def test_cosmic_web_loader_gaia(self, gaia_data_path):
         """Test create_cosmic_web_loader with Gaia data (device-agnostic)."""
+        if gaia_data_path is None:
+            pytest.skip("Gaia data not available")
+
         device = get_optimal_device()
         try:
             results = create_cosmic_web_loader(
