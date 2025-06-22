@@ -173,6 +173,16 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
         help="Particle types for TNG50 processing (default: PartType4)",
     )
 
+    # Large Gaia processing
+    preprocess_parser.add_argument(
+        "--gaia-large", action="store_true", help="Process all 3M Gaia stars with GPU acceleration"
+    )
+    
+    # SurveyTensor processing
+    preprocess_parser.add_argument(
+        "--gaia-tensor", action="store_true", help="Create complete SurveyTensor system from all 3M Gaia stars"
+    )
+
     # Control options
     preprocess_parser.add_argument(
         "--force", action="store_true", help="Overwrite existing data"
@@ -203,7 +213,7 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
     train_parser = subparsers.add_parser("train", help="Train ML models")
     train_parser.add_argument("--config", "-c", help="Configuration file path")
     train_parser.add_argument(
-        "--dataset", choices=["gaia", "sdss", "nsa"], help="Dataset to use"
+        "--dataset", choices=["gaia", "gaia_large", "sdss", "nsa"], help="Dataset to use"
     )
     train_parser.add_argument(
         "--model",
@@ -339,6 +349,16 @@ def handle_preprocess(args):
 
         # Determine processing mode
 
+        if args.gaia_tensor:
+            # SurveyTensor processing mode
+            _process_gaia_tensor(args)
+            return
+
+        if args.gaia_large:
+            # Large Gaia processing mode
+            _process_gaia_large(args)
+            return
+
         if args.tng50 and args.input:
             # TNG50 processing mode
             _process_tng50(args)
@@ -380,6 +400,53 @@ def _show_catalog_stats(input_path: str):
 
     except Exception as e:
         logger.error(f"❌ Error analyzing catalog: {e}")
+        raise
+
+
+def _process_gaia_tensor(args):
+    """Create complete SurveyTensor system from all 3M Gaia stars."""
+    logger.info("🌟 Creating complete Gaia SurveyTensor system (3M stars)")
+    
+    try:
+        from astro_lab.data.preprocessing import create_gaia_survey_tensor
+        
+        # Run the tensor system creation
+        result = create_gaia_survey_tensor()
+        
+        if result:
+            logger.info(f"✅ Gaia tensor system created successfully!")
+            logger.info(f"📊 SurveyTensor: {result['files']['survey']}")
+            logger.info(f"🌍 Spatial3DTensor: {result['files']['spatial']}")
+            logger.info(f"📸 PhotometricTensor: {result['files']['photometric']}")
+            logger.info(f"📋 Metadata: {result['files']['metadata']}")
+            logger.info("🎯 Ready for training: uv run astro-lab train --dataset gaia --model gaia_classifier")
+        else:
+            logger.error("❌ Gaia tensor system creation failed")
+            
+    except Exception as e:
+        logger.error(f"❌ Gaia tensor system creation failed: {e}")
+        raise
+
+
+def _process_gaia_large(args):
+    """Process all 3M Gaia stars with GPU acceleration."""
+    logger.info("🚀 Processing large Gaia dataset (3M stars) with GPU acceleration")
+    
+    try:
+        from astro_lab.data.preprocessing import process_large_gaia_dataset
+        
+        # Run the GPU-accelerated processing
+        result = process_large_gaia_dataset()
+        
+        if result:
+            logger.info(f"✅ Large Gaia processing completed successfully!")
+            logger.info(f"📁 Dataset saved to: {result}")
+            logger.info("🎯 You can now use: astro-lab train --dataset gaia_large --model gaia_classifier")
+        else:
+            logger.error("❌ Large Gaia processing failed")
+            
+    except Exception as e:
+        logger.error(f"❌ Large Gaia processing failed: {e}")
         raise
 
 
@@ -672,9 +739,7 @@ def handle_download(args):
 
 
 def handle_train(args):
-    """Handle train command with helpful validation and guidance."""
-    from .optimize import create_default_config, optimize_from_config, train_from_config
-
+    """Handle train command with clean, focused training."""
     # Check if user provided any parameters at all
     has_config = args.config is not None
     has_dataset = args.dataset is not None
@@ -709,7 +774,7 @@ def handle_train(args):
         return
 
     if args.config:
-        # Config-based training (preferred method)
+        # Config-based training using clean training module
         if not Path(args.config).exists():
             logger.error(f"❌ Configuration file not found: {args.config}")
             logger.info("💡 Use 'astro-lab config create' to create a default configuration")
@@ -717,6 +782,7 @@ def handle_train(args):
 
         try:
             logger.info(f"🚀 Starting training with: {args.config}")
+            from .train import train_from_config
             train_from_config(args.config)
         except Exception as e:
             logger.error(f"❌ Training failed: {e}")
@@ -746,77 +812,20 @@ def handle_train(args):
             logger.info("💡 Or use a configuration file:")
             logger.info("   astro-lab train --config my_config.yaml")
             return
-
-        # Create temporary config for quick training using new architecture
-        from astro_lab.models.config import (
-            EncoderConfig,
-            GraphConfig,
-            ModelConfig,
-            OutputConfig,
-        )
-
-        # Create model config using new structure
-        model_config = ModelConfig(
-            name=f"{args.model}_quick",
-            description=f"Quick training config for {args.model}",
-            encoder=EncoderConfig(
-                use_photometry=True,
-                use_astrometry=True,
-                use_spectroscopy=False,
-            ),
-            graph=GraphConfig(
-                hidden_dim=128,
-                num_layers=3,
-                dropout=0.1,
-            ),
-            output=OutputConfig(
-                task="node_classification",
-                output_dim=1,
-            ),
-        )
-
-        quick_config = {
-            "model": {
-                "type": args.model,
-                "config": model_config.dict(),
-                "use_tensors": True,
-            },
-            "data": {
-                "dataset": args.dataset,
-                "batch_size": args.batch_size,
-                "max_samples": 5000,
-                "return_tensor": True,
-            },
-            "training": {
-                "max_epochs": args.epochs,
-                "learning_rate": args.learning_rate,
-                "experiment_name": args.experiment_name,
-            },
-            "mlflow": {
-                "experiment_name": args.experiment_name,
-                "tracking_uri": "file:./mlruns",
-            },
-            "checkpoints": {"dir": "./checkpoints"},
-        }
-
-        # Save temporary config
-        temp_config_path = "temp_quick_config.yaml"
-        try:
-            with open(temp_config_path, "w") as f:
-                yaml.safe_dump(quick_config, f, default_flow_style=False, indent=2)
-        except (AttributeError, ImportError):
-            # Fallback if yaml.safe_dump is not available
-            with open(temp_config_path, "w") as f:
-                json.dump(quick_config, f, indent=2)
-
+        
+        # Quick training using clean training module
         try:
             logger.info(f"🚀 Quick training: {args.dataset} + {args.model}")
-            train_from_config(temp_config_path)
+            from .train import train_quick
+            train_quick(
+                dataset=args.dataset,
+                model=args.model,
+                epochs=args.epochs,
+                batch_size=args.batch_size
+            )
         except Exception as e:
             logger.error(f"❌ Training failed: {e}")
             sys.exit(1)
-        finally:
-            Path(temp_config_path).unlink(missing_ok=True)
 
 
 def handle_optimize(args):

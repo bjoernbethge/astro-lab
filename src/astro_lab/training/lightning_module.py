@@ -80,7 +80,8 @@ class AstroLightningModule(LightningModule):
             self.projection_head = self._auto_create_projection_head()
 
         # Initialize metrics for tracking (will be set up after class detection)
-        self._setup_metrics()
+        # Don't setup metrics here - wait until we know device and num_classes
+        self.metrics_initialized = False
 
         # Performance tracking
         self._step_times = []
@@ -113,22 +114,28 @@ class AstroLightningModule(LightningModule):
         """Setup torchmetrics for performance tracking."""
         if self.task_type == "classification":
             # Use detected num_classes or fallback
-            num_classes = self.num_classes or 7
+            num_classes = self.num_classes or 4
+            
+            # Create metrics and move to device
             self.train_acc = MulticlassAccuracy(
                 num_classes=num_classes, average="macro"
-            )
-            self.val_acc = MulticlassAccuracy(num_classes=num_classes, average="macro")
-            self.test_acc = MulticlassAccuracy(num_classes=num_classes, average="macro")
+            ).to(self.device)
+            self.val_acc = MulticlassAccuracy(
+                num_classes=num_classes, average="macro"
+            ).to(self.device)
+            self.test_acc = MulticlassAccuracy(
+                num_classes=num_classes, average="macro"
+            ).to(self.device)
 
             self.train_f1 = F1Score(
                 task="multiclass", num_classes=num_classes, average="macro"
-            )
+            ).to(self.device)
             self.val_f1 = F1Score(
                 task="multiclass", num_classes=num_classes, average="macro"
-            )
+            ).to(self.device)
             self.test_f1 = F1Score(
                 task="multiclass", num_classes=num_classes, average="macro"
-            )
+            ).to(self.device)
         else:
             # For regression tasks
             self.train_acc = None
@@ -458,35 +465,33 @@ class AstroLightningModule(LightningModule):
         self.log(f"{stage}_loss", loss, prog_bar=True, sync_dist=True)
 
         # Log accuracy for classification
-        if self.task_type == "classification" and hasattr(self, f"{stage}_acc"):
-            acc_metric = getattr(self, f"{stage}_acc")
-            
-            # Ensure we have the correct number of classes
-            if outputs.dim() > 1 and outputs.size(1) != self.num_classes:
-                # Auto-detect number of classes from outputs
-                detected_classes = outputs.size(1)
-                logger.warning(f"⚠️ Output has {detected_classes} classes, but num_classes is {self.num_classes}")
-                # Update num_classes and recreate metrics
-                self.num_classes = detected_classes
+        if self.task_type == "classification":
+            # Auto-detect and setup metrics if needed
+            if not self.metrics_initialized or outputs.dim() > 1 and outputs.size(1) != self.num_classes:
+                detected_classes = outputs.size(1) if outputs.dim() > 1 else 2
+                if self.num_classes != detected_classes:
+                    logger.info(f"🔍 Auto-detected {detected_classes} classes, updating metrics")
+                    self.num_classes = detected_classes
+                
+                # Setup metrics on correct device
                 self._setup_metrics()
-                acc_metric = getattr(self, f"{stage}_acc")
+                self.metrics_initialized = True
             
-            try:
-                acc = acc_metric(outputs, targets)
-                self.log(f"{stage}_acc", acc, prog_bar=True, sync_dist=True)
+            # Use metrics if they exist
+            if hasattr(self, f"{stage}_acc"):
+                try:
+                    acc_metric = getattr(self, f"{stage}_acc")
+                    acc = acc_metric(outputs, targets)
+                    self.log(f"{stage}_acc", acc, prog_bar=True, sync_dist=True)
 
-                # Log F1 score
-                if hasattr(self, f"{stage}_f1"):
-                    f1_metric = getattr(self, f"{stage}_f1")
-                    f1 = f1_metric(outputs, targets)
-                    self.log(f"{stage}_f1", f1, sync_dist=True)
-            except Exception as e:
-                logger.error(f"❌ Error computing metrics: {e}")
-                logger.error(f"   outputs.shape: {outputs.shape}")
-                logger.error(f"   targets.shape: {targets.shape}")
-                logger.error(f"   num_classes: {self.num_classes}")
-                # Don't fail the training step, just skip metrics
-                pass
+                    # Log F1 score
+                    if hasattr(self, f"{stage}_f1"):
+                        f1_metric = getattr(self, f"{stage}_f1")
+                        f1 = f1_metric(outputs, targets)
+                        self.log(f"{stage}_f1", f1, sync_dist=True)
+                except Exception as e:
+                    logger.warning(f"⚠️ Metrics computation failed: {e}")
+                    # Continue without failing
 
     def training_step(self, batch: Union[torch.Tensor, Dict[str, torch.Tensor], Any], batch_idx: int) -> torch.Tensor:
         """Training step with proper gradient handling."""

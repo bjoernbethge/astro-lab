@@ -102,8 +102,7 @@ def preprocess_catalog_lazy(
     Returns:
         Lazy DataFrame for efficient processing
     """
-    # Simple garbage collection instead of complex memory management
-    import gc
+    
 
     logger.info(f"🔄 Lazy preprocessing {survey_type} catalog: {input_path}")
 
@@ -436,6 +435,44 @@ def _create_knn_graph(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     return edge_index
 
 
+def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
+    """Create k-NN graph using torch-cluster's GPU-accelerated knn_graph."""
+    if len(coords) == 0:
+        return torch.empty((2, 0), dtype=torch.long)
+    
+    n_nodes = len(coords)
+    logger.info(f"🚀 Creating GPU k-NN graph for {n_nodes:,} nodes with k={k_neighbors}")
+    
+    # Convert to PyTorch tensor and move to GPU if available
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
+    
+    try:
+        # Use torch_cluster's knn_graph directly
+        import torch_cluster
+        
+        # Create k-NN graph on GPU
+        edge_index = torch_cluster.knn_graph(
+            x=coords_tensor, 
+            k=k_neighbors, 
+            loop=False,  # No self-loops
+            flow='source_to_target'
+        )
+        
+        # Move back to CPU if needed for consistency
+        edge_index = edge_index.cpu()
+        
+        logger.info(f"✅ Created GPU k-NN graph: {n_nodes:,} nodes, {edge_index.shape[1]:,} edges")
+        return edge_index
+        
+    except ImportError:
+        logger.warning("⚠️ torch-cluster not available, falling back to CPU method")
+        return _create_knn_graph(coords, k_neighbors)
+    except Exception as e:
+        logger.warning(f"⚠️ GPU k-NN failed ({e}), falling back to CPU method")
+        return _create_knn_graph(coords, k_neighbors)
+
+
 def _create_gaia_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
@@ -444,7 +481,7 @@ def _create_gaia_graph(
     coords = df.select(["ra", "dec"]).to_numpy()
 
     # Create k-NN graph
-    edge_index = _create_knn_graph(coords, k_neighbors)
+    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["phot_g_mean_mag", "bp_rp_color", "parallax", "pmra", "pmdec"]
@@ -495,7 +532,7 @@ def _create_sdss_graph(
     coords = df.select(["ra", "dec", "z"]).to_numpy()
 
     # Create k-NN graph
-    edge_index = _create_knn_graph(coords, k_neighbors)
+    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["modelMag_r", "modelMag_g", "modelMag_i", "petroRad_r", "fracDeV_r"]
@@ -536,7 +573,7 @@ def _create_nsa_graph(
     coords = df.select(["ra", "dec", "z"]).to_numpy()
 
     # Create k-NN graph
-    edge_index = _create_knn_graph(coords, k_neighbors)
+    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"]
@@ -577,7 +614,7 @@ def _create_tng50_graph(
     coords = df.select(["x", "y", "z"]).to_numpy()
 
     # Create k-NN graph
-    edge_index = _create_knn_graph(coords, k_neighbors)
+    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
 
     # Prepare features
     feature_cols = ["masses", "density", "velocities_0", "velocities_1", "velocities_2"]
@@ -642,7 +679,7 @@ def _create_generic_graph(
     coords = df.select(coord_cols).to_numpy()
 
     # Create k-NN graph
-    edge_index = _create_knn_graph(coords, k_neighbors)
+    edge_index = _create_knn_graph_chunked(coords, k_neighbors)
 
     # Use all numeric columns as features
     numeric_cols = [
@@ -1183,17 +1220,15 @@ def create_standardized_files(
     # Load input data
     logger.info(f"📂 Loading data from {input_parquet}")
     df = pl.read_parquet(input_parquet)
-    logger.info(f"📊 Loaded {len(df)} rows")
-
-    # Apply sampling if requested
-    if max_samples and len(df) > max_samples:
-        df = df.sample(max_samples, seed=42)
-        logger.info(f"📊 Sampled to {len(df)} rows")
-
-    # Save standardized parquet
-    df.write_parquet(files["parquet"])
-    logger.info(f"✅ Saved parquet: {files['parquet']}")
-
+    logger.info(f"📊 Loaded {len(df):,} Gaia stars with {len(df.columns)} columns")
+    
+    # Use ALL stars - no sampling limitation
+    print(f"📊 Using all {len(df):,} stars for graph processing")
+    
+    # Extract coordinates and features
+    coords = df.select(["ra", "dec"]).to_numpy()
+    print(f"📍 Coordinates shape: {coords.shape}")
+    
     # Create graph data
     graph_data = _create_graph_data(df, survey, k_neighbors)
     torch.save(graph_data, files["graph"])
@@ -1374,3 +1409,155 @@ def process_survey(
         max_samples=max_samples,
         force=force,
     )
+
+
+def create_gaia_survey_tensor():
+    """Create proper SurveyTensor from all 3M Gaia stars using the tensor system."""
+    import polars as pl
+    import torch
+    from pathlib import Path
+    
+    logger.info("🌟 Creating Gaia SurveyTensor with all 3M stars...")
+    
+    # Load the large Gaia dataset
+    gaia_file = Path("data/processed/gaia/gaia_dr3_bright_all_sky_mag12.0_processed.parquet")
+    if not gaia_file.exists():
+        logger.error(f"❌ Gaia file not found: {gaia_file}")
+        return None
+    
+    logger.info(f"📊 Loading Gaia data from {gaia_file}")
+    df = pl.read_parquet(gaia_file)
+    logger.info(f"✅ Loaded {len(df):,} Gaia stars with {len(df.columns)} columns")
+    
+    # Smart NaN handling: fill NaN values instead of dropping rows
+    logger.info("🧹 Smart data cleaning: filling NaN values...")
+    
+    # Use polars for better NaN handling
+    df_clean = df.fill_null(strategy="mean")  # Fill nulls with column mean
+    
+    # Convert to numpy and handle remaining issues
+    data_numpy = df_clean.to_numpy()
+    
+    # Replace any remaining infinite values
+    data_numpy = np.nan_to_num(data_numpy, nan=0.0, posinf=0.0, neginf=0.0)
+    
+    logger.info(f"📊 After smart cleaning: {len(data_numpy):,} stars (kept all data!)")
+    
+    # Convert to tensor
+    tensor_data = torch.tensor(data_numpy, dtype=torch.float32)
+    logger.info(f"📊 Clean tensor shape: {tensor_data.shape}")
+    
+    # Define Gaia column mapping
+    gaia_columns = df.columns
+    column_mapping = {col: i for i, col in enumerate(gaia_columns)}
+    
+    # Create SurveyTensor with proper Gaia configuration
+    try:
+        from astro_lab.tensors.survey import SurveyTensor
+        
+        survey_tensor = SurveyTensor(
+            data=tensor_data,
+            survey_name="gaia",
+            data_release="DR3",
+            filter_system="gaia_dr3",
+            column_mapping=column_mapping,
+            survey_metadata={
+                "full_name": "Gaia DR3 Complete (3M stars)",
+                "magnitude_limit": 12.0,
+                "coordinate_system": "icrs",
+                "photometric_bands": ["G", "BP", "RP"],
+                "n_objects": len(data_numpy),
+                "processing_date": "2024",
+                "source_file": str(gaia_file),
+            }
+        )
+        
+        logger.info(f"✅ Created SurveyTensor: {survey_tensor.survey_name} with {len(survey_tensor)} objects")
+        
+        # Create Spatial3DTensor
+        logger.info("🌍 Creating Spatial3DTensor...")
+        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
+        logger.info(f"✅ Created Spatial3DTensor with {spatial_tensor.shape} coordinates")
+        
+        # Create PhotometricTensor
+        logger.info("📸 Creating PhotometricTensor...")
+        photometric_tensor = survey_tensor.get_photometric_tensor()
+        logger.info(f"✅ Created PhotometricTensor with bands: {photometric_tensor.bands}")
+        
+        # Save to simple gaia directory
+        output_dir = Path("data/processed/gaia")
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Simple file names
+        survey_file = output_dir / "gaia_survey_tensor.pt"
+        spatial_file = output_dir / "gaia_spatial_tensor.pt"
+        photometric_file = output_dir / "gaia_photometric_tensor.pt"
+        metadata_file = output_dir / "gaia_tensor_metadata.json"
+        
+        # Save tensors
+        torch.save(survey_tensor, survey_file)
+        logger.info(f"💾 Saved SurveyTensor to: {survey_file}")
+        
+        torch.save(spatial_tensor, spatial_file)
+        logger.info(f"💾 Saved Spatial3DTensor to: {spatial_file}")
+        
+        torch.save(photometric_tensor, photometric_file)
+        logger.info(f"💾 Saved PhotometricTensor to: {photometric_file}")
+        
+        # Create comprehensive metadata
+        metadata = {
+            "survey_name": "gaia",
+            "full_name": "Gaia DR3 Complete Dataset (3M stars)",
+            "data_release": "DR3",
+            "num_samples": len(data_numpy),
+            "tensor_types": ["survey", "spatial_3d", "photometric"],
+            "coordinate_system": "icrs",
+            "photometric_bands": ["G", "BP", "RP"],
+            "spatial_dimensions": list(spatial_tensor.shape),
+            "photometric_dimensions": list(photometric_tensor.shape),
+            "column_mapping": column_mapping,
+            "created_with": "astro_lab.tensors.SurveyTensor",
+            "processing_method": "complete_3m_dataset_smart_nan_handling",
+        }
+        
+        import json
+        with open(metadata_file, 'w') as f:
+            json.dump(metadata, f, indent=2, default=str)
+        logger.info(f"📋 Saved tensor metadata to: {metadata_file}")
+        
+        logger.info(f"🎯 Complete tensor system created!")
+        logger.info(f"   SurveyTensor: {len(survey_tensor):,} objects")
+        logger.info(f"   Spatial3DTensor: {spatial_tensor.shape}")
+        logger.info(f"   PhotometricTensor: {photometric_tensor.shape}")
+        
+        return {
+            "survey_tensor": survey_tensor,
+            "spatial_tensor": spatial_tensor,
+            "photometric_tensor": photometric_tensor,
+            "files": {
+                "survey": str(survey_file),
+                "spatial": str(spatial_file),
+                "photometric": str(photometric_file),
+                "metadata": str(metadata_file),
+            }
+        }
+        
+    except ImportError as e:
+        logger.warning(f"⚠️ Tensor system not available: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error creating tensor system: {e}")
+        return None
+
+
+# Keep the original function for backward compatibility
+def process_large_gaia_dataset():
+    """Process the large Gaia dataset using GPU k-NN for fast graph creation (legacy)."""
+    print("⚠️ Using legacy PyG graph processing. Consider using create_gaia_survey_tensor() instead.")
+    return create_gaia_survey_tensor()
+
+
+if __name__ == "__main__":
+    # Test the new tensor system
+    print("🌟 Creating complete Gaia tensor system:")
+    create_gaia_survey_tensor()

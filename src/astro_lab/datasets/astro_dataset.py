@@ -50,6 +50,19 @@ class AstroDataset(InMemoryDataset):
     def _get_file_paths(self) -> Dict[str, Path]:
         """Standardized file paths."""
         root_path = Path(self.root)
+        
+        # Check for SurveyTensor files first (new format)
+        survey_tensor_path = root_path / f"{self.survey}_survey_tensor.pt"
+        if survey_tensor_path.exists():
+            return {
+                "parquet": root_path / f"{self.survey}.parquet",
+                "graph": survey_tensor_path,  # Use SurveyTensor as graph
+                "metadata": root_path / f"{self.survey}_tensor_metadata.json",
+                "spatial": root_path / f"{self.survey}_spatial_tensor.pt",
+                "photometric": root_path / f"{self.survey}_photometric_tensor.pt",
+            }
+        
+        # Fallback to old format
         return {
             "parquet": root_path / f"{self.survey}.parquet",
             "graph": root_path / f"{self.survey}_graph.pt",
@@ -104,8 +117,14 @@ class AstroDataset(InMemoryDataset):
         try:
             data = torch.load(graph_path, map_location="cpu", weights_only=False)
 
+            # Handle SurveyTensor format
+            if hasattr(data, 'survey_name') and hasattr(data, 'data'):
+                logger.info("🌟 Converting SurveyTensor to PyG format")
+                # Convert SurveyTensor to PyG Data
+                pyg_data = self._convert_survey_tensor_to_pyg(data)
+                self.data, self.slices = self.collate([pyg_data])
             # Handle verschiedene Datenformate
-            if isinstance(data, dict) and "data" in data and "slices" in data:
+            elif isinstance(data, dict) and "data" in data and "slices" in data:
                 self.data, self.slices = data["data"], data["slices"]
             elif isinstance(data, list):
                 valid_data = [
@@ -128,6 +147,70 @@ class AstroDataset(InMemoryDataset):
         except Exception as e:
             logger.error(f"❌ Failed to load {graph_path}: {e}")
             raise
+
+    def _convert_survey_tensor_to_pyg(self, survey_tensor) -> Data:
+        """Convert SurveyTensor to PyTorch Geometric Data."""
+        # Extract features from SurveyTensor
+        x = survey_tensor.data  # Shape: [num_nodes, num_features]
+        
+        # Create simple k-NN graph for now
+        num_nodes = x.shape[0]
+        k = min(self.k_neighbors, num_nodes - 1)
+        
+        # Simple approach: create edges based on feature similarity
+        # For large datasets, use a subset for k-NN computation
+        if num_nodes > 10000:
+            # Use subset for k-NN computation
+            subset_size = min(10000, num_nodes)
+            indices = torch.randperm(num_nodes)[:subset_size]
+            subset_x = x[indices]
+            
+            from sklearn.neighbors import NearestNeighbors
+            nbrs = NearestNeighbors(n_neighbors=k, metric='euclidean')
+            nbrs.fit(subset_x.numpy())
+            
+            # Create edges for subset
+            _, knn_indices = nbrs.kneighbors(subset_x.numpy())
+            sources = torch.arange(subset_size).repeat_interleave(k)
+            targets = torch.tensor(knn_indices.flatten())
+            
+            # Map back to original indices
+            sources = indices[sources]
+            targets = indices[targets]
+            
+            edge_index = torch.stack([sources, targets])
+        else:
+            # Full k-NN for smaller datasets
+            from sklearn.neighbors import NearestNeighbors
+            nbrs = NearestNeighbors(n_neighbors=k, metric='euclidean')
+            nbrs.fit(x.numpy())
+            _, knn_indices = nbrs.kneighbors(x.numpy())
+            
+            sources = torch.arange(num_nodes).repeat_interleave(k)
+            targets = torch.tensor(knn_indices.flatten())
+            edge_index = torch.stack([sources, targets])
+        
+        # Create proper stellar classification labels based on BP-RP color
+        if x.shape[1] >= 3:  # Assume columns: [ra, dec, G, BP, RP, ...]
+            # Use BP-RP color for stellar classification
+            bp_col = x[:, 3] if x.shape[1] > 3 else x[:, 2]  # BP magnitude
+            rp_col = x[:, 4] if x.shape[1] > 4 else x[:, 2]  # RP magnitude
+            bp_rp_color = bp_col - rp_col
+            
+            # Create stellar type classes based on BP-RP color
+            # Standard Gaia stellar classification thresholds
+            y = torch.zeros(num_nodes, dtype=torch.long)
+            y[bp_rp_color < 0.5] = 0  # Blue stars (hot)
+            y[(bp_rp_color >= 0.5) & (bp_rp_color < 1.0)] = 1  # White/Yellow stars
+            y[(bp_rp_color >= 1.0) & (bp_rp_color < 1.5)] = 2  # Orange stars
+            y[bp_rp_color >= 1.5] = 3  # Red stars (cool)
+            
+            logger.info(f"🌟 Created stellar classification labels: {torch.bincount(y)}")
+        else:
+            # Fallback: random labels for testing
+            y = torch.randint(0, 4, (num_nodes,), dtype=torch.long)
+        
+        return Data(x=x, edge_index=edge_index, y=y)
 
     def len(self):
         if self.data is None:

@@ -114,8 +114,10 @@ def train_from_config(config_path: str) -> None:
         config = loader.load_config()
         config = ensure_mlflow_block(config)
 
+        # Extract experiment name from config
+        experiment_name = config.get("mlflow", {}).get("experiment_name", "astro_experiment")
         logger.info(f"✅ Configuration loaded successfully")
-        logger.info(f"   Experiment: {config['mlflow']['experiment_name']}")
+        logger.info(f"   Experiment: {experiment_name}")
 
         # Create datamodule with error handling
         logger.info("🔧 Creating datamodule...")
@@ -203,10 +205,11 @@ def train_from_config(config_path: str) -> None:
             )
             logger.info(f"✅ Lightning module created")
 
-            # Create trainer
+            # Create trainer with experiment name
             trainer = AstroTrainer(
                 lightning_module=lightning_module,
                 training_config=None,  # Use default config
+                experiment_name=experiment_name,  # Use experiment name from config
                 max_epochs=training_config.get("max_epochs", 100),
                 accelerator="auto",
                 devices="auto",
@@ -285,6 +288,11 @@ def optimize_from_config(
         loader = ConfigLoader(config_path)
         config = loader.load_config()
         config = ensure_mlflow_block(config)
+        
+        # Extract experiment name from config
+        experiment_name = config.get("mlflow", {}).get("experiment_name", "astro_experiment")
+        logger.info(f"✅ Configuration loaded successfully")
+        logger.info(f"   Experiment: {experiment_name}")
 
         # Create datamodule
         data_config_section = config.get("data", {})

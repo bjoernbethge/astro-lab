@@ -19,7 +19,6 @@ data:
   data_dir: data/processed
   batch_size: 64 # Larger batch for stability
   num_workers: 4
-  max_samples: 1000 # Small but manageable
   return_tensor: true
   split_ratios: [0.7, 0.15, 0.15] # Standard splits
 
@@ -29,11 +28,11 @@ data:
 
 training:
   max_epochs: 20
-  learning_rate: 0.001 # Conservative learning rate
+  learning_rate: 0.0001 # Very conservative for 3M samples
   weight_decay: 0.0001
 
   # Gradient clipping to prevent explosions
-  gradient_clip_val: 1.0
+  gradient_clip_val: 0.5 # Stricter clipping
 
   # Task configuration
   task: "stellar_classification"
