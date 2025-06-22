@@ -15,6 +15,7 @@ from astro_lab.models.astro import AstroSurveyGNN
 from astro_lab.models.factory import ModelFactory
 from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
 from astro_lab.training import AstroLightningModule, AstroTrainer
+from astro_lab.utils.config.surveys import get_available_surveys
 
 
 class TestAstroLightningModule:
@@ -282,9 +283,9 @@ class TestTrainingConfigurations:
 
     def test_survey_specific_training(self):
         """Test training with survey-specific configurations."""
-        surveys = ["gaia", "sdss", "lsst"]
+        available_surveys = get_available_surveys()
 
-        for survey in surveys:
+        for survey in available_surveys:
             try:
                 # Create survey-specific model
                 model = ModelFactory.create_survey_model(
@@ -344,9 +345,6 @@ class TestHyperparameterOptimization:
 
     def test_optimize_hyperparameters_basic(self, gaia_dataset):
         """Test basic hyperparameter optimization using Gaia dataset fixture."""
-        if gaia_dataset is None:
-            pytest.skip("Gaia dataset not available")
-            
         # Create dataloaders from the fixture
         from torch_geometric.loader import DataLoader
         train_loader = DataLoader(gaia_dataset[:8], batch_size=2, shuffle=True)
@@ -384,9 +382,6 @@ class TestHyperparameterOptimization:
 
     def test_optimize_hyperparameters_custom_search_space(self, nsa_dataset):
         """Test optimization with custom search space using NSA dataset fixture."""
-        if nsa_dataset is None:
-            pytest.skip("NSA dataset not available")
-            
         # Create dataloaders from the fixture
         from torch_geometric.loader import DataLoader
         train_loader = DataLoader(nsa_dataset[:8], batch_size=2, shuffle=True)

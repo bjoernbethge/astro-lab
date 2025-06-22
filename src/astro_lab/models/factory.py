@@ -343,6 +343,10 @@ class ModelFactory:
 
         task_config = cls.TASK_CONFIGS.get(task, {})
         final_config = {**combined_config, **task_config}
+        
+        # Ensure output_dim is set (default to 7 if not specified)
+        if "output_dim" not in final_config or final_config["output_dim"] is None:
+            final_config["output_dim"] = 7
 
         # Import here to avoid circular imports
         from astro_lab.models.astro import AstroSurveyGNN

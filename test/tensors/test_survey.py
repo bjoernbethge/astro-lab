@@ -154,12 +154,7 @@ class TestSurveyTensorDatasetIntegration:
 
         # Test basic dataset functionality
         first_item = gaia_dataset[0]
-        # Handle case where dataset returns None
-        if first_item is not None:
-            assert hasattr(first_item, "x")  # PyG Data object
-        else:
-            # Skip test if no valid data available
-            pytest.skip("Dataset returned None - no valid data available")
+        assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
     def test_nsa_survey_tensor_integration(self, nsa_dataset):
@@ -168,30 +163,16 @@ class TestSurveyTensorDatasetIntegration:
 
         # Test basic dataset functionality
         first_item = nsa_dataset[0]
-        # Handle case where dataset returns None
-        if first_item is not None:
-            assert hasattr(first_item, "x")  # PyG Data object
-        else:
-            # Skip test if no valid data available
-            pytest.skip("Dataset returned None - no valid data available")
+        assert hasattr(first_item, "x")  # PyG Data object
 
     @pytest.mark.slow
     def test_exoplanet_survey_tensor_integration(self, exoplanet_dataset):
         """Test Exoplanet dataset SurveyTensor integration."""
-        # Handle case where dataset returns None
-        if exoplanet_dataset is None:
-            pytest.skip("Dataset returned None - no valid data available")
-
         assert len(exoplanet_dataset) > 0
 
         # Test basic dataset functionality
         first_item = exoplanet_dataset[0]
-        # Handle case where dataset returns None
-        if first_item is not None:
-            assert hasattr(first_item, "x")  # PyG Data object
-        else:
-            # Skip test if no valid data available
-            pytest.skip("Dataset returned None - no valid data available")
+        assert hasattr(first_item, "x")  # PyG Data object
 
     def test_cross_survey_operations(self, gaia_dataset, nsa_dataset):
         """Test cross-survey tensor operations."""

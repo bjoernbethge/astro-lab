@@ -38,12 +38,12 @@ class TestCLI:
     def test_cli_welcome_message(self):
         """Test CLI welcome message."""
         with patch('sys.argv', ['astro-lab']):
-            with patch('builtins.print') as mock_print:
+            with patch('astro_lab.cli.logger.info') as mock_logger:
                 with patch('sys.exit') as mock_exit:
                     from astro_lab.cli import main as cli_main
                     cli_main()
-                    # Should print welcome message
-                    mock_print.assert_called()
+                    # Should log welcome message
+                    mock_logger.assert_called()
                     # CLI should show help and exit with 0 when no command is provided
                     mock_exit.assert_called_with(0)
 
@@ -114,10 +114,10 @@ class TestCLI:
         with patch('sys.argv', ['astro-lab', 'download', 'list']):
             with patch('astro_lab.data.list_catalogs') as mock_list:
                 mock_list.return_value = ["gaia", "sdss", "nsa"]
-                with patch('builtins.print') as mock_print:
+                with patch('astro_lab.cli.logger.info') as mock_logger:
                     with patch('sys.exit') as mock_exit:
                         from astro_lab.cli import main as cli_main
                         cli_main()
-                        # Should print available datasets
-                        mock_print.assert_called()
+                        # Should log available datasets
+                        mock_logger.assert_called()
                         mock_exit.assert_not_called() 

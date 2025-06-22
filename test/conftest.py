@@ -249,20 +249,25 @@ def gaia_dataset():
     """Create Gaia AstroDataset fixture using processed data."""
     try:
         # Use a smaller processed file for testing (we have n100.pt available)
-        return AstroDataset(survey="gaia", max_samples=100, k_neighbors=8)
-    except Exception:
-        # Return None instead of skipping to allow graceful handling
-        return None
+        dataset = AstroDataset(survey="gaia", max_samples=100, k_neighbors=8)
+        # Verify dataset is valid
+        if len(dataset) == 0:
+            pytest.skip("Gaia dataset is empty")
+        return dataset
+    except Exception as e:
+        pytest.skip(f"Could not create Gaia dataset: {e}")
 
 
 @pytest.fixture(scope="session")
 def nsa_dataset():
     """Create NSA AstroDataset fixture using processed data."""
     try:
-        return AstroDataset(survey="nsa", max_samples=50, k_neighbors=8)
-    except Exception:
-        # Return None instead of skipping to allow graceful handling
-        return None
+        dataset = AstroDataset(survey="nsa", max_samples=50, k_neighbors=8)
+        if len(dataset) == 0:
+            pytest.skip("NSA dataset is empty")
+        return dataset
+    except Exception as e:
+        pytest.skip(f"Could not create NSA dataset: {e}")
 
 
 @pytest.fixture(scope="session")
@@ -270,30 +275,36 @@ def exoplanet_dataset():
     """Create Exoplanet AstroDataset fixture using processed data."""
     try:
         # Try with smaller sample size first since exoplanet data is limited
-        return AstroDataset(survey="exoplanet", max_samples=10, k_neighbors=5)
-    except Exception:
-        # Return None instead of skipping to allow graceful handling
-        return None
+        dataset = AstroDataset(survey="exoplanet", max_samples=10, k_neighbors=5)
+        if len(dataset) == 0:
+            pytest.skip("Exoplanet dataset is empty")
+        return dataset
+    except Exception as e:
+        pytest.skip(f"Could not create Exoplanet dataset: {e}")
 
 
 @pytest.fixture(scope="session")
 def linear_dataset():
     """Create LINEAR AstroDataset fixture using processed data."""
     try:
-        return AstroDataset(survey="linear", max_samples=50, k_neighbors=8)
-    except Exception:
-        # Return None instead of skipping to allow graceful handling
-        return None
+        dataset = AstroDataset(survey="linear", max_samples=50, k_neighbors=8)
+        if len(dataset) == 0:
+            pytest.skip("LINEAR dataset is empty")
+        return dataset
+    except Exception as e:
+        pytest.skip(f"Could not create LINEAR dataset: {e}")
 
 
 @pytest.fixture(scope="session")
 def rrlyrae_dataset():
     """Create RR Lyrae AstroDataset fixture using processed data."""
     try:
-        return AstroDataset(survey="rrlyrae", max_samples=20, k_neighbors=8)
-    except Exception:
-        # Return None instead of skipping to allow graceful handling
-        return None
+        dataset = AstroDataset(survey="rrlyrae", max_samples=20, k_neighbors=8)
+        if len(dataset) == 0:
+            pytest.skip("RR Lyrae dataset is empty")
+        return dataset
+    except Exception as e:
+        pytest.skip(f"Could not create RR Lyrae dataset: {e}")
 
 
 @pytest.fixture(scope="session")
