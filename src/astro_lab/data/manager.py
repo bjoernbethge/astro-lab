@@ -7,7 +7,9 @@ Handles data loading, processing, and catalog management.
 """
 
 import datetime
+import gc
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -15,25 +17,49 @@ from typing import Any, Dict, List, Optional, Union
 import h5py
 import numpy as np
 import polars as pl
+import torch
 from astroquery.gaia import Gaia
+from pydantic import BaseModel, Field
 
+from ..utils.memory import (
+    batch_processing_context,
+    comprehensive_cleanup_context,
+    file_processing_context,
+    pytorch_memory_context,
+)
 from .config import data_config
+from .core import AstroDataset
+from .preprocessing import preprocess_catalog
+from .utils import load_fits_optimized
+
+logger = logging.getLogger(__name__)
 
 
 class AstroDataManager:
-    """Modern astronomical data management with structured storage."""
+    """
+    Enhanced data manager with comprehensive memory management.
 
-    def __init__(self, base_dir: Union[str, Path] = "data"):
-        # Use the global data_config instance instead of calling it as a function
-        if base_dir != "data":
-            # If a different base_dir is provided, create a new config
-            from .config import DataConfig
-            self.config = DataConfig(base_dir)
-        else:
-            # Use the global config
-            self.config = data_config
-        self.base_dir = self.config.base_dir
-        # Remove automatic directory creation - only create when needed
+    Handles loading, preprocessing, and managing astronomical survey data
+    with automatic memory cleanup and optimization.
+    """
+
+    def __init__(self, config: Optional[Union[str, DataConfig]] = None, **kwargs):
+        """Initialize data manager with memory management."""
+        with comprehensive_cleanup_context("DataManager initialization"):
+            # Load configuration
+            if isinstance(config, str):
+                self.config = DataConfig.from_yaml(config)
+            elif isinstance(config, DataConfig):
+                self.config = config
+            else:
+                self.config = DataConfig(**kwargs)
+
+            # Set up paths
+            self.data_dir = Path(self.config.data_dir)
+            self.processed_dir = self.data_dir / "processed"
+            self.processed_dir.mkdir(parents=True, exist_ok=True)
+
+            logger.info(f"📂 Data manager initialized: {self.data_dir}")
 
     def setup_directories(self):
         """Create standardized data directory structure using new config."""
@@ -408,7 +434,6 @@ class AstroDataManager:
         df.write_parquet(output_file, compression="zstd")
 
         # Save processing metadata
-        import datetime
 
         metadata = {
             "source_file": str(raw_file),
@@ -488,45 +513,26 @@ class AstroDataManager:
         return pl.DataFrame(catalogs).sort("size_mb", descending=True)
 
     def load_catalog(self, catalog_path: Union[str, Path]) -> pl.DataFrame:
-        """Load catalog from file (supports .parquet, .csv, .fits)."""
-        catalog_path = Path(catalog_path)
+        """Load catalog with memory management."""
+        with comprehensive_cleanup_context("Catalog loading"):
+            catalog_path = Path(catalog_path)
 
-        if not catalog_path.exists():
-            raise FileNotFoundError(f"Catalog not found: {catalog_path}")
+            logger.info(f"📂 Loading catalog: {catalog_path}")
 
-        print(f"📂 Loading: {catalog_path.name}")
+            with pytorch_memory_context("Catalog file loading"):
+                if catalog_path.suffix.lower() in [".fits", ".fit"]:
+                    data = load_fits_optimized(catalog_path)
+                elif catalog_path.suffix.lower() in [".parquet", ".pq"]:
+                    data = pl.read_parquet(catalog_path)
+                elif catalog_path.suffix.lower() == ".csv":
+                    data = pl.read_csv(catalog_path)
+                else:
+                    raise ValueError(f"Unsupported format: {catalog_path.suffix}")
 
-        # Handle different file formats
-        suffix = catalog_path.suffix.lower()
-
-        if suffix == ".parquet":
-            df = pl.read_parquet(catalog_path)
-        elif suffix == ".csv":
-            df = pl.read_csv(catalog_path)
-        elif suffix == ".fits":
-            # Use the optimized FITS loader from utils
-            from .utils import load_fits_table_optimized
-
-            df = load_fits_table_optimized(catalog_path, as_polars=True)
-            if df is None:
-                raise ValueError(f"Failed to load FITS file: {catalog_path}")
-        else:
-            raise ValueError(
-                f"Unsupported file format: {suffix}. Supported: .parquet, .csv, .fits"
+            logger.info(
+                f"✅ Catalog loaded: {len(data)} rows, {len(data.columns)} columns"
             )
-
-        # Load metadata if available
-        metadata_file = catalog_path.with_suffix(".json")
-        if metadata_file.exists():
-            with open(metadata_file) as f:
-                metadata = json.load(f)
-                print(f"📊 Source: {metadata.get('source', 'Unknown')}")
-                print(f"📊 Objects: {len(df):,}")
-                print(f"📊 Columns: {len(df.columns)}")
-        else:
-            print(f"📊 Objects: {len(df):,}, Columns: {len(df.columns)}")
-
-        return df
+            return data
 
     def convert_to_physical_units(self, df: pl.DataFrame) -> pl.DataFrame:
         """
@@ -608,6 +614,180 @@ class AstroDataManager:
         )
 
         return df_with_units
+
+    def process_file(self, file_path: Union[str, Path]) -> Dict[str, Any]:
+        """
+        Process a single file with memory management.
+
+        Args:
+            file_path: Path to the file to process
+
+        Returns:
+            Processing results
+        """
+        file_path = Path(file_path)
+
+        with file_processing_context(
+            file_path=file_path, memory_limit_mb=self.config.memory_limit_mb
+        ) as processing_params:
+            logger.info(f"📂 Processing file: {file_path}")
+
+            # Load data with memory optimization
+            with pytorch_memory_context("Data loading"):
+                if file_path.suffix.lower() in [".fits", ".fit"]:
+                    data = load_fits_optimized(file_path)
+                elif file_path.suffix.lower() in [".parquet", ".pq"]:
+                    data = pl.read_parquet(file_path)
+                elif file_path.suffix.lower() == ".csv":
+                    data = pl.read_csv(file_path)
+                else:
+                    raise ValueError(f"Unsupported file format: {file_path.suffix}")
+
+            # Preprocess data
+            with pytorch_memory_context("Data preprocessing"):
+                processed_data = preprocess_catalog(data)
+
+            # Save processed data
+            output_path = self.processed_dir / f"{file_path.stem}_processed.parquet"
+            with pytorch_memory_context("Data saving"):
+                processed_data.write_parquet(output_path)
+
+            results = {
+                "input_file": str(file_path),
+                "output_file": str(output_path),
+                "num_rows": len(processed_data),
+                "num_columns": len(processed_data.columns),
+                "memory_stats": processing_params["stats"],
+            }
+
+            logger.info(f"✅ File processed: {len(processed_data)} rows")
+            return results
+
+    def process_surveys(self, surveys: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Process multiple surveys with batch memory management.
+
+        Args:
+            surveys: List of survey names to process
+
+        Returns:
+            Batch processing results
+        """
+        surveys = surveys or self.config.surveys
+
+        with batch_processing_context(
+            total_items=len(surveys),
+            batch_size=1,  # Process one survey at a time
+            memory_threshold_mb=self.config.memory_limit_mb,
+        ) as batch_config:
+            logger.info(f"📊 Processing {len(surveys)} surveys")
+
+            results = {
+                "surveys_processed": [],
+                "total_rows": 0,
+                "memory_stats": batch_config["stats"],
+            }
+
+            for survey_name in surveys:
+                with comprehensive_cleanup_context(f"Survey processing: {survey_name}"):
+                    try:
+                        survey_result = self._process_single_survey(survey_name)
+                        results["surveys_processed"].append(survey_result)
+                        results["total_rows"] += survey_result.get("num_rows", 0)
+
+                        logger.info(f"✅ Survey {survey_name} processed successfully")
+
+                    except Exception as e:
+                        logger.error(f"❌ Failed to process survey {survey_name}: {e}")
+                        results["surveys_processed"].append(
+                            {"survey": survey_name, "error": str(e), "status": "failed"}
+                        )
+
+            logger.info(
+                f"📊 Batch processing completed: {results['total_rows']} total rows"
+            )
+            return results
+
+    def _process_single_survey(self, survey_name: str) -> Dict[str, Any]:
+        """Process a single survey with memory management."""
+        with comprehensive_cleanup_context(f"Single survey: {survey_name}"):
+            # Find survey data files
+            survey_files = list(self.data_dir.glob(f"*{survey_name}*"))
+            if not survey_files:
+                raise FileNotFoundError(f"No files found for survey: {survey_name}")
+
+            # Process each file
+            survey_results = []
+            total_rows = 0
+
+            for file_path in survey_files:
+                if file_path.suffix.lower() in [".fits", ".parquet", ".csv"]:
+                    file_result = self.process_file(file_path)
+                    survey_results.append(file_result)
+                    total_rows += file_result.get("num_rows", 0)
+
+            return {
+                "survey": survey_name,
+                "files_processed": len(survey_results),
+                "num_rows": total_rows,
+                "files": survey_results,
+                "status": "completed",
+            }
+
+    def create_dataset(
+        self, survey_name: str, force_reload: bool = False
+    ) -> AstroDataset:
+        """
+        Create AstroDataset with memory management.
+
+        Args:
+            survey_name: Name of the survey
+            force_reload: Whether to force reload data
+
+        Returns:
+            AstroDataset instance
+        """
+        with comprehensive_cleanup_context(f"Dataset creation: {survey_name}"):
+            logger.info(f"🔄 Creating dataset for survey: {survey_name}")
+
+            with pytorch_memory_context("Dataset initialization"):
+                dataset = AstroDataset(
+                    root=str(self.processed_dir),
+                    survey_name=survey_name,
+                    force_reload=force_reload,
+                )
+
+            logger.info(f"✅ Dataset created: {len(dataset)} samples")
+            return dataset
+
+    def get_memory_stats(self) -> Dict[str, Any]:
+        """Get current memory statistics."""
+        from ..utils.memory import get_cuda_memory_stats, get_memory_usage
+
+        stats = {
+            "system_memory_mb": get_memory_usage(),
+            "cuda_stats": get_cuda_memory_stats(),
+            "data_dir": str(self.data_dir),
+            "processed_dir": str(self.processed_dir),
+        }
+
+        return stats
+
+    def cleanup_temp_files(self):
+        """Clean up temporary files with memory management."""
+        with comprehensive_cleanup_context("Temp file cleanup"):
+            temp_patterns = ["*.tmp", "*.temp", "*_temp_*"]
+            cleaned_files = 0
+
+            for pattern in temp_patterns:
+                for temp_file in self.data_dir.rglob(pattern):
+                    try:
+                        temp_file.unlink()
+                        cleaned_files += 1
+                    except Exception as e:
+                        logger.warning(f"Failed to delete {temp_file}: {e}")
+
+            logger.info(f"🧹 Cleaned up {cleaned_files} temporary files")
 
 
 # Global data manager instance

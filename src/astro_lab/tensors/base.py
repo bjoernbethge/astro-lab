@@ -5,18 +5,25 @@ Base Tensor Classes - Core Tensor Infrastructure
 Provides base classes and interfaces for all tensor types in the AstroLab framework.
 """
 
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple, Union
+
 import numpy as np
-import torch
 import polars as pl
-from typing import Any, Dict, List, Optional, Union, Tuple, Protocol, TYPE_CHECKING
+import torch
 
 if TYPE_CHECKING:
     from typing import Self
 
 import logging
 from contextlib import contextmanager
+
 from pydantic import BaseModel, ConfigDict
 
+from ..utils.memory import (
+    comprehensive_cleanup_context,
+    memory_tracking_context,
+    pytorch_memory_context,
+)
 from .constants import ASTRO  # Import centralized constants
 from .tensor_types import TensorProtocol
 
@@ -66,46 +73,28 @@ class ValidationMixin:
 
 class AstroTensorBase(BaseModel, ValidationMixin):
     """
-    Simplified base class for astronomical tensor types.
+    Enhanced base class for astronomical tensors with comprehensive memory management.
 
-    Key improvements over the original:
-    - No global registry (relies on Python GC)
-    - Simplified memory management
-    - Better type annotations
-    - Consistent metadata access
-    - Common validation patterns
+    Provides common functionality for all astronomical tensor types including
+    automatic memory optimization, device management, and resource cleanup.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    def __init__(
-        self,
-        data: Union[torch.Tensor, List, Any],
-        dtype: Optional[torch.dtype] = None,
-        device: Optional[torch.device] = None,
-        **metadata,
-    ):
-        """
-        Initialize astronomical tensor with data and metadata.
+    def __init__(self, data: Union[torch.Tensor, np.ndarray], **kwargs):
+        """Initialize tensor with memory management."""
+        with comprehensive_cleanup_context("AstroTensor initialization"):
+            # Convert input data to tensor if needed
+            if isinstance(data, np.ndarray):
+                with pytorch_memory_context("NumPy to tensor conversion"):
+                    tensor_data = torch.from_numpy(data).float()
+            elif isinstance(data, torch.Tensor):
+                tensor_data = data
+            else:
+                raise TypeError(f"Unsupported data type: {type(data)}")
 
-        Args:
-            data: Input tensor data
-            dtype: Desired data type
-            device: Target device
-            **metadata: Astronomical metadata
-        """
-        # Convert data to tensor if needed
-        if not isinstance(data, torch.Tensor):
-            data = torch.tensor(data, dtype=dtype, device=device)
-        elif dtype is not None or device is not None:
-            data = data.to(dtype=dtype, device=device)
-
-        # Store data and clean metadata
-        self._data = data
-        self._metadata = self._clean_metadata(metadata)
-
-        # Validate the tensor
-        self._validate()
+            # Initialize with tensor data
+            super().__init__(_data=tensor_data, **kwargs)
 
     def _clean_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -219,9 +208,7 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         """Move tensor to CPU."""
         return self.to(device=torch.device("cpu"))
 
-    def cuda(
-        self, device: Optional[Union[int, str, torch.device]] = None
-    ) -> "Self":
+    def cuda(self, device: Optional[Union[int, str, torch.device]] = None) -> "Self":
         """Move tensor to CUDA device."""
         if device is None:
             device = torch.device("cuda")
@@ -232,104 +219,274 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         return self._data.detach().cpu().numpy()
 
     # =========================================================================
-    # Memory management - simplified
+    # Enhanced Memory Management
     # =========================================================================
 
-    def memory_efficient_context(self):
+    @contextmanager
+    def memory_efficient_context(self, operation_name: str = "Tensor operation"):
         """
-        Simple context manager for memory-efficient operations.
-        Just clears CUDA cache if available.
-        """
+        Enhanced memory-efficient context manager for tensor operations.
 
-        @contextmanager
-        def _context():
+        Args:
+            operation_name: Name of the operation for tracking
+
+        Yields:
+            self: The tensor instance for chaining operations
+        """
+        with comprehensive_cleanup_context(operation_name):
+            # Ensure tensor is in optimal state
+            if not self._data.is_contiguous():
+                with pytorch_memory_context("Tensor contiguous optimization"):
+                    self._data = self._data.contiguous()
+
             try:
                 yield self
             finally:
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
+                # Additional cleanup is handled by the context manager
+                pass
 
-        return _context()
+    @contextmanager
+    def device_transfer_context(self, target_device: Union[str, torch.device]):
+        """
+        Context manager for efficient device transfers.
 
-    def memory_info(self) -> Dict[str, Any]:
-        """Get memory information for this tensor."""
+        Args:
+            target_device: Target device for tensor
+
+        Yields:
+            self: Tensor on target device
+        """
+        original_device = self.device
+        target_device = torch.device(target_device)
+
+        with pytorch_memory_context(
+            f"Device transfer: {original_device} -> {target_device}"
+        ):
+            # Transfer to target device
+            if original_device != target_device:
+                self._data = self._data.to(target_device)
+
+            try:
+                yield self
+            finally:
+                # Optional: transfer back to original device
+                # This can be configured based on use case
+                pass
+
+    @contextmanager
+    def batch_processing_context(self, batch_size: int = 1000):
+        """
+        Context manager for memory-efficient batch processing.
+
+        Args:
+            batch_size: Size of each batch
+
+        Yields:
+            Generator of tensor batches
+        """
+        total_size = self.shape[0]
+
+        with memory_tracking_context(f"Batch processing: {total_size} items"):
+
+            def batch_generator():
+                for i in range(0, total_size, batch_size):
+                    end_idx = min(i + batch_size, total_size)
+                    with pytorch_memory_context(f"Batch {i // batch_size + 1}"):
+                        yield self._data[i:end_idx]
+
+            yield batch_generator()
+
+    def optimize_memory_layout(self) -> "Self":
+        """Optimize tensor memory layout for better performance."""
+        with pytorch_memory_context("Memory layout optimization"):
+            # Ensure contiguous memory layout
+            if not self._data.is_contiguous():
+                self._data = self._data.contiguous()
+
+            # Optimize data type if possible
+            if self._data.dtype == torch.float64:
+                # Convert to float32 for better memory efficiency
+                self._data = self._data.float()
+
+            return self
+
+    def get_memory_info(self) -> Dict[str, Any]:
+        """Get comprehensive memory information for the tensor."""
+        storage_size = (
+            self._data.untyped_storage().size()
+            if hasattr(self._data, "untyped_storage")
+            else 0
+        )
+
         info = {
             "device": str(self.device),
             "dtype": str(self.dtype),
             "shape": list(self.shape),
-            "numel": self._data.numel(),
+            "numel": self.numel(),
             "element_size": self._data.element_size(),
-            "memory_bytes": self._data.numel() * self._data.element_size(),
-            "memory_mb": (self._data.numel() * self._data.element_size()) / 1024**2,
-            "requires_grad": self._data.requires_grad,
-            "is_contiguous": self._data.is_contiguous(),
+            "storage_size": storage_size,
             "data_ptr": self._data.data_ptr(),
-            "storage_size": self._data.storage().size(),
+            "is_contiguous": self._data.is_contiguous(),
+            "requires_grad": self._data.requires_grad,
+            "memory_bytes": self.numel() * self._data.element_size(),
+            "memory_mb": (self.numel() * self._data.element_size()) / 1024**2,
+            "is_pinned": self._data.is_pinned()
+            if hasattr(self._data, "is_pinned")
+            else False,
         }
 
+        # Add CUDA-specific info
         if self._data.is_cuda:
             info.update(
                 {
-                    "cuda_device": self.device.index,
-                    "is_pinned": False,  # Can't check pinned memory for CUDA tensors
+                    "cuda_device": self._data.device.index,
+                    "cuda_allocated": torch.cuda.memory_allocated(self._data.device)
+                    / 1024**2,
+                    "cuda_reserved": torch.cuda.memory_reserved(self._data.device)
+                    / 1024**2,
                 }
-            )
-        else:
-            info["is_pinned"] = (
-                self._data.is_pinned() if hasattr(self._data, "is_pinned") else False
             )
 
         return info
 
     # =========================================================================
-    # Visualization integration (simplified)
+    # Enhanced Device Management
     # =========================================================================
 
-    def to_pyvista(self, scalars: Optional[torch.Tensor] = None, **kwargs):
+    def to_optimal_device(self) -> "Self":
+        """Move tensor to optimal device based on availability."""
+        with pytorch_memory_context("Optimal device selection"):
+            if torch.cuda.is_available() and not self._data.is_cuda:
+                optimal_device = torch.device("cuda")
+                self._data = self._data.to(optimal_device)
+            elif torch.backends.mps.is_available() and not self._data.is_mps:
+                optimal_device = torch.device("mps")
+                self._data = self._data.to(optimal_device)
+            # Otherwise stay on CPU
+
+            return self
+
+    def pin_memory(self) -> "Self":
+        """Pin tensor memory for faster CPU-GPU transfers."""
+        if not self._data.is_cuda and hasattr(self._data, "pin_memory"):
+            with pytorch_memory_context("Memory pinning"):
+                self._data = self._data.pin_memory()
+        return self
+
+    # =========================================================================
+    # Enhanced Operations with Memory Management
+    # =========================================================================
+
+    def apply_transform(self, transform_func: callable, **kwargs) -> "Self":
         """
-        Convert tensor to PyVista mesh.
+        Apply transformation function with memory management.
+
+        Args:
+            transform_func: Function to apply to tensor data
+            **kwargs: Additional arguments for transform function
+
+        Returns:
+            Transformed tensor
         """
-        try:
-            import pyvista as pv
-            
-            # Get positions from tensor data
-            positions = self._data.detach().cpu().numpy()
-            
-            # Create point cloud
-            mesh = pv.PolyData(positions)
-            
-            # Add scalars if provided
-            if scalars is not None:
-                scalars_np = scalars.detach().cpu().numpy()
-                if scalars_np.ndim == 1:
-                    mesh.point_data["scalars"] = scalars_np
+        with self.memory_efficient_context("Transform application"):
+            transformed_data = transform_func(self._data, **kwargs)
+            return self.__class__(transformed_data, **self._get_init_kwargs())
+
+    def split_batches(self, batch_size: int) -> List["Self"]:
+        """
+        Split tensor into batches with memory management.
+
+        Args:
+            batch_size: Size of each batch
+
+        Returns:
+            List of tensor batches
+        """
+        batches = []
+        total_size = self.shape[0]
+
+        with memory_tracking_context(
+            f"Tensor splitting: {total_size} -> batches of {batch_size}"
+        ):
+            for i in range(0, total_size, batch_size):
+                end_idx = min(i + batch_size, total_size)
+                with pytorch_memory_context(f"Batch creation {i // batch_size + 1}"):
+                    batch_data = self._data[i:end_idx]
+                    batch_tensor = self.__class__(batch_data, **self._get_init_kwargs())
+                    batches.append(batch_tensor)
+
+        return batches
+
+    def merge_batches(self, batches: List["Self"]) -> "Self":
+        """
+        Merge multiple tensor batches with memory management.
+
+        Args:
+            batches: List of tensor batches to merge
+
+        Returns:
+            Merged tensor
+        """
+        with memory_tracking_context(f"Tensor merging: {len(batches)} batches"):
+            batch_data = []
+            for batch in batches:
+                batch_data.append(batch._data)
+
+            with pytorch_memory_context("Tensor concatenation"):
+                merged_data = torch.cat(batch_data, dim=0)
+                return self.__class__(merged_data, **self._get_init_kwargs())
+
+    def _get_init_kwargs(self) -> Dict[str, Any]:
+        """Get initialization kwargs for creating new instances."""
+        # Override in subclasses to include specific parameters
+        return {}
+
+    # =========================================================================
+    # Enhanced Serialization with Memory Management
+    # =========================================================================
+
+    def save_optimized(self, path: Union[str, Path], compress: bool = True) -> None:
+        """
+        Save tensor with memory optimization.
+
+        Args:
+            path: Path to save tensor
+            compress: Whether to compress the saved data
+        """
+        path = Path(path)
+
+        with comprehensive_cleanup_context("Tensor saving"):
+            # Optimize before saving
+            with pytorch_memory_context("Pre-save optimization"):
+                optimized_tensor = self.optimize_memory_layout()
+
+            # Save with compression if requested
+            with pytorch_memory_context("File writing"):
+                if compress:
+                    torch.save(optimized_tensor._data, path, pickle_protocol=4)
                 else:
-                    # If multi-dimensional, use first dimension
-                    mesh.point_data["scalars"] = scalars_np[:, 0] if scalars_np.shape[1] > 0 else scalars_np.flatten()
-            
-            return mesh
-            
-        except ImportError:
-            logger.warning("PyVista not available")
-            return None
-        except Exception as e:
-            logger.warning(f"PyVista conversion failed: {e}")
-            return None
+                    torch.save(optimized_tensor._data, path)
 
-    def to_blender(self, name: str = "astro_object", collection_name: str = "AstroLab"):
+    @classmethod
+    def load_optimized(cls, path: Union[str, Path], **kwargs) -> "Self":
         """
-        Convert tensor to Blender object.
-        Simplified - requires tensor utils to be available.
-        """
-        try:
-            from ..utils.tensor import transfer_to_framework
+        Load tensor with memory optimization.
 
-            return transfer_to_framework(
-                self._data, "blender", name=name, collection_name=collection_name
-            )
-        except ImportError:
-            logger.warning("Blender conversion requires tensor utils")
-            return None
+        Args:
+            path: Path to load tensor from
+            **kwargs: Additional initialization arguments
+
+        Returns:
+            Loaded tensor instance
+        """
+        path = Path(path)
+
+        with comprehensive_cleanup_context("Tensor loading"):
+            with pytorch_memory_context("File reading"):
+                data = torch.load(path, map_location="cpu")
+
+            with pytorch_memory_context("Tensor initialization"):
+                return cls(data, **kwargs)
 
     # =========================================================================
     # Utility methods
@@ -384,30 +541,6 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         device_str = f", device='{self.device}'" if self.device.type != "cpu" else ""
 
         return f"{tensor_type}(shape=[{shape_str}], dtype={self.dtype}{device_str})"
-
-
-# Simplified memory profiling
-@contextmanager
-def memory_profiling_context(description: str = "Operation"):
-    """Simple memory profiling context manager."""
-    initial_memory = None
-    if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()
-        initial_memory = torch.cuda.memory_allocated()
-
-    try:
-        yield
-    finally:
-        if torch.cuda.is_available() and initial_memory is not None:
-            final_memory = torch.cuda.memory_allocated()
-            peak_memory = torch.cuda.max_memory_allocated()
-
-            logger.info(
-                f"Memory Profile [{description}]: "
-                f"Initial: {initial_memory / 1024**2:.1f}MB, "
-                f"Final: {final_memory / 1024**2:.1f}MB, "
-                f"Peak: {peak_memory / 1024**2:.1f}MB"
-            )
 
 
 # Direct transfer function (simplified)

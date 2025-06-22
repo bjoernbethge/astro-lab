@@ -7,8 +7,10 @@ Updated for Lightning 2.0+ compatibility and modern ML practices.
 """
 
 import gc
+import logging
 import os
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
@@ -24,8 +26,14 @@ from lightning.pytorch.callbacks import (
 from torch.utils.data import DataLoader
 
 from astro_lab.data.config import data_config
+from astro_lab.models.config import (
+    EncoderConfig,
+    GraphConfig,
+    ModelConfig,
+    OutputConfig,
+)
 from astro_lab.training.config import TrainingConfig as FullTrainingConfig
-from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
+from astro_lab.utils.memory import comprehensive_cleanup_context, model_training_context
 
 from .lightning_module import AstroLightningModule
 
@@ -41,6 +49,7 @@ except ImportError:
 
 try:
     from .optuna_trainer import OptunaTrainer
+
     OPTUNA_AVAILABLE = True
 except (ImportError, ValueError):
     OptunaTrainer = None
@@ -64,6 +73,8 @@ PrecisionType = Union[
     int,
 ]
 
+logger = logging.getLogger(__name__)
+
 
 class AstroTrainer(Trainer):
     """
@@ -82,105 +93,113 @@ class AstroTrainer(Trainer):
     ):
         """
         Initialize AstroTrainer with modern Lightning 2.0+ compatibility.
-        
+
         Args:
             lightning_module: Pre-configured Lightning module
             training_config: Training configuration
             **kwargs: Additional trainer parameters
         """
-        # Store configurations
-        self.training_config = training_config
-        self._lightning_module = lightning_module
-        
-        # Create default training config if none provided
-        if training_config is None:
-            from astro_lab.training.config import TrainingConfig
-            from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
-            
-            # Create a minimal model config
-            model_config = ModelConfig(
-                name="default_model",
-                encoder=EncoderConfig(),
-                graph=GraphConfig(),
-                output=OutputConfig()
-            )
-            
-            training_config = TrainingConfig(
-                name="default_training",
-                model=model_config
-            )
+        with comprehensive_cleanup_context("AstroTrainer initialization"):
+            # Store configurations
             self.training_config = training_config
-        
-        # Validate training config
-        assert isinstance(self.training_config, FullTrainingConfig), "training_config must be a TrainingConfig instance"
-        
-        # Get model config from training config
-        model_config = self.training_config.model
+            self._lightning_module = lightning_module
 
-        # Create Lightning module if not provided
-        if lightning_module is None:
-            lightning_module = AstroLightningModule(
-                model_config=model_config,
-                training_config=training_config
+            # Create default training config if none provided
+            if training_config is None:
+                from astro_lab.models.config import (
+                    EncoderConfig,
+                    GraphConfig,
+                    ModelConfig,
+                    OutputConfig,
+                )
+                from astro_lab.training.config import TrainingConfig
+
+                # Create a minimal model config
+                model_config = ModelConfig(
+                    name="default_model",
+                    encoder=EncoderConfig(),
+                    graph=GraphConfig(),
+                    output=OutputConfig(),
+                )
+
+                training_config = TrainingConfig(
+                    name="default_training", model=model_config
+                )
+                self.training_config = training_config
+
+            # Validate training config
+            assert isinstance(self.training_config, FullTrainingConfig), (
+                "training_config must be a TrainingConfig instance"
             )
-        
-        self.astro_module = lightning_module
-        self.experiment_name = self.training_config.logging.experiment_name
-        self.survey = model_config.name if hasattr(model_config, "name") else "unknown"
 
-        # Extract hardware configuration
-        accelerator = self.training_config.hardware.accelerator
-        devices = self.training_config.hardware.devices
-        precision = self.training_config.hardware.precision
+            # Get model config from training config
+            model_config = self.training_config.model
 
-        # Setup checkpoint directory
-        self.checkpoint_dir = self._setup_checkpoint_dir(
-            checkpoint_dir=None,  # Use default from data_config
-            experiment_name=self.experiment_name
-        )
+            # Create Lightning module if not provided
+            if lightning_module is None:
+                lightning_module = AstroLightningModule(
+                    model_config=model_config, training_config=training_config
+                )
 
-        # Setup callbacks and logger
-        callbacks = self._setup_astro_callbacks(
-            enable_swa=self.training_config.callbacks.swa,
-            patience=self.training_config.callbacks.early_stopping_patience,
-            monitor=self.training_config.callbacks.monitor,
-            mode=self.training_config.callbacks.mode,
-            checkpoint_dir=self.checkpoint_dir,
-        )
-        logger = self._setup_astro_logger()
+            self.astro_module = lightning_module
+            self.experiment_name = self.training_config.logging.experiment_name
+            self.survey = (
+                model_config.name if hasattr(model_config, "name") else "unknown"
+            )
 
-        # Filter kwargs to avoid conflicts
-        filtered_kwargs = {
-            k: v
-            for k, v in kwargs.items()
-            if k not in ["accelerator", "devices", "precision", "max_epochs"]
-        }
+            # Extract hardware configuration
+            accelerator = self.training_config.hardware.accelerator
+            devices = self.training_config.hardware.devices
+            precision = self.training_config.hardware.precision
 
-        # Determine if we should disable Lightning's default logging
-        disable_lightning_logs = (
-            MLFLOW_AVAILABLE and 
-            getattr(self.training_config.logging, 'use_mlflow', False) and
-            logger is not None
-        )
+            # Setup checkpoint directory
+            self.checkpoint_dir = self._setup_checkpoint_dir(
+                checkpoint_dir=None,  # Use default from data_config
+                experiment_name=self.experiment_name,
+            )
 
-        # Initialize parent Trainer with modern parameters
-        super().__init__(
-            max_epochs=self.training_config.scheduler.max_epochs,
-            accelerator=accelerator,
-            devices=devices,
-            precision=precision,
-            callbacks=callbacks,
-            logger=logger,
-            # Disable Lightning's default logging since we use MLflow
-            enable_progress_bar=True,
-            enable_model_summary=True,
-            enable_checkpointing=True,
-            # Disable default Lightning logs directory when using MLflow
-            default_root_dir=None if disable_lightning_logs else None,
-            **filtered_kwargs,
-        )
+            # Setup callbacks and logger
+            callbacks = self._setup_astro_callbacks(
+                enable_swa=self.training_config.callbacks.swa,
+                patience=self.training_config.callbacks.early_stopping_patience,
+                monitor=self.training_config.callbacks.monitor,
+                mode=self.training_config.callbacks.mode,
+                checkpoint_dir=self.checkpoint_dir,
+            )
+            logger = self._setup_astro_logger()
 
-        print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
+            # Filter kwargs to avoid conflicts
+            filtered_kwargs = {
+                k: v
+                for k, v in kwargs.items()
+                if k not in ["accelerator", "devices", "precision", "max_epochs"]
+            }
+
+            # Determine if we should disable Lightning's default logging
+            disable_lightning_logs = (
+                MLFLOW_AVAILABLE
+                and getattr(self.training_config.logging, "use_mlflow", False)
+                and logger is not None
+            )
+
+            # Initialize parent Trainer with modern parameters
+            super().__init__(
+                max_epochs=self.training_config.scheduler.max_epochs,
+                accelerator=accelerator,
+                devices=devices,
+                precision=precision,
+                callbacks=callbacks,
+                logger=logger,
+                # Disable Lightning's default logging since we use MLflow
+                enable_progress_bar=True,
+                enable_model_summary=True,
+                enable_checkpointing=True,
+                # Disable default Lightning logs directory when using MLflow
+                default_root_dir=None if disable_lightning_logs else None,
+                **filtered_kwargs,
+            )
+
+            print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
 
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str
@@ -254,12 +273,18 @@ class AstroTrainer(Trainer):
 
     def _setup_astro_logger(self):
         """Setup logging with MLflow integration if available."""
-        if MLFLOW_AVAILABLE and getattr(self.training_config.logging, 'use_mlflow', False):
+        if MLFLOW_AVAILABLE and getattr(
+            self.training_config.logging, "use_mlflow", False
+        ):
             try:
-                tracking_uri = getattr(self.training_config.logging, 'mlflow_tracking_uri', None)
+                tracking_uri = getattr(
+                    self.training_config.logging, "mlflow_tracking_uri", None
+                )
                 if not tracking_uri:
                     tracking_uri = "file:./mlruns"
-                    print("⚠️ No tracking_uri found in Config, use Default: file:./mlruns")
+                    print(
+                        "⚠️ No tracking_uri found in Config, use Default: file:./mlruns"
+                    )
                 logger = AstroMLflowLogger(
                     experiment_name=self.experiment_name,
                     tracking_uri=tracking_uri,
@@ -280,17 +305,17 @@ class AstroTrainer(Trainer):
     ) -> None:
         """
         Fit the model with modern Lightning 2.0+ compatibility.
-        
+
         Args:
             train_dataloader: Training data loader
-            val_dataloader: Validation data loader  
+            val_dataloader: Validation data loader
             datamodule: Lightning DataModule
             ckpt_path: Checkpoint path for resuming
         """
         try:
             # Automatische Klassenableitung vor dem Training
             self._auto_detect_classes(train_dataloader, val_dataloader, datamodule)
-            
+
             # Use the lightning module directly
             if datamodule is not None:
                 # Use DataModule (recommended approach)
@@ -307,10 +332,10 @@ class AstroTrainer(Trainer):
                     val_dataloaders=val_dataloader,
                     ckpt_path=ckpt_path,
                 )
-            
+
             # Cleanup after training
             self._cleanup_after_training()
-                
+
         except Exception as e:
             print(f"❌ Training failed: {e}")
             # Cleanup even on error
@@ -324,19 +349,19 @@ class AstroTrainer(Trainer):
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 print("🧹 CUDA cache cleared")
-            
+
             # Force garbage collection
             gc.collect()
-            
+
             # Clear any cached tensors in the module
-            if hasattr(self.astro_module, 'model'):
+            if hasattr(self.astro_module, "model"):
                 for param in self.astro_module.model.parameters():
                     if param.grad is not None:
                         param.grad.detach_()
                         param.grad.zero_()
-            
+
             print("🧹 Memory cleanup completed")
-            
+
         except Exception as e:
             print(f"⚠️ Memory cleanup failed: {e}")
 
@@ -345,70 +370,87 @@ class AstroTrainer(Trainer):
         try:
             # Determine DataLoader for class detection
             target_dataloader = None
-            if datamodule is not None and hasattr(datamodule, 'train_dataloader'):
+            if datamodule is not None and hasattr(datamodule, "train_dataloader"):
                 target_dataloader = datamodule.train_dataloader()
             elif train_dataloader is not None:
                 target_dataloader = train_dataloader
             elif val_dataloader is not None:
                 target_dataloader = val_dataloader
-            
+
             if target_dataloader is None:
                 print("⚠️ No DataLoader available for class detection")
                 return
-            
+
             # Class detection from data
             targets = []
-            
+
             for i, batch in enumerate(target_dataloader):
                 t = None
                 if isinstance(batch, dict):
-                    t = batch.get('target') or batch.get('y')
+                    t = batch.get("target") or batch.get("y")
                 elif isinstance(batch, (list, tuple)) and len(batch) > 1:
                     t = batch[1]
-                elif hasattr(batch, 'y'):  # PyTorch Geometric DataBatch
+                elif hasattr(batch, "y"):  # PyTorch Geometric DataBatch
                     t = batch.y
-                elif hasattr(batch, 'target'):  # Alternative target attribute
+                elif hasattr(batch, "target"):  # Alternative target attribute
                     t = batch.target
                 else:
                     # Try various possible target attributes
-                    for attr_name in ['y', 'target', 'labels', 'class', 'classes']:
+                    for attr_name in ["y", "target", "labels", "class", "classes"]:
                         if hasattr(batch, attr_name):
                             attr_value = getattr(batch, attr_name)
-                            if attr_value is not None and hasattr(attr_value, 'shape'):
+                            if attr_value is not None and hasattr(attr_value, "shape"):
                                 t = attr_value
                                 break
                     else:
                         t = None
-                
+
                 if t is not None:
                     targets.append(t.flatten())
                 if i > 5:  # Limit for efficiency
                     break
-            
+
             if targets:
                 all_targets = torch.cat(targets)
                 num_classes = int(all_targets.max().item()) + 1
-                print(f"🔍 Automatically detected {num_classes} classes from training data (min={all_targets.min().item()}, max={all_targets.max().item()}).")
-                
+                print(
+                    f"🔍 Automatically detected {num_classes} classes from training data (min={all_targets.min().item()}, max={all_targets.max().item()})."
+                )
+
                 # Update Lightning module with correct number of classes
-                if hasattr(self.astro_module, 'num_classes') and self.astro_module.num_classes != num_classes:
-                    print(f"🔄 Updating Lightning module from {self.astro_module.num_classes} to {num_classes} classes")
+                if (
+                    hasattr(self.astro_module, "num_classes")
+                    and self.astro_module.num_classes != num_classes
+                ):
+                    print(
+                        f"🔄 Updating Lightning module from {self.astro_module.num_classes} to {num_classes} classes"
+                    )
                     self.astro_module.num_classes = num_classes
-                    
+
                     # Recreate model with correct number of classes
-                    if hasattr(self.astro_module, 'model_config') and self.astro_module.model_config is not None:
+                    if (
+                        hasattr(self.astro_module, "model_config")
+                        and self.astro_module.model_config is not None
+                    ):
                         # Update model config
-                        if hasattr(self.astro_module.model_config, 'output'):
-                            self.astro_module.model_config.output.output_dim = num_classes
-                        
+                        if hasattr(self.astro_module.model_config, "output"):
+                            self.astro_module.model_config.output.output_dim = (
+                                num_classes
+                            )
+
                         # Recreate model
                         try:
-                            self.astro_module.model = self.astro_module._create_model_from_config(self.astro_module.model_config)
+                            self.astro_module.model = (
+                                self.astro_module._create_model_from_config(
+                                    self.astro_module.model_config
+                                )
+                            )
                             print(f"🔄 Model recreated with {num_classes} classes")
                         except Exception as e:
                             print(f"❌ Error recreating model: {e}")
                             # Fallback
                             from astro_lab.models.astro import AstroSurveyGNN
+
                             self.astro_module.model = AstroSurveyGNN(
                                 input_dim=16,  # Default
                                 hidden_dim=128,  # Default
@@ -416,12 +458,15 @@ class AstroTrainer(Trainer):
                                 conv_type="gcn",
                                 num_layers=3,
                                 dropout=0.1,
-                                task="stellar_classification"
+                                task="stellar_classification",
                             )
-                            print(f"🔄 Fallback model created with {num_classes} classes")
+                            print(
+                                f"🔄 Fallback model created with {num_classes} classes"
+                            )
                     else:
                         # Fallback: Create new model directly
                         from astro_lab.models.astro import AstroSurveyGNN
+
                         self.astro_module.model = AstroSurveyGNN(
                             input_dim=16,  # Default
                             hidden_dim=128,  # Default
@@ -429,16 +474,16 @@ class AstroTrainer(Trainer):
                             conv_type="gcn",
                             num_layers=3,
                             dropout=0.1,
-                            task="stellar_classification"
+                            task="stellar_classification",
                         )
                         print(f"🔄 New model created with {num_classes} classes")
-                    
+
                     # Recreate metrics
                     self.astro_module._setup_metrics()
                     print(f"🔄 Metrics recreated with {num_classes} classes")
             else:
                 print("⚠️ Could not detect classes from training data")
-                
+
         except Exception as e:
             print(f"❌ Error during automatic class detection: {e}")
             print("⚠️ Using default number of classes")
@@ -450,11 +495,11 @@ class AstroTrainer(Trainer):
     ) -> List[Mapping[str, float]]:
         """
         Test the model with modern Lightning 2.0+ compatibility.
-        
+
         Args:
             test_dataloader: Test data loader
             datamodule: Lightning DataModule
-            
+
         Returns:
             Test results
         """
@@ -469,11 +514,11 @@ class AstroTrainer(Trainer):
                     model=self.astro_module,
                     dataloaders=test_dataloader,
                 )
-            
+
             # Cleanup after testing
             self._cleanup_after_training()
             return results
-            
+
         except Exception as e:
             print(f"❌ Testing failed: {e}")
             self._cleanup_after_training()
@@ -486,11 +531,11 @@ class AstroTrainer(Trainer):
     ) -> Optional[List[Any]]:
         """
         Make predictions with modern Lightning 2.0+ compatibility.
-        
+
         Args:
             predict_dataloader: Prediction data loader
             datamodule: Lightning DataModule
-            
+
         Returns:
             Predictions
         """
@@ -521,14 +566,20 @@ class AstroTrainer(Trainer):
     @property
     def best_model_path(self) -> Optional[str]:
         """Get path to best model checkpoint."""
-        if hasattr(self, "checkpoint_callback") and self.checkpoint_callback is not None:
+        if (
+            hasattr(self, "checkpoint_callback")
+            and self.checkpoint_callback is not None
+        ):
             return self.checkpoint_callback.best_model_path
         return None
 
     @property
     def last_model_path(self) -> Optional[str]:
         """Get path to last model checkpoint."""
-        if hasattr(self, "checkpoint_callback") and self.checkpoint_callback is not None:
+        if (
+            hasattr(self, "checkpoint_callback")
+            and self.checkpoint_callback is not None
+        ):
             return self.checkpoint_callback.last_model_path
         return None
 
@@ -536,14 +587,14 @@ class AstroTrainer(Trainer):
         """Load the best model from checkpoint."""
         if self.best_model_path is None:
             raise ValueError("No best model checkpoint found")
-        
+
         return AstroLightningModule.load_from_checkpoint(self.best_model_path)
 
     def load_last_model(self) -> AstroLightningModule:
         """Load the last model from checkpoint."""
         if self.last_model_path is None:
             raise ValueError("No last model checkpoint found")
-        
+
         return AstroLightningModule.load_from_checkpoint(self.last_model_path)
 
     def resume_from_checkpoint(self, checkpoint_path: Union[str, Path]) -> None:
@@ -561,7 +612,7 @@ class AstroTrainer(Trainer):
     ) -> Any:
         """
         Optimize hyperparameters using Optuna.
-        
+
         Args:
             train_dataloader: Training data loader
             val_dataloader: Validation data loader
@@ -569,17 +620,19 @@ class AstroTrainer(Trainer):
             timeout: Optimization timeout
             search_space: Hyperparameter search space
             **optuna_kwargs: Additional Optuna parameters
-            
+
         Returns:
             Optimization results
         """
         if not OPTUNA_AVAILABLE:
-            raise ImportError("Optuna is not available. Install with: pip install optuna")
+            raise ImportError(
+                "Optuna is not available. Install with: pip install optuna"
+            )
 
         def model_factory(trial):
             # Get the original model configuration
             original_config = self.training_config.model
-            
+
             # Create new config with trial parameters
             if search_space:
                 # Use provided search space
@@ -600,7 +653,9 @@ class AstroTrainer(Trainer):
             else:
                 # Use default search space
                 trial_params = {
-                    "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
+                    "learning_rate": trial.suggest_float(
+                        "learning_rate", 1e-5, 1e-2, log=True
+                    ),
                     "hidden_dim": trial.suggest_int("hidden_dim", 64, 512),
                     "num_layers": trial.suggest_int("num_layers", 2, 6),
                     "dropout": trial.suggest_float("dropout", 0.1, 0.5),
@@ -612,8 +667,12 @@ class AstroTrainer(Trainer):
                 encoder=original_config.encoder,
                 graph=GraphConfig(
                     conv_type=original_config.graph.conv_type,
-                    hidden_dim=trial_params.get("hidden_dim", original_config.graph.hidden_dim),
-                    num_layers=trial_params.get("num_layers", original_config.graph.num_layers),
+                    hidden_dim=trial_params.get(
+                        "hidden_dim", original_config.graph.hidden_dim
+                    ),
+                    num_layers=trial_params.get(
+                        "num_layers", original_config.graph.num_layers
+                    ),
                     dropout=trial_params.get("dropout", original_config.graph.dropout),
                 ),
                 output=original_config.output,
@@ -663,14 +722,14 @@ class AstroTrainer(Trainer):
         """List all checkpoints in checkpoint directory."""
         if not self.checkpoint_dir.exists():
             return []
-        
+
         checkpoints = list(self.checkpoint_dir.glob("*.ckpt"))
         return sorted(checkpoints, key=lambda x: x.stat().st_mtime, reverse=True)
 
     def cleanup_old_checkpoints(self, keep_last_n: int = 5) -> None:
         """Clean up old checkpoints, keeping only the last N."""
         checkpoints = self.list_checkpoints()
-        
+
         if len(checkpoints) > keep_last_n:
             checkpoints_to_remove = checkpoints[keep_last_n:]
             for checkpoint in checkpoints_to_remove:
@@ -683,36 +742,36 @@ class AstroTrainer(Trainer):
     def save_best_models_to_results(self, top_k: int = 3) -> Dict[str, Path]:
         """
         Save best models to results directory with organized structure.
-        
+
         Args:
             top_k: Number of best models to save
-            
+
         Returns:
             Dictionary mapping model names to saved paths
         """
         try:
             # Get survey name for better organization
-            survey = getattr(self, 'survey', 'gaia')
-            
+            survey = getattr(self, "survey", "gaia")
+
             # Create organized results structure
             results_dir = Path(f"./results/{survey}")
             models_dir = results_dir / "models"
             plots_dir = results_dir / "plots"
-            
+
             models_dir.mkdir(parents=True, exist_ok=True)
             plots_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Get all checkpoints
             checkpoint_dir = Path(f"./experiments/{survey}/checkpoints")
             if not checkpoint_dir.exists():
                 print(f"⚠️ No checkpoint directory found: {checkpoint_dir}")
                 return {}
-            
+
             checkpoints = list(checkpoint_dir.glob("*.ckpt"))
             if not checkpoints:
                 print(f"⚠️ No checkpoints found in: {checkpoint_dir}")
                 return {}
-            
+
             # Sort by validation loss (best first)
             def extract_val_loss(checkpoint_path):
                 try:
@@ -721,40 +780,42 @@ class AstroTrainer(Trainer):
                     if "val_loss=" in filename:
                         loss_str = filename.split("val_loss=")[1].split("_")[0]
                         return float(loss_str)
-                    return float('inf')  # Put files without loss info at the end
+                    return float("inf")  # Put files without loss info at the end
                 except:
-                    return float('inf')
-            
+                    return float("inf")
+
             checkpoints.sort(key=extract_val_loss)
-            
+
             # Save top-k models with descriptive names
             saved_models = {}
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
+
             for i, checkpoint_path in enumerate(checkpoints[:top_k]):
                 # Create descriptive filename
                 val_loss = extract_val_loss(checkpoint_path)
-                if val_loss == float('inf'):
-                    model_name = f"{survey}_model_{i+1}_{timestamp}"
+                if val_loss == float("inf"):
+                    model_name = f"{survey}_model_{i + 1}_{timestamp}"
                 else:
-                    model_name = f"{survey}_model_{i+1}_val_loss_{val_loss:.4f}_{timestamp}"
-                
+                    model_name = (
+                        f"{survey}_model_{i + 1}_val_loss_{val_loss:.4f}_{timestamp}"
+                    )
+
                 # Save to results/models
                 target_path = models_dir / f"{model_name}.ckpt"
-                
+
                 try:
                     shutil.copy2(checkpoint_path, target_path)
                     saved_models[model_name] = target_path
-                    print(f"💾 Saved model {i+1}: {target_path.name}")
+                    print(f"💾 Saved model {i + 1}: {target_path.name}")
                 except Exception as e:
-                    print(f"❌ Failed to save model {i+1}: {e}")
-            
+                    print(f"❌ Failed to save model {i + 1}: {e}")
+
             # Create README with model information
             self._create_models_readme(saved_models, checkpoints[:top_k])
-            
+
             print(f"✅ Saved {len(saved_models)} models to: {models_dir}")
             return saved_models
-            
+
         except Exception as e:
             print(f"❌ Failed to save models to results: {e}")
             return {}
@@ -766,32 +827,38 @@ class AstroTrainer(Trainer):
         try:
             results_dir = data_config.results_dir / self.experiment_name
             readme_path = results_dir / "README.md"
-            
+
             with open(readme_path, "w", encoding="utf-8") as f:
                 f.write(f"# {self.experiment_name} - Model Results\n\n")
                 f.write(f"**Survey:** {self.survey}\n")
                 f.write(f"**Experiment:** {self.experiment_name}\n")
                 f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-                
+
                 f.write("## Saved Models\n\n")
                 for model_name, model_path in saved_models.items():
                     f.write(f"- **{model_name}**: `{model_path.name}`\n")
-                
+
                 f.write("\n## Training Information\n\n")
                 f.write(f"- **Model Type:** {type(self.astro_module.model).__name__}\n")
                 f.write(f"- **Task Type:** {self.astro_module.task_type}\n")
-                f.write(f"- **Number of Classes:** {getattr(self.astro_module, 'num_classes', 'N/A')}\n")
-                
+                f.write(
+                    f"- **Number of Classes:** {getattr(self.astro_module, 'num_classes', 'N/A')}\n"
+                )
+
                 if self.training_config:
-                    f.write(f"- **Max Epochs:** {self.training_config.scheduler.max_epochs}\n")
-                    f.write(f"- **Learning Rate:** {getattr(self.astro_module, 'learning_rate', 'N/A')}\n")
-                
+                    f.write(
+                        f"- **Max Epochs:** {self.training_config.scheduler.max_epochs}\n"
+                    )
+                    f.write(
+                        f"- **Learning Rate:** {getattr(self.astro_module, 'learning_rate', 'N/A')}\n"
+                    )
+
                 f.write("\n## Checkpoints\n\n")
                 for i, checkpoint in enumerate(checkpoints_info[:10]):  # Show top 10
-                    f.write(f"{i+1}. `{checkpoint.name}`\n")
-                
+                    f.write(f"{i + 1}. `{checkpoint.name}`\n")
+
             print(f"📝 Created README at {readme_path}")
-            
+
         except Exception as e:
             print(f"⚠️ Failed to create README: {e}")
 
@@ -811,11 +878,13 @@ class AstroTrainer(Trainer):
             "model_info": {
                 "type": type(self.astro_module.model).__name__,
                 "task_type": self.astro_module.task_type,
-                "num_classes": getattr(self.astro_module, 'num_classes', 'N/A'),
+                "num_classes": getattr(self.astro_module, "num_classes", "N/A"),
             },
             "training_info": {
-                "max_epochs": self.training_config.scheduler.max_epochs if self.training_config else 'N/A',
-                "learning_rate": getattr(self.astro_module, 'learning_rate', 'N/A'),
+                "max_epochs": self.training_config.scheduler.max_epochs
+                if self.training_config
+                else "N/A",
+                "learning_rate": getattr(self.astro_module, "learning_rate", "N/A"),
             },
         }
 
@@ -825,17 +894,17 @@ class AstroTrainer(Trainer):
     ) -> "AstroTrainer":
         """
         Create AstroTrainer from configuration dictionary.
-        
+
         Args:
             config: Configuration dictionary
             lightning_module: Pre-configured Lightning module
-            
+
         Returns:
             AstroTrainer instance
         """
         # Extract trainer-specific parameters
         trainer_params = config.get("trainer", {})
-        
+
         # Create trainer
         return cls(
             lightning_module=lightning_module,
