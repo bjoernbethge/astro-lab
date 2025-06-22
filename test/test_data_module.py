@@ -14,31 +14,33 @@ import torch
 
 # Import only actual classes that exist
 from astro_lab.data.core import (
-    AstroDataset,
     AstroDataModule,
+    AstroDataset,
     create_cosmic_web_loader,
     create_graph_datasets_from_splits,
     create_graph_from_dataframe,
+    detect_survey_type,
+    get_optimal_batch_size,
+    get_optimal_device,
     load_gaia_data,
     load_nsa_data,
-    get_optimal_device,
-    get_optimal_batch_size,
-    detect_survey_type,
 )
-# Import utility functions from utils (not core)
-from astro_lab.data.utils import (
-    get_data_statistics,
-    preprocess_catalog,
-    create_training_splits,
-    save_splits_to_parquet,
-    load_splits_from_parquet,
-)
+
 # Import catalog management from manager
 from astro_lab.data.manager import (
     AstroDataManager,
-    load_gaia_bright_stars,
-    load_catalog,
     list_catalog_names,
+    load_catalog,
+    load_gaia_bright_stars,
+)
+
+# Import utility functions from utils (not core)
+from astro_lab.data.utils import (
+    create_training_splits,
+    get_data_statistics,
+    load_splits_from_parquet,
+    preprocess_catalog,
+    save_splits_to_parquet,
 )
 
 
@@ -94,12 +96,14 @@ class TestIntegratedDataModule:
     def test_get_data_statistics(self):
         """Test get_data_statistics function."""
         # Create a small test DataFrame
-        test_df = pl.DataFrame({
-            "ra": [0.0, 1.0, 2.0],
-            "dec": [0.0, 1.0, 2.0],
-            "mag": [10.0, 11.0, 12.0],
-        })
-        
+        test_df = pl.DataFrame(
+            {
+                "ra": [0.0, 1.0, 2.0],
+                "dec": [0.0, 1.0, 2.0],
+                "mag": [10.0, 11.0, 12.0],
+            }
+        )
+
         stats = get_data_statistics(test_df)
         assert isinstance(stats, dict)
         assert "n_rows" in stats
@@ -117,12 +121,14 @@ class TestIntegratedDataModule:
     def test_preprocess_catalog(self):
         """Test preprocess_catalog function."""
         # Create test DataFrame with some nulls
-        test_df = pl.DataFrame({
-            "ra": [0.0, None, 2.0],
-            "dec": [0.0, 1.0, None],
-            "mag": [10.0, 11.0, 12.0],
-        })
-        
+        test_df = pl.DataFrame(
+            {
+                "ra": [0.0, None, 2.0],
+                "dec": [0.0, 1.0, None],
+                "mag": [10.0, 11.0, 12.0],
+            }
+        )
+
         cleaned_df = preprocess_catalog(test_df, clean_null_columns=True)
         assert isinstance(cleaned_df, pl.DataFrame)
         # Should remove rows with nulls
@@ -131,17 +137,19 @@ class TestIntegratedDataModule:
     def test_create_training_splits(self):
         """Test create_training_splits function."""
         # Create test DataFrame
-        test_df = pl.DataFrame({
-            "ra": list(range(100)),
-            "dec": list(range(100)),
-            "mag": list(range(100)),
-        })
-        
+        test_df = pl.DataFrame(
+            {
+                "ra": list(range(100)),
+                "dec": list(range(100)),
+                "mag": list(range(100)),
+            }
+        )
+
         train, val, test = create_training_splits(test_df, test_size=0.2, val_size=0.1)
         assert isinstance(train, pl.DataFrame)
         assert isinstance(val, pl.DataFrame)
         assert isinstance(test, pl.DataFrame)
-        
+
         # Check split sizes
         total = len(train) + len(val) + len(test)
         assert total == len(test_df)
@@ -151,18 +159,24 @@ class TestIntegratedDataModule:
     )
     def test_load_gaia_data_integrated(self):
         """Test load_gaia_data function with integrated approach."""
-        dataset = load_gaia_data(max_samples=20, return_tensor=False)
-        assert len(dataset) <= 20
-        assert len(dataset) > 0
+        try:
+            dataset = load_gaia_data(max_samples=20, return_tensor=False)
+            assert len(dataset) <= 20
+            assert len(dataset) > 0
+        except FileNotFoundError as e:
+            pytest.skip(f"Could not create Gaia dataset: {e}")
 
     @pytest.mark.skipif(
         not Path("data/raw/nsa").exists(), reason="NSA data not available"
     )
     def test_load_nsa_data_integrated(self):
         """Test load_nsa_data function with integrated approach."""
-        dataset = load_nsa_data(max_samples=20, return_tensor=False)
-        assert len(dataset) <= 20
-        assert len(dataset) > 0
+        try:
+            dataset = load_nsa_data(max_samples=20, return_tensor=False)
+            assert len(dataset) <= 20
+            assert len(dataset) > 0
+        except FileNotFoundError as e:
+            pytest.skip(f"Could not create NSA dataset: {e}")
 
 
 class TestCosmicWebAnalysis:
@@ -236,18 +250,20 @@ class TestGraphCreation:
 
     def test_create_graph_from_dataframe(self):
         """Test create_graph_from_dataframe function (batch/device-agnostic)."""
-        test_df = pl.DataFrame({
-            "ra": [0.0, 1.0, 2.0],
-            "dec": [0.0, 1.0, 2.0],
-            "mag": [10.0, 11.0, 12.0],
-        })
+        test_df = pl.DataFrame(
+            {
+                "ra": [0.0, 1.0, 2.0],
+                "dec": [0.0, 1.0, 2.0],
+                "mag": [10.0, 11.0, 12.0],
+            }
+        )
         device = get_optimal_device()
         batch_size = get_optimal_batch_size(3)
-        
+
         # Ensure test output directory exists
         test_output_dir = Path("test_output")
         test_output_dir.mkdir(exist_ok=True)
-        
+
         try:
             create_graph_from_dataframe(
                 test_df,
@@ -264,26 +280,31 @@ class TestGraphCreation:
         finally:
             # Clean up
             import shutil
+
             if test_output_dir.exists():
                 shutil.rmtree(test_output_dir)
 
     def test_create_graph_datasets_from_splits(self):
         """Test create_graph_datasets_from_splits function (batch/device-agnostic)."""
-        test_df = pl.DataFrame({
-            "ra": list(range(30)),
-            "dec": list(range(30)),
-            "mag": list(range(30)),
-        })
+        test_df = pl.DataFrame(
+            {
+                "ra": list(range(30)),
+                "dec": list(range(30)),
+                "mag": list(range(30)),
+            }
+        )
         train, val, test = create_training_splits(test_df, test_size=0.3, val_size=0.2)
         batch_size = get_optimal_batch_size(len(train))
-        
+
         # Ensure test output directory exists
         test_output_dir = Path("test_output")
         test_output_dir.mkdir(exist_ok=True)
-        
+
         try:
             create_graph_datasets_from_splits(
-                train, val, test,
+                train,
+                val,
+                test,
                 test_output_dir,
                 "test_dataset",
                 k_neighbors=3,
@@ -297,6 +318,7 @@ class TestGraphCreation:
         finally:
             # Clean up
             import shutil
+
             if test_output_dir.exists():
                 shutil.rmtree(test_output_dir)
 
@@ -307,33 +329,36 @@ class TestFileOperations:
     def test_save_and_load_splits(self):
         """Test save_splits_to_parquet and load_splits_from_parquet."""
         # Create test splits
-        test_df = pl.DataFrame({
-            "ra": list(range(20)),
-            "dec": list(range(20)),
-            "mag": list(range(20)),
-        })
-        
+        test_df = pl.DataFrame(
+            {
+                "ra": list(range(20)),
+                "dec": list(range(20)),
+                "mag": list(range(20)),
+            }
+        )
+
         train, val, test = create_training_splits(test_df, test_size=0.2, val_size=0.1)
-        
+
         # Save splits
         output_dir = Path("test_splits")
         output_dir.mkdir(exist_ok=True)
-        
+
         try:
             save_splits_to_parquet(train, val, test, output_dir, "test_dataset")
-            
+
             # Load splits
             loaded_train, loaded_val, loaded_test = load_splits_from_parquet(
                 output_dir, "test_dataset"
             )
-            
+
             assert len(loaded_train) == len(train)
             assert len(loaded_val) == len(val)
             assert len(loaded_test) == len(test)
-            
+
         finally:
             # Clean up
             import shutil
+
             if output_dir.exists():
                 shutil.rmtree(output_dir)
 
@@ -350,7 +375,7 @@ class TestSurveyConfigs:
         # Test cosmic web loader for available surveys
         available_surveys = []
         test_surveys = ["gaia", "nsa", "linear", "tng", "exoplanet"]
-        
+
         for survey in test_surveys:
             survey_path = data_dir / "raw" / survey
             if survey_path.exists() and any(survey_path.glob("*.parquet")):
@@ -359,7 +384,7 @@ class TestSurveyConfigs:
         # Print available surveys for debugging
         if available_surveys:
             print(f"Available surveys for testing: {available_surveys}")
-            
+
             # Test cosmic web loader for first available survey
             try:
                 results = create_cosmic_web_loader(

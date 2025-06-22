@@ -265,7 +265,7 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
     # If no command provided, show help
     if not args.command:
         parser.print_help()
-        return
+        sys.exit(0)
 
     # Route to appropriate handler
     try:
