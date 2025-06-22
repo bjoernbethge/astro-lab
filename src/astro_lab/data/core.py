@@ -195,14 +195,14 @@ def calculate_local_density(
     # BallTree for efficient radius searches
     tree = BallTree(positions_pc.numpy())
 
-    # Count neighbors in radius for each object
-    densities = []
-    for i in range(len(positions)):
-        neighbors = tree.query_radius(
-            [positions_pc[i]], r=radius_pc, return_distance=False
-        )[0]
-        density = len(neighbors) / (4 / 3 * np.pi * radius_pc**3)
-        densities.append(density)
+    # OPTIMIZED: Use query_radius with count_only for better performance
+    neighbor_counts = tree.query_radius(
+        positions_pc.numpy(), r=radius_pc, count_only=True
+    )
+
+    # OPTIMIZED: Vectorized density calculation
+    volume = (4 / 3) * np.pi * (radius_pc**3)
+    densities = neighbor_counts / volume
 
     return torch.tensor(densities, dtype=torch.float32)
 
