@@ -15,9 +15,9 @@ from astro_lab.tensors.base import AstroTensorBase
 class TestAstroTensorBase:
     """Test the base astronomical tensor class."""
 
-    def test_tensor_creation(self, sample_tensor_data: Dict[str, torch.Tensor]):
+    def test_tensor_creation(self):
         """Test basic tensor creation."""
-        data = sample_tensor_data["small_2d"]
+        data = torch.randn(5, 3)  # Create test data directly
         tensor = AstroTensorBase(data, tensor_type="test")
 
         assert tensor.get_metadata("tensor_type") == "test"

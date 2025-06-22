@@ -1,28 +1,36 @@
 """
-AstroLab CLI Module
-==================
+AstroLab CLI - Unified Command Line Interface
+============================================
 
-Moderne Command-line Interface für AstroLab mit integrierter Config-Verwaltung:
-- Download: Download astronomischer Datensätze
-- Train: ML-Model Training mit Lightning + MLflow + Config-Integration
-- Config: Konfigurationsverwaltung
+Modern CLI for astronomical data processing and ML training.
+Supports multiple survey types with unified preprocessing and training pipelines.
 """
 
-# Suppress NumPy warnings before any other imports
-import os
-import warnings
-
-warnings.filterwarnings("ignore", message=".*NumPy 1.x.*")
-warnings.filterwarnings("ignore", message=".*compiled using NumPy 1.x.*")
-warnings.filterwarnings("ignore", message=".*numpy.core.multiarray.*")
-os.environ["PYTHONWARNINGS"] = "ignore::UserWarning:numpy"
-
 import argparse
+import datetime
+import json
+import os
 import sys
+import traceback
+import warnings
 import yaml
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
-from astro_lab.utils.config import ConfigLoader
+import click
+
+from astro_lab.data import (
+    AstroDataset,
+    create_astro_datamodule,
+    data_config,
+    load_gaia_data,
+    load_nsa_data,
+    load_sdss_data,
+    load_tng50_data,
+)
+from astro_lab.models.factory import ModelFactory
+from astro_lab.training.trainer import AstroTrainer
+from astro_lab.utils.config.loader import ConfigLoader
 
 __all__ = [
     "main",
@@ -345,9 +353,6 @@ def handle_preprocess(args):
                 print(f"❌ Error: {e}")
 
         elif args.preprocess_action == "browse":
-            import datetime
-            import os
-
             base_path = Path(args.path)
             if not base_path.exists():
                 print(f"❌ Path not found: {base_path}")
@@ -445,8 +450,6 @@ def handle_preprocess(args):
 
 def handle_train(args):
     """Handle train command with new unified architecture."""
-    import yaml
-
     from .train import create_default_config, optimize_from_config, train_from_config
 
     if args.config:
@@ -523,7 +526,6 @@ def handle_train(args):
                 yaml.safe_dump(quick_config, f, default_flow_style=False, indent=2)
         except (AttributeError, ImportError):
             # Fallback if yaml.safe_dump is not available
-            import json
             with open(temp_config_path, "w") as f:
                 json.dump(quick_config, f, indent=2)
 
@@ -561,8 +563,6 @@ def handle_optimize(args):
 
     except Exception as e:
         print(f"❌ Optimization failed: {e}")
-        import traceback
-
         traceback.print_exc()
         sys.exit(1)
 
@@ -594,8 +594,6 @@ def handle_config(args):
             print("\n💡 Use 'astro-lab config show <survey>' to see details")
         except Exception as e:
             print(f"❌ Error listing surveys: {e}")
-            import traceback
-
             traceback.print_exc()
 
     elif args.config_action == "show":
@@ -691,7 +689,6 @@ def handle_model_config(args):
                     yaml.safe_dump(config_dict, f, default_flow_style=False, indent=2)
                 except (AttributeError, ImportError):
                     # Fallback to json if yaml is not available
-                    import json
                     json.dump(config_dict, f, indent=2)
                 
             print(f"✅ Model configuration saved to: {output_file}")

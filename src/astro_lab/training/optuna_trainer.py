@@ -1,25 +1,29 @@
 """
-Optuna Hyperparameter Optimization for AstroLab Models
+AstroLab Optuna Trainer - Hyperparameter Optimization
+====================================================
 
-Modern hyperparameter tuning with Optuna + Lightning integration.
-Optimized for astronomical ML workloads.
+Advanced hyperparameter optimization using Optuna with MLflow integration.
+Supports both single-objective and multi-objective optimization.
 """
 
 import json
+import pickle
 import tempfile
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional, Union
 
+import mlflow
 import optuna
 from lightning import Trainer
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from optuna.integration import PyTorchLightningPruningCallback
+from torch.utils.data import DataLoader
 
-from .lightning_module import AstroLightningModule
+from astro_lab.training.trainer import AstroTrainer
+from astro_lab.training.lightning_module import AstroLightningModule
 
 # MLflow integration (optional)
 try:
-    import mlflow
     from lightning.pytorch.loggers import MLFlowLogger
 
     MLFLOW_AVAILABLE = True
@@ -301,8 +305,6 @@ class OptunaTrainer:
 
         try:
             # Save plots as HTML files directly to results
-            import tempfile
-
             # Optimization history plot
             if len(self.study.trials) > 1:
                 try:
@@ -366,8 +368,6 @@ class OptunaTrainer:
                 ),
             }
 
-            import json
-
             with open(plots_dir / "study_summary.json", "w") as f:
                 json.dump(study_summary, f, indent=2)
 
@@ -404,8 +404,6 @@ class OptunaTrainer:
     def save_study(self, filepath: str):
         """Save the study to a file."""
         with open(filepath, "wb") as f:
-            import pickle
-
             pickle.dump(self.study, f)
 
         if MLFLOW_AVAILABLE and mlflow is not None:
@@ -414,8 +412,6 @@ class OptunaTrainer:
     def load_study(filepath: str) -> optuna.Study:
         """Load a study from a file."""
         with open(filepath, "rb") as f:
-            import pickle
-
             return pickle.load(f)
 
 

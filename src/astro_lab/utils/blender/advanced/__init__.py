@@ -1,15 +1,28 @@
 """
-Advanced Blender Visualization Suite
-===================================
+AstroLab Blender Advanced Utils
+===============================
 
-High-end astronomical visualization tools using Blender's advanced features.
-Includes procedural generation, volumetrics, physics simulation, and artistic effects.
+Advanced Blender utilities for astronomical visualization.
+Includes materials, physics, volumetrics, and shaders.
 """
 
-import os
-import warnings
 import math
-from typing import Any, Dict, List, Optional, Tuple
+import os
+import random
+import warnings
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import bmesh
+import bpy
+import numpy as np
+
+from .futuristic_materials import create_futuristic_material
+from .geometry_nodes import create_geometry_nodes_setup
+from .physics import setup_physics_simulation
+from .post_processing import apply_post_processing
+from .shaders import create_astronomical_shader
+from .volumetrics import create_volumetric_effect
 
 # Set environment variable for NumPy 2.x compatibility with bpy
 os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
@@ -19,8 +32,6 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 # Import Blender modules directly
-import bmesh
-import bpy
 from mathutils import Euler, Matrix, Vector
 
 try:
@@ -314,7 +325,6 @@ class AdvancedVisualizationSuite:
         # Generate sample data if none provided
         if stellar_data is None:
             stellar_data = []
-            import random
 
             for i in range(200):
                 temp = random.uniform(3000, 30000)
@@ -456,9 +466,6 @@ class AdvancedVisualizationSuite:
         Returns:
             True if successful
         """
-        import os
-        from pathlib import Path
-
         # Convert to absolute path relative to current working directory
         if not os.path.isabs(output_path):
             output_path = str(Path.cwd() / output_path)

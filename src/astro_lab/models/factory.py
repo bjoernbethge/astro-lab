@@ -1,9 +1,9 @@
 """
-Model Factory - Neural Network Model Creation
-============================================
+AstroLab Model Factory
+======================
 
-Provides factory functions and registry for creating neural network models
-for astronomical data analysis.
+Factory for creating astronomical ML models.
+Supports various model architectures and survey types.
 """
 
 import numpy as np
@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional, Union, Tuple, Type, Callable
 
 from astro_lab.models.base_gnn import BaseAstroGNN, BaseTemporalGNN, BaseTNGModel
 from astro_lab.models.output_heads import OutputHeadRegistry, create_output_head
+from .astro import AstroSurveyGNN
+from .config import ModelConfig
 
 
 class ModelRegistry:
@@ -461,8 +463,6 @@ def compile_astro_model(
 ) -> nn.Module:
     """Compile model for optimized inference."""
     try:
-        import torch
-
         return torch.compile(model, mode=mode, dynamic=dynamic)
     except (ImportError, AttributeError):
         # Fallback if torch.compile not available

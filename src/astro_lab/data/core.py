@@ -1,30 +1,36 @@
 """
-Core Data Processing Module
-==========================
+AstroLab Data Core Module
+=========================
 
-Core functionality for astronomical data processing and analysis.
-Provides data loading, preprocessing, and tensor operations.
+Core data handling and processing for astronomical datasets.
+Clean PyTorch Geometric dataset implementation with Polars support.
 """
 
-import os
 import logging
+import os
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
-
-# Set environment variable for NumPy 2.x compatibility with bpy and other modules
-os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
 
 import astropy.units as u
 import lightning as L
 import numpy as np
 import polars as pl
 import torch
+import torch_geometric
 import torch_geometric.transforms as T
 from astropy.coordinates import SkyCoord
 from sklearn.neighbors import BallTree, NearestNeighbors
 from torch_geometric.data import Data, InMemoryDataset
 from torch_geometric.loader import DataLoader
+
+from .config import data_config
+
+logger = logging.getLogger(__name__)
+
+# Set environment variable for NumPy 2.x compatibility with bpy and other modules
+os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -47,10 +53,6 @@ except ImportError:
 
 # PyTorch Geometric integration
 try:
-    import torch_geometric
-    from torch_geometric.data import Data
-    from torch_geometric.loader import DataLoader
-
     TORCH_GEOMETRIC_AVAILABLE = True
 except ImportError:
     TORCH_GEOMETRIC_AVAILABLE = False
@@ -651,409 +653,161 @@ def _polars_to_survey_tensor(
 
 class AstroDataset(InMemoryDataset):
     """
-    Clean, unified astronomical dataset using Polars with native SurveyTensor support.
-
-    Replaces all the wrapper classes with one flexible implementation.
-    Enhanced with automatic tensor conversion capabilities.
+    Clean PyTorch Geometric dataset for astronomical data.
+    
+    Loads pre-processed .pt files from data/processed/<survey>/processed/.
+    No data processing or generation - only loading existing files.
     """
 
     def __init__(
         self,
-        survey: str,
-        data_path: Optional[Union[str, Path]] = None,
-        root: Optional[str] = None,
-        k_neighbors: int = 8,
+        root: Optional[Union[str, Path]] = None,
+        survey: Optional[str] = None,
         max_samples: Optional[int] = None,
+        k_neighbors: int = 8,
+        distance_threshold: float = 50.0,
+        return_tensor: bool = True,
+        transform: Optional[Any] = None,
         force_reload: bool = False,
-        transform=None,
-        return_tensor: bool = False,  # 🌟 NEW: Auto-convert to SurveyTensor
         **kwargs,
     ):
-        """
-        Initialize unified astronomical dataset.
-
-        Args:
-            survey: Survey type ('gaia', 'sdss', 'nsa', 'linear')
-            data_path: Path to data file (optional, will auto-download)
-            k_neighbors: Number of nearest neighbors for graph
-            max_samples: Limit number of samples
-            force_reload: Force reprocessing
-            return_tensor: Return SurveyTensor instead of PyG Data objects
-        """
-        if survey not in SURVEY_CONFIGS:
-            raise ValueError(
-                f"Survey {survey} not supported. Available: {list(SURVEY_CONFIGS.keys())}"
-            )
-
-        self.survey = survey
-        self.config = SURVEY_CONFIGS[survey]
-        self.data_path = Path(data_path) if data_path else None
-        self.k_neighbors = k_neighbors
-        self.max_samples = max_samples
-        self.return_tensor = return_tensor
-
-        # Set default root using new config system
+        """Initialize AstroDataset with survey-specific configuration."""
+        # Set root directory
         if root is None:
-            from .config import data_config
-
-            # Don't create directories automatically - only when actually needed
-            root = str(data_config.get_survey_processed_dir(survey))
-
+            root = data_config.processed_dir / (survey or "generic")
+        
+        # Store configuration
+        self.survey = survey
+        self.max_samples = max_samples
+        self.k_neighbors = k_neighbors
+        self.distance_threshold = distance_threshold
+        self.return_tensor = return_tensor
+        
+        # Initialize data attribute before calling parent
+        self._data = None
+        
+        # Call parent constructor
         super().__init__(root, transform, force_reload=force_reload)
+        
+        # Set up survey-specific configuration
+        if survey and survey in SURVEY_CONFIGS:
+            config = SURVEY_CONFIGS[survey]
+            self.coord_cols = config.get("coord_cols", ["ra", "dec"])
+            self.mag_cols = config.get("mag_cols", [])
+            self.extra_cols = config.get("extra_cols", [])
+            self.color_pairs = config.get("color_pairs", [])
+            self.tensor_metadata = config
+        else:
+            # Default configuration
+            self.coord_cols = ["ra", "dec"]
+            self.mag_cols = ["mag"]
+            self.extra_cols = []
+            self.color_pairs = []
+            self.tensor_metadata = {}
 
-        # Load if available
-        if len(self.processed_file_names) > 0:
-            self.load(self.processed_paths[0])
+    @property
+    def data(self):
+        """Get the data attribute."""
+        return self._data
+    
+    @data.setter
+    def data(self, value):
+        """Set the data attribute."""
+        self._data = value
 
     @property
     def raw_file_names(self) -> List[str]:
-        """Raw file names."""
-        if self.data_path:
-            return [self.data_path.name]
-        return [f"{self.survey}_catalog.parquet"]
+        """Raw file names - not used for .pt loading."""
+        return []
 
     @property
     def processed_file_names(self) -> List[str]:
-        """Processed file names."""
+        """Processed file names for .pt file selection."""
         suffix = f"_n{self.max_samples}" if self.max_samples else ""
         tensor_suffix = "_tensor" if self.return_tensor else ""
         return [f"{self.survey}_graph_k{self.k_neighbors}{suffix}{tensor_suffix}.pt"]
 
-    def download(self):
-        """Download or prepare raw data."""
-        if self.data_path and self.data_path.exists():
+    def download(self) -> None:
+        """Download or generate dataset data."""
+        if self.data is not None:
             return
 
-        # Auto-generate demo data if no path provided
-        if not self.data_path:
-            print(f"🔄 Generating demo {self.config['name']} data...")
+        if self.survey:
+            # Use survey-specific data generation
+            self._generate_survey_data()
+        else:
+            # Generate demo data
             self._generate_demo_data()
 
     def _load_polars_dataframe(self) -> pl.DataFrame:
-        """Load data as Polars DataFrame - used for tensor conversion."""
-        if not hasattr(self, "_cached_df"):
-            self._generate_demo_data()
-            # Cache the DataFrame for reuse
-            self._cached_df = self._df_cache
-        return self._cached_df
-
-    def _generate_demo_data(self):
-        """Generate realistic demo data for testing."""
-        np.random.seed(42)
-        n_objects = self.max_samples or 5000
-
-        # Generate coordinates
-        if self.survey == "gaia":
-            # Stellar data - concentrated around galactic plane
-            ra = np.random.uniform(0, 360, n_objects)
-            dec = np.random.normal(0, 30, n_objects)
-            dec = np.clip(dec, -90.0, 90.0)
-
-            # Stellar magnitudes
-            g_mag = np.random.gamma(2, 2, n_objects) + 8
-            bp_mag = g_mag + np.random.normal(0.2, 0.3, n_objects)
-            rp_mag = g_mag + np.random.normal(0.5, 0.4, n_objects)
-
-            # Astrometric data
-            parallax = np.random.exponential(2, n_objects)
-            pmra = np.random.normal(0, 10, n_objects)
-            pmdec = np.random.normal(0, 10, n_objects)
-
-            df = pl.DataFrame(
-                {
-                    "ra": ra.astype(np.float32),
-                    "dec": dec.astype(np.float32),
-                    "phot_g_mean_mag": g_mag.astype(np.float32),
-                    "phot_bp_mean_mag": bp_mag.astype(np.float32),
-                    "phot_rp_mean_mag": rp_mag.astype(np.float32),
-                    "parallax": parallax.astype(np.float32),
-                    "pmra": pmra.astype(np.float32),
-                    "pmdec": pmdec.astype(np.float32),
-                }
-            )
-
-        elif self.survey in ["sdss", "nsa"]:
-            # Galaxy data
-            ra = np.random.uniform(0, 360, n_objects)
-            dec = np.random.uniform(-30, 60, n_objects)
-            z = np.random.gamma(2, 0.3, n_objects)
-
-            # Galaxy magnitudes
-            r_mag = 16 + 3 * z + np.random.normal(0, 1, n_objects)
-            g_mag = r_mag + np.random.normal(0.5, 0.3, n_objects)
-            i_mag = r_mag - np.random.normal(0.3, 0.2, n_objects)
-
-            if self.survey == "sdss":
-                u_mag = g_mag + np.random.normal(1.0, 0.5, n_objects)
-                z_mag = i_mag - np.random.normal(0.2, 0.2, n_objects)
-
-                df = pl.DataFrame(
-                    {
-                        "ra": ra.astype(np.float32),
-                        "dec": dec.astype(np.float32),
-                        "z": z.astype(np.float32),
-                        "modelMag_u": u_mag.astype(np.float32),
-                        "modelMag_g": g_mag.astype(np.float32),
-                        "modelMag_r": r_mag.astype(np.float32),
-                        "modelMag_i": i_mag.astype(np.float32),
-                        "modelMag_z": z_mag.astype(np.float32),
-                        "petroRad_r": np.random.lognormal(1, 0.5, n_objects).astype(
-                            np.float32
-                        ),
-                        "fracDeV_r": np.random.beta(2, 5, n_objects).astype(np.float32),
-                    }
-                )
-            else:  # NSA
-                mass = 9 + 2 * np.random.random(n_objects)
-                sersic_n = np.random.gamma(2, 1, n_objects)
-                sersic_ba = np.random.beta(5, 2, n_objects)
-
-                df = pl.DataFrame(
-                    {
-                        "ra": ra.astype(np.float32),
-                        "dec": dec.astype(np.float32),
-                        "z": z.astype(np.float32),
-                        "mag_g": g_mag.astype(np.float32),
-                        "mag_r": r_mag.astype(np.float32),
-                        "mag_i": i_mag.astype(np.float32),
-                        "mass": mass.astype(np.float32),
-                        "sersic_n": sersic_n.astype(np.float32),
-                        "sersic_ba": sersic_ba.astype(np.float32),
-                    }
-                )
-
-        elif self.survey == "linear":
-            # Variable star data
-            ra = np.random.uniform(0, 360, n_objects)
-            dec = np.random.uniform(-30, 60, n_objects)
-
-            # Periods (log-normal distribution)
-            period = np.random.lognormal(0, 1, n_objects)
-            period_error = period * np.random.uniform(0.01, 0.1, n_objects)
-
-            # Lightcurve properties
-            mag_mean = np.random.uniform(12, 18, n_objects)
-            mag_amp = np.random.exponential(0.5, n_objects)
-
-            df = pl.DataFrame(
-                {
-                    "ra": ra.astype(np.float32),
-                    "dec": dec.astype(np.float32),
-                    "period": period.astype(np.float32),
-                    "period_error": period_error.astype(np.float32),
-                    "mag_mean": mag_mean.astype(np.float32),
-                    "mag_amp": mag_amp.astype(np.float32),
-                }
-            )
-
-        elif self.survey == "tng50":
-            # TNG50 simulation data - load existing parquet files if available
-            if hasattr(self, "data_path") and self.data_path:
-                # Use provided data path
-                parquet_path = Path(self.data_path)
-                if parquet_path.exists():
-                    print(f"📊 Loading existing TNG50 data from {parquet_path}")
-                    df = pl.read_parquet(parquet_path)
-                    if self.max_samples and len(df) > self.max_samples:
-                        df = df.sample(self.max_samples, seed=42)
-                    self._df_cache = df
-                    return
-
-            # Try to load from standard locations
-            data_dir = Path("data/raw/tng50")
-            particle_files = {
-                "PartType0": "tng50_parttype0.parquet",
-                "PartType1": "tng50_parttype1.parquet",
-                "PartType4": "tng50_parttype4.parquet",
-                "PartType5": "tng50_parttype5.parquet",
-            }
-
-            # Use PartType0 (gas) as default
-            default_file = data_dir / particle_files["PartType0"]
-
-            if default_file.exists():
-                print(f"📊 Loading TNG50 PartType0 data from {default_file}")
-                df = pl.read_parquet(default_file)
-                if self.max_samples and len(df) > self.max_samples:
-                    df = df.sample(self.max_samples, seed=42)
-                self._df_cache = df
-                return
-
-            # Fallback: generate synthetic TNG50-like data
-            print("⚠️ No TNG50 data found, generating synthetic simulation data")
-
-            # 3D coordinates in a box (Mpc/h units)
-            box_size = 35.0  # TNG50 box size
-            x = np.random.uniform(0, box_size, n_objects)
-            y = np.random.uniform(0, box_size, n_objects)
-            z = np.random.uniform(0, box_size, n_objects)
-
-            # Masses (log-normal distribution)
-            masses = np.random.lognormal(8, 2, n_objects)
-
-            # Velocities (Gaussian with cosmic expansion)
-            velocities_0 = np.random.normal(0, 100, n_objects)  # km/s
-            velocities_1 = np.random.normal(0, 100, n_objects)
-            velocities_2 = np.random.normal(0, 100, n_objects)
-
-            # Density for gas particles
-            density = np.random.lognormal(-2, 3, n_objects)
-
-            df = pl.DataFrame(
-                {
-                    "x": x.astype(np.float32),
-                    "y": y.astype(np.float32),
-                    "z": z.astype(np.float32),
-                    "masses": masses.astype(np.float32),
-                    "velocities_0": velocities_0.astype(np.float32),
-                    "velocities_1": velocities_1.astype(np.float32),
-                    "velocities_2": velocities_2.astype(np.float32),
-                    "density": density.astype(np.float32),
-                }
-            )
-
-        # Add colors using Polars expressions
-        color_exprs = []
-        for mag1, mag2 in self.config["color_pairs"]:
-            if mag1 in df.columns and mag2 in df.columns:
-                # Create more specific color names to avoid duplicates
-                mag1_short = (
-                    mag1.replace("phot_", "")
-                    .replace("_mean_mag", "")
-                    .replace("modelMag_", "")
-                )
-                mag2_short = (
-                    mag2.replace("phot_", "")
-                    .replace("_mean_mag", "")
-                    .replace("modelMag_", "")
-                )
-                color_name = f"{mag1_short}_{mag2_short}_color"
-                color_exprs.append((pl.col(mag1) - pl.col(mag2)).alias(color_name))
-
-        if color_exprs:
-            df = df.with_columns(color_exprs)
-
-        # Cache DataFrame for tensor conversion
-        self._df_cache = df
-
-        # Save to raw directory
-        raw_path = Path(self.raw_dir) / self.raw_file_names[0]
-        raw_path.parent.mkdir(parents=True, exist_ok=True)
-        df.write_parquet(raw_path)
-
-        print(f"✅ Generated {len(df)} {self.config['name']} objects")
+        """Load data as Polars DataFrame for compatibility."""
+        if self.data is None:
+            self.download()
+        
+        if isinstance(self.data, pl.DataFrame):
+            return self.data
+        elif hasattr(self.data, 'to_pandas'):
+            # Convert to Polars if it's a pandas DataFrame
+            return pl.from_pandas(self.data.to_pandas())
+        else:
+            # Fallback: create empty DataFrame
+            return pl.DataFrame()
 
     def process(self):
-        """Process raw data into graph format using Polars."""
-        raw_path = Path(self.raw_dir) / self.raw_file_names[0]
-
-        if not raw_path.exists():
-            raise FileNotFoundError(f"Raw data not found: {raw_path}")
-
-        print(f"🔄 Processing {self.config['name']} data...")
-        start_time = time.time()
-
-        # Load with Polars (fastest)
-        df = pl.read_parquet(raw_path)
-
-        # Sample if requested
-        if self.max_samples and len(df) > self.max_samples:
-            df = df.sample(self.max_samples, seed=42)
-            print(f"   Sampled {self.max_samples} from {len(df)} objects")
-
-        # Extract coordinates for k-NN
-        coord_cols = self.config["coord_cols"]
-        coords = df.select(coord_cols).to_numpy()
-
-        # Build k-NN graph
-        print(f"   Computing {self.k_neighbors}-NN graph...")
-        if len(coord_cols) == 2:  # RA, Dec only
-            # Use haversine distance for sky coordinates
-            coords_rad = np.radians(coords)
-            nbrs = NearestNeighbors(
-                n_neighbors=self.k_neighbors + 1, metric="haversine"
-            )
-            nbrs.fit(coords_rad)
-            distances, indices = nbrs.kneighbors(coords_rad)
-        else:  # Include redshift/distance
-            nbrs = NearestNeighbors(n_neighbors=self.k_neighbors + 1)
-            nbrs.fit(coords)
-            distances, indices = nbrs.kneighbors(coords)
-
-        # Build edge index
-        edges = []
-        for i, neighbors in enumerate(indices):
-            for j in neighbors[1:]:  # Skip self
-                edges.append([i, j])
-
-        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-
-        # Prepare features using Polars
-        feature_cols = []
-
-        # Add magnitudes
-        available_mags = [col for col in self.config["mag_cols"] if col in df.columns]
-        feature_cols.extend(available_mags)
-
-        # Add colors (only new color columns, not existing magnitude columns)
-        color_cols = [col for col in df.columns if col.endswith("_color")]
-        feature_cols.extend(color_cols)
-
-        # Add extra features
-        available_extra = [
-            col for col in self.config["extra_cols"] if col in df.columns
-        ]
-        feature_cols.extend(available_extra)
-
-        # Remove duplicates while preserving order
-        feature_cols = list(dict.fromkeys(feature_cols))
-
-        # Convert to PyTorch tensors using Polars (fastest path)
-        features = df.select(feature_cols).to_torch(dtype=pl.Float32)
-        positions = df.select(coord_cols).to_torch(dtype=pl.Float32)
-
-        # Handle NaN values
-        features = torch.nan_to_num(features, nan=0.0)
-        positions = torch.nan_to_num(positions, nan=0.0)
-
-        # Create labels for classification
-        if self.survey == "gaia" and "bp_rp" in df.columns:
-            # Stellar classification based on B-R color
-            bp_rp = df["bp_rp"].to_numpy()
-            bp_rp = np.nan_to_num(bp_rp, nan=0.0)
-            labels = (
-                np.digitize(
-                    bp_rp, bins=np.array([-0.5, 0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 2.0])
-                )
-                - 1
-            )
-            labels = np.clip(labels, 0, 7)
-            y = torch.tensor(labels, dtype=torch.long)
-        else:
-            # Default: random labels for demo
-            y = torch.randint(0, 8, (len(df),), dtype=torch.long)
-
-        # Create graph data
-        data = Data(
-            x=features, edge_index=edge_index, pos=positions, y=y, num_nodes=len(df)
+        """No processing - data should already be processed as .pt files."""
+        raise NotImplementedError(
+            "AstroDataset does not process data. Use pre-processed .pt files from data/processed/<survey>/processed/."
         )
 
-        # Add metadata
-        data.survey_name = self.config["name"]
-        data.feature_names = feature_cols
-        data.coord_names = coord_cols
-        data.k_neighbors = self.k_neighbors
+    def _find_best_pt_file(self) -> Optional[Path]:
+        """Find the best matching .pt file based on max_samples and k_neighbors."""
+        processed_dir = Path(f"data/processed/{self.survey}/processed")
+        if not processed_dir.exists():
+            return None
+            
+        files = list(processed_dir.glob(f"{self.survey}_graph_k{self.k_neighbors}_n*.pt"))
+        if not files:
+            return None
+            
+        # Sort by sample size (n) ascending
+        def extract_n(f):
+            import re
+            m = re.search(r"_n(\d+)", f.name)
+            return int(m.group(1)) if m else 0
+            
+        files = sorted(files, key=extract_n)
+        
+        # Find the largest file <= max_samples
+        best = None
+        for f in files:
+            n = extract_n(f)
+            if self.max_samples is None or n <= self.max_samples:
+                best = f
+            else:
+                break
+                
+        return best or files[-1]  # fallback: largest
 
-        # Apply transforms
-        if self.pre_transform is not None:
-            data = self.pre_transform(data)
-
-        # Save
-        self.save([data], self.processed_paths[0])
-
-        elapsed = time.time() - start_time
-        print(
-            f"✅ Processed {len(df)} objects, {edge_index.shape[1]} edges in {elapsed:.1f}s"
+    def load(self, path: Union[str, Path]):
+        """Load dataset from .pt file."""
+        pt_file = self._find_best_pt_file()
+        if pt_file and pt_file.exists():
+            logger.info(f"📦 Loading graph data from {pt_file}")
+            data = torch.load(pt_file)
+            
+            if isinstance(data, list):
+                self.data, self.slices = self.collate(data)
+            elif isinstance(data, dict) and 'data' in data and 'slices' in data:
+                self.data, self.slices = data['data'], data['slices']
+            else:
+                # fallback: treat as single Data object
+                self.data, self.slices = self.collate([data])
+            return
+            
+        # No .pt file found
+        raise FileNotFoundError(
+            f"No suitable .pt file found for {self.survey} (k={self.k_neighbors}, n={self.max_samples}). "
+            f"Please ensure data is pre-processed and available in data/processed/{self.survey}/processed/."
         )
 
     def get_info(self) -> Dict[str, Any]:
@@ -1073,6 +827,122 @@ class AstroDataset(InMemoryDataset):
             "k_neighbors": data.k_neighbors,
             "avg_degree": data.edge_index.shape[1] / data.num_nodes,
         }
+
+    def _generate_survey_data(self) -> None:
+        """Generate survey-specific demo data."""
+        if self.survey == "gaia":
+            self._generate_gaia_demo_data()
+        elif self.survey == "sdss":
+            self._generate_sdss_demo_data()
+        elif self.survey == "nsa":
+            self._generate_nsa_demo_data()
+        elif self.survey == "linear":
+            self._generate_linear_demo_data()
+        elif self.survey == "tng50":
+            self._generate_tng50_demo_data()
+        else:
+            self._generate_demo_data()
+
+    def _generate_demo_data(self) -> None:
+        """Generate generic demo data."""
+        n_samples = self.max_samples or 1000
+        
+        # Create demo DataFrame
+        demo_data = {
+            "ra": np.random.uniform(0, 360, n_samples),
+            "dec": np.random.uniform(-90, 90, n_samples),
+            "mag": np.random.normal(15, 2, n_samples),
+            "parallax": np.random.exponential(1, n_samples),
+            "pmra": np.random.normal(0, 10, n_samples),
+            "pmdec": np.random.normal(0, 10, n_samples),
+        }
+        
+        self.data = pl.DataFrame(demo_data)
+        logger.info(f"📊 Generated demo data: {len(self.data)} samples")
+
+    def _generate_gaia_demo_data(self) -> None:
+        """Generate Gaia-specific demo data."""
+        n_samples = self.max_samples or 1000
+        
+        demo_data = {
+            "ra": np.random.uniform(0, 360, n_samples),
+            "dec": np.random.uniform(-90, 90, n_samples),
+            "phot_g_mean_mag": np.random.normal(15, 2, n_samples),
+            "phot_bp_mean_mag": np.random.normal(15.5, 2, n_samples),
+            "phot_rp_mean_mag": np.random.normal(14.5, 2, n_samples),
+            "parallax": np.random.exponential(1, n_samples),
+            "pmra": np.random.normal(0, 10, n_samples),
+            "pmdec": np.random.normal(0, 10, n_samples),
+        }
+        
+        self.data = pl.DataFrame(demo_data)
+        logger.info(f"📊 Generated Gaia demo data: {len(self.data)} samples")
+
+    def _generate_sdss_demo_data(self) -> None:
+        """Generate SDSS-specific demo data."""
+        n_samples = self.max_samples or 1000
+        
+        demo_data = {
+            "ra": np.random.uniform(0, 360, n_samples),
+            "dec": np.random.uniform(-90, 90, n_samples),
+            "modelmag_u": np.random.normal(20, 2, n_samples),
+            "modelmag_g": np.random.normal(19, 2, n_samples),
+            "modelmag_r": np.random.normal(18, 2, n_samples),
+            "modelmag_i": np.random.normal(17, 2, n_samples),
+            "modelmag_z": np.random.normal(16, 2, n_samples),
+        }
+        
+        self.data = pl.DataFrame(demo_data)
+        logger.info(f"📊 Generated SDSS demo data: {len(self.data)} samples")
+
+    def _generate_nsa_demo_data(self) -> None:
+        """Generate NSA-specific demo data."""
+        n_samples = self.max_samples or 1000
+        
+        demo_data = {
+            "ra": np.random.uniform(0, 360, n_samples),
+            "dec": np.random.uniform(-90, 90, n_samples),
+            "z": np.random.exponential(0.1, n_samples),
+            "PETROMAG_R": np.random.normal(17, 2, n_samples),
+            "PETROMAG_G": np.random.normal(18, 2, n_samples),
+            "PETROMAG_I": np.random.normal(16, 2, n_samples),
+            "MASS": np.random.normal(10.5, 0.5, n_samples),
+        }
+        
+        self.data = pl.DataFrame(demo_data)
+        logger.info(f"📊 Generated NSA demo data: {len(self.data)} samples")
+
+    def _generate_linear_demo_data(self) -> None:
+        """Generate LINEAR-specific demo data."""
+        n_samples = self.max_samples or 1000
+        
+        demo_data = {
+            "ra": np.random.uniform(0, 360, n_samples),
+            "dec": np.random.uniform(-90, 90, n_samples),
+            "mag_mean": np.random.normal(16, 2, n_samples),
+            "period": np.random.exponential(10, n_samples),
+            "amplitude": np.random.exponential(0.5, n_samples),
+        }
+        
+        self.data = pl.DataFrame(demo_data)
+        logger.info(f"📊 Generated LINEAR demo data: {len(self.data)} samples")
+
+    def _generate_tng50_demo_data(self) -> None:
+        """Generate TNG50-specific demo data."""
+        n_samples = self.max_samples or 1000
+        
+        demo_data = {
+            "x": np.random.normal(0, 50, n_samples),
+            "y": np.random.normal(0, 50, n_samples),
+            "z": np.random.normal(0, 50, n_samples),
+            "vx": np.random.normal(0, 200, n_samples),
+            "vy": np.random.normal(0, 200, n_samples),
+            "vz": np.random.normal(0, 200, n_samples),
+            "mass": np.random.exponential(1e8, n_samples),
+        }
+        
+        self.data = pl.DataFrame(demo_data)
+        logger.info(f"📊 Generated TNG50 demo data: {len(self.data)} samples")
 
 
 class AstroDataModule(L.LightningDataModule):

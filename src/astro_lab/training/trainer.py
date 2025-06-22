@@ -6,10 +6,13 @@ Optimized for astronomical ML workloads with modern Lightning DataModule support
 Updated for Lightning 2.0+ compatibility and modern ML practices.
 """
 
+import gc
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
+import torch
 from lightning import Trainer
 from lightning.pytorch.callbacks import (
     EarlyStopping,
@@ -85,8 +88,6 @@ class AstroTrainer(Trainer):
             training_config: Training configuration
             **kwargs: Additional trainer parameters
         """
-        import torch
-        
         # Store configurations
         self.training_config = training_config
         self._lightning_module = lightning_module
@@ -306,10 +307,38 @@ class AstroTrainer(Trainer):
                     val_dataloaders=val_dataloader,
                     ckpt_path=ckpt_path,
                 )
+            
+            # Cleanup after training
+            self._cleanup_after_training()
                 
         except Exception as e:
             print(f"❌ Training failed: {e}")
+            # Cleanup even on error
+            self._cleanup_after_training()
             raise
+
+    def _cleanup_after_training(self):
+        """Clean up memory after training to prevent leaks."""
+        try:
+            # Clear CUDA cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                print("🧹 CUDA cache cleared")
+            
+            # Force garbage collection
+            gc.collect()
+            
+            # Clear any cached tensors in the module
+            if hasattr(self.astro_module, 'model'):
+                for param in self.astro_module.model.parameters():
+                    if param.grad is not None:
+                        param.grad.detach_()
+                        param.grad.zero_()
+            
+            print("🧹 Memory cleanup completed")
+            
+        except Exception as e:
+            print(f"⚠️ Memory cleanup failed: {e}")
 
     def _auto_detect_classes(self, train_dataloader, val_dataloader, datamodule):
         """Automatic class detection from data."""
@@ -328,7 +357,6 @@ class AstroTrainer(Trainer):
                 return
             
             # Class detection from data
-            import torch
             targets = []
             
             for i, batch in enumerate(target_dataloader):
@@ -432,17 +460,23 @@ class AstroTrainer(Trainer):
         """
         try:
             if datamodule is not None:
-                return super().test(
+                results = super().test(
                     model=self.astro_module,
                     datamodule=datamodule,
                 )
             else:
-                return super().test(
+                results = super().test(
                     model=self.astro_module,
                     dataloaders=test_dataloader,
                 )
+            
+            # Cleanup after testing
+            self._cleanup_after_training()
+            return results
+            
         except Exception as e:
             print(f"❌ Testing failed: {e}")
+            self._cleanup_after_training()
             raise
 
     def predict(
@@ -709,7 +743,6 @@ class AstroTrainer(Trainer):
                 target_path = models_dir / f"{model_name}.ckpt"
                 
                 try:
-                    import shutil
                     shutil.copy2(checkpoint_path, target_path)
                     saved_models[model_name] = target_path
                     print(f"💾 Saved model {i+1}: {target_path.name}")

@@ -32,8 +32,8 @@ from astro_lab.data import download_bright_all_sky
 download_bright_all_sky(magnitude_limit=12.0)
 
 # Exoplanet-Daten (automatisch beim ersten Zugriff):
-from astro_lab.data import create_exoplanet_dataloader
-loader = create_exoplanet_dataloader()  # Download passiert automatisch!
+from astro_lab.data import create_astro_dataloader
+loader = create_astro_dataloader("exoplanet")  # Download passiert automatisch!
 
 # All available datasets:
 from astro_lab.data import list_catalogs

@@ -1,30 +1,37 @@
 """
-AstroLab Data Manager
-====================
+AstroLab Data Manager - Legacy Data Management
+=============================================
 
-Modern astronomical data management with proper raw/processed structure:
-- Raw data: Original downloads from surveys (Gaia, SDSS, etc.)
-- Processed data: Cleaned, filtered, and ML-ready datasets
-- HDF5 support for large spectroscopic datasets
-- Parquet for efficient columnar storage
+Legacy data management system for backward compatibility.
+Handles data loading, processing, and catalog management.
 """
 
+import datetime
 import json
+import os
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
+import h5py
 import numpy as np
 import polars as pl
 from astroquery.gaia import Gaia
 
-from .config import DataConfig, data_config
+from .config import data_config
 
 
 class AstroDataManager:
     """Modern astronomical data management with structured storage."""
 
     def __init__(self, base_dir: Union[str, Path] = "data"):
-        self.config = DataConfig(base_dir)
+        # Use the global data_config instance instead of calling it as a function
+        if base_dir != "data":
+            # If a different base_dir is provided, create a new config
+            from .config import DataConfig
+            self.config = DataConfig(base_dir)
+        else:
+            # Use the global config
+            self.config = data_config
         self.base_dir = self.config.base_dir
         # Remove automatic directory creation - only create when needed
 
@@ -267,8 +274,6 @@ class AstroDataManager:
         print(f"🌌 Importing TNG50: {hdf5_file.name} -> {dataset_name}")
 
         try:
-            import h5py
-
             with h5py.File(hdf5_file, "r") as f:  # type: ignore
                 # Get particle data
                 if dataset_name not in f:  # type: ignore

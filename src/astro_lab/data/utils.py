@@ -1,18 +1,24 @@
 """
-Astronomical Data Utilities
-============================
+AstroLab Data Utilities
+=======================
 
-Essential FITS utilities and basic data operations.
-Removed redundant NSA functions - use data.manager for loading instead.
+Utility functions for data loading, processing, and analysis.
+Includes FITS handling, statistics, and data validation.
 """
 
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import astroquery
 import numpy as np
 import polars as pl
 import torch
+import torch_geometric
+from astropy.io import fits
+from astropy.table import Table
+
+from .config import data_config
 
 # Try to import astropy for FITS handling
 try:

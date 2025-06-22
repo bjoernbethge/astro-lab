@@ -7,12 +7,15 @@ error handling, consistent logging, and comprehensive debugging capabilities.
 Optimized for Lightning 2.0+ compatibility and modern ML practices.
 """
 
+import gc
 import logging
 import sys
+import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import click
+import torch
 import yaml
 from yaml import dump as yaml_dump
 
@@ -198,58 +201,74 @@ def train_from_config(config_path: str) -> None:
             lightning_module = AstroLightningModule(
                 model=model,
                 task_type="classification",
-                learning_rate=training_config.get("learning_rate", 1e-3),
-                num_classes=num_classes,
+                learning_rate=training_config.get("learning_rate", 0.001),
+                weight_decay=training_config.get("weight_decay", 0.0),
+                scheduler_config=training_config.get("scheduler", {}),
             )
-            logger.info("✅ Lightning module created")
+            logger.info(f"✅ Lightning module created")
 
-            # Get survey name for better organization
-            survey = model_config.get("survey", "gaia")
-            
-            # Create trainer with proper defaults and organization
-            max_epochs = training_config.get("max_epochs", 100)
-            logger.info(f"🎯 Setting max_epochs to: {max_epochs}")
-            
+            # Create trainer
             trainer = AstroTrainer(
                 lightning_module=lightning_module,
-                max_epochs=max_epochs,
+                training_config=None,  # Use default config
+                max_epochs=training_config.get("max_epochs", 100),
                 accelerator="auto",
                 devices="auto",
-                precision="16-mixed",
+                precision="16-mixed",  # Use mixed precision for efficiency
+                enable_progress_bar=True,
+                enable_model_summary=True,
+                enable_checkpointing=True,
+                log_every_n_steps=50,
             )
-            logger.info("✅ Trainer created successfully")
-            
-        except Exception as e:
-            logger.error(f"❌ Trainer creation failed: {e}")
-            raise
+            logger.info(f"✅ Trainer created")
 
-        # Train with comprehensive error handling
-        logger.info("🎯 Starting training...")
-        try:
+            # Start training
+            logger.info("🚀 Starting training...")
             trainer.fit(datamodule=datamodule)
-            logger.info("🎉 Training completed successfully!")
+            logger.info("✅ Training completed successfully")
+
+            # Test the model
+            logger.info("🧪 Testing model...")
+            test_results = trainer.test(datamodule=datamodule)
+            logger.info(f"✅ Testing completed: {test_results}")
+
+            # Save best models
+            logger.info("💾 Saving best models...")
+            saved_models = trainer.save_best_models_to_results(top_k=3)
+            logger.info(f"✅ Saved {len(saved_models)} models to results")
+
+            # Get results summary
+            results_summary = trainer.get_results_summary()
+            logger.info(f"📊 Results summary: {results_summary}")
 
         except Exception as e:
             logger.error(f"❌ Training failed: {e}")
-            logger.error(f"🔍 Training error details: {type(e).__name__}: {str(e)}")
             raise
-
-        # Automatically organize results
-        logger.info("📊 Organizing results...")
-        try:
-            saved_models = trainer.save_best_models_to_results(top_k=3)
-            results_summary = trainer.get_results_summary()
-            logger.info(f"📁 Results saved to: {results_summary['results_structure']['base']}")
-
-        except Exception as e:
-            logger.warning(f"⚠️ Could not organize results: {e}")
-            logger.warning("Results organization is optional, training was successful")
+        finally:
+            # Memory cleanup
+            _cleanup_memory()
 
     except Exception as e:
         logger.error(f"❌ Training process failed: {e}")
         logger.error(f"🔍 Error type: {type(e).__name__}")
         logger.error(f"🔍 Error details: {str(e)}")
         raise
+
+
+def _cleanup_memory():
+    """Clean up memory to prevent leaks."""
+    try:
+        # Clear CUDA cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            logger.info("🧹 CUDA cache cleared")
+        
+        # Force garbage collection
+        gc.collect()
+        logger.info("🧹 Memory cleanup completed")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Memory cleanup failed: {e}")
 
 
 def optimize_from_config(
@@ -396,7 +415,6 @@ def train_model(
     except Exception as e:
         logger.error(f"❌ Training failed: {e}")
         if verbose:
-            import traceback
             traceback.print_exc()
         sys.exit(1)
 
@@ -459,7 +477,6 @@ def run(config: str, optimize_first: bool, n_trials: int, auto_optimize: bool, v
     except Exception as e:
         logger.error(f"❌ Workflow failed: {e}")
         if verbose:
-            import traceback
             traceback.print_exc()
         sys.exit(1)
 
@@ -495,7 +512,6 @@ def optimize(config: str, n_trials: int, update_config: bool, verbose: bool):
     except Exception as e:
         logger.error(f"❌ Optimization failed: {e}")
         if verbose:
-            import traceback
             traceback.print_exc()
         sys.exit(1)
 

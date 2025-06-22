@@ -1,16 +1,23 @@
 """
-Advanced data processing using AstroLab tensor system.
+AstroLab Data Processing Module
+==============================
 
-This module provides enhanced data processing capabilities using the tensor system,
-including feature engineering, clustering, and statistical analysis.
+Data processing utilities for astronomical datasets.
+Handles data cleaning, feature engineering, and preprocessing.
 """
 
+import argparse
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
+import polars as pl
 import torch
 from pydantic import BaseModel, Field, field_validator
+from sklearn.neighbors import NearestNeighbors
+
+from .config import data_config
 
 from ..tensors import ClusteringTensor, FeatureTensor, StatisticsTensor, SurveyTensor
 
@@ -218,13 +225,6 @@ class AdvancedAstroProcessor:
 ProcessingConfig = SimpleProcessingConfig
 
 if __name__ == "__main__":
-    import argparse
-    import sys
-    from pathlib import Path
-
-    import polars as pl
-    import torch
-
     parser = argparse.ArgumentParser(description="AstroLab Data Processing CLI")
     parser.add_argument(
         "--survey",

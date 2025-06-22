@@ -390,30 +390,47 @@ class TestModelIntegration:
             pass
 
     def test_device_consistency(self):
-        """Test that models work on different devices."""
-        factory = ModelFactory()
-
-        try:
-            model = factory.create_survey_model("lsst", task="transient_detection")
-
-            # Test on CPU
-            x_cpu = torch.randn(5, 64)
-            edge_index_cpu = torch.tensor([[0, 1], [1, 0]], dtype=torch.long)
-            output_cpu = model(x_cpu, edge_index_cpu)
-
-            # Test on GPU if available
-            if torch.cuda.is_available():
-                model_gpu = model.to("cuda")
-                x_gpu = x_cpu.to("cuda")
-                edge_index_gpu = edge_index_cpu.to("cuda")
-                output_gpu = model_gpu(x_gpu, edge_index_gpu)
-
-                # Check outputs are consistent
-                assert torch.allclose(output_cpu, output_gpu.cpu(), atol=1e-1)
-
-        except (ImportError, AttributeError):
-            # Model might not be fully implemented
-            pass
+        """Test that model outputs are consistent between CPU and GPU."""
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA not available")
+        
+        # Set seeds for deterministic behavior
+        torch.manual_seed(42)
+        torch.cuda.manual_seed(42)
+        torch.cuda.manual_seed_all(42)
+        
+        # Enable deterministic algorithms
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        
+        # Create model
+        model = create_gaia_classifier()
+        
+        # Create test input with deterministic values
+        batch_size = 5
+        input_dim = 16  # Default input dimension
+        x = torch.randn(batch_size, input_dim)
+        edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 0]], dtype=torch.long)
+        
+        # Test on CPU
+        model_cpu = model.cpu()
+        model_cpu.eval()  # Set to eval mode for consistent behavior
+        with torch.no_grad():
+            output_cpu = model_cpu(x, edge_index)
+        
+        # Test on GPU
+        model_gpu = model.cuda()
+        model_gpu.eval()  # Set to eval mode for consistent behavior
+        with torch.no_grad():
+            output_gpu = model_gpu(x.cuda(), edge_index.cuda())
+        
+        # Compare outputs with much higher tolerance for PyTorch Geometric
+        # CPU/GPU differences are expected in GNNs due to different implementations
+        assert torch.allclose(output_cpu, output_gpu.cpu(), atol=1e-2, rtol=1e-2)
+        
+        # Reset deterministic settings
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
 
 
 class TestModelParameterValidation:

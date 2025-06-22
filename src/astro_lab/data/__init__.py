@@ -70,6 +70,13 @@ from .utils import (
     save_splits_to_parquet,
 )
 
+# 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
+from .preprocessing import (
+    create_graph_datasets_from_splits,
+    create_graph_from_dataframe,
+    preprocess_catalog as preprocess_catalog_new,
+)
+
 # Clean exports - no legacy bloat
 __all__ = [
     # 🎯 CORE CLASSES
@@ -116,6 +123,10 @@ __all__ = [
     "load_fits_optimized",
     "load_fits_table_optimized",
     "get_fits_info",
+    # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
+    "create_graph_datasets_from_splits",
+    "create_graph_from_dataframe", 
+    "preprocess_catalog_new",
 ]
 
 # Feature flags
