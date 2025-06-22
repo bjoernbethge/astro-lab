@@ -436,39 +436,32 @@ def _preprocess_generic_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
-    """Create k-NN graph using GPU acceleration - ONLY GPU VERSION."""
-    if len(coords) == 0:
-        return torch.empty((2, 0), dtype=torch.long)
-
+    """Create k-NN graph using GPU acceleration with torch-cluster."""
+    import torch_cluster
+    
     n_nodes = len(coords)
-    logger.info(f"🚀 Creating GPU k-NN graph for {n_nodes:,} nodes with k={k_neighbors}")
+    if n_nodes == 0:
+        raise ValueError("Empty coordinate array")
     
-    # Convert to PyTorch tensor and move to GPU
+    # Convert to PyTorch tensor
+    coords_tensor = torch.tensor(coords, dtype=torch.float32)
+    
+    # Use GPU if available
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
+    coords_tensor = coords_tensor.to(device)
     
-    try:
-        # Use torch_cluster's knn_graph directly
-        import torch_cluster
-        
-        # Create k-NN graph on GPU
-        edge_index = torch_cluster.knn_graph(
-            x=coords_tensor, 
-            k=k_neighbors, 
-            loop=False,  # No self-loops
-            flow='source_to_target'
-        )
-        
-        # Move back to CPU if needed for consistency
-        edge_index = edge_index.cpu()
-        logger.info(f"✅ Created GPU k-NN graph: {n_nodes:,} nodes, {edge_index.shape[1]:,} edges")
-        return edge_index
-    except ImportError:
-        logger.error("❌ torch-cluster not available - GPU acceleration required!")
-        raise ImportError("torch-cluster required for GPU k-NN graph creation")
-    except Exception as e:
-        logger.error(f"❌ GPU k-NN failed: {e}")
-        raise RuntimeError(f"GPU k-NN graph creation failed: {e}")
+    # Create k-NN graph with GPU acceleration
+    edge_index = torch_cluster.knn_graph(
+        x=coords_tensor,
+        k=min(k_neighbors, n_nodes - 1),  # Ensure k doesn't exceed dataset size
+        loop=False,  # No self-loops
+        flow='source_to_target'
+    )
+    
+    # Move back to CPU if needed for consistency
+    edge_index = edge_index.cpu()
+    logger.info(f"✅ Created GPU k-NN graph: {n_nodes:,} nodes, {edge_index.shape[1]:,} edges")
+    return edge_index
 
 
 def _create_gaia_graph(
@@ -722,24 +715,18 @@ def perform_gaia_crossmatching(
     min_probability: float = 0.5,
 ) -> Dict[str, Any]:
     """
-    Perform cross-matching between exoplanet host stars and Gaia catalog using CrossMatchTensor.
+    Perform Gaia cross-matching using CrossMatchTensor.
 
     Args:
-        exoplanet_coords: DataFrame with exoplanet coordinates (ra, dec)
+        exoplanet_coords: DataFrame with exoplanet coordinates
         gaia_df: Gaia catalog DataFrame
-        max_distance_arcsec: Maximum matching distance in arcseconds
-        min_probability: Minimum probability for Bayesian matching
+        max_distance_arcsec: Maximum matching distance
+        min_probability: Minimum probability for high-confidence matches
 
     Returns:
         Dictionary with cross-matching results
     """
-    try:
-        from astro_lab.tensors.crossmatch import CrossMatchTensor
-    except ImportError:
-        logger.warning("CrossMatchTensor not available, using fallback matching")
-        return perform_fallback_crossmatching(
-            exoplanet_coords, gaia_df, max_distance_arcsec
-        )
+    from astro_lab.tensors.crossmatch import CrossMatchTensor
 
     logger.info(
         f"🔍 Performing Gaia cross-matching for {len(exoplanet_coords)} exoplanets"
@@ -814,95 +801,6 @@ def perform_gaia_crossmatching(
         f"✅ Cross-matching completed: {len(sky_matches['matches'])} sky matches, {len(high_confidence_matches)} high-confidence matches"
     )
 
-    return results
-
-
-def perform_fallback_crossmatching(
-    exoplanet_coords: pl.DataFrame,
-    gaia_df: pl.DataFrame,
-    max_distance_arcsec: float = 5.0,
-) -> Dict[str, Any]:
-    """
-    Fallback cross-matching when CrossMatchTensor is not available.
-
-    Args:
-        exoplanet_coords: DataFrame with exoplanet coordinates
-        gaia_df: Gaia catalog DataFrame
-        max_distance_arcsec: Maximum matching distance
-
-    Returns:
-        Dictionary with cross-matching results
-    """
-    logger.info("🔄 Using fallback cross-matching method")
-
-    # Convert to numpy for faster computation
-    exo_ra = exoplanet_coords["ra"].to_numpy()
-    exo_dec = exoplanet_coords["dec"].to_numpy()
-    exo_hostnames = exoplanet_coords["hostname"].to_numpy()
-
-    gaia_ra = gaia_df["ra"].to_numpy()
-    gaia_dec = gaia_df["dec"].to_numpy()
-    gaia_source_ids = gaia_df["source_id"].to_numpy()
-
-    # Convert tolerance to degrees
-    tolerance_deg = max_distance_arcsec / 3600.0
-
-    matches = []
-
-    # Simple nearest neighbor search
-    for i, (ra1, dec1, hostname) in enumerate(zip(exo_ra, exo_dec, exo_hostnames)):
-        min_distance = float("inf")
-        best_match_idx = -1
-
-        for j, (ra2, dec2, source_id) in enumerate(
-            zip(gaia_ra, gaia_dec, gaia_source_ids)
-        ):
-            # Calculate angular separation using haversine formula
-            ra1_rad = np.radians(ra1)
-            dec1_rad = np.radians(dec1)
-            ra2_rad = np.radians(ra2)
-            dec2_rad = np.radians(dec2)
-
-            dra = ra2_rad - ra1_rad
-            ddec = dec2_rad - dec1_rad
-
-            a = (
-                np.sin(ddec / 2) ** 2
-                + np.cos(dec1_rad) * np.cos(dec2_rad) * np.sin(dra / 2) ** 2
-            )
-
-            distance_rad = 2 * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
-            distance_deg = np.degrees(distance_rad)
-
-            if distance_deg <= tolerance_deg and distance_deg < min_distance:
-                min_distance = distance_deg
-                best_match_idx = j
-
-        if best_match_idx >= 0:
-            matches.append(
-                {
-                    "exoplanet_idx": i,
-                    "gaia_idx": best_match_idx,
-                    "hostname": hostname,
-                    "gaia_source_id": gaia_source_ids[best_match_idx],
-                    "separation_arcsec": min_distance * 3600.0,
-                    "ra_exoplanet": ra1,
-                    "dec_exoplanet": dec1,
-                    "ra_gaia": gaia_ra[best_match_idx],
-                    "dec_gaia": gaia_dec[best_match_idx],
-                }
-            )
-
-    results = {
-        "matches": matches,
-        "n_matches": len(matches),
-        "n_exoplanets": len(exoplanet_coords),
-        "n_gaia_stars": len(gaia_df),
-        "max_distance_arcsec": max_distance_arcsec,
-        "method": "fallback_nearest_neighbor",
-    }
-
-    logger.info(f"✅ Fallback cross-matching completed: {len(matches)} matches found")
     return results
 
 
@@ -1655,7 +1553,7 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
             if search_dir.exists():
                 hdf5_files = list(search_dir.glob("snap_099.*.hdf5"))
                 if hdf5_files:
-                    logger.info(f"�� TNG50 HDF5-Dateien gefunden in: {search_dir}")
+                    logger.info(f"🔍 TNG50 HDF5-Dateien gefunden in: {search_dir}")
                     break
         
         if hdf5_files:

@@ -799,10 +799,6 @@ def list_catalog_names() -> list:
     df = data_manager.list_catalogs()
     return df["name"].to_list() if not df.is_empty() else []
 
-def load_catalog(path: Union[str, Path]) -> pl.DataFrame:
-    """Load catalog from path."""
-    return data_manager.load_catalog(path)
-
 def process_for_ml(raw_file: Union[str, Path], **kwargs) -> Path:
     """Process raw catalog for ML."""
     return data_manager.process_for_ml(raw_file, **kwargs)
@@ -857,7 +853,6 @@ __all__ = [
     "import_tng50",
     "list_catalogs",
     "list_catalog_names",
-    "load_catalog",
     "process_for_ml",
     "load_gaia_bright_stars",
     "load_bright_stars",

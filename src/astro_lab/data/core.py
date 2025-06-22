@@ -31,6 +31,20 @@ from .config import data_config
 # Import survey configurations from centralized location
 from ..utils.config.surveys import get_survey_config
 
+# Import tensor classes directly - no fallbacks needed
+from ..tensors import (
+    ClusteringTensor,
+    CrossmatchTensor,
+    EarthSatelliteTensor,
+    FeatureTensor,
+    LightcurveTensor,
+    PhotometricTensor,
+    SimulationTensor,
+    Spatial3DTensor,
+    SpectralTensor,
+    SurveyTensor,
+)
+
 logger = logging.getLogger(__name__)
 
 # Set environment variable for NumPy 2.x compatibility with bpy and other modules
@@ -39,42 +53,12 @@ os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# 🌟 TENSOR INTEGRATION - Import all tensor types
-try:
-    from astro_lab.tensors import (
-        LightcurveTensor,
-        PhotometricTensor,
-        SimulationTensor,
-        Spatial3DTensor,
-        SpectralTensor,
-        SurveyTensor,
-    )
-except ImportError:
-    pass
-
 # Add PyG classes to safe globals for torch.load
 torch.serialization.add_safe_globals([
     torch_geometric.data.data.DataEdgeAttr,
     torch_geometric.data.data.Data,
     torch_geometric.data.batch.Batch
 ])
-
-# Function defined here to avoid circular import
-def create_graph_datasets_from_splits(
-    train_indices: List[int],
-    val_indices: List[int],
-    test_indices: List[int],
-    data_list: List[Data],
-    **kwargs,
-) -> Tuple[List[Data], List[Data], List[Data]]:
-    """Create graph datasets from train/val/test splits."""
-    train_data = [data_list[i] for i in train_indices]
-    val_data = [data_list[i] for i in val_indices]
-    test_data = [data_list[i] for i in test_indices]
-    return train_data, val_data, test_data
-
-
-# PyTorch Geometric integration - core dependency
 
 # =========================================================================
 # 🚀 PERFORMANCE OPTIMIZATION - CUDA, Polars, PyTorch 2025 Best Practices
@@ -491,10 +475,14 @@ def _polars_to_survey_tensor(
 
 class AstroDataset(InMemoryDataset):
     """
-    Clean PyTorch Geometric dataset for astronomical data.
+    Modern PyTorch Geometric dataset for astronomical data with Parquet backend.
     
-    Follows PyG standards: loads pre-processed .pt files.
-    Uses standardized file structure: data/processed/{survey}/{survey}.pt
+    Features:
+    - Direct Parquet → PyG pipeline using Polars
+    - Streaming support for large datasets
+    - GPU-accelerated graph construction
+    - Survey-specific preprocessing
+    - Memory-efficient processing
     """
 
     def __init__(
@@ -504,12 +492,14 @@ class AstroDataset(InMemoryDataset):
         max_samples: Optional[int] = None,
         root: Optional[Union[str, Path]] = None,
         transform: Optional[Any] = None,
+        use_streaming: bool = True,
         **kwargs,
     ):
         """Initialize AstroDataset with survey name."""
         self.survey = survey
         self.k_neighbors = k_neighbors
         self.max_samples = max_samples
+        self.use_streaming = use_streaming
 
         # Standardized root path
         if root is None:
@@ -520,22 +510,22 @@ class AstroDataset(InMemoryDataset):
 
     @property
     def raw_file_names(self) -> List[str]:
-        """No raw files needed for .pt loading."""
-        return []
+        """Expected raw Parquet files."""
+        return [f"{self.survey}.parquet"]
 
     @property
     def processed_file_names(self) -> List[str]:
-        """Simple file name: {survey}.pt"""
-        return [f"{self.survey}.pt"]
+        """Processed PyG graph file."""
+        return [f"{self.survey}_graph.pt"]
 
     def download(self):
-        """Check if data exists and convert FITS to Parquet if needed - PyG standard method."""
-        graph_path = Path(self.root) / f"{self.survey}.pt"
+        """Check if raw Parquet data exists and convert if needed."""
+        raw_path = Path(self.root) / "raw" / f"{self.survey}.parquet"
         
-        if graph_path.exists():
-            return  # Graph already exists
+        if raw_path.exists():
+            return  # Raw data already exists
         
-        # Check if we need to convert FITS to Parquet first
+        # Check if we need to convert from other formats
         if self.survey == "nsa":
             from astro_lab.data.utils import convert_nsa_fits_to_parquet
             
@@ -546,69 +536,122 @@ class AstroDataset(InMemoryDataset):
             if fits_file.exists() and not parquet_file.exists():
                 convert_nsa_fits_to_parquet(fits_file, parquet_file)
         
-        # Now check if graph exists
-        if not graph_path.exists():
+        # Copy to expected location
+        if not raw_path.exists():
             raise FileNotFoundError(
-                f"Graph file not found: {graph_path}\n"
+                f"Raw Parquet file not found: {raw_path}\n"
                 f"Run: uv run astro-lab preprocess --surveys {self.survey}"
             )
 
     def process(self):
-        """Load existing .pt file - PyG standard method."""
-        graph_path = Path(self.root) / f"{self.survey}.pt"
+        """Modern Parquet → PyG pipeline using Polars."""
+        raw_path = Path(self.root) / "raw" / f"{self.survey}.parquet"
+        processed_path = Path(self.root) / "processed" / f"{self.survey}_graph.pt"
         
-        if not graph_path.exists():
-            raise FileNotFoundError(
-                f"Graph file not found: {graph_path}\n"
-                f"Run: uv run astro-lab preprocess --surveys {self.survey}"
-            )
+        if not raw_path.exists():
+            raise FileNotFoundError(f"Raw Parquet file not found: {raw_path}")
 
-        logger.info(f"📦 Loading graph from {graph_path}")
+        logger.info(f"🔄 Processing {self.survey} from Parquet: {raw_path}")
         
         try:
-            # Use weights_only=False for Graph files containing PyG objects
-            # We trust our own generated files
-            data = torch.load(graph_path, weights_only=False)
-            
-            # Handle different data formats and convert to PyG Data
-            if isinstance(data, Data):
-                # Single PyG Data object - ensure it has required attributes
-                data = self._ensure_pyg_compatibility(data)
-                self.data, self.slices = self.collate([data])
-            elif isinstance(data, dict) and "data" in data and "slices" in data:
-                # Pre-collated data
-                self.data, self.slices = data["data"], data["slices"]
-            elif isinstance(data, list):
-                # List of Data objects
-                valid_data = [self._ensure_pyg_compatibility(item) for item in data if isinstance(item, Data) and item.x is not None]
-                if not valid_data:
-                    raise ValueError("No valid Data objects in list")
-                self.data, self.slices = self.collate(valid_data)
+            # Step 1: Load with Polars (streaming for large files)
+            if self.use_streaming:
+                lf = pl.scan_parquet(raw_path)
+                logger.info("📊 Using streaming mode for large dataset")
             else:
-                raise ValueError(f"Unknown data format: {type(data)}")
-                
-            logger.info(f"✅ Loaded {len(self)} samples successfully")
+                df = pl.read_parquet(raw_path)
+                logger.info(f"📊 Loaded {len(df)} objects, {len(df.columns)} columns")
+            
+            # Step 2: Apply survey-specific preprocessing
+            if self.use_streaming:
+                lf_clean = self._apply_survey_preprocessing_lazy(lf)
+                if self.max_samples:
+                    lf_clean = lf_clean.head(self.max_samples)
+                df_clean = lf_clean.collect()
+            else:
+                df_clean = self._apply_survey_preprocessing(df)
+                if self.max_samples and len(df_clean) > self.max_samples:
+                    df_clean = df_clean.sample(self.max_samples, seed=42)
+            
+            logger.info(f"🧹 Preprocessed: {len(df_clean)} objects")
+            
+            # Step 3: Create PyG graph
+            graph_data = self._create_graph_from_dataframe(df_clean)
+            
+            # Step 4: Save processed graph
+            processed_path.parent.mkdir(parents=True, exist_ok=True)
+            torch.save(graph_data, processed_path)
+            
+            # Step 5: Load into InMemoryDataset
+            self.data, self.slices = self.collate([graph_data])
+            
+            logger.info(f"✅ Created graph with {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges")
             
         except Exception as e:
-            logger.error(f"❌ Failed to load {graph_path}: {e}")
+            logger.error(f"❌ Failed to process {raw_path}: {e}")
             raise
 
-    def _ensure_pyg_compatibility(self, data: Data) -> Data:
-        """Ensure Data object has all required PyG attributes."""
-        # Ensure required attributes exist
-        if not hasattr(data, 'x') or data.x is None:
-            raise ValueError("Data object must have 'x' attribute (node features)")
+    def _apply_survey_preprocessing(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Apply survey-specific preprocessing."""
+        if self.survey == "gaia":
+            return self._preprocess_gaia_data(df)
+        elif self.survey == "sdss":
+            return self._preprocess_sdss_data(df)
+        elif self.survey == "nsa":
+            return self._preprocess_nsa_data(df)
+        elif self.survey == "linear":
+            return self._preprocess_linear_data(df)
+        else:
+            return self._preprocess_generic_data(df)
+
+    def _apply_survey_preprocessing_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Apply survey-specific preprocessing (lazy version)."""
+        if self.survey == "gaia":
+            return self._preprocess_gaia_data_lazy(lf)
+        elif self.survey == "sdss":
+            return self._preprocess_sdss_data_lazy(lf)
+        elif self.survey == "nsa":
+            return self._preprocess_nsa_data_lazy(lf)
+        elif self.survey == "linear":
+            return self._preprocess_linear_data_lazy(lf)
+        else:
+            return self._preprocess_generic_data_lazy(lf)
+
+    def _create_graph_from_dataframe(self, df: pl.DataFrame) -> Data:
+        """Create PyG graph from Polars DataFrame with GPU acceleration."""
+        # Extract coordinates
+        coord_cols = self._get_coordinate_columns()
+        coords = df.select(coord_cols).to_numpy()
         
-        if not hasattr(data, 'edge_index') or data.edge_index is None:
-            raise ValueError("Data object must have 'edge_index' attribute")
+        # Extract features
+        feature_cols = self._get_feature_columns()
+        if feature_cols:
+            features = df.select(feature_cols).to_numpy()
+        else:
+            # Use coordinates as features if no other features available
+            features = coords
         
-        # Add missing attributes with defaults
-        if not hasattr(data, 'y') or data.y is None:
-            # Create default labels (node classification)
-            data.y = torch.zeros(data.x.shape[0], dtype=torch.long)
+        # Convert to tensors
+        pos = torch.tensor(coords, dtype=torch.float32)
+        x = torch.tensor(features, dtype=torch.float32)
         
-        if not hasattr(data, 'num_nodes'):
-            data.num_nodes = data.x.shape[0]
+        # Create k-NN graph with GPU acceleration
+        device = get_optimal_device()
+        pos_device = pos.to(device)
+        
+        # Use torch_cluster for GPU-accelerated k-NN
+        edge_index = torch_cluster.knn_graph(pos_device, k=self.k_neighbors, batch=None)
+        
+        # Move back to CPU for storage
+        edge_index = edge_index.cpu()
+        
+        # Create PyG Data object
+        data = Data(
+            x=x,
+            pos=pos,
+            edge_index=edge_index,
+            num_nodes=len(pos)
+        )
         
         # Add survey metadata
         data.survey_name = self.survey
@@ -616,31 +659,134 @@ class AstroDataset(InMemoryDataset):
         
         return data
 
+    def _get_coordinate_columns(self) -> List[str]:
+        """Get coordinate column names for the survey."""
+        config = get_survey_config(self.survey)
+        return config.get("coord_cols", ["ra", "dec", "distance"])
+
+    def _get_feature_columns(self) -> List[str]:
+        """Get feature column names for the survey."""
+        config = get_survey_config(self.survey)
+        return config.get("feature_cols", [])
+
+    # Survey-specific preprocessing methods
+    def _preprocess_gaia_data(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Preprocess Gaia data."""
+        return df.filter(
+            pl.col("parallax").is_not_null() & 
+            (pl.col("parallax") > 0) &
+            pl.col("phot_g_mean_mag").is_not_null()
+        ).select([
+            "ra", "dec", "parallax", "pmra", "pmdec",
+            "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"
+        ])
+
+    def _preprocess_gaia_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Preprocess Gaia data (lazy version)."""
+        return lf.filter(
+            pl.col("parallax").is_not_null() & 
+            (pl.col("parallax") > 0) &
+            pl.col("phot_g_mean_mag").is_not_null()
+        ).select([
+            "ra", "dec", "parallax", "pmra", "pmdec",
+            "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"
+        ])
+
+    def _preprocess_sdss_data(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Preprocess SDSS data."""
+        return df.filter(
+            pl.col("ra").is_not_null() & 
+            pl.col("dec").is_not_null() &
+            pl.col("z").is_not_null()
+        ).select([
+            "ra", "dec", "z", "r", "g", "i", "u", "z_mag"
+        ])
+
+    def _preprocess_sdss_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Preprocess SDSS data (lazy version)."""
+        return lf.filter(
+            pl.col("ra").is_not_null() & 
+            pl.col("dec").is_not_null() &
+            pl.col("z").is_not_null()
+        ).select([
+            "ra", "dec", "z", "r", "g", "i", "u", "z_mag"
+        ])
+
+    def _preprocess_nsa_data(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Preprocess NSA data."""
+        return df.filter(
+            pl.col("ra").is_not_null() & 
+            pl.col("dec").is_not_null()
+        ).select([
+            "ra", "dec", "z", "absmag_r", "absmag_g", "absmag_i"
+        ])
+
+    def _preprocess_nsa_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Preprocess NSA data (lazy version)."""
+        return lf.filter(
+            pl.col("ra").is_not_null() & 
+            pl.col("dec").is_not_null()
+        ).select([
+            "ra", "dec", "z", "absmag_r", "absmag_g", "absmag_i"
+        ])
+
+    def _preprocess_linear_data(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Preprocess LINEAR data."""
+        return df.filter(
+            pl.col("raLIN").is_not_null() & 
+            pl.col("decLIN").is_not_null()
+        ).select([
+            pl.col("raLIN").alias("ra"),
+            pl.col("decLIN").alias("dec"),
+            "mag", "period", "amplitude"
+        ])
+
+    def _preprocess_linear_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Preprocess LINEAR data (lazy version)."""
+        return lf.filter(
+            pl.col("raLIN").is_not_null() & 
+            pl.col("decLIN").is_not_null()
+        ).select([
+            pl.col("raLIN").alias("ra"),
+            pl.col("decLIN").alias("dec"),
+            "mag", "period", "amplitude"
+        ])
+
+    def _preprocess_generic_data(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Preprocess generic data."""
+        return df.filter(
+            pl.col("ra").is_not_null() & 
+            pl.col("dec").is_not_null()
+        )
+
+    def _preprocess_generic_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
+        """Preprocess generic data (lazy version)."""
+        return lf.filter(
+            pl.col("ra").is_not_null() & 
+            pl.col("dec").is_not_null()
+        )
+
     def len(self) -> int:
-        """Number of samples in dataset - PyG standard method."""
+        """Number of samples in dataset."""
         if not hasattr(self, '_data') or self._data is None:
             self.process()
         
-        # Handle single graph case
         if self.slices is None:
             return 1 if hasattr(self._data, "num_nodes") else 0
         
-        # Multiple graphs case
         return len(self.slices[list(self.slices.keys())[0]]) - 1
 
     def get(self, idx: int) -> Data:
-        """Get sample by index - PyG standard method."""
+        """Get sample by index."""
         if not hasattr(self, '_data') or self._data is None:
             self.process()
         
-        # Handle single graph case
         if self.slices is None:
             if idx == 0:
                 return self._data
             else:
                 raise IndexError(f"Index {idx} out of range for single graph dataset")
         
-        # Multiple graphs case
         return super().get(idx)
 
     def get_info(self) -> Dict[str, Any]:
@@ -657,7 +803,8 @@ class AstroDataset(InMemoryDataset):
             "num_edges": sample.edge_index.shape[1] if hasattr(sample, "edge_index") else 0,
             "num_features": sample.x.shape[1] if hasattr(sample, "x") else 0,
             "k_neighbors": self.k_neighbors,
-            "file_path": str(Path(self.root) / f"{self.survey}.pt"),
+            "use_streaming": self.use_streaming,
+            "file_path": str(Path(self.root) / "processed" / f"{self.survey}_graph.pt"),
         }
 
 
@@ -1236,193 +1383,23 @@ def load_tng50_temporal_data(
 
 
 def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
-    """
-    Detect survey type from filename and columns.
-
-    Args:
-        dataset_name: Name of the dataset file
-        df: Polars DataFrame with astronomical data (can be None)
-
-    Returns:
-        Survey type string
-    """
-    name_lower = dataset_name.lower()
-
-    # Handle None DataFrame case
-    if df is None:
-        # Try to detect from filename only
-        if "tng50" in name_lower or "parttype" in name_lower:
-            return "tng50"
-        elif "nsa" in name_lower:
-            return "nsa"
-        elif "gaia" in name_lower:
-            return "gaia"
-        elif "sdss" in name_lower:
-            return "sdss"
-        elif "linear" in name_lower:
-            return "linear"
-        else:
-            return "generic"
-
-    columns = [col.lower() for col in df.columns]
-
-    # TNG50 simulation data
-    if "tng50" in name_lower or "parttype" in name_lower:
-        return "tng50"
-    elif (
-        "x" in columns
-        and "y" in columns
-        and "z" in columns
-        and any("velocities" in col for col in columns)
-    ):
-        return "tng50"
-    # Observational surveys
-    elif "nsa" in name_lower or any("petromag" in col for col in columns):
-        return "nsa"
-    elif "gaia" in name_lower or "phot_g_mean_mag" in columns:
+    """Detect survey type from dataset name or data structure."""
+    if dataset_name.lower() in ["gaia", "gaia_dr3"]:
         return "gaia"
-    elif "sdss" in name_lower or any("modelmag" in col for col in columns):
+    elif dataset_name.lower() in ["sdss", "sdss_dr17"]:
         return "sdss"
+    elif dataset_name.lower() in ["nsa", "nsa_v1_0_1"]:
+        return "nsa"
+    elif dataset_name.lower() in ["linear", "linear_v1"]:
+        return "linear"
+    elif dataset_name.lower() in ["exoplanet", "exoplanets"]:
+        return "exoplanet"
+    elif dataset_name.lower() in ["tng50", "tng50-1"]:
+        return "tng50"
+    elif dataset_name.lower() in ["rrlyrae", "rr_lyrae"]:
+        return "rrlyrae"
     else:
         return "generic"
-
-
-def create_graph_from_dataframe(
-    df: pl.DataFrame,
-    survey_type: str,
-    k_neighbors: int = 8,
-    distance_threshold: float = 50.0,
-    output_path: Optional[Path] = None,
-    **kwargs,
-) -> Optional[Data]:
-    """
-    Create graph from dataframe using GPU acceleration.
-    
-    Args:
-        df: Input dataframe
-        survey_type: Type of survey (gaia, sdss, nsa, tng50, etc.)
-        k_neighbors: Number of neighbors for graph construction
-        distance_threshold: Distance threshold for edges
-        output_path: Optional path to save graph
-        **kwargs: Additional arguments
-
-    Returns:
-        PyTorch Geometric Data object or None if PyG not available
-    """
-
-    coords = df.select(coord_cols).to_numpy()
-    all_features = df.to_numpy()
-
-    print(
-        f"   📊 Coordinate range: X[{coords[:, 0].min():.2f}, {coords[:, 0].max():.2f}]"
-    )
-    print(
-        f"   📊 Coordinate range: Y[{coords[:, 1].min():.2f}, {coords[:, 1].max():.2f}]"
-    )
-    print(
-        f"   📊 Coordinate range: Z[{coords[:, 2].min():.2f}, {coords[:, 2].max():.2f}]"
-    )
-
-    # Use GPU-accelerated k-NN graph creation
-    try:
-        import torch_cluster
-        
-        # Convert to PyTorch tensor and move to GPU
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
-        
-        # Create k-NN graph on GPU
-        edge_index = torch_cluster.knn_graph(
-            x=coords_tensor, 
-            k=min(k_neighbors, len(df) - 1),  # Ensure k doesn't exceed dataset size
-            loop=False,  # No self-loops
-            flow='source_to_target'
-        )
-        
-        # Move back to CPU
-        edge_index = edge_index.cpu()
-        
-        # Convert to edge list format for distance filtering
-        edge_list = edge_index.t().numpy()
-        
-        print(f"   🚀 Created GPU k-NN graph: {len(df):,} nodes, {len(edge_list):,} edges")
-        
-    except ImportError:
-        # Fallback to sklearn if torch_cluster not available
-        print("   ⚠️ torch_cluster not available, using sklearn fallback")
-        nn = NearestNeighbors(n_neighbors=min(k_neighbors + 1, len(df)), metric="euclidean")
-        nn.fit(coords)
-        distances, indices = nn.kneighbors(coords)
-        
-        # Create edge list (exclude self-connections)
-        edge_list = []
-        for i, (dists, neighs) in enumerate(zip(distances, indices)):
-            for dist, neigh in zip(dists[1:], neighs[1:]):  # Skip self
-                if dist <= distance_threshold:
-                    edge_list.append([i, neigh])
-        
-        if not edge_list:
-            print(f"   ⚠️ No edges found with distance threshold {distance_threshold}")
-            # Create a minimal graph with self-loops
-            edge_list = [[i, i] for i in range(min(10, len(df)))]
-    
-    # Filter edges by distance threshold
-    filtered_edges = []
-    edge_distances = []
-    edge_velocities = []  # Store relative velocities as edge features
-
-    # Extract velocity columns if available
-    vel_cols = ["velocities_0", "velocities_1", "velocities_2"]
-    has_velocities = all(col in df.columns for col in vel_cols)
-
-    if has_velocities:
-        velocities = df.select(vel_cols).to_numpy()
-
-    for edge in edge_list:
-        i, j = edge
-        if i != j:  # Skip self-loops
-            dist = np.linalg.norm(coords[i] - coords[j])
-            if dist <= distance_threshold:
-                filtered_edges.append([i, j])
-                edge_distances.append(dist)
-
-                # Add relative velocity as edge feature if available
-                if has_velocities:
-                    rel_velocity = np.linalg.norm(velocities[i] - velocities[j])
-                    edge_velocities.append(rel_velocity)
-
-    if not filtered_edges:
-        print(f"   ⚠️ No edges found with distance threshold {distance_threshold}")
-        # Create a minimal graph with self-loops
-        filtered_edges = [[i, i] for i in range(min(10, len(df)))]
-        edge_distances = [0.0] * len(filtered_edges)
-        edge_velocities = [0.0] * len(filtered_edges) if has_velocities else []
-
-    edge_index = torch.tensor(np.array(filtered_edges).T, dtype=torch.long)
-
-    # Create edge attributes (distance + relative velocity if available)
-    if has_velocities and edge_velocities:
-        edge_attr = torch.tensor(
-            np.column_stack([edge_distances, edge_velocities]), dtype=torch.float
-        )
-    else:
-        edge_attr = torch.tensor(edge_distances, dtype=torch.float).unsqueeze(1)
-
-    node_features = torch.tensor(all_features, dtype=torch.float)
-
-    print(f"   ✅ {survey_type.upper()} Graph: {len(all_features):,} nodes, {len(filtered_edges):,} edges")
-    if has_velocities:
-        print("   📊 Edge features: distance + relative velocity")
-    else:
-        print("   📊 Edge features: distance only")
-
-    return Data(
-        x=node_features,
-        edge_index=edge_index,
-        edge_attr=edge_attr,
-        pos=torch.tensor(coords, dtype=torch.float),  # 3D positions
-        num_nodes=len(all_features),
-    )
 
 
 def benchmark_performance(

@@ -22,24 +22,60 @@ def create_sample_data(n_points: int = 1000) -> AstroDataset:
     """Create sample astronomical data for demonstration."""
     logger.info(f"Creating sample data with {n_points} points...")
     
-    # Generate 3D coordinates (galaxy positions)
-    coords = torch.randn(n_points, 3) * 100  # 3D positions
-    
-    # Generate photometric data (magnitudes in different bands)
-    photometric = torch.randn(n_points, 5)  # 5 photometric bands
-    
-    # Combine features
-    features = torch.cat([coords, photometric], dim=1)
-    
-    # Create PyTorch Geometric Data object
-    from torch_geometric.data import Data
-    pyg_data = Data(x=features)
-    
-    # Create AstroDataset
-    dataset = AstroDataset([pyg_data], survey="sample_survey")
-    
-    logger.info(f"Created dataset with {len(dataset)} samples")
-    return dataset
+    # For demonstration, we'll create a simple dataset
+    # In practice, you would load real survey data
+    try:
+        # Try to load existing Gaia data as example
+        dataset = AstroDataset(survey="gaia", max_samples=n_points, k_neighbors=8)
+        logger.info(f"Loaded existing Gaia dataset with {len(dataset)} samples")
+        return dataset
+    except FileNotFoundError:
+        # Fallback: create a mock dataset
+        logger.info("No existing data found, creating mock dataset...")
+        
+        # Create mock data structure
+        from torch_geometric.data import Data
+        import tempfile
+        import os
+        
+        # Create temporary directory structure
+        temp_dir = tempfile.mkdtemp()
+        raw_dir = os.path.join(temp_dir, "raw")
+        os.makedirs(raw_dir, exist_ok=True)
+        
+        # Create mock Parquet file
+        import polars as pl
+        
+        # Generate mock astronomical data
+        coords = torch.randn(n_points, 3) * 100  # 3D positions
+        photometric = torch.randn(n_points, 5)  # 5 photometric bands
+        
+        # Create DataFrame
+        df = pl.DataFrame({
+            "ra": coords[:, 0].numpy(),
+            "dec": coords[:, 1].numpy(),
+            "distance": coords[:, 2].numpy(),
+            "g_mag": photometric[:, 0].numpy(),
+            "r_mag": photometric[:, 1].numpy(),
+            "i_mag": photometric[:, 2].numpy(),
+            "z_mag": photometric[:, 3].numpy(),
+            "y_mag": photometric[:, 4].numpy(),
+        })
+        
+        # Save as Parquet
+        parquet_path = os.path.join(raw_dir, "gaia.parquet")
+        df.write_parquet(parquet_path)
+        
+        # Create dataset with mock data
+        dataset = AstroDataset(
+            survey="gaia", 
+            max_samples=n_points, 
+            k_neighbors=8,
+            root=temp_dir
+        )
+        
+        logger.info(f"Created mock dataset with {len(dataset)} samples")
+        return dataset
 
 
 def main():

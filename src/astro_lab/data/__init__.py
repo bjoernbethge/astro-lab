@@ -54,20 +54,19 @@ from .manager import (
 # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
 from .preprocessing import (
     preprocess_catalog as preprocess_catalog_new,
+    create_graph_from_dataframe,
 )
 
 # 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
 from .utils import (
     check_astroquery_available,
     create_training_splits,
-    get_data_dir,
     get_data_statistics,
     get_fits_info,
     load_fits_optimized,
     load_fits_table_optimized,
-    load_splits_from_parquet,
-    preprocess_catalog,
     save_splits_to_parquet,
+    load_splits_from_parquet,
 )
 
 # Clean exports
@@ -106,9 +105,7 @@ __all__ = [
     "create_training_splits",
     "get_data_statistics",
     "load_splits_from_parquet",
-    "preprocess_catalog",
     "save_splits_to_parquet",
-    "get_data_dir",
     "check_astroquery_available",
     "load_fits_optimized",
     "load_fits_table_optimized",

@@ -27,18 +27,6 @@ from .config import data_config
 # Import astroquery for external data
 
 
-def get_data_dir() -> Path:
-    """Get the configured data directory."""
-    # Get from environment variable or use default
-    data_dir_str = os.environ.get("ASTROML_DATA")
-    if data_dir_str:
-        return Path(data_dir_str)
-    else:
-        # Fallback to project data directory
-        project_root = Path(__file__).parent.parent.parent.parent
-        return project_root / "data"
-
-
 def check_astroquery_available() -> bool:
     """Check if astroquery is available for data downloads."""
     return True
@@ -469,109 +457,6 @@ def load_splits_from_parquet(
     )
 
     return df_train, df_val, df_test
-
-
-def preprocess_catalog(
-    df: pl.DataFrame,
-    clean_null_columns: bool = True,
-    min_observations: Optional[int] = None,
-    magnitude_columns: Optional[List[str]] = None,
-    coordinate_columns: Optional[List[str]] = None,
-) -> pl.DataFrame:
-    """
-    Preprocess astronomical catalog data with common cleaning operations.
-
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input catalog DataFrame
-    clean_null_columns : bool, default True
-        Whether to remove rows with null values
-    min_observations : int, optional
-        Minimum number of valid observations required
-    magnitude_columns : List[str], optional
-        Magnitude columns for cleaning
-    coordinate_columns : List[str], optional
-        Coordinate columns for validation
-
-    Returns
-    -------
-    pl.DataFrame
-        Cleaned catalog DataFrame
-    """
-    print(f"🧹 Preprocessing catalog data: {df.shape}")
-    original_height = df.height
-
-    # Remove rows with null values if requested
-    if clean_null_columns:
-        # Remove rows that have any null values
-        df = df.drop_nulls()
-        print(f"📉 Removed rows with null values: {original_height} → {df.height} rows")
-
-    # Remove completely empty columns
-    null_counts = df.null_count()
-    columns_to_keep = [
-        col for col in df.columns if null_counts.select(col).item() < df.height * 0.95
-    ]
-    if len(columns_to_keep) < len(df.columns):
-        print(
-            f"📉 Removed {len(df.columns) - len(columns_to_keep)} columns with >95% null values"
-        )
-        df = df.select(columns_to_keep)
-
-    # Filter by minimum observations
-    if min_observations is not None:
-        # Count non-null values per row
-        non_null_count = df.select(
-            [
-                pl.sum_horizontal(
-                    [pl.col(col).is_not_null() for col in df.columns]
-                ).alias("non_null_count")
-            ]
-        )
-
-        mask = non_null_count.select(
-            pl.col("non_null_count") >= min_observations
-        ).to_series()
-        df = df.filter(mask)
-        print(
-            f"📉 Filtered to {df.height} rows with >= {min_observations} observations"
-        )
-
-    # Clean magnitude columns if specified
-    if magnitude_columns:
-        available_mag_cols = [col for col in magnitude_columns if col in df.columns]
-        if available_mag_cols:
-            # Remove rows with invalid magnitudes (< 0 or > 30)
-            magnitude_filters = []
-            for col in available_mag_cols:
-                magnitude_filters.append(
-                    (pl.col(col).is_null()) | ((pl.col(col) >= 0) & (pl.col(col) <= 30))
-                )
-
-            combined_filter = pl.all_horizontal(magnitude_filters)
-            df = df.filter(combined_filter)
-            print(f"📉 Filtered magnitudes, {df.height} rows remain")
-
-    # Validate coordinate columns if specified
-    if coordinate_columns:
-        available_coord_cols = [col for col in coordinate_columns if col in df.columns]
-        if available_coord_cols:
-            coord_filters = []
-            for col in available_coord_cols:
-                coord_filters.append(
-                    pl.col(col).is_not_null() & pl.col(col).is_finite()
-                )
-
-            combined_filter = pl.all_horizontal(coord_filters)
-            df = df.filter(combined_filter)
-            print(f"📉 Filtered coordinates, {df.height} rows remain")
-
-    print(
-        f"✅ Preprocessing complete: {original_height} → {df.height} rows ({df.height / original_height:.1%} retained)"
-    )
-
-    return df
 
 
 def load_nsa_as_tensors(

@@ -16,14 +16,15 @@ import torch
 from astro_lab.data.core import (
     AstroDataset,
     create_cosmic_web_loader,
-    create_graph_datasets_from_splits,
-    create_graph_from_dataframe,
     detect_survey_type,
     get_optimal_batch_size,
     get_optimal_device,
     load_gaia_data,
     load_nsa_data,
 )
+
+# Import create_graph_from_dataframe from preprocessing
+from astro_lab.data.preprocessing import create_graph_from_dataframe, create_graph_datasets_from_splits
 
 # Import AstroDataModule from the correct module
 from astro_lab.data.datamodule import AstroDataModule
@@ -41,9 +42,11 @@ from astro_lab.data.utils import (
     create_training_splits,
     get_data_statistics,
     load_splits_from_parquet,
-    preprocess_catalog,
     save_splits_to_parquet,
 )
+
+# Import preprocess_catalog from preprocessing
+from astro_lab.data.preprocessing import preprocess_catalog
 
 
 class TestAstroDataManager:
