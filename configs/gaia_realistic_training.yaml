@@ -1,0 +1,121 @@
+# Realistic Gaia Stellar Classification Training
+# =============================================
+# Stable configuration to avoid NaN losses and get good results
+
+model:
+  type: gaia_classifier
+  params:
+    input_dim: 16 # Standard Gaia features
+    hidden_dim: 128 # Good balance
+    output_dim: 4 # Will be auto-detected
+    num_layers: 3
+    dropout: 0.2 # Reasonable dropout
+    use_batch_norm: true
+    conv_type: "gcn" # Stable GCN layers
+    activation: "relu"
+
+data:
+  dataset: gaia
+  data_dir: data/processed
+  batch_size: 64 # Larger batch for stability
+  num_workers: 4
+  max_samples: 1000 # Small but manageable
+  return_tensor: true
+  split_ratios: [0.7, 0.15, 0.15] # Standard splits
+
+  # Data preprocessing for stability
+  normalize: true
+  standardize: true
+
+training:
+  max_epochs: 20
+  learning_rate: 0.001 # Conservative learning rate
+  weight_decay: 0.0001
+
+  # Gradient clipping to prevent explosions
+  gradient_clip_val: 1.0
+
+  # Task configuration
+  task: "stellar_classification"
+
+  # Learning rate scheduling
+  lr_scheduler:
+    type: "step"
+    step_size: 10
+    gamma: 0.5
+
+# Loss and optimization
+loss:
+  type: "cross_entropy"
+  label_smoothing: 0.1 # Helps with overfitting
+
+optimizer:
+  type: "adam"
+  betas: [0.9, 0.999]
+  eps: 1e-8
+
+# MLflow tracking
+mlflow:
+  tracking_uri: ./mlruns
+  experiment_name: gaia_realistic_training
+  experiment_description: "Stable Gaia stellar classification with proper hyperparameters"
+
+  tags:
+    survey: Gaia
+    task: stellar_classification
+    version: v1.0
+    stable: true
+
+# Callbacks for training stability
+callbacks:
+  early_stopping:
+    patience: 5
+    min_delta: 0.001
+    monitor: val_loss
+    mode: min
+
+  model_checkpoint:
+    monitor: val_loss
+    mode: min
+    save_top_k: 3
+    save_last: true
+    filename: "gaia_epoch_{epoch:02d}_loss_{val_loss:.4f}"
+
+  learning_rate_monitor:
+    logging_interval: epoch
+
+  # Gradient monitoring to catch problems early
+  gradient_monitor:
+    log_interval: 10
+
+# Validation and metrics
+validation:
+  metrics:
+    - "accuracy"
+    - "f1_score"
+    - "precision"
+    - "recall"
+    - "confusion_matrix"
+
+# Resource management
+resources:
+  gpu: true
+  mixed_precision: false # Disable for stability initially
+  compile_model: false # Disable for debugging
+
+# Logging and debugging
+logging:
+  level: INFO
+  log_model_summary: true
+  log_gradients: true
+  log_predictions: false # Disable to reduce overhead
+
+# Reproducibility
+seed: 42
+deterministic: true
+
+# Model validation
+validation_checks:
+  check_finite_gradients: true
+  check_finite_losses: true
+  log_nan_warnings: true

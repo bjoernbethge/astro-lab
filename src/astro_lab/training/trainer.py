@@ -170,6 +170,11 @@ class AstroTrainer(Trainer):
             and logger is not None
         )
 
+        # Remove UI parameters from filtered_kwargs to avoid duplication - these are always set
+        ui_params = ['enable_progress_bar', 'enable_model_summary', 'enable_checkpointing']
+        for param in ui_params:
+            filtered_kwargs.pop(param, None)
+        
         # Initialize parent Trainer with modern parameters
         super().__init__(
             max_epochs=self.training_config.scheduler.max_epochs,
@@ -178,7 +183,7 @@ class AstroTrainer(Trainer):
             precision=precision,
             callbacks=callbacks,
             logger=logger,
-            # Disable Lightning's default logging since we use MLflow
+            # UI parameters - always enabled, not configurable
             enable_progress_bar=True,
             enable_model_summary=True,
             enable_checkpointing=True,
@@ -187,7 +192,7 @@ class AstroTrainer(Trainer):
             **filtered_kwargs,
         )
 
-        logger.info(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
+        print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
 
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str

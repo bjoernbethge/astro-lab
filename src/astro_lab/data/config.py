@@ -61,6 +61,11 @@ class DataConfig:
         return self.base_dir / "results"
 
     @property
+    def logs_dir(self) -> Path:
+        """Logs directory for training logs."""
+        return self.experiments_dir / "logs"
+
+    @property
     def configs_dir(self) -> Path:
         """Configuration files directory."""
         return self.base_dir / "configs"
@@ -123,10 +128,12 @@ class DataConfig:
         """Create experiment directories only when needed."""
         mlruns_dir = self.mlruns_dir
         checkpoint_dir = self.checkpoints_dir / experiment_name
+        logs_dir = self.logs_dir / experiment_name
 
         # Create only if they don't exist
         mlruns_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        logs_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"🧪 Created experiment directories for {experiment_name}")
 
