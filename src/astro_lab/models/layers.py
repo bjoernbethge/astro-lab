@@ -41,6 +41,18 @@ class LayerFactory:
         **kwargs
     ) -> nn.Module:
         """Create a graph convolution layer."""
+        # Define valid kwargs for each conv type
+        if conv_type == "gcn":
+            valid_kwargs = {"bias", "normalize", "add_self_loops"}
+        elif conv_type == "gat":
+            valid_kwargs = {"bias", "add_self_loops", "flow", "attention_mode"}
+        elif conv_type == "sage":
+            valid_kwargs = {"bias", "normalize", "root_weight", "aggr"}
+        elif conv_type == "transformer":
+            valid_kwargs = {"bias", "add_self_loops", "flow", "attention_mode"}
+        else:
+            valid_kwargs = set()
+        
         # Filter kwargs for torch_geometric Layer
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_kwargs}
         
