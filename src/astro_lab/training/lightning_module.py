@@ -80,8 +80,8 @@ class AstroLightningModule(LightningModule):
             self.projection_head = self._auto_create_projection_head()
 
         # Initialize metrics for tracking (will be set up after class detection)
-        # Don't setup metrics here - wait until we know device and num_classes
-        self.metrics_initialized = False
+        self._setup_metrics()
+        self.metrics_initialized = True
 
         # Performance tracking
         self._step_times = []

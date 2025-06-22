@@ -1432,20 +1432,41 @@ def create_gaia_survey_tensor():
     # Smart NaN handling: fill NaN values instead of dropping rows
     logger.info("🧹 Smart data cleaning: filling NaN values...")
     
-    # Use polars for better NaN handling
-    df_clean = df.fill_null(strategy="mean")  # Fill nulls with column mean
+    # Get only numeric columns
+    numeric_columns = []
+    for col in df.columns:
+        if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
+            numeric_columns.append(col)
+    
+    logger.info(f"📊 Using {len(numeric_columns)} numeric columns: {numeric_columns[:5]}...")
+    
+    # Select only numeric columns and fill nulls
+    df_numeric = df.select(numeric_columns)
+    df_clean = df_numeric.fill_null(strategy="mean")
     
     # Convert to numpy and handle remaining issues
     data_numpy = df_clean.to_numpy()
     
-    # Replace any remaining infinite values
+    # Aggressive cleaning: replace ALL non-finite values
     data_numpy = np.nan_to_num(data_numpy, nan=0.0, posinf=0.0, neginf=0.0)
     
-    logger.info(f"📊 After smart cleaning: {len(data_numpy):,} stars (kept all data!)")
+    # Additional check: ensure no infinite or NaN values remain
+    if not np.isfinite(data_numpy).all():
+        logger.warning("⚠️ Found remaining non-finite values, applying final cleanup...")
+        data_numpy[~np.isfinite(data_numpy)] = 0.0
     
-    # Convert to tensor
+    logger.info(f"📊 After smart cleaning: {len(data_numpy):,} stars with {data_numpy.shape[1]} features (kept all data!)")
+    
+    # Convert to tensor with explicit finite check
     tensor_data = torch.tensor(data_numpy, dtype=torch.float32)
+    
+    # Final tensor validation
+    if not torch.isfinite(tensor_data).all():
+        logger.warning("🔧 Tensor contains non-finite values, applying final cleanup...")
+        tensor_data[~torch.isfinite(tensor_data)] = 0.0
+    
     logger.info(f"📊 Clean tensor shape: {tensor_data.shape}")
+    logger.info(f"✅ Tensor validation: all finite = {torch.isfinite(tensor_data).all()}")
     
     # Define Gaia column mapping
     gaia_columns = df.columns

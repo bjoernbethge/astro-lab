@@ -12,6 +12,7 @@ import os
 import shutil
 import warnings
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
@@ -40,6 +41,10 @@ from .lightning_module import AstroLightningModule
 
 # Optional imports
 from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
+from .optuna_trainer import OptunaTrainer
+
+
+
 
 # Type aliases for clarity
 DeviceType = Union[int, List[int], Literal["auto"]]
@@ -615,10 +620,7 @@ class AstroTrainer(Trainer):
         Returns:
             Optimization results
         """
-        if not OPTUNA_AVAILABLE:
-            raise ImportError(
-                "Optuna is not available. Install with: pip install optuna"
-            )
+        # Optuna is now always available
 
         def model_factory(trial):
             # Get the original model configuration

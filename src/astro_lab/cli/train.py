@@ -188,7 +188,7 @@ def train_from_config(config_path: str) -> None:
             except Exception as e:
                 logger.warning(f"⚠️ MLflow logger failed: {e}")
         
-        # Create trainer
+        # Create trainer (Lightning 2.0 compatible)
         trainer = Trainer(
             max_epochs=training_config.get("max_epochs", 20),
             accelerator="auto",
@@ -196,10 +196,8 @@ def train_from_config(config_path: str) -> None:
             precision="16-mixed",
             callbacks=callbacks,
             logger=logger_instance,
-            enable_progress_bar=True,
-            enable_model_summary=True,
-            enable_checkpointing=True,
-            gradient_clip_val=training_config.get("gradient_clip_val", 1.0),
+            gradient_clip_val=training_config.get("gradient_clip_val", 0.5),
+            # Removed deprecated Lightning 2.0 parameters
         )
         logger.info("✅ Trainer created")
         
@@ -238,13 +236,27 @@ def train_from_config(config_path: str) -> None:
         logger.info(f"📊 Results saved to: {results_dir}")
         logger.info(f"📊 Best model: {checkpoint_callback.best_model_path}")
         
-        # Memory cleanup
+        # Complete memory cleanup
         import torch
         import gc
+        import psutil
+        import os
+        
+        # GPU cleanup
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        
+        # CPU cleanup
         gc.collect()
-        logger.info("🧹 Memory cleanup completed")
+        
+        # Process memory cleanup
+        try:
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            logger.info(f"🧹 Memory cleanup completed - RSS: {memory_info.rss / 1024**2:.1f} MB")
+        except:
+            logger.info("🧹 Memory cleanup completed")
         
     except Exception as e:
         logger.error(f"❌ Training failed: {e}")

@@ -153,6 +153,9 @@ class AstroDataset(InMemoryDataset):
         # Extract features from SurveyTensor
         x = survey_tensor.data  # Shape: [num_nodes, num_features]
         
+        # CRITICAL: Normalize features to prevent NaN losses
+        x = (x - x.mean(dim=0)) / (x.std(dim=0) + 1e-8)
+        
         # Create simple k-NN graph for now
         num_nodes = x.shape[0]
         k = min(self.k_neighbors, num_nodes - 1)
@@ -190,24 +193,22 @@ class AstroDataset(InMemoryDataset):
             targets = torch.tensor(knn_indices.flatten())
             edge_index = torch.stack([sources, targets])
         
-        # Create proper stellar classification labels based on BP-RP color
-        if x.shape[1] >= 3:  # Assume columns: [ra, dec, G, BP, RP, ...]
-            # Use BP-RP color for stellar classification
-            bp_col = x[:, 3] if x.shape[1] > 3 else x[:, 2]  # BP magnitude
-            rp_col = x[:, 4] if x.shape[1] > 4 else x[:, 2]  # RP magnitude
-            bp_rp_color = bp_col - rp_col
+        # Create BALANCED labels for stable training
+        if x.shape[1] >= 10:  # Use G magnitude for balanced classification
+            g_mag = x[:, 9]  # G magnitude column
             
-            # Create stellar type classes based on BP-RP color
-            # Standard Gaia stellar classification thresholds
+            # Create balanced quartiles based on G magnitude
+            quartiles = torch.quantile(g_mag, torch.tensor([0.25, 0.5, 0.75]))
+            
             y = torch.zeros(num_nodes, dtype=torch.long)
-            y[bp_rp_color < 0.5] = 0  # Blue stars (hot)
-            y[(bp_rp_color >= 0.5) & (bp_rp_color < 1.0)] = 1  # White/Yellow stars
-            y[(bp_rp_color >= 1.0) & (bp_rp_color < 1.5)] = 2  # Orange stars
-            y[bp_rp_color >= 1.5] = 3  # Red stars (cool)
+            y[g_mag < quartiles[0]] = 0  # Brightest 25%
+            y[(g_mag >= quartiles[0]) & (g_mag < quartiles[1])] = 1  # 25-50%
+            y[(g_mag >= quartiles[1]) & (g_mag < quartiles[2])] = 2  # 50-75%
+            y[g_mag >= quartiles[2]] = 3  # Faintest 25%
             
-            logger.info(f"🌟 Created stellar classification labels: {torch.bincount(y)}")
+            logger.info(f"🌟 Created balanced magnitude labels: {torch.bincount(y)}")
         else:
-            # Fallback: random labels for testing
+            # Fallback: balanced random labels
             y = torch.randint(0, 4, (num_nodes,), dtype=torch.long)
         
         return Data(x=x, edge_index=edge_index, y=y)
