@@ -13,7 +13,8 @@ class TestTensorSerialization:
     def test_tensor_state_dict(self):
         """Test tensor state dict functionality."""
         coords = torch.randn(5, 3)
-        spatial = Spatial3DTensor(coords, coordinate_system="galactic")
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        spatial = Spatial3DTensor(x, y, z, coordinate_system="galactic")
 
         # Test state dict exists
         assert hasattr(spatial, "__getstate__") or hasattr(spatial, "state_dict")
@@ -21,7 +22,8 @@ class TestTensorSerialization:
     def test_tensor_pickling(self):
         """Test tensor pickling via dict serialization."""
         coords = torch.randn(3, 3)
-        spatial = Spatial3DTensor(coords)
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        spatial = Spatial3DTensor(x, y, z)
 
         # Test serialization to dict and back (safer than direct pickling)
         tensor_dict = spatial.to_dict()
@@ -41,7 +43,8 @@ class TestTensorSerialization:
     def test_tensor_copy(self):
         """Test tensor copying via clone method."""
         coords = torch.randn(4, 3)
-        spatial = Spatial3DTensor(coords, unit="kpc")
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        spatial = Spatial3DTensor(x, y, z, unit="kpc")
 
         # Test clone method (safer than copy module)
         cloned = spatial.clone()

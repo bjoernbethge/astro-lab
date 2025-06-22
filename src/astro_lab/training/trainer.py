@@ -178,7 +178,7 @@ class AstroTrainer(Trainer):
         ui_params = ['enable_progress_bar', 'enable_model_summary', 'enable_checkpointing']
         for param in ui_params:
             filtered_kwargs.pop(param, None)
-        
+
         # Initialize parent Trainer with modern parameters
         super().__init__(
             max_epochs=self.training_config.scheduler.max_epochs,
@@ -651,7 +651,7 @@ class AstroTrainer(Trainer):
                     "dropout": trial.suggest_float("dropout", 0.1, 0.5),
                     "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
                 }
-            
+
             # Create model with trial parameters
             model_config = self.astro_module.model_config
             if model_config:
@@ -672,8 +672,8 @@ class AstroTrainer(Trainer):
                     num_layers=params.get("num_layers", 3),
                     dropout=params.get("dropout", 0.2),
                     conv_type="gcn"
-                )
-            
+            )
+
             # Create new Lightning module for this trial
             trial_module = AstroLightningModule(
                 model=model,
@@ -710,7 +710,7 @@ class AstroTrainer(Trainer):
             except Exception as e:
                 print(f"Trial failed: {e}")
                 return float("inf") if "loss" in monitor else float("-inf")
-        
+
         # Run optimization
         print(f"🔍 Starting hyperparameter optimization with {n_trials} trials...")
         study.optimize(objective, n_trials=n_trials, timeout=timeout)

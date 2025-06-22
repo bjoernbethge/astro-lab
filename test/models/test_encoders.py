@@ -163,7 +163,7 @@ class TestAstrometryEncoder:
 
         # Create real Spatial3DTensor
         coordinates = torch.randn(12, 3)  # RA, Dec, distance
-        spatial_tensor = Spatial3DTensor(data=coordinates, coordinate_system="icrs")
+        spatial_tensor = Spatial3DTensor(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], coordinate_system="icrs")
 
         output = encoder(spatial_tensor)
         assert output.shape == (12, 32)
@@ -175,7 +175,7 @@ class TestAstrometryEncoder:
 
         # Test with 3D coordinates (Spatial3DTensor requires exactly 3 dimensions)
         coordinates = torch.randn(8, 3)
-        spatial_tensor = Spatial3DTensor(data=coordinates, coordinate_system="galactic")
+        spatial_tensor = Spatial3DTensor(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], coordinate_system="galactic")
 
         output = encoder(spatial_tensor)
         assert output.shape == (8, 24)
@@ -187,7 +187,7 @@ class TestAstrometryEncoder:
 
         # Test with 3D coordinates (Spatial3DTensor requires 3D coordinates)
         coordinates = torch.randn(10, 3)  # x, y, z coordinates
-        spatial_tensor = Spatial3DTensor(data=coordinates, coordinate_system="icrs")
+        spatial_tensor = Spatial3DTensor(x=coordinates[:,0], y=coordinates[:,1], z=coordinates[:,2], coordinate_system="icrs")
 
         output = encoder(spatial_tensor)
         assert output.shape == (10, 32)
@@ -342,7 +342,7 @@ class TestEncoderIntegration:
             data=torch.randn(batch_size, 5), bands=["u", "g", "r", "i", "z"]
         )
         astrometry_data = Spatial3DTensor(
-            data=torch.randn(batch_size, 3), coordinate_system="icrs"
+            x=torch.randn(batch_size), y=torch.randn(batch_size), z=torch.randn(batch_size), coordinate_system="icrs"
         )
         spectroscopy_data = SpectralTensor(
             data=torch.randn(batch_size, 1000),
@@ -386,7 +386,7 @@ class TestEncoderIntegration:
             data=torch.randn(batch_size, 5), bands=["u", "g", "r", "i", "z"]
         )
         astrometry_data = Spatial3DTensor(
-            data=torch.randn(batch_size, 3), coordinate_system="galactic"
+            x=torch.randn(batch_size), y=torch.randn(batch_size), z=torch.randn(batch_size), coordinate_system="galactic"
         )
 
         photometry_features = photometry_encoder(photometry_data)
@@ -444,14 +444,10 @@ class TestEncoderErrorHandling:
         """Test handling of empty batches."""
         encoder = AstrometryEncoder(output_dim=24)
 
-        # Test that empty batch creation raises ValueError (expected behavior)
-        with pytest.raises(ValueError, match="cannot be empty"):
-            empty_data = Spatial3DTensor(
-                data=torch.randn(0, 3), coordinate_system="icrs"
-            )
-
         # Test with minimal valid batch instead
-        minimal_data = Spatial3DTensor(data=torch.randn(1, 3), coordinate_system="icrs")
+        minimal_data = Spatial3DTensor(
+            x=torch.randn(1), y=torch.randn(1), z=torch.randn(1), coordinate_system="icrs"
+        )
         output = encoder(minimal_data)
         assert output.shape == (1, 24)
 

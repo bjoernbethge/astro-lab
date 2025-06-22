@@ -16,7 +16,8 @@ class TestTensorInteroperability:
         """Test combining different tensor types."""
         # Create spatial coordinates
         coords = torch.randn(10, 3)
-        spatial = Spatial3DTensor(coords)
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        spatial = Spatial3DTensor(x, y, z)
 
         # Create photometry for same objects
         mags = torch.randn(10, 5)
@@ -32,7 +33,8 @@ class TestTensorInteroperability:
             pytest.skip("CUDA not available")
 
         coords = torch.randn(5, 3, device=device)
-        spatial = Spatial3DTensor(coords)
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        spatial = Spatial3DTensor(x, y, z)
 
         # Device comparison should check type separately if CUDA
         if device.type == "cuda":
@@ -49,7 +51,8 @@ class TestTensorInteroperability:
 
         # Process each sample
         for i in range(batch_coords.shape[0]):
-            spatial = Spatial3DTensor(batch_coords[i])
+            x, y, z = batch_coords[i, :, 0], batch_coords[i, :, 1], batch_coords[i, :, 2]
+            spatial = Spatial3DTensor(x, y, z)
             assert spatial.shape == (10, 3)
 
     @pytest.mark.cuda
@@ -59,7 +62,8 @@ class TestTensorInteroperability:
 
         # Create large tensor on GPU
         coords = torch.randn(1000, 3, device=device)
-        spatial = Spatial3DTensor(coords)
+        x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
+        spatial = Spatial3DTensor(x, y, z)
 
         assert spatial.device.type == device.type
 
