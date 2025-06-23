@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 # Removed duplicate TYPE_CHECKING block
 
 # Import PyTorch Geometric and sklearn
-from sklearn.cluster import DBSCAN, KMeans
+from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans
 from torch_geometric.data import Data
 from torch_geometric.nn import radius_graph
 
@@ -417,6 +417,80 @@ def spatial_distance_matrix(
         raise ValueError(f"Unknown metric: {metric}")
 
     return distances
+
+
+def cluster_and_analyze(
+    coords: torch.Tensor,
+    algorithm: str = "dbscan",
+    eps: float = 0.5,
+    min_samples: int = 5,
+    n_clusters: int = None,
+    use_gpu: bool = True,
+    **kwargs,
+) -> Dict[str, Any]:
+    """
+    Führt Clustering und Statistikberechnung auf den gegebenen Koordinaten durch.
+    Args:
+        coords: Koordinaten als Tensor [N, D]
+        algorithm: 'dbscan', 'agglomerative', 'kmeans', 'fof'
+        eps: Radius für DBSCAN/Agglomerative/FoF
+        min_samples: Minimum für DBSCAN
+        n_clusters: Clusteranzahl für KMeans/Agglomerative
+        use_gpu: GPU für Nachbarschaftssuche (nicht für Clustering selbst)
+        **kwargs: Zusätzliche Parameter
+    Returns:
+        Dict mit Labels, Statistiken, n_clusters, n_noise, etc.
+    """
+    coords_np = coords.detach().cpu().numpy()
+    labels = None
+    if algorithm == "dbscan":
+        clusterer = DBSCAN(eps=eps, min_samples=min_samples, **kwargs)
+        labels = clusterer.fit_predict(coords_np)
+    elif algorithm == "agglomerative":
+        if n_clusters is not None:
+            clusterer = AgglomerativeClustering(n_clusters=n_clusters, **kwargs)
+        else:
+            clusterer = AgglomerativeClustering(distance_threshold=eps, n_clusters=None, **kwargs)
+        labels = clusterer.fit_predict(coords_np)
+    elif algorithm == "kmeans":
+        if n_clusters is None:
+            n_clusters = 5
+        clusterer = KMeans(n_clusters=n_clusters, **kwargs)
+        labels = clusterer.fit_predict(coords_np)
+    elif algorithm == "fof":
+        # Friends-of-Friends als DBSCAN mit nur eps
+        clusterer = DBSCAN(eps=eps, min_samples=1, **kwargs)
+        labels = clusterer.fit_predict(coords_np)
+    else:
+        raise ValueError(f"Unbekannter Algorithmus: {algorithm}")
+    labels_tensor = torch.from_numpy(labels).to(coords.device)
+    unique_labels = set(labels)
+    n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
+    n_noise = sum(1 for label in labels if label == -1)
+    # Statistiken berechnen
+    cluster_stats = {}
+    for cluster_id in unique_labels:
+        if cluster_id == -1:
+            continue
+        cluster_mask = labels == cluster_id
+        cluster_coords = coords_np[cluster_mask]
+        center = cluster_coords.mean(axis=0)
+        distances = np.linalg.norm(cluster_coords - center, axis=1)
+        cluster_stats[cluster_id] = {
+            "n_points": int(cluster_mask.sum()),
+            "center": center,
+            "radius": float(distances.max()),
+            "density": float(
+                cluster_mask.sum() / (4/3 * np.pi * max(distances.max(), 1e-6)**3)
+            ),
+        }
+    return {
+        "cluster_labels": labels_tensor,
+        "n_clusters": n_clusters,
+        "n_noise": n_noise,
+        "cluster_stats": cluster_stats,
+        "coords": coords.detach().cpu(),
+    }
 
 
 __all__ = [

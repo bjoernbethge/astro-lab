@@ -6,13 +6,6 @@ resolution-markers = [
     "python_full_version < '3.12'",
 ]
 
-[manifest]
-members = [
-    "astro-lab",
-    "astro-pack",
-    "astro-viz",
-]
-
 [[package]]
 name = "addict"
 version = "2.4.0"
@@ -193,11 +186,8 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anywidget" },
-    { name = "astro-pack" },
-    { name = "astro-viz" },
     { name = "astroml" },
     { name = "astrophot" },
-    { name = "astropy" },
     { name = "bpy" },
     { name = "bvh" },
     { name = "cosmograph" },
@@ -221,6 +211,16 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+astro = [
+    { name = "astroml" },
+    { name = "astrophot" },
+    { name = "astropy" },
+    { name = "astroquery" },
+    { name = "numpy" },
+    { name = "poliastro" },
+    { name = "sdss-access" },
+    { name = "sgp4" },
+]
 dev = [
     { name = "gputil" },
     { name = "mkdocs" },
@@ -239,18 +239,12 @@ dev = [
 optim = [
     { name = "optuna" },
 ]
-viz = [
-    { name = "marimo" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "anywidget", specifier = ">=0.9.18" },
-    { name = "astro-pack", editable = "astro-pack" },
-    { name = "astro-viz", editable = "astro-viz" },
     { name = "astroml", specifier = ">=1.0.2.post1" },
     { name = "astrophot", specifier = ">=0.16.13" },
-    { name = "astropy", specifier = ">=7.1.0" },
     { name = "bpy", specifier = ">=4.4.0" },
     { name = "bvh", specifier = ">=0.3" },
     { name = "cosmograph", specifier = ">=0.0.47" },
@@ -274,6 +268,16 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+astro = [
+    { name = "astroml", specifier = ">=1.0.2.post1" },
+    { name = "astrophot", specifier = ">=0.16.13" },
+    { name = "astropy", specifier = ">=7.1.0" },
+    { name = "astroquery", specifier = ">=0.4.10" },
+    { name = "numpy", specifier = ">=1.24,<2.0" },
+    { name = "poliastro", specifier = ">=0.7.0" },
+    { name = "sdss-access", specifier = ">=3.0.8" },
+    { name = "sgp4", specifier = ">=2.24" },
+]
 dev = [
     { name = "gputil", specifier = ">=1.4.0" },
     { name = "mkdocs", specifier = ">=1.5.0" },
@@ -290,49 +294,6 @@ dev = [
     { name = "ruff", specifier = ">=0.1.0" },
 ]
 optim = [{ name = "optuna", specifier = ">=4.4.0" }]
-viz = [{ name = "marimo", specifier = ">=0.13.15" }]
-
-[[package]]
-name = "astro-pack"
-version = "0.1.0"
-source = { editable = "astro-pack" }
-dependencies = [
-    { name = "astroml" },
-    { name = "astropy" },
-    { name = "astroquery" },
-    { name = "numpy" },
-    { name = "poliastro" },
-    { name = "sdss-access" },
-    { name = "sgp4" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "astroml", specifier = ">=1.0.2.post1" },
-    { name = "astropy", specifier = ">=7.1.0" },
-    { name = "astroquery", specifier = ">=0.4.10" },
-    { name = "numpy", specifier = ">=1.24,<2.0" },
-    { name = "poliastro", specifier = ">=0.7.0" },
-    { name = "sdss-access", specifier = ">=3.0.8" },
-    { name = "sgp4", specifier = ">=2.24" },
-]
-
-[[package]]
-name = "astro-viz"
-version = "0.1.0"
-source = { editable = "astro-viz" }
-dependencies = [
-    { name = "astropy" },
-    { name = "bpy" },
-    { name = "pyvista" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "astropy", specifier = ">=7.1.0" },
-    { name = "bpy", specifier = ">=4.4.0" },
-    { name = "pyvista", specifier = ">=0.45.2" },
-]
 
 [[package]]
 name = "astroml"

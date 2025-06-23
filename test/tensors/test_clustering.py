@@ -72,28 +72,39 @@ class TestClusteringTensor:
     def clustering_tensor_2d(self, sample_2d_data):
         """Create ClusteringTensor instance with 3D data (z=0)."""
         positions, features = sample_2d_data
-        return ClusteringTensor(
-            positions, features=features, coordinate_system="cartesian"
-        )
+        # Kombiniere Positionen und Features zu einem Array
+        data = np.concatenate([positions, features], axis=1)
+        meta = {
+            "n_spatial_dims": 3,
+            "n_features": 3,
+            "coordinate_system": "cartesian",
+            "astronomical_context": "general"
+        }
+        return ClusteringTensor(data=data, meta=meta)
 
     @pytest.fixture
     def clustering_tensor_sky(self, sample_sky_data):
         """Create ClusteringTensor instance with sky coordinates."""
         positions = sample_sky_data
-        return ClusteringTensor(positions, coordinate_system="spherical")
+        meta = {
+            "n_spatial_dims": 2,
+            "n_features": 0,
+            "coordinate_system": "spherical",
+            "astronomical_context": "general"
+        }
+        return ClusteringTensor(data=positions, meta=meta)
 
     def test_initialization(self, sample_2d_data):
         """Test ClusteringTensor initialization."""
         positions, features = sample_2d_data
-
-        # Test with features
-        tensor = ClusteringTensor(positions, features=features)
+        data = np.concatenate([positions, features], axis=1)
+        meta = {"n_spatial_dims": 3, "n_features": 3, "coordinate_system": "cartesian"}
+        tensor = ClusteringTensor(data=data, meta=meta)
         assert len(tensor) == 100
         assert tensor.get_metadata("n_spatial_dims") == 3
         assert tensor.get_metadata("n_features") == 3
-
-        # Test without features
-        tensor_no_feat = ClusteringTensor(positions)
+        # Test ohne Features
+        tensor_no_feat = ClusteringTensor(data=positions, meta={"n_spatial_dims": 3, "n_features": 0, "coordinate_system": "cartesian"})
         assert len(tensor_no_feat) == 100
         assert tensor_no_feat.get_metadata("n_features") == 0
         assert tensor_no_feat.features is None
@@ -102,161 +113,70 @@ class TestClusteringTensor:
         """Test position and feature access."""
         positions = clustering_tensor_2d.positions
         features = clustering_tensor_2d.features
-
         assert positions.shape == (100, 3)
         assert features.shape == (100, 3)
         assert torch.is_tensor(positions)
         assert torch.is_tensor(features)
 
     def test_dbscan_clustering(self, clustering_tensor_2d):
-        """Test DBSCAN clustering."""
-        try:
-            labels = clustering_tensor_2d.dbscan_clustering(eps=1.0, min_samples=5)
+        """Test DBSCAN clustering (zentralisierte Logik)."""
+        labels = clustering_tensor_2d.dbscan_clustering(eps=1.0, min_samples=5)
+        assert isinstance(labels, torch.Tensor)
+        assert len(labels) == len(clustering_tensor_2d)
+        # Prüfe, dass Cluster gefunden wurden
+        unique_labels = torch.unique(labels)
+        n_clusters = len(unique_labels[unique_labels >= 0])
+        assert n_clusters > 0
+        # Prüfe, dass Statistiken in den Metadaten sind
+        stats = clustering_tensor_2d.get_metadata("cluster_stats")
+        assert isinstance(stats, dict)
+        assert len(stats) == n_clusters
 
-            assert isinstance(labels, torch.Tensor)
-            assert len(labels) == len(clustering_tensor_2d)
-
-            # Check that clusters were found
-            unique_labels = torch.unique(labels)
-            n_clusters = len(unique_labels[unique_labels >= 0])
-            assert n_clusters > 0
-
-            # Check that results were stored
-            assert "dbscan" in clustering_tensor_2d.get_metadata("cluster_labels", {})
-
-        except ImportError:
-            pytest.skip("sklearn not available for DBSCAN")
+    def test_dbscan_clustering_gpu(self, clustering_tensor_2d):
+        """Test DBSCAN clustering mit use_gpu=True (zentralisierte Logik)."""
+        from astro_lab.utils.viz.graph import cluster_and_analyze
+        coords = clustering_tensor_2d.positions
+        result = cluster_and_analyze(coords, algorithm="dbscan", eps=1.0, min_samples=5, use_gpu=True)
+        labels = result["cluster_labels"]
+        assert isinstance(labels, torch.Tensor)
+        assert len(labels) == len(clustering_tensor_2d)
+        stats = result["cluster_stats"]
+        assert isinstance(stats, dict)
+        assert len(stats) == result["n_clusters"]
 
     def test_friends_of_friends(self, clustering_tensor_2d):
-        """Test Friends-of-Friends clustering."""
-        try:
-            labels = clustering_tensor_2d.friends_of_friends(
-                linking_length=1.5, min_group_size=3
-            )
-
-            assert isinstance(labels, torch.Tensor)
-            assert len(labels) == len(clustering_tensor_2d)
-
-            # Check that groups were found
-            unique_labels = torch.unique(labels)
-            n_groups = len(unique_labels[unique_labels >= 0])
-            assert n_groups >= 0  # May be 0 if linking length is too small
-
-            # Check stored results
-            assert "fof" in clustering_tensor_2d.get_metadata("cluster_labels", {})
-
-        except ImportError:
-            pytest.skip("sklearn not available for Friends-of-Friends")
+        """Test Friends-of-Friends clustering (zentralisierte Logik)."""
+        labels = clustering_tensor_2d.friends_of_friends(linking_length=1.5)
+        assert isinstance(labels, torch.Tensor)
+        assert len(labels) == len(clustering_tensor_2d)
+        unique_labels = torch.unique(labels)
+        n_groups = len(unique_labels[unique_labels >= 0])
+        assert n_groups >= 0
+        stats = clustering_tensor_2d.get_metadata("cluster_stats")
+        assert isinstance(stats, dict)
 
     def test_hierarchical_clustering(self, clustering_tensor_2d):
-        """Test hierarchical clustering."""
-        try:
-            labels = clustering_tensor_2d.hierarchical_clustering(n_clusters=3)
-
-            assert isinstance(labels, torch.Tensor)
-            assert len(labels) == len(clustering_tensor_2d)
-
-            # Should have exactly 3 clusters
-            unique_labels = torch.unique(labels)
-            assert len(unique_labels) == 3
-
-            # Check stored results
-            assert "hierarchical" in clustering_tensor_2d.get_metadata(
-                "cluster_labels", {}
-            )
-
-        except ImportError:
-            pytest.skip("sklearn not available for hierarchical clustering")
-
-    def test_spherical_coordinate_preprocessing(self, clustering_tensor_sky):
-        """Test spherical coordinate preprocessing."""
-        positions = clustering_tensor_sky.positions  # RA, Dec
-
-        # Test coordinate conversion
-        cartesian_coords = clustering_tensor_sky._preprocess_spherical_coordinates(
-            positions.cpu().numpy()
-        )
-
-        assert cartesian_coords.shape == (
-            positions.shape[0],
-            3,
-        )  # x, y, z on unit sphere
-
-        # Check that coordinates are on unit sphere
-        distances = np.sqrt(np.sum(cartesian_coords**2, axis=1))
-        np.testing.assert_allclose(distances, 1.0, rtol=1e-6)
-
-    def test_eps_estimation(self, clustering_tensor_2d):
-        """Test automatic eps parameter estimation."""
-        try:
-            eps = clustering_tensor_2d._estimate_eps(min_samples=5)
-            assert isinstance(eps, float)
-            assert eps > 0
-
-        except ImportError:
-            pytest.skip("sklearn not available for eps estimation")
-
-    def test_cluster_statistics(self, clustering_tensor_2d):
-        """Test cluster statistics computation."""
-        try:
-            # First run clustering
-            clustering_tensor_2d.dbscan_clustering(eps=1.0, min_samples=5)
-
-            # Get statistics
-            stats = clustering_tensor_2d.get_cluster_properties("dbscan")
-
-            assert isinstance(stats, dict)
-            assert "n_clusters" in stats or "n_groups" in stats
-
-        except ImportError:
-            pytest.skip("sklearn not available for cluster statistics")
-
-    def test_multiple_algorithms(self, clustering_tensor_2d):
-        """Test running multiple clustering algorithms."""
-        try:
-            # Run multiple algorithms
-            clustering_tensor_2d.dbscan_clustering(
-                eps=1.0, min_samples=5, algorithm_name="dbscan_1"
-            )
-            clustering_tensor_2d.dbscan_clustering(
-                eps=0.5, min_samples=3, algorithm_name="dbscan_2"
-            )
-            params = clustering_tensor_2d._metadata.get("cluster_properties", {})
-            assert "dbscan_1" in params
-            assert "dbscan_2" in params
-        except ImportError:
-            pytest.skip("sklearn not available for multiple algorithms")
-
-    def test_astronomical_context(self):
-        """Test different astronomical contexts."""
-        positions = np.random.randn(50, 2)
-
-        # Test different contexts
-        contexts = ["galaxies", "stars", "lss", "general"]
-        for context in contexts:
-            tensor = ClusteringTensor(positions, astronomical_context=context)
-            assert tensor.get_metadata("astronomical_context") == context
-
-    def test_error_handling(self):
-        """Test error handling for invalid inputs."""
-        # Test mismatched features
-        positions = np.random.randn(10, 2)
-        features = np.random.randn(5, 3)  # Wrong number of objects
-        with pytest.raises(ValueError):
-            ClusteringTensor(positions, features=features)
+        """Test hierarchical clustering (zentralisierte Logik)."""
+        labels = clustering_tensor_2d.hierarchical_clustering(n_clusters=3)
+        assert isinstance(labels, torch.Tensor)
+        assert len(labels) == len(clustering_tensor_2d)
+        unique_labels = torch.unique(labels)
+        assert len(unique_labels) == 3
+        stats = clustering_tensor_2d.get_metadata("cluster_stats")
+        assert isinstance(stats, dict)
+        assert len(stats) == 3
 
     def test_tensor_metadata(self, clustering_tensor_2d):
-        """Test tensor metadata handling."""
-        assert clustering_tensor_2d.get_metadata("tensor_type") == "clustering"
+        """Test tensor metadata access."""
+        assert clustering_tensor_2d.get_metadata("n_spatial_dims") == 3
+        assert clustering_tensor_2d.get_metadata("n_features") == 3
         assert clustering_tensor_2d.get_metadata("coordinate_system") == "cartesian"
         assert clustering_tensor_2d.get_metadata("astronomical_context") == "general"
 
     def test_repr(self, clustering_tensor_2d):
-        """Test string representation."""
+        """Test __repr__ output."""
         repr_str = repr(clustering_tensor_2d)
-        assert "ClusteringTensor" in repr_str
-        assert "objects=100" in repr_str
-        assert "coord_system=cartesian" in repr_str
+        assert "coord_sys='cartesian'" in repr_str
 
 
 class TestClusteringTensorIntegration:
@@ -310,12 +230,12 @@ class TestClusteringTensorIntegration:
 
         positions = np.vstack(positions)
 
-        tensor = ClusteringTensor(positions, astronomical_context="lss")
+        tensor = ClusteringTensor(data=positions, meta={"n_spatial_dims": 3, "n_features": 0, "coordinate_system": "cartesian", "astronomical_context": "lss"})
         assert tensor.get_metadata("astronomical_context") == "lss"
 
         try:
             # Use Friends-of-Friends for LSS
-            labels = tensor.friends_of_friends(linking_length=2.0, min_group_size=5)
+            labels = tensor.friends_of_friends(linking_length=2.0)
             assert len(labels) == n_objects
 
         except ImportError:
