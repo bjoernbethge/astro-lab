@@ -4,7 +4,7 @@ data:
   return_tensor: true
 mlflow:
   experiment_name: default_experiment
-  tracking_uri: file:./mlruns
+  tracking_uri: file:./data/experiments
 model:
   name: gaia_classifier
   params:

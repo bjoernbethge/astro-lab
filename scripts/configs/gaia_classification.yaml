@@ -63,7 +63,7 @@ optimization:
 
 # MLflow configuration
 mlflow:
-  tracking_uri: file:./mlruns
+  tracking_uri: file:./data/experiments
   experiment_description: "Gaia DR3 stellar classification using photometry and astrometry"
   tags:
     survey: Gaia

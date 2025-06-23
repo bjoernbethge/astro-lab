@@ -65,7 +65,7 @@ optimization:
       choices: [4, 6, 8, 12]
 
 mlflow:
-  tracking_uri: file:./mlruns
+  tracking_uri: file:./data/experiments
   experiment_description: "SDSS galaxy morphology classification with multi-band photometry"
   tags:
     survey: SDSS

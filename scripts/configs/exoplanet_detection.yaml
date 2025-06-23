@@ -65,7 +65,7 @@ optimization:
       high: 8
 
 mlflow:
-  tracking_uri: file:./mlruns
+  tracking_uri: file:./data/experiments
   experiment_description: "Kepler/TESS exoplanet transit detection using light curves"
   tags:
     survey: Kepler
