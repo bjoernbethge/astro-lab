@@ -22,8 +22,8 @@ class TestCLI:
         with patch('sys.argv', ['astro-lab', '--help']):
             with patch('sys.exit') as mock_exit:
                 # Import here to avoid import errors
-                from astro_lab.cli import main as cli_main
-                cli_main()
+                from astro_lab.cli import main
+                main()
                 # CLI may call sys.exit multiple times, which is normal
                 mock_exit.assert_called_with(0)
 
@@ -31,8 +31,8 @@ class TestCLI:
         """Test CLI version output."""
         with patch('sys.argv', ['astro-lab', '--version']):
             with patch('sys.exit') as mock_exit:
-                from astro_lab.cli import main as cli_main
-                cli_main()
+                from astro_lab.cli import main
+                main()
                 mock_exit.assert_called_with(0)
 
     def test_cli_welcome_message(self):
@@ -40,8 +40,8 @@ class TestCLI:
         with patch('sys.argv', ['astro-lab']):
             with patch('astro_lab.cli.logger.info') as mock_logger:
                 with patch('sys.exit') as mock_exit:
-                    from astro_lab.cli import main as cli_main
-                    cli_main()
+                    from astro_lab.cli import main
+                    main()
                     # Should log welcome message
                     mock_logger.assert_called()
                     # CLI should show help and exit with 0 when no command is provided
@@ -51,8 +51,8 @@ class TestCLI:
         """Test download command help."""
         with patch('sys.argv', ['astro-lab', 'download', '--help']):
             with patch('sys.exit') as mock_exit:
-                from astro_lab.cli import main as cli_main
-                cli_main()
+                from astro_lab.cli import main
+                main()
                 mock_exit.assert_called_with(0)
 
     def test_download_gaia_command(self):
@@ -61,8 +61,8 @@ class TestCLI:
             with patch('astro_lab.data.download_bright_all_sky') as mock_download:
                 mock_download.return_value = "Download completed"
                 with patch('sys.exit') as mock_exit:
-                    from astro_lab.cli import main as cli_main
-                    cli_main()
+                    from astro_lab.cli import main
+                    main()
                     mock_download.assert_called_once_with(magnitude_limit=10.0)
                     mock_exit.assert_not_called()
 
@@ -72,8 +72,8 @@ class TestCLI:
             with patch('astro_lab.data.list_catalogs') as mock_list:
                 mock_list.return_value = ["gaia", "sdss", "nsa"]
                 with patch('sys.exit') as mock_exit:
-                    from astro_lab.cli import main as cli_main
-                    cli_main()
+                    from astro_lab.cli import main
+                    main()
                     mock_list.assert_called_once()
                     mock_exit.assert_not_called()
 
@@ -83,16 +83,16 @@ class TestCLI:
             with patch('astro_lab.data.download_bright_all_sky') as mock_download:
                 mock_download.side_effect = Exception("Download failed")
                 with patch('sys.exit') as mock_exit:
-                    from astro_lab.cli import main as cli_main
-                    cli_main()
+                    from astro_lab.cli import main
+                    main()
                     mock_exit.assert_called_once_with(1)
 
     def test_cli_invalid_command(self):
         """Test CLI with invalid command."""
         with patch('sys.argv', ['astro-lab', 'invalid-command']):
             with patch('sys.exit') as mock_exit:
-                from astro_lab.cli import main as cli_main
-                cli_main()
+                from astro_lab.cli import main
+                main()
                 # CLI may call sys.exit multiple times, check that it was called with error code 2
                 mock_exit.assert_any_call(2)
                 assert mock_exit.call_count >= 1
@@ -104,8 +104,8 @@ class TestCLI:
             with patch('astro_lab.data.download_bright_all_sky') as mock_download:
                 mock_download.return_value = "Download completed"
                 with patch('sys.exit') as mock_exit:
-                    from astro_lab.cli import main as cli_main
-                    cli_main()
+                    from astro_lab.cli import main
+                    main()
                     mock_download.assert_called_once_with(magnitude_limit=15.5)
                     mock_exit.assert_not_called()
 
@@ -116,8 +116,8 @@ class TestCLI:
                 mock_list.return_value = ["gaia", "sdss", "nsa"]
                 with patch('astro_lab.cli.logger.info') as mock_logger:
                     with patch('sys.exit') as mock_exit:
-                        from astro_lab.cli import main as cli_main
-                        cli_main()
+                        from astro_lab.cli import main
+                        main()
                         # Should log available datasets
                         mock_logger.assert_called()
                         mock_exit.assert_not_called() 

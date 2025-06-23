@@ -34,7 +34,7 @@ from ..utils.config.surveys import get_survey_config
 # Import tensor classes directly - no fallbacks needed
 from ..tensors import (
     ClusteringTensor,
-    CrossmatchTensor,
+    CrossMatchTensor,
     EarthSatelliteTensor,
     FeatureTensor,
     LightcurveTensor,
@@ -475,42 +475,71 @@ def _polars_to_survey_tensor(
 
 class AstroDataset(InMemoryDataset):
     """
-    Modern PyTorch Geometric dataset for astronomical data with Parquet backend.
-    
-    Features:
-    - Direct Parquet → PyG pipeline using Polars
-    - Streaming support for large datasets
-    - GPU-accelerated graph construction
-    - Survey-specific preprocessing
-    - Memory-efficient processing
+    Advanced PyTorch Geometric dataset for astronomical data.
+
+    This dataset class is designed to handle various astronomical surveys
+    with high performance, lazy loading, and on-the-fly preprocessing.
+    It integrates seamlessly with PyTorch Lightning and the AstroLab tensor system.
+
+    Key Features:
+    - Lazy loading of data using Polars for memory efficiency.
+    - On-the-fly graph construction with k-NN.
+    - Survey-specific preprocessing pipelines.
+    - Compatibility with PyTorch Geometric's `DataLoader`.
+    - Streaming support for large datasets (future-proofing).
     """
 
     def __init__(
         self,
+        root: str,
         survey: str,
         k_neighbors: int = 8,
         max_samples: Optional[int] = None,
-        root: Optional[Union[str, Path]] = None,
         transform: Optional[Any] = None,
+        pre_transform: Optional[Any] = None,
+        pre_filter: Optional[Any] = None,
         use_streaming: bool = True,
-        **kwargs,
     ):
-        """Initialize AstroDataset with survey name."""
+        """
+        Initialize the AstroDataset.
+
+        Args:
+            root: Root directory where the dataset should be stored.
+                  This directory will contain `raw` and `processed` subdirectories.
+            survey: The name of the survey (e.g., 'gaia', 'sdss').
+            k_neighbors: Number of neighbors for k-NN graph construction.
+            max_samples: Maximum number of samples to load (for debugging).
+            transform: A function/transform that takes in a `Data` object and
+                       returns a transformed version.
+            pre_transform: A function/transform that takes in a `Data` object and
+                           returns a transformed version. The data object will be
+                           transformed before every access.
+            pre_filter: A function that takes in a `Data` object and returns a
+                        boolean value, indicating whether the data object should
+                        be included in the final dataset.
+            use_streaming: Flag to indicate if streaming should be used.
+        """
         self.survey = survey
         self.k_neighbors = k_neighbors
         self.max_samples = max_samples
         self.use_streaming = use_streaming
+        self.survey_config = get_survey_config(survey)
+        super().__init__(root, transform, pre_transform, pre_filter)
+        self.data, self.slices = torch.load(self.processed_paths[0])
 
-        # Standardized root path
-        if root is None:
-            project_root = Path(__file__).parent.parent.parent.parent
-            root = str(project_root / "data" / "processed" / survey)
+    @property
+    def raw_dir(self) -> str:
+        # Overrides base property to use survey-specific subdirectories
+        return os.path.join(self.root, self.survey, "raw")
 
-        super().__init__(root, transform)
+    @property
+    def processed_dir(self) -> str:
+        # Overrides base property to use survey-specific subdirectories
+        return os.path.join(self.root, self.survey, "processed")
 
     @property
     def raw_file_names(self) -> List[str]:
-        """Expected raw Parquet files."""
+        """Names of raw files in the `raw_dir`."""
         return [f"{self.survey}.parquet"]
 
     @property
@@ -814,25 +843,25 @@ def load_gaia_data(
     **kwargs,
 ) -> Union[AstroDataset, "SurveyTensor"]:
     """
-    Load Gaia DR3 stellar catalog.
-
-    Args:
-        max_samples: Maximum number of samples (optional)
-        return_tensor: Return SurveyTensor instead of dataset (recommended!)
-        **kwargs: Additional arguments
-
-    Returns:
-        SurveyTensor with Gaia data or AstroDataset
+    Load Gaia data as an AstroDataset or SurveyTensor.
     """
-    if return_tensor:
-        # Create temporary dataset to get DataFrame
-        temp_dataset = AstroDataset(survey="gaia", **kwargs)
-        temp_dataset.download()  # Check if data exists
-        # For now, return dataset as tensor - can be enhanced later
-        return temp_dataset
+    from .manager import data_manager
+    from .config import data_config
+    
+    # Ensure root is passed to AstroDataset
+    if "root" not in kwargs:
+        kwargs["root"] = str(data_config.base_dir)
 
-    dataset = AstroDataset(survey="gaia", **kwargs)
-    dataset.download()  # Check if data exists
+    dataset = AstroDataset(survey="gaia", max_samples=max_samples, **kwargs)
+
+    if return_tensor:
+        # Assumes process() creates a tensor accessible via dataset
+        # This part needs to be aligned with AstroDataset implementation
+        if hasattr(dataset, 'to_tensor'):
+            return dataset.to_tensor()
+        else:
+            # Fallback or error
+            raise NotImplementedError("AstroDataset must have a method to convert to SurveyTensor")
     return dataset
 
 
@@ -868,23 +897,22 @@ def load_nsa_data(
     **kwargs,
 ) -> Union[AstroDataset, "SurveyTensor"]:
     """
-    Load NSA galaxy catalog.
-
-    Args:
-        max_samples: Maximum number of samples (optional)
-        return_tensor: Return SurveyTensor instead of dataset (recommended!)
-        **kwargs: Additional arguments
-
-    Returns:
-        SurveyTensor with NSA data or AstroDataset
+    Load NSA data as an AstroDataset or SurveyTensor.
     """
-    if return_tensor:
-        temp_dataset = AstroDataset(survey="nsa", **kwargs)
-        temp_dataset.download()  # Check if data exists
-        return temp_dataset
+    from .manager import data_manager
+    from .config import data_config
 
-    dataset = AstroDataset(survey="nsa", **kwargs)
-    dataset.download()  # Check if data exists
+    # Ensure root is passed to AstroDataset
+    if "root" not in kwargs:
+        kwargs["root"] = str(data_config.base_dir)
+
+    dataset = AstroDataset(survey="nsa", max_samples=max_samples, **kwargs)
+
+    if return_tensor:
+        if hasattr(dataset, 'to_tensor'):
+            return dataset.to_tensor()
+        else:
+            raise NotImplementedError("AstroDataset must have a method to convert to SurveyTensor")
     return dataset
 
 
@@ -1384,22 +1412,32 @@ def load_tng50_temporal_data(
 
 def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
     """Detect survey type from dataset name or data structure."""
-    if dataset_name.lower() in ["gaia", "gaia_dr3"]:
+    name_lower = dataset_name.lower()
+    if "gaia" in name_lower:
         return "gaia"
-    elif dataset_name.lower() in ["sdss", "sdss_dr17"]:
+    elif "sdss" in name_lower:
         return "sdss"
-    elif dataset_name.lower() in ["nsa", "nsa_v1_0_1"]:
+    elif "nsa" in name_lower:
         return "nsa"
-    elif dataset_name.lower() in ["linear", "linear_v1"]:
+    elif "linear" in name_lower:
         return "linear"
-    elif dataset_name.lower() in ["exoplanet", "exoplanets"]:
+    elif "exoplanet" in name_lower:
         return "exoplanet"
-    elif dataset_name.lower() in ["tng50", "tng50-1"]:
-        return "tng50"
-    elif dataset_name.lower() in ["rrlyrae", "rr_lyrae"]:
+    elif "tng" in name_lower: # More general for TNG50, TNG100 etc.
+        return "tng"
+    elif "rrlyrae" in name_lower:
         return "rrlyrae"
-    else:
-        return "generic"
+    # Fallback based on columns if name is not indicative
+    if df is not None:
+        cols = {c.lower() for c in df.columns}
+        if 'phot_g_mean_mag' in cols and 'parallax' in cols:
+            return "gaia"
+        if 'specobjid' in cols and 'z' in cols:
+            return "sdss"
+        if 'iauname' in cols and 'nsa_version' in cols:
+            return "nsa"
+
+    return "generic"
 
 
 def benchmark_performance(

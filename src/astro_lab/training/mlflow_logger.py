@@ -18,12 +18,12 @@ import mlflow
 import mlflow.pytorch
 import psutil
 import torch
-from lightning.pytorch.loggers import MLFlowLogger as LightningMLFlowLogger
+from lightning.pytorch.loggers import MLFlowLogger
 
 from astro_lab.data.config import data_config
 
 
-class AstroMLflowLogger(LightningMLFlowLogger):
+class AstroMLflowLogger(MLFlowLogger):
     """Optimized MLflow logger for astronomical models with 2025 system metrics integration."""
 
     def __init__(

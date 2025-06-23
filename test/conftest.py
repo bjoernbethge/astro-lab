@@ -22,7 +22,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 # Import AstroDataset for fixtures
-from astro_lab.data.core import AstroDataset
+# from astro_lab.data.core import AstroDataset
 
 # Suppress common warnings during testing
 warnings.filterwarnings("ignore", category=UserWarning, module="torch")
@@ -245,66 +245,87 @@ def tng_processed_data_path(data_dir: Path) -> Optional[Path]:
 
 # AstroDataset fixtures - direct dataset creation
 @pytest.fixture(scope="session")
-def gaia_dataset():
-    """Create Gaia AstroDataset fixture using processed data."""
+def gaia_dataset(test_data_dir: Path):
+    """
+    Creates a mock Gaia AstroDataset for testing.
+
+    This fixture generates a small, temporary Parquet file that mimics
+    the structure of the real Gaia data, allowing tests to run without
+    needing to download the actual dataset.
+    """
+    from astro_lab.data.core import AstroDataset
+    from astro_lab.utils.config.surveys import get_survey_features
+
     try:
-        dataset = AstroDataset(survey="gaia", max_samples=100, k_neighbors=8)
-        dataset.download()
-        if len(dataset) == 0:
-            pytest.skip("Gaia dataset is empty")
+        survey_name = "gaia"
+        root_path = test_data_dir
+
+        # 1. Define schema and create a dummy DataFrame
+        features = get_survey_features(survey_name)
+        num_rows = 20
+        data = {name: np.random.rand(num_rows) for name in features}
+        df = pl.DataFrame(data)
+
+        # 2. Save the dummy data to the expected raw file path
+        raw_dir = root_path / survey_name / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        raw_file_path = raw_dir / "gaia.parquet"
+        df.write_parquet(raw_file_path)
+
+        # 3. Instantiate the dataset. This will trigger the `process` method.
+        dataset = AstroDataset(root=str(root_path), survey=survey_name, k_neighbors=4)
+        
+        # Ensure processing was successful
+        assert len(dataset) > 0, "Dataset processing failed, no data was loaded."
+        
         return dataset
+
     except Exception as e:
-        pytest.skip(f"Could not create Gaia dataset: {e}")
+        pytest.skip(f"Failed to create mock Gaia dataset: {e}")
+        return None
 
 
 @pytest.fixture(scope="session")
 def nsa_dataset():
-    """Create NSA AstroDataset fixture using processed data."""
+    """Create NSA AstroDataset fixture."""
+    from astro_lab.data.core import AstroDataset
     try:
-        dataset = AstroDataset(survey="nsa", max_samples=50, k_neighbors=8)
-        dataset.download()
-        if len(dataset) == 0:
-            pytest.skip("NSA dataset is empty")
-        return dataset
-    except Exception as e:
-        pytest.skip(f"Could not create NSA dataset: {e}")
+        return AstroDataset(survey="nsa", use_streaming=False)
+    except Exception:
+        pytest.skip("Could not create NSA dataset")
 
 
 @pytest.fixture(scope="session")
 def exoplanet_dataset():
-    """Create Exoplanet AstroDataset fixture using processed data."""
+    """Create exoplanet AstroDataset fixture."""
+    from astro_lab.data.core import AstroDataset
     try:
-        dataset = AstroDataset(survey="exoplanet", max_samples=10, k_neighbors=5)
-        dataset.download()
-        if len(dataset) == 0:
-            pytest.skip("Exoplanet dataset is empty")
-        return dataset
-    except Exception as e:
-        pytest.skip(f"Could not create Exoplanet dataset: {e}")
+        return AstroDataset(survey="exoplanet", use_streaming=False)
+    except Exception:
+        pytest.skip("Could not create Exoplanet dataset")
 
 
 @pytest.fixture(scope="session")
 def linear_dataset():
-    """Create LINEAR AstroDataset fixture using processed data."""
+    """Create LINEAR AstroDataset fixture."""
+    from astro_lab.data.core import AstroDataset
     try:
-        dataset = AstroDataset(survey="linear", max_samples=50, k_neighbors=8)
-        if len(dataset) == 0:
-            pytest.skip("LINEAR dataset is empty")
-        return dataset
-    except Exception as e:
-        pytest.skip(f"Could not create LINEAR dataset: {e}")
+        return AstroDataset(survey="linear", use_streaming=False)
+    except Exception:
+        pytest.skip("Could not create LINEAR dataset")
 
 
 @pytest.fixture(scope="session")
 def rrlyrae_dataset():
-    """Create RR Lyrae AstroDataset fixture using processed data."""
+    """Create RR Lyrae AstroDataset fixture."""
+    from astro_lab.data.core import AstroDataset
     try:
-        dataset = AstroDataset(survey="rrlyrae", max_samples=20, k_neighbors=8)
-        if len(dataset) == 0:
-            pytest.skip("RR Lyrae dataset is empty")
-        return dataset
-    except Exception as e:
-        pytest.skip(f"Could not create RR Lyrae dataset: {e}")
+        # This dataset is defined differently - point to the file
+        rrlyrae_file = Path("data/processed/rrlyrae_real_data_cleaned.parquet")
+        if rrlyrae_file.exists():
+            return AstroDataset(survey="rrlyrae", max_samples=20, k_neighbors=8)
+    except Exception:
+        pytest.skip("No RR Lyrae data files found")
 
 
 @pytest.fixture(scope="session")

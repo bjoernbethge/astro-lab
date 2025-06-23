@@ -14,6 +14,7 @@ import torch
 from torch_geometric.loader import DataLoader
 
 from .core import AstroDataset
+from .config import data_config
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,7 @@ class AstroDataModule(L.LightningDataModule):
     def __init__(
         self,
         survey: str,
+        data_root: Optional[str] = None,
         k_neighbors: int = 8,
         max_samples: Optional[int] = None,
         batch_size: int = 1,  # Graph datasets typically use batch_size=1
@@ -41,6 +43,7 @@ class AstroDataModule(L.LightningDataModule):
         self.save_hyperparameters()
 
         self.survey = survey
+        self.data_root = data_root
         self.k_neighbors = k_neighbors
         self.max_samples = max_samples
         self.batch_size = batch_size
@@ -55,7 +58,12 @@ class AstroDataModule(L.LightningDataModule):
         """Setup dataset and create train/val/test splits."""
         if self.dataset is None:
             logger.info(f"📊 Setting up dataset for survey: {self.survey}")
+
+            # Determine the root directory for the data
+            root = self.data_root if self.data_root is not None else str(data_config.base_dir)
+            
             self.dataset = AstroDataset(
+                root=root,
                 survey=self.survey,
                 k_neighbors=self.k_neighbors,
                 max_samples=self.max_samples,

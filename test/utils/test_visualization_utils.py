@@ -18,7 +18,7 @@ class TestDataVisualization:
         
         # Create test stellar data
         positions = np.random.rand(100, 3) * 10
-        spatial_tensor = Spatial3DTensor(data=positions, unit="pc")
+        spatial_tensor = Spatial3DTensor(data=torch.from_numpy(positions).float(), unit="pc")
         
         # Test distance-based coloring
         distances = torch.norm(spatial_tensor.data, dim=1)

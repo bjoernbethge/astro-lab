@@ -16,8 +16,7 @@ from typing import Any, Dict, Optional
 
 import click
 import torch
-import yaml
-from yaml import dump as yaml_dump
+from yaml import dump
 
 from astro_lab.data import create_astro_datamodule
 from astro_lab.models.factory import ModelFactory
@@ -77,7 +76,7 @@ def create_default_config(output_path: str = "config.yaml") -> None:
         }
 
         with open(output_path, "w", encoding="utf-8") as f:
-            yaml_dump(minimal_config, f, default_flow_style=False, indent=2)
+            dump(minimal_config, f, default_flow_style=False, indent=2)
 
         logger.info(f"✅ Minimal configuration created: {output_path}")
         
@@ -626,7 +625,7 @@ def update_config_with_best_params(config_path: str, best_params: Dict[str, Any]
         
         # Save updated config
         with open(config_path, "w", encoding="utf-8") as f:
-            yaml.dump(config, f, default_flow_style=False, indent=2)
+            dump(config, f, default_flow_style=False, indent=2)
         
         logger.info(f"✅ Config updated with best parameters: {config_path}")
         

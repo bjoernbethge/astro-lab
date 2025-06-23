@@ -26,7 +26,7 @@ class TestAstronomicalGraphs:
 
         # Create spatial tensor
         spatial_tensor = Spatial3DTensor(
-            data=positions,
+            data=torch.from_numpy(positions).float(),
             coordinate_system="galactic",
             unit="kpc"
         )
@@ -50,7 +50,7 @@ class TestAstronomicalGraphs:
         positions = np.random.rand(50, 3) * 100  # 50 galaxies in 100 Mpc cube
 
         spatial_tensor = Spatial3DTensor(
-            data=positions,
+            data=torch.from_numpy(positions).float(),
             coordinate_system="icrs",
             unit="Mpc"
         )
@@ -73,7 +73,7 @@ class TestAstronomicalGraphs:
         positions = np.random.rand(n_galaxies, 3) * 50  # 50 Mpc
         redshifts = positions[:, 2] * 0.01  # z ∝ distance (simplified)
 
-        spatial_tensor = Spatial3DTensor(data=positions, unit="Mpc")
+        spatial_tensor = Spatial3DTensor(data=torch.from_numpy(positions).float(), unit="Mpc")
 
         # Create redshift-weighted graph
         data = create_spatial_graph(spatial_tensor, k=6, method="knn")
@@ -91,7 +91,7 @@ class TestAstronomicalGraphs:
         positions = np.random.rand(n_stars, 3) * 10  # 10 pc
         magnitudes = np.random.uniform(8, 15, n_stars)  # Apparent magnitudes
 
-        spatial_tensor = Spatial3DTensor(data=positions, unit="pc")
+        spatial_tensor = Spatial3DTensor(data=torch.from_numpy(positions).float(), unit="pc")
 
         # Create magnitude-weighted graph
         data = create_spatial_graph(spatial_tensor, k=4, method="knn")

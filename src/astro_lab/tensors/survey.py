@@ -25,6 +25,7 @@ class SurveyTensor(AstroTensorBase):
     This class holds a raw data tensor and uses a column mapping
     to generate specialized tensors on demand.
     """
+    column_mapping: Dict[str, int]
 
     def __init__(
         self,
@@ -41,15 +42,18 @@ class SurveyTensor(AstroTensorBase):
         if not survey_name:
             raise ValueError("SurveyTensor requires a survey_name.")
 
-        super().__init__(data, survey_name=survey_name, **kwargs)
-
         if column_mapping is None:
             # If no mapping is provided, create one from the survey config
             all_features = get_survey_features(survey_name)
             column_mapping = {name: i for i, name in enumerate(all_features)}
-        
-        self.column_mapping = column_mapping
-        self._metadata["column_mapping"] = column_mapping
+
+        # Pass everything to AstroTensorBase's __init__
+        super().__init__(
+            data=data,
+            survey_name=survey_name,
+            column_mapping=column_mapping,
+            **kwargs
+        )
 
     def get_column(self, name: str) -> torch.Tensor:
         """Extracts a data column by its name using the column mapping."""

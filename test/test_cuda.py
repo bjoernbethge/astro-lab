@@ -7,6 +7,7 @@ GPU tests focusing on training functionality with real AstroLab trainer.
 
 import time
 from typing import Dict
+from pathlib import Path
 
 import pytest
 import torch
@@ -99,7 +100,7 @@ def test_basic_cuda_training():
 
 
 @pytest.mark.cuda
-def test_astro_trainer_gpu():
+def test_astro_trainer_gpu(test_data_dir: Path):
     """Test AstroTrainer with GPU acceleration."""
     print_subheader("Real AstroTrainer GPU Tests")
 
@@ -130,7 +131,12 @@ def test_astro_trainer_gpu():
     from astro_lab.data import create_astro_datamodule
     
     # Create datamodule and get dataloaders
-    datamodule = create_astro_datamodule("gaia", batch_size=16, max_samples=100)
+    datamodule = create_astro_datamodule(
+        "gaia",
+        data_root=str(test_data_dir),
+        batch_size=16,
+        max_samples=100
+    )
     train_loader = datamodule.train_dataloader()
     val_loader = datamodule.val_dataloader()
 

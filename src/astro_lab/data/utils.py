@@ -644,57 +644,41 @@ def convert_nsa_fits_to_parquet(
     max_memory_mb: float = 2000.0,
 ) -> Path:
     """
-    Centralized NSA FITS to Parquet conversion function.
-    
-    Args:
-        fits_path: Path to NSA FITS file
-        parquet_path: Output Parquet file path
-        features: List of features to extract (if None, uses all numeric columns)
-        max_memory_mb: Memory limit for FITS loading
-        
-    Returns:
-        Path to created Parquet file
+    Convert large NSA FITS catalog to a memory-efficient Parquet file.
+    This version now directly uses the robust `load_fits_table_optimized`.
     """
     fits_path = Path(fits_path)
     parquet_path = Path(parquet_path)
-    
+
     if parquet_path.exists():
-        print(f"✅ NSA Parquet file already exists: {parquet_path}")
+        print(f"✅ Parquet file already exists: {parquet_path.name}")
         return parquet_path
-    
-    if not fits_path.exists():
-        raise FileNotFoundError(f"NSA FITS file not found: {fits_path}")
-    
-    print(f"🔄 Converting NSA FITS to Parquet: {fits_path}")
-    
+
+    print(f"🔄 Converting NSA FITS to Parquet: {fits_path.name}")
+
     try:
-        # Load FITS with optimized function
-        table = load_fits_optimized(str(fits_path), hdu_index=1, max_memory_mb=max_memory_mb)
-        if table is None:
-            raise ValueError("Failed to load FITS table")
-            
-        print(f"📊 Loaded {len(table)} rows, {len(table.colnames)} columns")
-        
-        # Convert to Polars DataFrame using existing optimized function
-        df = load_fits_optimized(str(fits_path), hdu_index=1, max_memory_mb=max_memory_mb, as_polars=True)
+        # Use the optimized FITS table loader directly to get a Polars DataFrame
+        df = load_fits_table_optimized(
+            fits_path, as_polars=True, max_rows=None, hdu_index=1
+        )
+
         if df is None:
-            raise ValueError("Failed to convert FITS to Polars DataFrame")
-        
-        # Filter features if specified
+            raise ValueError("Failed to load NSA FITS table as Polars DataFrame")
+
+        print(f"📊 Loaded {len(df)} rows, {len(df.columns)} columns")
+
+        # Select features if specified
         if features:
-            available_features = [f.lower() for f in features if f.lower() in df.columns]
-            missing_features = [f for f in features if f.lower() not in df.columns]
-            if missing_features:
-                print(f"⚠️ Missing features: {missing_features}")
+            available_features = [f for f in features if f in df.columns]
             df = df.select(available_features)
-            print(f"📋 Selected {len(available_features)} features")
+
+        # Write to Parquet with compression
+        df.write_parquet(parquet_path, compression="zstd")
         
-        # Save as Parquet
-        df.write_parquet(str(parquet_path))
-        print(f"✅ Saved NSA Parquet: {parquet_path} ({len(df)} rows, {len(df.columns)} columns)")
-        
+        file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
+        print(f"✅ Successfully converted to {parquet_path.name} ({file_size_mb:.1f} MB)")
         return parquet_path
-        
+
     except Exception as e:
         print(f"❌ Failed to convert NSA FITS: {e}")
         raise

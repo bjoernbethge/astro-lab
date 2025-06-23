@@ -17,7 +17,16 @@ logger = logging.getLogger(__name__)
 
 # 🌟 PURE CLEAN API - Polars-First Only
 # 🔧 CONFIGURATION SYSTEM
-from ..datasets import AstroDataset
+from .core import (
+    AstroDataset,
+    detect_survey_type,
+    load_gaia_data,
+    load_lightcurve_data,
+    load_nsa_data,
+    load_sdss_data,
+    load_tng50_data,
+    load_tng50_temporal_data,
+)
 from .config import (
     DataConfig,
     data_config,

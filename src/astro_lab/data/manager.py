@@ -787,20 +787,26 @@ def import_fits(fits_file: Union[str, Path], catalog_name: str) -> Path:
     return data_manager.import_fits_catalog(fits_file, catalog_name)
 
 def import_tng50(hdf5_file: Union[str, Path], dataset_name: str = "PartType0") -> Path:
-    """Import TNG50 simulation data."""
+    """Convenience function to import a TNG50 HDF5 file."""
     return data_manager.import_tng50_hdf5(hdf5_file, dataset_name)
 
 def list_catalogs() -> pl.DataFrame:
-    """List all available catalogs."""
+    """Convenience function to list available catalogs."""
     return data_manager.list_catalogs()
 
+def load_catalog(catalog_path: Union[str, Path]) -> pl.DataFrame:
+    """Convenience function to load a catalog."""
+    return data_manager.load_catalog(catalog_path)
+
 def list_catalog_names() -> list:
-    """List catalog names as a simple list."""
+    """Convenience function to list available catalog names."""
     df = data_manager.list_catalogs()
-    return df["name"].to_list() if not df.is_empty() else []
+    if df.is_empty():
+        return []
+    return df["name"].to_list()
 
 def process_for_ml(raw_file: Union[str, Path], **kwargs) -> Path:
-    """Process raw catalog for ML."""
+    """Convenience function to process a raw file for ML."""
     return data_manager.process_for_ml(raw_file, **kwargs)
 
 def load_gaia_bright_stars(magnitude_limit: float = 12.0) -> pl.DataFrame:

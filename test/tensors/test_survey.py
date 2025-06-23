@@ -28,12 +28,12 @@ class TestSurveyTensor:
         survey = SurveyTensor(
             data=data,
             survey_name="test_survey",
-            data_release="v1.0",
             column_mapping=column_mapping,
+            data_release="v1.0",
         )
 
         assert survey.survey_name == "test_survey"
-        assert survey.data_release == "v1.0"
+        assert survey.get_metadata("data_release") == "v1.0"
         assert survey.shape == (n_objects, n_features)
         assert len(survey.column_mapping) == n_features
 
@@ -42,25 +42,25 @@ class TestSurveyTensor:
         data = torch.randn(50, 5)
 
         # Missing survey_name should raise error
-        with pytest.raises(ValueError, match="requires survey_name"):
+        with pytest.raises(ValueError, match="survey_name"):
             SurveyTensor(data=data, survey_name="")
 
     def test_survey_tensor_metadata(self):
         """Test SurveyTensor metadata handling."""
         data = torch.randn(20, 8)
+        column_mapping = {f"feature_{i}": i for i in range(8)}
 
         survey = SurveyTensor(
             data=data,
             survey_name="gaia",
+            column_mapping=column_mapping,
             data_release="DR3",
             filter_system="gaia",
-            survey_metadata={"magnitude_limit": 12.0},
+            magnitude_limit=12.0,
         )
 
-        assert survey.filter_system == "gaia"
-        # Access metadata through the metadata system
-        metadata = survey.get_metadata("survey_metadata")
-        assert metadata["magnitude_limit"] == 12.0
+        assert survey.get_metadata("filter_system") == "gaia"
+        assert survey.get_metadata("magnitude_limit") == 12.0
 
     def test_survey_tensor_column_access(self):
         """Test column access methods."""
@@ -93,7 +93,7 @@ class TestSurveyTensor:
         )
 
         # Test photometric tensor creation
-        phot_tensor = survey.get_photometric_tensor(band_columns=bands)
+        phot_tensor = survey.get_photometric_tensor()
         assert phot_tensor is not None
         assert phot_tensor.bands == bands
         # Fix linter error by checking data shape instead of protocol shape
@@ -111,15 +111,12 @@ class TestSurveyTensor:
             data=data, survey_name="gaia", column_mapping=column_mapping
         )
 
-        # Test spatial tensor creation - SurveyTensor uses "equatorial" coordinate system
-        try:
-            spatial_tensor = survey.get_spatial_tensor()
-            assert spatial_tensor is not None
-            # Note: SurveyTensor.get_spatial_tensor() uses "equatorial" coordinate system
-            # which is not compatible with Spatial3DTensor's expected systems
-        except ValueError as e:
-            # Expected error due to coordinate system mismatch
-            assert "coordinate_system must be one of" in str(e)
+        # Test spatial tensor creation
+        spatial_tensor = survey.get_spatial_tensor()
+        assert spatial_tensor is not None
+        from astro_lab.tensors import Spatial3DTensor
+        assert isinstance(spatial_tensor, Spatial3DTensor)
+        assert spatial_tensor.shape[0] == n_objects
 
     def test_survey_tensor_statistics(self):
         """Test survey tensor statistics computation."""
@@ -140,10 +137,10 @@ class TestSurveyTensor:
         # Test metadata access
         assert survey.get_metadata("survey_name") == "test_survey"
 
-        # Check that column_mapping is in metadata (not top-level)
+        # Check that column_mapping is now a direct attribute (Pydantic field)
         dumped = survey.model_dump()
-        assert "metadata" in dumped
-        assert "column_mapping" in dumped["metadata"]
+        assert "column_mapping" in dumped
+        assert "metadata" not in dumped or "column_mapping" not in dumped.get("metadata", {})
 
 
 class TestSurveyTensorDatasetIntegration:

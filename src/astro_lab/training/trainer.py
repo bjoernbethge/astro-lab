@@ -34,7 +34,7 @@ from astro_lab.models.config import (
     ModelConfig,
     OutputConfig,
 )
-from astro_lab.training.config import TrainingConfig as FullTrainingConfig
+from astro_lab.training.config import TrainingConfig
 
 # Removed memory.py - using simple context managers
 from .lightning_module import AstroLightningModule
@@ -83,7 +83,7 @@ class AstroTrainer(Trainer):
     def __init__(
         self,
         lightning_module: Optional[AstroLightningModule] = None,
-        training_config: Optional[FullTrainingConfig] = None,
+        training_config: Optional[TrainingConfig] = None,
         **kwargs,
     ):
         """
@@ -123,7 +123,7 @@ class AstroTrainer(Trainer):
             self.training_config = training_config
 
         # Validate training config
-        assert isinstance(self.training_config, FullTrainingConfig), (
+        assert isinstance(self.training_config, TrainingConfig), (
             "training_config must be a TrainingConfig instance"
         )
 

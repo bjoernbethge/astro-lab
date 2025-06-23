@@ -13,6 +13,7 @@ from typing import Any, Optional
 
 import numpy as np
 import torch
+import matplotlib.pyplot
 
 from ..tensors.survey import SurveyTensor
 
@@ -58,8 +59,7 @@ class VisualizationModule:
             else:
                 colors_norm = np.ones_like(colors_raw)
             
-            import matplotlib.pyplot as plt
-            cmap = plt.get_cmap(config.get("cmap", "plasma"))
+            cmap = matplotlib.pyplot.get_cmap(config.get("cmap", "plasma"))
             colors_rgb = cmap(colors_norm)[:, :3]
             pcd.colors = o3d.utility.Vector3dVector(colors_rgb)
             

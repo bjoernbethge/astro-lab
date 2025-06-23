@@ -17,7 +17,6 @@ import torch
 from astro_lab.data.core import (
     AstroDataset,
     create_cosmic_web_loader,
-    create_graph_datasets_from_splits,
     detect_survey_type,
     get_optimal_batch_size,
     get_optimal_device,
@@ -29,7 +28,7 @@ from astro_lab.data.core import (
 from astro_lab.data.datamodule import AstroDataModule
 
 # Import create_graph_from_dataframe from the correct module
-from astro_lab.data.preprocessing import create_graph_from_dataframe
+from astro_lab.data.preprocessing import create_graph_from_dataframe, create_graph_datasets_from_splits
 
 
 class TestPreprocessingUtils:

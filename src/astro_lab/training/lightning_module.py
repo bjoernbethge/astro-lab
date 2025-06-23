@@ -24,7 +24,7 @@ from astro_lab.models.astrophot_models import AstroPhotGNN
 from astro_lab.models.config import ModelConfig
 from astro_lab.models.factory import create_gaia_classifier
 from astro_lab.models.tgnn import ALCDEFTemporalGNN
-from astro_lab.training.config import TrainingConfig as FullTrainingConfig
+from astro_lab.training.config import TrainingConfig
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class AstroLightningModule(LightningModule):
         self,
         model: Optional[torch.nn.Module] = None,
         model_config: Optional[ModelConfig] = None,
-        training_config: Optional[FullTrainingConfig] = None,
+        training_config: Optional[TrainingConfig] = None,
         task_type: str = "classification",
         learning_rate: float = 1e-3,
         weight_decay: float = 1e-4,

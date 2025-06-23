@@ -93,7 +93,9 @@ class AstroTensorBase(BaseModel, ValidationMixin):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def __init__(self, data: Union[torch.Tensor, np.ndarray], **kwargs):
-        """Initialize tensor with memory management."""
+        """
+        Initialize tensor with memory management and support for Pydantic fields in subclasses.
+        """
         # Convert input data to tensor if needed
         if isinstance(data, np.ndarray):
             tensor_data = torch.from_numpy(data).float()
@@ -102,14 +104,20 @@ class AstroTensorBase(BaseModel, ValidationMixin):
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
-        # Extract metadata from kwargs
+        # Separate kwargs into Pydantic model fields and metadata
+        model_data = {}
         metadata = kwargs.pop("metadata", {})
-        metadata.update({k: v for k, v in kwargs.items() if not k.startswith("_")})
+        
+        for k, v in kwargs.items():
+            if k in self.model_fields:
+                model_data[k] = v
+            elif not k.startswith("_"):
+                metadata[k] = v
+        
+        # Initialize BaseModel with its fields
+        super().__init__(**model_data)
 
-        # Initialize BaseModel first
-        super().__init__()
-
-        # Set attributes directly to bypass Pydantic validation
+        # Set _data and _metadata directly to bypass Pydantic validation for them
         object.__setattr__(self, "_data", tensor_data)
         object.__setattr__(self, "_metadata", metadata)
 
