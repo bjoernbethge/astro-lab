@@ -353,6 +353,46 @@ class ModelFactory:
 
         return AstroSurveyGNN(task=task, **final_config)
 
+    @staticmethod
+    def create_astro_model(
+        input_dim: int = 7,
+        hidden_dim: int = 128,
+        output_dim: int = 64,
+        num_layers: int = 3,
+        conv_type: str = "gcn",
+        dropout: float = 0.1,
+        device: Optional[str] = None,
+        **kwargs
+    ) -> nn.Module:
+        """
+        Create a general astronomical model using BaseTNGModel.
+        
+        Args:
+            input_dim: Input feature dimension
+            hidden_dim: Hidden layer dimension  
+            output_dim: Output dimension
+            num_layers: Number of layers
+            conv_type: Type of convolution ('gcn', 'gat', 'sage')
+            dropout: Dropout rate
+            device: Device to place model on
+            **kwargs: Additional arguments
+            
+        Returns:
+            Configured astronomical model
+        """
+        from .base_gnn import BaseTNGModel
+        
+        return BaseTNGModel(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            output_dim=output_dim,
+            num_layers=num_layers,
+            conv_type=conv_type,
+            dropout=dropout,
+            device=device,
+            **kwargs
+        )
+
 # Convenience functions for common use cases
 def create_gaia_classifier(
     num_classes: int = 7, hidden_dim: int = 128, **kwargs
@@ -422,6 +462,7 @@ def get_model_info(model: nn.Module) -> Dict[str, Any]:
 
     return {
         "model_class": model.__class__.__name__,
+        "num_parameters": total_params,
         "total_parameters": total_params,
         "trainable_parameters": trainable_params,
         "model_size_mb": total_params * 4 / (1024 * 1024),  # Assuming float32

@@ -320,6 +320,7 @@ class ALCDEFTemporalGNN(nn.Module):
         self.dropout = dropout
         self.task = task
         self.use_static_features = kwargs.get("use_static_features", False)
+        self.use_residual = kwargs.get("use_residual", True)
 
         # Encoder for lightcurve data
         self.encoder = LightcurveEncoder(
@@ -348,6 +349,11 @@ class ALCDEFTemporalGNN(nn.Module):
         self.convs = nn.ModuleList(
             [GCNConv(fusion_dim, fusion_dim) for _ in range(num_layers)]
         )
+        
+        # Add missing norms attribute
+        self.norms = nn.ModuleList([
+            nn.LayerNorm(fusion_dim) for _ in range(num_layers)
+        ])
 
         # Task-specific output heads
         if self.task == "period_detection":
@@ -373,13 +379,17 @@ class ALCDEFTemporalGNN(nn.Module):
         """
         Forward pass for the ALCDEF Temporal GNN.
         """
+        # Move inputs to correct device
+        if edge_index.device != self.device:
+            edge_index = edge_index.to(self.device)
+        
         # 1. ENCODE
         # h shape: (batch_size, num_timesteps, hidden_dim)
         h = self.encoder(lightcurve)
 
-        # If we processed a single lightcurve, squeeze the batch dimension
+        # If we processed a single lightcurve, squeeze the batch dimension but preserve sequence
         if h.shape[0] == 1:
-            h = h.squeeze(0)
+            h = h.squeeze(0)  # Now (seq_len, hidden_dim)
 
         # 2. CONVOLVE
         # Apply graph convolutions over the timesteps
@@ -389,7 +399,7 @@ class ALCDEFTemporalGNN(nn.Module):
             h = self.norms[i](h)
             h = F.relu(h)
             h = F.dropout(h, p=self.dropout, training=self.training)
-            if self.use_residual:
+            if self.use_residual and h_prev.shape == h.shape:
                 h = h + h_prev
 
         # 3. POOL

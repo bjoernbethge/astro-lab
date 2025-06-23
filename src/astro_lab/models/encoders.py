@@ -28,6 +28,7 @@ if TYPE_CHECKING:
         Spatial3DTensor,
         SpectralTensor,
         SurveyTensor,
+        AstroTensorBase,
     )
 
 
@@ -36,12 +37,28 @@ class BaseEncoder(nn.Module):
     Base class for all encoders. It defines the basic interface and provides
     a common initialization for device handling.
     """
-    def __init__(self, input_dim: int, output_dim: int, **kwargs):
-        super().__init__()
+    def __init__(self, input_dim: int, output_dim: int, device: Optional[Union[str, torch.device]] = None, **kwargs):
+        # Extract encoder-specific parameters before calling super()
+        self.hidden_dim = kwargs.pop('hidden_dim', 128)  # Default hidden_dim
+        self.dropout = kwargs.pop('dropout', 0.1)  # Default dropout
+        
+        super().__init__(**kwargs)
+        
+        # Device setup
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
+            
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.device = kwargs.get('device', torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        
+        # Create layers and move to device
         self.layers = self._create_layers()
+        if self.layers is not None:
+            self.layers = self.layers.to(self.device)
+        
+        # Move entire encoder to device
         self.to(self.device)
 
     def _create_layers(self) -> nn.Module:
@@ -62,46 +79,65 @@ class BaseEncoder(nn.Module):
         """
         raise NotImplementedError("Subclasses must implement the forward method.")
     
-    def process_batch(self, data: torch.Tensor) -> torch.Tensor:
-        """
-        A helper method to process a batch of data through the layers.
-        Handles device placement and layer application.
-        """
-        if data.device != self.device:
-            data = data.to(self.device)
-        return self.layers(data.float())
+    def process_batch(self, data: Union[torch.Tensor, "AstroTensorBase"]) -> torch.Tensor:
+        """Process a batch of data through the encoder."""
+        if hasattr(data, 'data'):
+            tensor_data = data.data
+        else:
+            tensor_data = data
+        
+        # Move data to correct device
+        if tensor_data.device != self.device:
+            tensor_data = tensor_data.to(self.device)
+            
+        return self.layers(tensor_data.float())
 
 
 class LightcurveEncoder(BaseEncoder):
     """Encodes lightcurve data using an LSTM."""
 
     def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int = 1, **kwargs):
+        # Extract lightcurve-specific parameters
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
-        super().__init__(input_dim=input_dim, output_dim=output_dim, **kwargs)
+        
+        # Remove parameters that shouldn't go to super()
+        kwargs.pop('dropout', None)  # Remove dropout if present
+        
+        # DO NOT pass hidden_dim to super() to avoid the default 128 override
+        super().__init__(input_dim=input_dim, output_dim=output_dim, device=kwargs.pop('device', None))
         # Note: BaseEncoder's _create_layers is not used here, we define layers directly
         
     def _create_layers(self) -> nn.Module:
         """Override to create LSTM and Linear layers."""
         return nn.ModuleDict({
-            'lstm': nn.LSTM(self.input_dim, self.hidden_dim, self.num_layers, batch_first=True),
-            'attention': nn.MultiheadAttention(embed_dim=self.hidden_dim, num_heads=4, batch_first=True),
+            'lstm': nn.LSTM(self.input_dim, self.hidden_dim, self.num_layers, batch_first=True).to(self.device),
+            'attention': nn.MultiheadAttention(embed_dim=self.hidden_dim, num_heads=4, batch_first=True).to(self.device),
+            'linear': nn.Linear(self.hidden_dim, self.output_dim).to(self.device),
+            'dropout': nn.Dropout(0.1).to(self.device)
         })
 
-    def forward(self, lightcurve_tensor: "LightcurveTensor") -> torch.Tensor:
-        """Processes a lightcurve tensor through an RNN."""
-        data = lightcurve_tensor.data
-
-        # Add a batch dimension if it's a single lightcurve
-        if data.dim() == 2:
-            data = data.unsqueeze(0)
-
-        # RNN processes the sequence
-        # rnn_output shape: (batch_size, seq_len, hidden_dim)
-        rnn_output, (hidden, _) = self.layers['lstm'](data)
+    def forward(self, data: "LightcurveTensor") -> torch.Tensor:
+        """Forward pass for lightcurve data."""
+        # Reshape for LSTM: [batch, seq_len, features]
+        batch_data = data.data.unsqueeze(0)  # Add batch dimension
         
-        # Return the full sequence of features for graph processing
-        return rnn_output
+        # Move data to correct device
+        if batch_data.device != self.device:
+            batch_data = batch_data.to(self.device)
+        
+        # LSTM processing
+        lstm_out, (hidden, cell) = self.layers['lstm'](batch_data)
+        
+        # Apply attention
+        attn_out, _ = self.layers['attention'](lstm_out, lstm_out, lstm_out)
+        
+        # Use dropout
+        attn_out = self.layers['dropout'](attn_out)
+        
+        # Return the attention output with shape [batch, seq_len, hidden_dim]
+        # NOT applying the final linear layer to preserve sequence dimension
+        return attn_out
 
 
 class AstrometryEncoder(BaseEncoder):
@@ -135,8 +171,13 @@ class SpectroscopyEncoder(BaseEncoder):
 
 
 class PhotometryEncoder(BaseEncoder):
-    """Encodes photometric data."""
-    def __init__(self, input_dim: int, output_dim: int, **kwargs: Any):
+    """Encodes photometric measurements with band-aware processing."""
+
+    def __init__(self, input_dim: int, output_dim: int, **kwargs):
+        # Extract photometry-specific parameters
+        hidden_dim = kwargs.pop('hidden_dim', 128)  # Extract and remove hidden_dim
+        dropout = kwargs.pop('dropout', 0.1)  # Extract and remove dropout
+        
         super().__init__(input_dim, output_dim, **kwargs)
 
     def forward(

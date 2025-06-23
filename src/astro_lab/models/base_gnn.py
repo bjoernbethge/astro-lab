@@ -84,7 +84,7 @@ class BaseAstroGNN(nn.Module):
             self.device = torch.device(device)
 
         # Input projection layer
-        self.input_projection = nn.Linear(input_dim, hidden_dim)
+        self.input_projection = nn.Linear(input_dim, hidden_dim).to(self.device)
 
         # Build graph convolution layers
         self.convs = self._build_conv_layers()
@@ -92,10 +92,10 @@ class BaseAstroGNN(nn.Module):
         # Normalization layers
         if use_layer_norm:
             self.norms = nn.ModuleList(
-                [nn.LayerNorm(hidden_dim) for _ in range(num_layers)]
+                [nn.LayerNorm(hidden_dim).to(self.device) for _ in range(num_layers)]
             )
         else:
-            self.norms = nn.ModuleList([nn.Identity() for _ in range(num_layers)])
+            self.norms = nn.ModuleList([nn.Identity().to(self.device) for _ in range(num_layers)])
 
         # Activation function
         self.act_fn = get_activation(activation)
@@ -112,8 +112,8 @@ class BaseAstroGNN(nn.Module):
 
         for i in range(self.num_layers):
             conv = LayerFactory.create_conv_layer(
-                self.conv_type, self.hidden_dim, self.hidden_dim
-            )
+                self.conv_type, self.hidden_dim, self.hidden_dim, dropout=self.dropout
+            ).to(self.device)
             convs.append(conv)
         return convs
 
@@ -267,22 +267,18 @@ class BaseTNGModel(BaseTemporalGNN):
 
         # Redshift encoder
         if redshift_encoding:
-            self.redshift_encoder = self._build_redshift_encoder()
+            self.redshift_encoder = nn.Sequential(
+                nn.Linear(1, self.hidden_dim // 4),
+                nn.ReLU(),
+                nn.Linear(self.hidden_dim // 4, self.hidden_dim),
+            ).to(self.device)
             self.time_projection = nn.Linear(
                 self.hidden_dim + self.hidden_dim // 4, self.hidden_dim
-            )
+            ).to(self.device)
 
         # Cosmological parameter head
         if cosmological_features:
             self.cosmo_head = self._build_cosmo_head()
-
-    def _build_redshift_encoder(self) -> nn.Module:
-        """Build redshift encoding module."""
-        return nn.Sequential(
-            nn.Linear(1, self.hidden_dim // 4),
-            nn.ReLU(),
-            nn.Linear(self.hidden_dim // 4, self.hidden_dim // 4),
-        )
 
     def _build_cosmo_head(self) -> nn.Module:
         """Build cosmological parameter prediction head."""
@@ -291,22 +287,56 @@ class BaseTNGModel(BaseTemporalGNN):
             nn.ReLU(),
             nn.Dropout(self.dropout),
             nn.Linear(self.hidden_dim // 2, 6),  # Omega_m, Omega_L, h, sigma_8, n_s, w
-        )
+        ).to(self.device)
 
     def encode_with_cosmology(
-        self, x: torch.Tensor, edge_index: torch.Tensor, redshift: float
+        self, x: torch.Tensor, edge_index: torch.Tensor, redshift: Union[float, torch.Tensor]
     ) -> torch.Tensor:
-        """Encodes graph features with cosmological information."""
-        h = self.graph_forward(self.input_projection(x), edge_index)
-
-        # Encode redshift and add it to the features
-        if self.redshift_encoding:
-            # Create a tensor for the redshift on the correct device
-            z_tensor = torch.tensor([redshift], dtype=torch.float32).to(self.device)
-            z_encoded = self.redshift_encoder(z_tensor)
-            h = h + z_encoded.unsqueeze(0).expand_as(h)
-
-        return h
+        """
+        Encode with cosmological redshift information.
+        
+        Args:
+            x: Node features
+            edge_index: Edge indices 
+            redshift: Redshift values as float or tensor
+            
+        Returns:
+            Encoded features with cosmological information
+        """
+        # Convert float to tensor if needed
+        if isinstance(redshift, (float, int)):
+            redshift = torch.tensor([redshift], dtype=torch.float32, device=self.device)
+        elif redshift.device != self.device:
+            redshift = redshift.to(self.device)
+            
+        # Expand redshift to match batch size
+        batch_size = x.size(0)
+        if redshift.dim() == 0:
+            z_tensor = redshift.expand(batch_size).unsqueeze(1)
+        elif redshift.size(0) == 1:
+            z_tensor = redshift.expand(batch_size, -1)
+        else:
+            z_tensor = redshift.unsqueeze(1) if redshift.dim() == 1 else redshift
+            
+        # Ensure z_tensor is on the correct device
+        if z_tensor.device != self.device:
+            z_tensor = z_tensor.to(self.device)
+            
+        # Encode redshift
+        z_encoded = self.redshift_encoder(z_tensor)
+        
+        # Concatenate with node features
+        x_cosmo = torch.cat([x, z_encoded], dim=-1)
+        
+        # Project concatenated features to hidden dimension if needed
+        if x_cosmo.size(-1) != self.hidden_dim:
+            # Create a projection layer for the concatenated features
+            if not hasattr(self, 'cosmo_projection'):
+                self.cosmo_projection = nn.Linear(x_cosmo.size(-1), self.hidden_dim).to(self.device)
+            x_cosmo = self.cosmo_projection(x_cosmo)
+        
+        # Standard graph forward pass
+        return self.graph_forward(x_cosmo, edge_index)
 
     def forward(
         self,
