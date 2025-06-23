@@ -261,10 +261,7 @@ class TestConvenienceFunctions:
         model = create_sdss_galaxy_model(task="galaxy_property_prediction", photometry_bands=['u','g','r','i','z'])
         assert isinstance(model, AstroSurveyGNN)
 
-    def test_create_lsst_transient_detector(self):
-        """Test create_lsst_transient_detector convenience function."""
-        # Skip this test since lsst is not in available surveys
-        pytest.skip("LSST survey not available in current configuration")
+# LSST test removed - survey not supported
 
     def test_create_asteroid_period_detector(self, mock_temporal_data):
         """Test create_asteroid_period_detector convenience function."""

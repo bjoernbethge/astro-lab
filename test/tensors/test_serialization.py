@@ -54,10 +54,10 @@ class TestTensorSerialization:
 
         # Test clone method (safer than copy module)
         cloned = spatial.clone()
-        assert cloned.get_metadata("unit") == "kpc"
+        assert cloned.unit == "kpc"
         assert torch.equal(spatial.data, cloned.data)
 
         # Test detach method
         detached = spatial.detach()
-        assert detached.get_metadata("unit") == "kpc"
+        assert detached.unit == "kpc"
         assert torch.equal(spatial.data, detached.data)

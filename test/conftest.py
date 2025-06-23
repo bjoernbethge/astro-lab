@@ -6,22 +6,22 @@ Provides pytest configuration and common fixtures for testing
 the AstroLab framework.
 """
 
+import gc
 import os
 import sys
 import tempfile
 import warnings
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional
+from typing import Optional
 
 import numpy as np
 import polars as pl
 import pytest
 import torch
-import shutil
 
-# Performance optimization: Disable CUDA for tests unless explicitly needed
-if "CUDA_VISIBLE_DEVICES" not in os.environ:
-    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+# Performance optimization: Only disable CUDA if explicitly requested
+# Use CUDA_VISIBLE_DEVICES="" to disable CUDA for specific tests if needed
+# Default behavior: Keep CUDA available if present
 
 # Optimize PyTorch settings for testing
 torch.set_num_threads(1)  # Reduce thread contention in parallel tests
@@ -40,8 +40,7 @@ warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", category=ResourceWarning)
 
-# Memory management
-import gc
+# Memory management (gc already imported above)
 
 # Test performance helpers
 def is_ci_environment():
@@ -137,12 +136,7 @@ def data_dir(project_root_dir: Path) -> Path:
     return project_root_dir / "data"
 
 
-@pytest.fixture(scope="session")
-def test_data_dir(project_root_dir: Path) -> Generator[Path, None, None]:
-    """Create a temporary directory for test data."""
-    with tempfile.TemporaryDirectory(prefix="astro_lab_test_") as tmp_dir:
-        test_dir = Path(tmp_dir)
-        yield test_dir
+# Removed test_data_dir - use system data paths instead
 
 
 @pytest.fixture(scope="session")
@@ -151,260 +145,157 @@ def device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-# Real data fixtures - direct path access
+# Real data fixtures - use AstroDataset system instead of manual paths
+
+
+# AstroDataset fixtures - simplified using the existing system with proper root
 @pytest.fixture(scope="session")
-def gaia_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to real Gaia data file."""
-    gaia_dir = data_dir / "raw" / "gaia"
-    if not gaia_dir.exists():
-        pytest.skip("Gaia data directory not found")
-
-    # Check for available Gaia files (we have mag12.0)
-    mag12_file = gaia_dir / "gaia_dr3_bright_all_sky_mag12.0.parquet"
-    if mag12_file.exists():
-        return mag12_file
-
-    mag10_file = gaia_dir / "gaia_dr3_bright_all_sky_mag10.0.parquet"
-    if mag10_file.exists():
-        return mag10_file
-
-    pytest.skip("No Gaia data files found")
-
-
-@pytest.fixture(scope="session")
-def nsa_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to real NSA data file."""
-    nsa_dir = data_dir / "raw" / "nsa"
-    if not nsa_dir.exists():
-        pytest.skip("NSA data directory not found")
-
-    # Prefer processed parquet files for testing
-    processed_file = data_dir / "nsa_processed.parquet"
-    if processed_file.exists():
-        return processed_file
-
-    # Check for raw FITS files
-    nsa_v0_file = nsa_dir / "nsa_v0_1_2.fits"
-    if nsa_v0_file.exists():
-        return nsa_v0_file
-
-    nsa_v1_file = nsa_dir / "nsa_v1_0_1.fits"
-    if nsa_v1_file.exists():
-        return nsa_v1_file
-
-    pytest.skip("No NSA data files found")
-
-
-@pytest.fixture(scope="session")
-def exoplanet_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to real exoplanet data file."""
-    exo_dir = data_dir / "raw" / "exoplanet"
-    if not exo_dir.exists():
-        pytest.skip("Exoplanet data directory not found")
-
-    exo_file = exo_dir / "confirmed_exoplanets.parquet"
-    if exo_file.exists():
-        return exo_file
-
-    pytest.skip("No exoplanet data files found")
-
-
-@pytest.fixture(scope="session")
-def linear_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to real LINEAR data file."""
-    linear_dir = data_dir / "raw" / "linear"
-    if not linear_dir.exists():
-        pytest.skip("LINEAR data directory not found")
-
-    # Check for processed parquet file first (preferred)
-    linear_parquet = linear_dir / "linear_raw.parquet"
-    if linear_parquet.exists():
-        return linear_parquet
-
-    # Check for compressed data files
-    linear_tar = data_dir / "raw" / "allLINEARfinal_dat.tar.gz"
-    if linear_tar.exists():
-        return linear_tar
-
-    linear_targets = data_dir / "raw" / "allLINEARfinal_targets.dat.gz"
-    if linear_targets.exists():
-        return linear_targets
-
-    pytest.skip("No LINEAR data files found")
-
-
-@pytest.fixture(scope="session")
-def rrlyrae_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to real RR Lyrae data file."""
-    rr_files = [
-        data_dir / "processed" / "rrlyrae_real_data_cleaned.parquet",  # This exists!
-        data_dir / "RRLyrae.fit",
-        data_dir / "raw" / "rrlyrae" / "rrlyrae_real_data_cleaned.parquet",
-    ]
-
-    for rr_file in rr_files:
-        if rr_file.exists():
-            return rr_file
-
-    pytest.skip("No RR Lyrae data files found")
-
-
-@pytest.fixture(scope="session")
-def tng_raw_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to real TNG raw data directory."""
-    tng_raw_dirs = [
-        data_dir / "raw" / "TNG50-4",
-        data_dir / "raw" / "tng50",
-    ]
-
-    for tng_dir in tng_raw_dirs:
-        if tng_dir.exists():
-            return tng_dir
-
-    pytest.skip("No TNG raw data directory found")
-
-
-@pytest.fixture(scope="session")
-def tng_processed_data_path(data_dir: Path) -> Optional[Path]:
-    """Get path to TNG processed data directory."""
-    tng_processed_dirs = [
-        data_dir / "processed" / "tng50",
-        data_dir / "processed" / "tng50_temporal_100mb",
-    ]
-
-    for tng_dir in tng_processed_dirs:
-        if tng_dir.exists():
-            return tng_dir
-
-    pytest.skip("No TNG processed data directory found")
-
-
-# AstroDataset fixtures - direct dataset creation
-@pytest.fixture(scope="session")
-def gaia_dataset(test_data_dir: Path, gaia_data_path: Path):
-    """
-    Creates a mock Gaia AstroDataset for testing using a real data file.
-    This fixture will create a temporary directory structure and copy
-    a real raw parquet file to simulate the presence of data for processing.
-    """
+def gaia_dataset(data_dir: Path):
+    """Create Gaia AstroDataset using the existing data system."""
+    from astro_lab.data.core import AstroDataset
     try:
-        if not gaia_data_path or not gaia_data_path.exists():
-            pytest.skip("Real Gaia data file not found, skipping dataset test.")
-
-        # Define directory structure within the temporary test_data_dir
-        raw_dir = test_data_dir / "raw"
-        raw_dir.mkdir(parents=True, exist_ok=True)
-
-        # Copy the real data file to the expected location for the test
-        raw_file_path = raw_dir / "gaia.parquet"
-        shutil.copy(gaia_data_path, raw_file_path)
-
-        # The root for AstroDataset should be the parent of 'raw'
-        # Lazily import AstroDataset to avoid circular dependency issues
-        from astro_lab.data.core import AstroDataset
-
-        return AstroDataset(root=str(test_data_dir), survey="gaia")
+        return AstroDataset(root=str(data_dir), survey="gaia", max_samples=1000)
     except Exception as e:
-        pytest.skip(f"Failed to create mock Gaia dataset: {e}")
+        pytest.skip(f"Could not create Gaia dataset: {e}")
 
 
 @pytest.fixture(scope="session")
-def nsa_dataset():
-    """Create NSA AstroDataset fixture."""
+def nsa_dataset(data_dir: Path):
+    """Create NSA AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
     try:
-        return AstroDataset(survey="nsa", use_streaming=False)
-    except Exception:
-        pytest.skip("Could not create NSA dataset")
+        return AstroDataset(root=str(data_dir), survey="nsa", max_samples=1000)
+    except Exception as e:
+        pytest.skip(f"Could not create NSA dataset: {e}")
 
 
 @pytest.fixture(scope="session")
-def exoplanet_dataset():
-    """Create exoplanet AstroDataset fixture."""
+def exoplanet_dataset(data_dir: Path):
+    """Create exoplanet AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
     try:
-        return AstroDataset(survey="exoplanet", use_streaming=False)
-    except Exception:
-        pytest.skip("Could not create Exoplanet dataset")
+        return AstroDataset(root=str(data_dir), survey="exoplanet", max_samples=1000)
+    except Exception as e:
+        pytest.skip(f"Could not create Exoplanet dataset: {e}")
 
 
 @pytest.fixture(scope="session")
-def linear_dataset():
-    """Create LINEAR AstroDataset fixture."""
+def linear_dataset(data_dir: Path):
+    """Create LINEAR AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
     try:
-        return AstroDataset(survey="linear", use_streaming=False)
-    except Exception:
-        pytest.skip("Could not create LINEAR dataset")
+        return AstroDataset(root=str(data_dir), survey="linear", max_samples=1000)
+    except Exception as e:
+        pytest.skip(f"Could not create LINEAR dataset: {e}")
 
 
 @pytest.fixture(scope="session")
-def rrlyrae_dataset():
-    """Create RR Lyrae AstroDataset fixture."""
+def rrlyrae_dataset(data_dir: Path):
+    """Create RR Lyrae AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
     try:
-        # This dataset is defined differently - point to the file
-        rrlyrae_file = Path("data/processed/rrlyrae_real_data_cleaned.parquet")
-        if rrlyrae_file.exists():
-            return AstroDataset(survey="rrlyrae", max_samples=20, k_neighbors=8)
-    except Exception:
-        pytest.skip("No RR Lyrae data files found")
+        return AstroDataset(root=str(data_dir), survey="rrlyrae", max_samples=100, k_neighbors=8)
+    except Exception as e:
+        pytest.skip(f"Could not create RR Lyrae dataset: {e}")
 
 
+# Legacy fixtures for backwards compatibility
 @pytest.fixture(scope="session")
-def multiple_datasets_available(gaia_dataset, nsa_dataset, exoplanet_dataset) -> bool:
-    """Check if multiple datasets are available."""
-    return all([gaia_dataset, nsa_dataset, exoplanet_dataset])
+def test_data_dir(project_root_dir: Path):
+    """Temporary test data directory for backwards compatibility."""
+    import tempfile
+    with tempfile.TemporaryDirectory(prefix="astro_lab_test_") as tmp_dir:
+        yield Path(tmp_dir)
 
 
-# Polars DataFrame fixtures for direct data access
+@pytest.fixture(scope="session")  
+def gaia_data_path(data_dir: Path):
+    """Legacy fixture - returns path to gaia data if available."""
+    gaia_files = [
+        data_dir / "raw" / "gaia" / "gaia_dr3_bright_all_sky_mag12.0.parquet",
+        data_dir / "processed" / "gaia" / "gaia_dr3_bright_all_sky_mag12.0_processed.parquet"
+    ]
+    for gaia_file in gaia_files:
+        if gaia_file.exists():
+            return gaia_file
+    return None
+
+
+@pytest.fixture(scope="session")  
+def nsa_data_path(data_dir: Path):
+    """Legacy fixture - returns path to nsa data if available."""
+    nsa_files = [
+        data_dir / "raw" / "nsa" / "nsa.parquet",
+        data_dir / "raw" / "nsa" / "nsa_v1_0_1.parquet",
+        data_dir / "processed" / "nsa" / "nsa_v1_0_1_processed.parquet"
+    ]
+    for nsa_file in nsa_files:
+        if nsa_file.exists():
+            return nsa_file
+    return None
+
+
+@pytest.fixture(scope="session")  
+def linear_data_path(data_dir: Path):
+    """Legacy fixture - returns path to linear data if available."""
+    linear_files = [
+        data_dir / "raw" / "linear" / "linear_raw.parquet",
+        data_dir / "processed" / "linear" / "linear_raw_processed.parquet"
+    ]
+    for linear_file in linear_files:
+        if linear_file.exists():
+            return linear_file
+    return None
+
+
+# Polars DataFrame fixtures - using AstroDataManager for consistency
 @pytest.fixture(scope="session")
-def gaia_df(gaia_data_path) -> Optional[pl.DataFrame]:
-    """Load Gaia data as Polars DataFrame."""
-    if gaia_data_path is None:
-        return None
+def gaia_df() -> Optional[pl.DataFrame]:
+    """Load Gaia data as Polars DataFrame using the data manager system."""
     try:
-        return pl.read_parquet(gaia_data_path)
+        from astro_lab.data.manager import AstroDataManager
+        manager = AstroDataManager()
+        # Load using existing catalog system if available
+        catalogs = manager.list_catalogs()
+        gaia_catalogs = catalogs.filter(pl.col("name").str.contains("gaia"))
+        if len(gaia_catalogs) > 0:
+            catalog_path = gaia_catalogs[0]["path"]
+            return manager.load_catalog(catalog_path).head(1000)  # Limit for tests
+        return None
     except Exception:
         return None
 
 
 @pytest.fixture(scope="session")
-def linear_df(linear_data_path) -> Optional[pl.DataFrame]:
-    """Load LINEAR data as Polars DataFrame."""
-    if linear_data_path is None:
-        return None
+def nsa_df() -> Optional[pl.DataFrame]:
+    """Load NSA data as Polars DataFrame using the data manager system."""
     try:
-        return pl.read_parquet(linear_data_path)
+        from astro_lab.data.manager import AstroDataManager
+        manager = AstroDataManager()
+        catalogs = manager.list_catalogs()
+        nsa_catalogs = catalogs.filter(pl.col("name").str.contains("nsa"))
+        if len(nsa_catalogs) > 0:
+            catalog_path = nsa_catalogs[0]["path"]
+            return manager.load_catalog(catalog_path).head(1000)
+        return None
     except Exception:
         return None
 
 
 @pytest.fixture(scope="session")
-def exoplanet_df(exoplanet_data_path) -> Optional[pl.DataFrame]:
-    """Load Exoplanet data as Polars DataFrame."""
-    if exoplanet_data_path is None:
-        return None
+def linear_df() -> Optional[pl.DataFrame]:
+    """Load LINEAR data as Polars DataFrame using the data manager system."""
     try:
-        return pl.read_parquet(exoplanet_data_path)
-    except Exception:
-        return None
-
-
-@pytest.fixture(scope="session")
-def rrlyrae_df() -> Optional[pl.DataFrame]:
-    """Load RR Lyrae data as Polars DataFrame."""
-    try:
-        # We know this file exists
-        rr_file = Path("data/processed/rrlyrae_real_data_cleaned.parquet")
-        if rr_file.exists():
-            return pl.read_parquet(rr_file)
+        from astro_lab.data.manager import AstroDataManager
+        manager = AstroDataManager()
+        catalogs = manager.list_catalogs()
+        linear_catalogs = catalogs.filter(pl.col("name").str.contains("linear"))
+        if len(linear_catalogs) > 0:
+            catalog_path = linear_catalogs[0]["path"]
+            return manager.load_catalog(catalog_path).head(1000)
         return None
     except Exception:
         return None
-
-
-# We already have path fixtures above that handle existence checks
 
 
 # Utility fixtures

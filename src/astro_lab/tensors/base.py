@@ -126,11 +126,11 @@ class AstroTensorBase(BaseModel):
         # Update with the new tensor data
         new_instance_data["data"] = new_data
         
-        # Update metadata if any extra is provided
+        # Ensure meta dictionary is preserved and updated
+        current_meta = self.meta.copy() if self.meta else {}
         if extra_meta:
-            if "meta" not in new_instance_data:
-                new_instance_data["meta"] = {}
-            new_instance_data["meta"].update(extra_meta)
+            current_meta.update(extra_meta)
+        new_instance_data["meta"] = current_meta
             
         return self.__class__(**new_instance_data)
 
@@ -178,6 +178,27 @@ class AstroTensorBase(BaseModel):
 
     def has_metadata(self, key: str) -> bool:
         return key in self.meta
+
+    def memory_info(self) -> Dict[str, Any]:
+        """Get memory information about the tensor."""
+        info = {
+            "tensor_memory_bytes": self.data.element_size() * self.data.nelement(),
+            "tensor_shape": list(self.data.shape),
+            "tensor_dtype": str(self.data.dtype),
+            "tensor_device": str(self.data.device),
+            "numel": self.data.numel(),
+            "storage_size": self.data.storage().size() if hasattr(self.data, 'storage') else self.data.numel(),
+            "device": str(self.data.device),
+        }
+        
+        # Add metadata size estimate
+        import sys
+        info["metadata_memory_bytes"] = sys.getsizeof(self.meta)
+        
+        # Total estimated memory
+        info["total_estimated_bytes"] = info["tensor_memory_bytes"] + info["metadata_memory_bytes"]
+        
+        return info
 
     # =========================================================================
     # Tensor operations that preserve class and metadata

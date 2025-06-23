@@ -100,8 +100,8 @@ def test_basic_cuda_training():
 
 
 @pytest.mark.cuda
-def test_astro_trainer_gpu(test_data_dir: Path):
-    """Test AstroTrainer with GPU acceleration."""
+def test_astro_trainer_gpu():
+    """Test AstroTrainer with GPU acceleration using synthetic data."""
     print_subheader("Real AstroTrainer GPU Tests")
 
     if not torch.cuda.is_available():
@@ -116,29 +116,30 @@ def test_astro_trainer_gpu(test_data_dir: Path):
     # Create lightning module with proper configuration
     lightning_module = AstroLightningModule(
         model=model,
-        task_type="unsupervised",  # Use unsupervised to avoid label issues
+        task_type="classification",  # Use classification with synthetic data
         learning_rate=1e-3,
         weight_decay=1e-4,
-        temperature=0.1,  # For contrastive loss
-        projection_dim=128,  # For projection head
     )
     lightning_module = lightning_module.to(device)
 
-    # Manually initialize projection head since model has hidden_dim attribute
-    lightning_module.projection_head = lightning_module._auto_create_projection_head()
+    # Create synthetic dataloaders instead of real data
+    def create_synthetic_dataloader(batch_size=16, num_batches=5):
+        """Create synthetic dataloader for testing."""
+        data_list = []
+        for _ in range(num_batches):
+            x = torch.randn(100, 10, device=device)  # 100 nodes, 10 features
+            edge_index = torch.randint(0, 100, (2, 300), device=device)  # 300 edges
+            y = torch.randint(0, 7, (100,), device=device)  # 7 classes
+            
+            from torch_geometric.data import Data
+            data = Data(x=x, edge_index=edge_index, y=y)
+            data_list.append(data)
+            
+        from torch_geometric.loader import DataLoader
+        return DataLoader(data_list, batch_size=1, shuffle=True)
 
-    # Use the existing create_astro_datamodule from our codebase
-    from astro_lab.data import create_astro_datamodule
-    
-    # Create datamodule and get dataloaders
-    datamodule = create_astro_datamodule(
-        "gaia",
-        data_root=str(test_data_dir),
-        batch_size=16,
-        max_samples=100
-    )
-    train_loader = datamodule.train_dataloader()
-    val_loader = datamodule.val_dataloader()
+    train_loader = create_synthetic_dataloader()
+    val_loader = create_synthetic_dataloader()
 
     # Create trainer with proper configuration
     trainer = AstroTrainer(

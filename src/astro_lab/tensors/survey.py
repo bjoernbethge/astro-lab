@@ -13,7 +13,7 @@ class SurveyTensor(PhotometricTensor):
     """Tensor for representing survey data, including photometric information."""
 
     survey_name: str = Field(..., description="Name of the astronomical survey")
-    column_mapping: Dict[str, int] = Field(default_factory=dict, description="Mapping of column names to data indices")
+    column_mapping: Dict[str, Union[str, int]] = Field(default_factory=dict, description="Mapping of column names to data indices or column names")
 
     def __init__(self, data: Any = None, *args, **kwargs):
         # Ermöglicht sowohl SurveyTensor(data, ...) als auch SurveyTensor(data=..., ...)
@@ -45,9 +45,11 @@ class SurveyTensor(PhotometricTensor):
             
             # Check that all values are integers (column indices)
             for col_name, col_idx in self.column_mapping.items():
-                if not isinstance(col_idx, int):
-                    raise ValueError(f"Column index for '{col_name}' must be an integer, got {type(col_idx)}")
-                if col_idx < 0 or col_idx >= self.data.shape[1]:
+                if not isinstance(col_idx, (int, str)):
+                    raise ValueError(f"Column index for '{col_name}' must be an integer or a string, got {type(col_idx)}")
+                if isinstance(col_idx, str) and col_name not in self.df.columns:
+                    raise ValueError(f"Column name '{col_name}' not found in DataFrame columns")
+                if isinstance(col_idx, int) and (col_idx < 0 or col_idx >= self.data.shape[1]):
                     raise ValueError(f"Column index {col_idx} for '{col_name}' is out of bounds")
 
     @property
@@ -123,8 +125,17 @@ class SurveyTensor(PhotometricTensor):
         if column_name not in self.column_mapping:
             raise ValueError(f"Column '{column_name}' not found in column_mapping")
         
-        column_idx = self.column_mapping[column_name]
-        return self.data[:, column_idx]
+        col_ref = self.column_mapping[column_name]
+        
+        if isinstance(col_ref, int):
+            # Integer index
+            return self.data[:, col_ref]
+        else:
+            # String column name - convert DataFrame column to tensor
+            if hasattr(self, 'df') and col_ref in self.df.columns:
+                return torch.tensor(self.df[col_ref].values, dtype=self.dtype)
+            else:
+                raise ValueError(f"Column '{col_ref}' not found in DataFrame")
     
     def get_photometric_tensor(self) -> Optional[PhotometricTensor]:
         """
@@ -190,27 +201,27 @@ class SurveyTensor(PhotometricTensor):
             return None
         
         # Extract coordinate data
-        ra = self.data[:, found_cols['ra']]
-        dec = self.data[:, found_cols['dec']]
+        def get_col_data(col_ref):
+            if isinstance(col_ref, int):
+                return self.data[:, col_ref]
+            else:
+                if hasattr(self, 'df') and col_ref in self.df.columns:
+                    return torch.tensor(self.df[col_ref].values, dtype=self.dtype)
+                else:
+                    raise ValueError(f"Column '{col_ref}' not found in DataFrame")
         
-        # Optional: distance from parallax
-        distance = None
+        ra_data = get_col_data(found_cols['ra'])
+        dec_data = get_col_data(found_cols['dec'])
+        
+        # Use parallax if available, else set to 1.0 (for consistent distance)
         if 'parallax' in found_cols:
-            parallax = self.data[:, found_cols['parallax']]
-            # Convert parallax to distance in kpc (avoiding division by zero)
-            mask = parallax > 0.1  # 0.1 mas minimum
-            distance = torch.zeros_like(parallax)
-            distance[mask] = 1000.0 / parallax[mask]  # mas to kpc
+            parallax_data = get_col_data(found_cols['parallax'])
+            # Convert parallax to distance (rough approximation)
+            distance_data = 1.0 / (parallax_data + 1e-10)  # Add small value to avoid division by zero
         else:
-            # Default distance if no parallax available
-            distance = torch.ones_like(ra)
+            distance_data = torch.ones_like(ra_data)
         
-        # Use from_spherical class method to create Spatial3DTensor
-        return Spatial3DTensor.from_spherical(
-            ra=ra,
-            dec=dec,
-            distance=distance,
-            angular_unit='deg',
-            frame=self.get_metadata("coordinate_system", "icrs"),
-            unit=self.get_metadata("distance_unit", "kiloparsec")
-        ) 
+        # Create spatial data
+        spatial_data = torch.stack([ra_data, dec_data, distance_data], dim=1)
+        
+        return Spatial3DTensor(data=spatial_data, frame="icrs", unit="parsec") 

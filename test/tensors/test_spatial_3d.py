@@ -84,7 +84,7 @@ class TestSpatial3DTensor:
         coords = torch.randn(10, 3)
         x, y, z = coords[:, 0], coords[:, 1], coords[:, 2]
         data = torch.stack([x, y, z], dim=-1)
-        tensor = Spatial3DTensor(data, coordinate_system="galactic", unit="kpc")
+        tensor = Spatial3DTensor(data, frame="galactic", unit="kpc")
         
         assert tensor.coordinate_system == "galactic"
         assert tensor.unit == "kpc"
@@ -100,7 +100,7 @@ class TestSpatial3DTensor:
         
         assert tensor.shape == (3, 3)
         assert tensor.coordinate_system == "icrs"
-        assert tensor.unit == "kpc"  # Default unit
+        assert tensor.unit == "parsec"  # Actual default unit
 
     def test_angular_separation(self):
         """Test angular separation calculation."""

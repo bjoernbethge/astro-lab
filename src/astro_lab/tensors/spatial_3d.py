@@ -10,6 +10,7 @@ from astropy.coordinates import SkyCoord
 import astropy.units as u
 from typing import Any, Dict, List, Optional, Union
 from typing_extensions import Self
+from pydantic import Field
 
 from .base import AstroTensorBase
 
@@ -18,6 +19,9 @@ class Spatial3DTensor(AstroTensorBase):
     Represents 3D spatial coordinates (e.g., Cartesian x, y, z) for celestial
     objects, providing methods for coordinate transformations and calculations.
     """
+    
+    frame: str = Field(default="icrs", description="Coordinate frame")
+    unit: str = Field(default="parsec", description="Distance unit")
 
     def __init__(
         self,
@@ -35,10 +39,7 @@ class Spatial3DTensor(AstroTensorBase):
             unit: The distance unit (e.g., 'parsec', 'au').
             **kwargs: Additional metadata.
         """
-        spatial_meta = {"frame": frame, "unit": unit}
-        kwargs.update(spatial_meta)
-
-        super().__init__(data=data, **kwargs)
+        super().__init__(data=data, frame=frame, unit=unit, **kwargs)
         self._validate()
 
     def _validate(self) -> None:
@@ -157,12 +158,7 @@ class Spatial3DTensor(AstroTensorBase):
     @property
     def coordinate_system(self) -> str:
         """Returns the coordinate system."""
-        return self.get_metadata("frame", "icrs")
-
-    @property
-    def unit(self) -> str:
-        """Returns the unit."""
-        return self.get_metadata("unit", "parsec")
+        return self.frame
 
     @property
     def epoch(self) -> float:
@@ -248,7 +244,7 @@ class Spatial3DTensor(AstroTensorBase):
             pos=self.data,
             x=self.data,  # Using positions as node features
             edge_index=edge_index,
-            **self._metadata
+            **self.meta
         )
 
     def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:

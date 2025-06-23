@@ -79,6 +79,30 @@ SURVEY_CONFIGS = {
         "coordinate_system": "simulation",
         "photometric_bands": [],
     },
+    "exoplanet": {
+        "name": "Confirmed Exoplanets Archive",
+        "coord_cols": ["ra", "dec"],
+        "mag_cols": ["sy_vmag", "sy_kmag"],
+        "extra_cols": ["pl_rade", "pl_masse", "sy_dist", "pl_orbper"],
+        "color_pairs": [],
+        "default_limit": 15.0,
+        "filter_system": "mixed",
+        "data_release": "current",
+        "coordinate_system": "icrs", 
+        "photometric_bands": ["V", "K"],
+    },
+    "rrlyrae": {
+        "name": "RR Lyrae Variable Stars",
+        "coord_cols": ["ra", "dec"],
+        "mag_cols": ["mag_mean", "mag_amp"],
+        "extra_cols": ["period", "phase", "metallicity"],
+        "color_pairs": [],
+        "default_limit": 18.0,
+        "filter_system": "linear",
+        "data_release": "cleaned",
+        "coordinate_system": "icrs",
+        "photometric_bands": ["V"],
+    },
 }
 
 

@@ -407,6 +407,10 @@ class AstroLightningModule(LightningModule):
         self, outputs: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor:
         """Compute loss based on task type."""
+        # Ensure both tensors are on the same device
+        if outputs.device != targets.device:
+            targets = targets.to(outputs.device)
+            
         if self.task_type == "classification":
             # Ensure targets are long for classification
             if targets.dtype != torch.long:
