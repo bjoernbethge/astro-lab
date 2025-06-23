@@ -1,8 +1,8 @@
 services:
   astro-lab:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: astro-lab
     ports:
       - "2718:2718" # Astro Lab - Primary Service

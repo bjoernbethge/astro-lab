@@ -17,7 +17,7 @@ WORKDIR /app
 RUN chown -R astro-lab:astro-lab /app
 
 # Copy project files and set ownership
-COPY --chown=astro-lab:astro-lab pyproject.toml uv.lock .marimo.toml ./
+COPY --chown=astro-lab:astro-lab pyproject.toml uv.lock setup.sh README.md ./
 
 # Create necessary directories with proper ownership
 RUN mkdir -p /app/data/experiments/db /app/data/experiments/artifacts /app/data/experiments/models /app/data/experiments/runs \
@@ -27,13 +27,12 @@ RUN mkdir -p /app/data/experiments/db /app/data/experiments/artifacts /app/data/
 USER astro-lab
 
 # install packages
-RUN uv add marimo-flow --no-sync # marimo-flow is marimo + mlflow
 RUN uv sync --no-dev
 
 RUN uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
 # Copy startup script
-COPY --chown=astro-lab:astro-lab start.sh /app/start.sh
+COPY --chown=astro-lab:astro-lab docker/start.sh docker/.marimo.toml docker/custom.css ./
 RUN chmod +x /app/start.sh
 
 # Expose ports

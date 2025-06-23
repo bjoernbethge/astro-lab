@@ -21,28 +21,21 @@ dependencies = [
     # Machine Learning
     "torch>=2.7.1",
     "torch-geometric>=2.6.1",
-    # MLflow and tracking
-    "mlflow>=2.15.0",
+    # Marimo and MLflow 
     "marimo-flow>=0.1.1",
     "torchinfo>=1.8.0",
-    "numba>=0.61.2",
     "bpy>=4.4.0", # Blender Python API
     "bvh>=0.3",
     "anywidget>=0.9.18",
     "traitlets>=5.14.3",
     "pydantic>=2.11.6",
-    "astropy>=7.1.0",
-    "astro-pack",
     "pyyaml>=6.0.2",
     "lightning==2.5.1.post0",
     "torchmetrics==1.6.3", # Compatible with lightning-utilities 0.14.3
     "optuna>=4.4.0",
     "optuna-integration[pytorch-lightning]>=4.4.0",
     # System monitoring for MLflow
-    "psutil>=6.1.0",
-    "gputil>=1.4.0",
     "plotly>=6.1.2",
-    "astro-viz",
     "lightning-utilities==0.14.3",
     "markupsafe>=3.0.2",
     "astrophot>=0.16.13",
@@ -65,37 +58,33 @@ dev = [
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
-    "psutil>=6.1.0", # For memory monitoring
+    "psutil>=6.1.0",
     "pytest-xdist>=3.7.0",
-]
-
-# Testing specific
-test = [
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
     "pytest-timeout>=2.0.0", # Test timeouts
     "pytest-rerunfailures>=12.0", # Retry failed tests
-    "psutil>=6.1.0", # For memory monitoring
-]
-
-# Linting and formatting
-lint = [
+    "psutil>=6.1.0",
+    "gputil>=1.4.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
-]
-
-# Documentation
-docs = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.20.0",
 ]
+
 optim = [
     "optuna>=4.4.0",
 ]
-viz = [
-    "marimo>=0.13.15",
+
+astro = [
+    "astroml>=1.0.2.post1",
+    "astrophot>=0.16.13",
+    "astropy>=7.1.0",
+    "astroquery>=0.4.10",
+    "poliastro>=0.7.0",
+    "sdss-access>=3.0.8",
+    "sgp4>=2.24",
+    "numpy>=1.24,<2.0",  # Compatible with pandas and sklearn
 ]
 
 # PyTorch with CUDA support
@@ -106,14 +95,6 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cuda" }]
-astro-viz = { workspace = true }
-astro-pack = { workspace = true }
-
-[tool.uv.workspace]
-members = [
-    "astro-pack",
-    "astro-viz",
-]
 
 
 
