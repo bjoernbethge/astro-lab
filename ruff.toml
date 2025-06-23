@@ -1,0 +1,11 @@
+# Ruff configuration
+
+[lint]
+# Ignore import errors for optional dependencies
+ignore = [
+    "F401",  # Unused imports (for optional dependencies like healpy)
+]
+
+[lint.per-file-ignores]
+# Ignore import errors for healpy specifically
+"src/astro_lab/tensors/catalog.py" = ["F401"] 
