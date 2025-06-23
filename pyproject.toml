@@ -11,36 +11,38 @@ maintainers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    # Core astronomical libraries
-    "astroml>=1.0.2.post1",
-    # "astrophot>=0.16.13",  # Temporarily disabled - not compatible with numpy 2.0 yet
-    "cosmograph>=0.0.47",
-    "h5py>=3.8.0", # For TNG50/IllustrisTNG HDF5 files
-    # 3D Visualization and data exchange
-    "pyvista>=0.45.2",
-    # Machine Learning
-    "torch>=2.7.1",
-    "torch-geometric>=2.6.1",
-    # Marimo and MLflow 
-    "marimo-flow>=0.1.1",
-    "torchinfo>=1.8.0",
-    "bpy>=4.4.0", # Blender Python API
-    "bvh>=0.3",
-    "anywidget>=0.9.18",
-    "traitlets>=5.14.3",
+"h5py>=3.8.0", # check astropy.io API
     "pydantic>=2.11.6",
     "pyyaml>=6.0.2",
-    "lightning==2.5.1.post0",
-    "torchmetrics==1.6.3",
-    "optuna>=4.4.0",
-    "optuna-integration[pytorch-lightning]>=4.4.0",
-    "plotly>=6.1.2",
-    "lightning-utilities==0.14.3",
     "markupsafe>=3.0.2",
+    # astro
+    "astroml>=1.0.2.post1",
     "astrophot>=0.16.13",
+    "astropy>=7.1.0",
+    "astroquery>=0.4.10",
+    "poliastro>=0.7.0",
+    "sdss-access>=3.0.8",
+    "sgp4>=2.24",
+    "numpy>=1.24,<2.0",
+    # ml
+    "torch>=2.7.1",
+    "torch-geometric>=2.6.1",
+    "torchinfo>=1.8.0",
+    "torchmetrics==1.6.3",
+    "marimo-flow>=0.1.1",
+    "lightning==2.5.1.post0",
+    "lightning-utilities==0.14.3",
+    "optuna-integration[pytorch-lightning]>=4.4.0",
+    "optuna>=4.4.0",
+    # viz
+    "bpy>=4.4.0",
+    "cosmograph>=0.0.47",
+    "pyvista>=0.45.2",
     "open3d>=0.19.0",
+    "plotly>=6.1.2",
+    "anywidget>=0.9.18",
+    "traitlets>=5.14.3",
 ]
-
 
 [build-system]
 requires = ["hatchling"]
@@ -71,20 +73,6 @@ dev = [
     "mkdocstrings[python]>=0.20.0",
 ]
 
-optim = [
-    "optuna>=4.4.0",
-]
-
-astro = [
-    "astroml>=1.0.2.post1",
-    "astrophot>=0.16.13",
-    "astropy>=7.1.0",
-    "astroquery>=0.4.10",
-    "poliastro>=0.7.0",
-    "sdss-access>=3.0.8",
-    "sgp4>=2.24",
-    "numpy>=1.24,<2.0",  # Compatible with pandas and sklearn
-]
 
 # PyTorch with CUDA support
 [[tool.uv.index]]

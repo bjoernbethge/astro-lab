@@ -321,7 +321,36 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
     )
     train_parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
     train_parser.add_argument(
-        "--learning-rate", type=float, default=1e-3, help="Learning rate"
+        "--max-samples", type=int, default=1000, help="Maximum number of samples"
+    )
+    train_parser.add_argument(
+        "--learning-rate", "--lr", type=float, default=1e-3, help="Learning rate"
+    )
+    train_parser.add_argument(
+        "--devices", type=int, default=1, help="Number of GPUs to use"
+    )
+    train_parser.add_argument(
+        "--strategy", 
+        choices=["auto", "ddp", "fsdp"], 
+        default="auto", 
+        help="Training strategy"
+    )
+    train_parser.add_argument(
+        "--precision", 
+        choices=["32", "16-mixed", "bf16-mixed"], 
+        default="16-mixed", 
+        help="Training precision"
+    )
+    train_parser.add_argument(
+        "--accumulate", 
+        type=int, 
+        default=1, 
+        help="Gradient accumulation steps"
+    )
+    train_parser.add_argument(
+        "--compile", 
+        action="store_true", 
+        help="Use torch.compile for optimization"
     )
     train_parser.add_argument(
         "--experiment-name", default="quick_train", help="Experiment name"
@@ -364,6 +393,9 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
     )
     model_parser.add_argument("--name", help="Model config name")
     model_parser.add_argument("--output", "-o", help="Output file for create action")
+
+    # New config action
+    config_subparsers.add_parser("validate", help="Validate config integration")
 
     args = parser.parse_args()
 
@@ -577,27 +609,13 @@ def _process_tng50(args):
 def _process_single_file(args):
     """Process a single catalog file."""
     logger.info(f"📂 Processing single file: {args.input}")
-
     try:
-        from astro_lab.data import (
-            create_training_splits,
-            load_catalog,
-            save_splits_to_parquet,
-        )
-        from astro_lab.data.preprocessing import (
-            create_graph_from_dataframe,
-            preprocess_catalog_lazy,
-        )
+        from astro_lab.data import load_catalog
+        from astro_lab.data.preprocessing import preprocess_catalog_lazy
         from astro_lab.utils.config.loader import ConfigLoader
-
-        # Load catalog
         df = load_catalog(args.input)
         logger.info(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
-
-        # Determine survey type
         survey_type = args.config or "generic"
-
-        # Load survey config if specified
         config = {}
         if args.config:
             try:
@@ -607,10 +625,7 @@ def _process_single_file(args):
                 logger.info(f"✅ Using {args.config} survey configuration")
             except Exception as e:
                 logger.warning(f"⚠️  Could not load survey config: {e}")
-
-        # OPTIMIZED: Use lazy preprocessing for large files
-        use_streaming = df.shape[0] > 50_000  # Use streaming for large datasets
-
+        use_streaming = df.shape[0] > 50_000
         if use_streaming:
             logger.info("🚀 Using streaming mode for large dataset")
             lf_clean = preprocess_catalog_lazy(
@@ -619,10 +634,8 @@ def _process_single_file(args):
                 max_samples=args.max_samples,
                 use_streaming=True,
             )
-            # Collect only if needed for further processing
             df_clean = lf_clean.collect()
         else:
-            # Use lazy preprocessing for smaller files too (still more efficient)
             lf_clean = preprocess_catalog_lazy(
                 args.input,
                 survey_type=survey_type,
@@ -630,77 +643,40 @@ def _process_single_file(args):
                 use_streaming=False,
             )
             df_clean = lf_clean.collect()
-
-        logger.info(f"✅ Processed: {df_clean.shape[0]:,} rows retained")
-
-        # Handle output
-        output_path = (
-            Path(args.output)
-            if args.output
-            else Path(f"data/processed/{survey_type}/")
-        )
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        # Create splits if requested
-        if args.splits:
-            logger.info("🔄 Creating training splits...")
-            train, val, test = create_training_splits(df_clean)
-
-            dataset_name = Path(args.input).stem
-            save_splits_to_parquet(train, val, test, output_path, dataset_name)
-            logger.info(f"💾 Splits and graphs saved to: {output_path}")
+        # Zeige survey-basierten Output an
+        from pathlib import Path
+        output_dir = Path(args.output or "data/processed") / survey_type
+        parquet_file = output_dir / f"{survey_type}.parquet"
+        pt_file = output_dir / f"{survey_type}.pt"
+        if parquet_file.exists():
+            logger.info(f"✅ Parquet: {parquet_file.relative_to(output_dir.parent)}")
         else:
-            # Save processed catalog and create graph
-            output_file = output_path / f"{Path(args.input).stem}_processed.parquet"
-            df_clean.write_parquet(output_file)
-            logger.info(f"💾 Processed catalog saved to: {output_file}")
-
-            # Create graph
-            graph_file = (
-                output_path / f"{Path(args.input).stem}.pt"
-            )
-            graph_data = create_graph_from_dataframe(
-                df=df_clean,
-                survey_type=survey_type,
-                k_neighbors=args.k_neighbors,
-                distance_threshold=args.distance_threshold,
-                output_path=graph_file,
-            )
-
-            if graph_data:
-                logger.info(
-                    f"📊 Graph created: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
-                )
-
+            logger.warning(f"❌ Parquet file missing: {parquet_file.relative_to(output_dir.parent)}")
+        if pt_file.exists():
+            logger.info(f"✅ Graph:   {pt_file.relative_to(output_dir.parent)}")
+        elif not args.no_graph:
+            logger.warning(f"❌ Graph file missing: {pt_file.relative_to(output_dir.parent)}")
     except Exception as e:
-        logger.error(f"❌ Single file processing failed: {e}")
-        raise
+        logger.error(f"❌ Error processing file: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def _process_all_surveys(args):
     """Process all surveys (batch mode)."""
     logger.info("🌟 Batch processing mode - processing all surveys")
-
     try:
-        import subprocess
         import sys
         from pathlib import Path
-        from astro_lab.data.preprocessing import find_or_create_catalog_file, create_graph_from_dataframe, preprocess_catalog_lazy
-
-        # Available surveys
+        from astro_lab.data.preprocessing import get_survey_input_file, preprocess_catalog_lazy
         all_surveys = ["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"]
-
-        # Determine surveys to process
         surveys_to_process = args.surveys if args.surveys else all_surveys
-
-        # Determine max_samples for display (TNG50(-4) default is 3_000_000)
         max_samples_display = {}
         for survey in surveys_to_process:
             if survey.lower() in ["tng50", "tng50-4"]:
                 max_samples_display[survey] = args.max_samples if args.max_samples is not None else 3_000_000
             else:
                 max_samples_display[survey] = args.max_samples or "all"
-
         logger.info(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
         logger.info(
             "🔧 Parameters: " + ", ".join([
@@ -709,90 +685,55 @@ def _process_all_surveys(args):
         )
         logger.info(f"📁 Output: {args.output_dir}")
         logger.info("")
-
-        # Create output directory
         output_dir = Path(args.output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Process each survey
         successful = 0
         for survey in surveys_to_process:
             logger.info(f"🔄 Processing {survey.upper()}...")
-
             try:
-                # Nutze die Utility für alle Surveys
-                from astro_lab.data.preprocessing import get_survey_input_file
-                try:
-                    data_file = get_survey_input_file(survey, data_manager)
-                except FileNotFoundError as e:
-                    logger.warning(f"⚠️  {e}")
-                    continue
-
-                survey_output_dir = output_dir / survey
-                survey_output_dir.mkdir(parents=True, exist_ok=True)
-
-                if args.verbose:
-                    logger.info(f"  📄 Processing {data_file.name}")
-
-                # Preprocess
-                ms = max_samples_display[survey]
-                if isinstance(ms, str):
-                    if ms.lower() == "all":
-                        ms = None
-                    else:
-                        try:
-                            ms = int(ms)
-                        except Exception:
-                            ms = None
-                lf = preprocess_catalog_lazy(
-                    input_path=str(data_file),
-                    survey_type=survey,
-                    max_samples=ms,
-                    use_streaming=True,
-                    output_dir=survey_output_dir,
-                    write_graph=not args.no_graph,
-                    k_neighbors=args.k_neighbors,
-                    distance_threshold=args.distance_threshold,
-                )
-                df = lf.collect()
-
-                # Die Files werden bereits im Preprocessing geschrieben
-                parquet_file = survey_output_dir / f"{survey}.parquet"
-                pt_file = survey_output_dir / f"{survey}.pt"
-
-                logger.info(f"✅ {survey.upper()} processed successfully")
-                successful += 1
-
-            except Exception as e:
-                logger.error(f"❌ Error processing {survey.upper()}: {e}")
-                if args.verbose:
-                    import traceback
-                    traceback.print_exc()
+                data_file = get_survey_input_file(survey, data_manager)
+            except FileNotFoundError as e:
+                logger.warning(f"⚠️  {e}")
                 continue
-
-        logger.info("")
-        logger.info(
-            f"🎉 Batch processing completed! ({successful}/{len(surveys_to_process)} surveys successful)"
-        )
-        logger.info(f"📁 Processed data in: {output_dir}")
-
-        # Show summary
-        logger.info("\n📊 Summary:")
-        for survey in surveys_to_process:
-            survey_dir = output_dir / survey
-            if survey_dir.exists():
-                pt_files = list(survey_dir.glob(f"{survey}.pt"))
-                parquet_files = list(survey_dir.glob(f"{survey}.parquet"))
-                logger.info(
-                    f"   {survey.upper()}: {len(parquet_files)} parquet files, {len(pt_files)} graphs"
-                )
-                if parquet_files:
-                    logger.info(f"     Parquet: {[str(f.relative_to(output_dir)) for f in parquet_files]}")
-                if pt_files:
-                    logger.info(f"     Graph:   {[str(f.relative_to(output_dir)) for f in pt_files]}")
+            survey_output_dir = output_dir / survey
+            survey_output_dir.mkdir(parents=True, exist_ok=True)
+            if args.verbose:
+                logger.info(f"  📄 Processing {data_file.name}")
+            ms = max_samples_display[survey]
+            if isinstance(ms, str):
+                if ms.lower() == "all":
+                    ms = None
+                else:
+                    try:
+                        ms = int(ms)
+                    except Exception:
+                        ms = None
+            lf = preprocess_catalog_lazy(
+                input_path=str(data_file),
+                survey_type=survey,
+                max_samples=ms,
+                use_streaming=True,
+                output_dir=survey_output_dir,
+                write_graph=not args.no_graph,
+                k_neighbors=args.k_neighbors,
+                distance_threshold=args.distance_threshold,
+            )
+            df = lf.collect()
+            parquet_file = survey_output_dir / f"{survey}.parquet"
+            pt_file = survey_output_dir / f"{survey}.pt"
+            logger.info(f"✅ {survey.upper()} processed successfully")
+            if parquet_file.exists():
+                logger.info(f"     Parquet: {parquet_file.relative_to(output_dir)}")
             else:
-                logger.info(f"   {survey.upper()}: No processed data found")
-
+                logger.warning(f"     Parquet file missing: {parquet_file.relative_to(output_dir)}")
+            if pt_file.exists():
+                logger.info(f"     Graph:   {pt_file.relative_to(output_dir)}")
+            elif not args.no_graph:
+                logger.warning(f"     Graph file missing: {pt_file.relative_to(output_dir)}")
+            successful += 1
+        logger.info("")
+        logger.info(f"🎉 Batch processing completed! ({successful}/{len(surveys_to_process)} surveys successful)")
+        logger.info(f"📁 Processed data in: {output_dir}")
     except Exception as e:
         logger.error(f"❌ Error during batch processing: {e}")
         raise
@@ -840,18 +781,25 @@ def handle_train(args):
             sys.exit(1)
         train_from_config(args.config)
     elif args.dataset and args.model:
-        # Quick training
+        # Quick training with all parameters
         train_quick(
             dataset=args.dataset,
             model=args.model,
             epochs=args.epochs,
-            batch_size=args.batch_size
+            batch_size=args.batch_size,
+            max_samples=getattr(args, 'max_samples', 1000),
+            learning_rate=getattr(args, 'learning_rate', 0.001),
+            devices=getattr(args, 'devices', 1),
+            strategy=getattr(args, 'strategy', 'auto'),
+            precision=getattr(args, 'precision', '16-mixed'),
+            accumulate=getattr(args, 'accumulate', 1),
+            compile=getattr(args, 'compile', False),
         )
     else:
         # Show help if insufficient arguments
         print("Usage:", file=sys.stderr)
         print("  astro-lab train --config <config.yaml>", file=sys.stderr)
-        print("  astro-lab train --dataset <dataset> --model <model> [--epochs N]", file=sys.stderr)
+        print("  astro-lab train --dataset <dataset> --model <model> [--epochs N] [--batch-size N] [--learning-rate LR] [--devices N] [--strategy STRATEGY] [--precision PRECISION] [--accumulate N] [--compile]", file=sys.stderr)
         sys.exit(1)
 
 
@@ -889,11 +837,32 @@ def handle_config(args):
         logger.error("❌ Config action required. Use --help for options.")
         return
 
-    from .optimize import create_default_config
-
     if args.config_action == "create":
-        logger.info(f"📝 Creating default configuration: {args.output}")
-        create_default_config(args.output)
+        logger.info(f"📝 Creating configuration: {args.output}")
+        try:
+            # Use ConfigLoader for robust config creation
+            from astro_lab.utils.config.loader import ConfigLoader
+            
+            # Create a temporary loader to get default config
+            loader = ConfigLoader("configs/default.yaml")
+            config = loader.load_config()
+            
+            # Save the processed config
+            loader.save_config(args.output)
+            
+            logger.info(f"✅ Configuration created successfully: {args.output}")
+            logger.info("💡 The config has been processed with correct paths and MLflow settings")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create config: {e}")
+            # Fallback to simple config creation
+            try:
+                from .optimize import create_default_config
+                create_default_config(args.output)
+                logger.info(f"✅ Fallback config created: {args.output}")
+            except Exception as fallback_error:
+                logger.error(f"❌ Fallback also failed: {fallback_error}")
+                return
 
     elif args.config_action == "surveys":
         logger.info("🌌 Available survey configurations:")
@@ -921,9 +890,9 @@ def handle_config(args):
             logger.info(f"   Survey: {survey_config['name']}")
             logger.info(f"   Description: {survey_config['description']}")
             logger.info(f"   Features: {len(survey_config['features'])}")
-            if "columns" in stats:
+            if "columns" in survey_config:
                 logger.info("   • Column Types:")
-                for col_type, count in stats["columns"].items():
+                for col_type, count in survey_config["columns"].items():
                     logger.info(f"     - {col_type}: {count}")
 
         except Exception as e:
@@ -931,6 +900,20 @@ def handle_config(args):
 
     elif args.config_action == "model":
         handle_model_config(args)
+
+    elif args.config_action == "validate":
+        logger.info("🔍 Validating config integration...")
+        try:
+            from astro_lab.utils.config.loader import validate_config_integration
+            success = validate_config_integration(args.config if hasattr(args, 'config') else "configs/default.yaml")
+            if success:
+                logger.info("✅ Config integration is working correctly!")
+            else:
+                logger.error("❌ Config integration validation failed!")
+                sys.exit(1)
+        except Exception as e:
+            logger.error(f"❌ Validation error: {e}")
+            sys.exit(1)
 
 
 def handle_model_config(args):

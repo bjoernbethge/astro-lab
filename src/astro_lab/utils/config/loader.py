@@ -70,14 +70,17 @@ class ConfigLoader:
         exp_name = self.config["mlflow"]["experiment_name"]
         exp_paths = data_config.get_experiment_paths(exp_name)
 
-        # Only update MLflow tracking URI if it's using data config placeholder
-        tracking_uri = self.config["mlflow"]["tracking_uri"]
-        if "${data.base_dir}" in str(tracking_uri):
-            # Replace placeholder with actual path
-            self.config["mlflow"]["tracking_uri"] = (
-                f"file://{exp_paths['mlruns'].absolute()}"
-            )
-        # Keep HTTP URIs as-is (like http://localhost:5000)
+        # Always ensure MLflow tracking URI points to the correct experiment directory
+        # This ensures consistency across all experiments
+        if "mlflow" not in self.config:
+            self.config["mlflow"] = {}
+        
+        # Update tracking URI to use experiment-specific path
+        self.config["mlflow"]["tracking_uri"] = f"file://{exp_paths['mlruns'].absolute()}"
+        
+        # Also set artifact location for MLflow
+        if "artifact_location" not in self.config["mlflow"]:
+            self.config["mlflow"]["artifact_location"] = f"file://{exp_paths['artifacts'].absolute()}"
 
         # Update checkpoint directory (only if checkpoints section exists)
         if "checkpoints" in self.config:
@@ -149,6 +152,7 @@ class ConfigLoader:
 
         if output_path is None:
             exp_name = self.config["mlflow"]["experiment_name"]
+            # Save to configs directory, not experiments
             output_path = data_config.configs_dir / f"{exp_name}.yaml"
 
         output_path = Path(output_path)
@@ -208,3 +212,57 @@ def setup_experiment_from_config(config_path: str, experiment_name: str):
     print(f"   - Config saved: {data_config.configs_dir / f'{experiment_name}.yaml'}")
 
     return config
+
+def validate_config_integration(config_path: str = "configs/default.yaml") -> bool:
+    """
+    Validate that config integration works correctly.
+    
+    Args:
+        config_path: Path to config file to test
+        
+    Returns:
+        True if validation passes, False otherwise
+    """
+    try:
+        print("🔍 Validating config integration...")
+        
+        # Test 1: Load config
+        loader = ConfigLoader(config_path)
+        config = loader.load_config("test_experiment")
+        
+        # Test 2: Check MLflow URI
+        mlflow_uri = config.get("mlflow", {}).get("tracking_uri", "")
+        if not mlflow_uri.startswith("file://"):
+            print(f"❌ Invalid MLflow URI format: {mlflow_uri}")
+            return False
+            
+        # Test 3: Check if URI points to data/experiments
+        if "data/experiments" not in mlflow_uri and "data\\experiments" not in mlflow_uri:
+            print(f"❌ MLflow URI doesn't point to data/experiments: {mlflow_uri}")
+            return False
+            
+        # Test 4: Check environment variable
+        env_uri = os.environ.get("MLFLOW_TRACKING_URI", "")
+        if env_uri != mlflow_uri:
+            print(f"❌ Environment variable mismatch: {env_uri} != {mlflow_uri}")
+            return False
+            
+        # Test 5: Check experiment directories exist
+        exp_name = config.get("mlflow", {}).get("experiment_name", "")
+        exp_paths = data_config.get_experiment_paths(exp_name)
+        
+        for path_name, path in exp_paths.items():
+            if not path.exists():
+                print(f"❌ Experiment directory missing: {path}")
+                return False
+                
+        print("✅ Config integration validation passed!")
+        print(f"   - MLflow URI: {mlflow_uri}")
+        print(f"   - Experiment: {exp_name}")
+        print(f"   - Directories: {list(exp_paths.keys())}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Config integration validation failed: {e}")
+        return False

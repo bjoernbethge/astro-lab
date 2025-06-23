@@ -188,21 +188,26 @@ dependencies = [
     { name = "anywidget" },
     { name = "astroml" },
     { name = "astrophot" },
+    { name = "astropy" },
+    { name = "astroquery" },
     { name = "bpy" },
-    { name = "bvh" },
     { name = "cosmograph" },
     { name = "h5py" },
     { name = "lightning" },
     { name = "lightning-utilities" },
     { name = "marimo-flow" },
     { name = "markupsafe" },
+    { name = "numpy" },
     { name = "open3d" },
     { name = "optuna" },
     { name = "optuna-integration", extra = ["pytorch-lightning"] },
     { name = "plotly" },
+    { name = "poliastro" },
     { name = "pydantic" },
     { name = "pyvista" },
     { name = "pyyaml" },
+    { name = "sdss-access" },
+    { name = "sgp4" },
     { name = "torch" },
     { name = "torch-geometric" },
     { name = "torchinfo" },
@@ -211,16 +216,6 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
-astro = [
-    { name = "astroml" },
-    { name = "astrophot" },
-    { name = "astropy" },
-    { name = "astroquery" },
-    { name = "numpy" },
-    { name = "poliastro" },
-    { name = "sdss-access" },
-    { name = "sgp4" },
-]
 dev = [
     { name = "gputil" },
     { name = "mkdocs" },
@@ -236,30 +231,32 @@ dev = [
     { name = "pytest-xdist" },
     { name = "ruff" },
 ]
-optim = [
-    { name = "optuna" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "anywidget", specifier = ">=0.9.18" },
     { name = "astroml", specifier = ">=1.0.2.post1" },
     { name = "astrophot", specifier = ">=0.16.13" },
+    { name = "astropy", specifier = ">=7.1.0" },
+    { name = "astroquery", specifier = ">=0.4.10" },
     { name = "bpy", specifier = ">=4.4.0" },
-    { name = "bvh", specifier = ">=0.3" },
     { name = "cosmograph", specifier = ">=0.0.47" },
     { name = "h5py", specifier = ">=3.8.0" },
     { name = "lightning", specifier = "==2.5.1.post0" },
     { name = "lightning-utilities", specifier = "==0.14.3" },
     { name = "marimo-flow", specifier = ">=0.1.1" },
     { name = "markupsafe", specifier = ">=3.0.2" },
+    { name = "numpy", specifier = ">=1.24,<2.0" },
     { name = "open3d", specifier = ">=0.19.0" },
     { name = "optuna", specifier = ">=4.4.0" },
     { name = "optuna-integration", extras = ["pytorch-lightning"], specifier = ">=4.4.0" },
     { name = "plotly", specifier = ">=6.1.2" },
+    { name = "poliastro", specifier = ">=0.7.0" },
     { name = "pydantic", specifier = ">=2.11.6" },
     { name = "pyvista", specifier = ">=0.45.2" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "sdss-access", specifier = ">=3.0.8" },
+    { name = "sgp4", specifier = ">=2.24" },
     { name = "torch", specifier = ">=2.7.1", index = "https://download.pytorch.org/whl/cu128" },
     { name = "torch-geometric", specifier = ">=2.6.1" },
     { name = "torchinfo", specifier = ">=1.8.0" },
@@ -268,16 +265,6 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-astro = [
-    { name = "astroml", specifier = ">=1.0.2.post1" },
-    { name = "astrophot", specifier = ">=0.16.13" },
-    { name = "astropy", specifier = ">=7.1.0" },
-    { name = "astroquery", specifier = ">=0.4.10" },
-    { name = "numpy", specifier = ">=1.24,<2.0" },
-    { name = "poliastro", specifier = ">=0.7.0" },
-    { name = "sdss-access", specifier = ">=3.0.8" },
-    { name = "sgp4", specifier = ">=2.24" },
-]
 dev = [
     { name = "gputil", specifier = ">=1.4.0" },
     { name = "mkdocs", specifier = ">=1.5.0" },
@@ -293,7 +280,6 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.7.0" },
     { name = "ruff", specifier = ">=0.1.0" },
 ]
-optim = [{ name = "optuna", specifier = ">=4.4.0" }]
 
 [[package]]
 name = "astroml"
@@ -520,12 +506,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/b1/bb03b0c4f78c13f30e871d5f1d68cf27c85096aef3cb2de1e061bd8766bd/bpy-4.4.0-cp311-cp311-win_amd64.whl", hash = "sha256:6281ddd11ebe6008db143f422d7dd709c520f3f3574814dd37dda6d9cd85a1ae", size = 324938053, upload-time = "2025-03-18T11:12:51.963Z" },
     { url = "https://files.pythonhosted.org/packages/40/9b/a9acaf9ec0a88a065bd92328c35ff7ba17af93bc7b2611ad01ee26bdcfa8/bpy-4.4.0-cp311-cp311-win_arm64.whl", hash = "sha256:5658b7f9e13dc90a64419038a52585a581fc9ab53ec909bf5199946226f4b0c0", size = 189065128, upload-time = "2025-03-18T11:13:10.219Z" },
 ]
-
-[[package]]
-name = "bvh"
-version = "0.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d5/60/a34a0f993c88af86f05ffca9f1012005758c29fb5046220486c2593a07fa/bvh-0.3.tar.gz", hash = "sha256:6ab523dd78fa7cc6b249eab1d9639ad8493d0cfc781e0254a8f45fa1edb6d382", size = 1927, upload-time = "2017-09-12T04:38:40.039Z" }
 
 [[package]]
 name = "cachetools"

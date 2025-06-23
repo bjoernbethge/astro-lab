@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from lightning import LightningModule
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau, CosineAnnealingWarmRestarts
 from torchmetrics import Accuracy, F1Score, Precision, Recall
 from torchmetrics.classification import MulticlassAccuracy
 
@@ -42,6 +42,8 @@ class AstroLightningModule(LightningModule):
     - Unified logging throughout
     - Modern metrics tracking with torchmetrics
     - Automatic class detection from data
+    - Advanced training features: gradient accumulation, gradient clipping
+    - 2025 Best Practices: Compile mode, FSDP support, advanced schedulers
     """
 
     def __init__(
@@ -55,6 +57,15 @@ class AstroLightningModule(LightningModule):
         projection_dim: int = 128,
         temperature: float = 0.1,
         num_classes: Optional[int] = None,
+        gradient_accumulation_steps: int = 1,
+        gradient_clip_val: float = 1.0,
+        gradient_clip_algorithm: str = "norm",
+        scheduler_type: str = "cosine",
+        warmup_steps: int = 0,
+        use_compile: bool = False,
+        use_ema: bool = False,
+        ema_decay: float = 0.999,
+        label_smoothing: float = 0.0,
         **kwargs,
     ):
         super().__init__()
@@ -71,9 +82,34 @@ class AstroLightningModule(LightningModule):
         self.num_classes = num_classes  # Will be set automatically if None
         self.model_config = model_config
         self.training_config = training_config
+        
+        # Advanced training options
+        self.gradient_accumulation_steps = gradient_accumulation_steps
+        self.gradient_clip_val = gradient_clip_val
+        self.gradient_clip_algorithm = gradient_clip_algorithm
+        self.scheduler_type = scheduler_type
+        self.warmup_steps = warmup_steps
+        self.use_compile = use_compile
+        self.use_ema = use_ema
+        self.ema_decay = ema_decay
+        self.label_smoothing = label_smoothing
+        
+        # Track gradient accumulation
+        self.automatic_optimization = False  # Manual optimization for gradient accumulation
 
         # Initialize model with robust error handling
         self._initialize_model(model)
+        
+        # Compile model if requested (PyTorch 2.0+)
+        if self.use_compile and hasattr(torch, 'compile'):
+            try:
+                self.model = torch.compile(self.model, mode='reduce-overhead')
+            except Exception as e:
+                logger.warning(f"Failed to compile model: {e}")
+
+        # Initialize EMA if requested
+        if self.use_ema:
+            self._init_ema()
 
         # Initialize projection head for unsupervised learning
         self.projection_head = None
@@ -87,6 +123,23 @@ class AstroLightningModule(LightningModule):
         # Performance tracking
         self._step_times = []
         self._memory_usage = []
+
+    def _init_ema(self):
+        """Initialize Exponential Moving Average of model weights."""
+        self.ema_model = torch.nn.ModuleDict()
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self.ema_model[name] = param.data.clone()
+
+    def _update_ema(self):
+        """Update EMA weights."""
+        if self.use_ema:
+            with torch.no_grad():
+                for name, param in self.model.named_parameters():
+                    if param.requires_grad and name in self.ema_model:
+                        self.ema_model[name].mul_(self.ema_decay).add_(
+                            param.data, alpha=1 - self.ema_decay
+                        )
 
     def _initialize_model(self, model: Optional[torch.nn.Module]) -> None:
         """Initialize model with robust error handling."""
@@ -398,7 +451,7 @@ class AstroLightningModule(LightningModule):
     def _compute_loss(
         self, outputs: torch.Tensor, targets: torch.Tensor
     ) -> torch.Tensor:
-        """Compute loss based on task type."""
+        """Compute loss based on task type with label smoothing support."""
         # Ensure both tensors are on the same device
         if outputs.device != targets.device:
             targets = targets.to(outputs.device)
@@ -424,7 +477,13 @@ class AstroLightningModule(LightningModule):
                 raise ValueError(
                     f"Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}"
                 )
-            return F.cross_entropy(outputs, targets)
+            
+            # Apply label smoothing if requested
+            if self.label_smoothing > 0:
+                return F.cross_entropy(outputs, targets, label_smoothing=self.label_smoothing)
+            else:
+                return F.cross_entropy(outputs, targets)
+                
         elif self.task_type == "regression":
             return F.mse_loss(outputs, targets)
         else:
@@ -531,75 +590,73 @@ class AstroLightningModule(LightningModule):
                     # Continue without failing
 
     def training_step(self, batch: Union[torch.Tensor, Dict[str, torch.Tensor], Any], batch_idx: int) -> torch.Tensor:
-        """Training step with proper gradient handling. 🚂"""
+        """
+        Training step with manual optimization for gradient accumulation.
+        
+        Updated for 2025 best practices with gradient accumulation and better logging.
+        """
         try:
-            # Handle PyTorch Geometric Data objects
-            if hasattr(batch, 'x') and hasattr(batch, 'edge_index') and hasattr(batch, 'y'):
-                # Direct PyG Data object
-                x = batch.x
-                edge_index = batch.edge_index
-                y = batch.y
+            # Get optimizer
+            opt = self.optimizers()
+            scheduler = self.lr_schedulers() if self.trainer.lr_scheduler_configs else None
+            
+            # Compute step with gradient accumulation
+            result = self._compute_step(batch, "train")
+            loss = result["loss"]
+            
+            # Scale loss by accumulation steps
+            loss = loss / self.gradient_accumulation_steps
+            
+            # Manual backward
+            self.manual_backward(loss)
+            
+            # Gradient accumulation logic
+            if (batch_idx + 1) % self.gradient_accumulation_steps == 0:
+                # Gradient clipping
+                if self.gradient_clip_val > 0:
+                    self.clip_gradients(
+                        opt, 
+                        gradient_clip_val=self.gradient_clip_val,
+                        gradient_clip_algorithm=self.gradient_clip_algorithm
+                    )
                 
-                # For node classification with masks
-                if hasattr(batch, 'train_mask'):
-                    # Apply mask to get only training nodes
-                    train_mask = batch.train_mask
-                    x_train = x[train_mask]
-                    y_train = y[train_mask]
-                    
-                    # Forward pass through model
-                    output = self.model(x, edge_index)
-                    
-                    # Get predictions for training nodes only
-                    output_train = output[train_mask]
-                    
-                    # Compute loss on training nodes
-                    if self.task_type == "classification":
-                        loss = F.cross_entropy(output_train, y_train)
-                    else:
-                        loss = F.mse_loss(output_train, y_train)
-                else:
-                    # Full graph without masks
-                    output = self.model(x, edge_index)
-                    if self.task_type == "classification":
-                        loss = F.cross_entropy(output, y)
-                    else:
-                        loss = F.mse_loss(output, y)
-                        
-                # Log metrics
-                self.log("train_loss", loss, prog_bar=True)
-                if self.task_type == "classification":
-                    with torch.no_grad():
-                        # Lazy initialize metrics if needed
-                        if self.train_acc is None:
-                            if hasattr(batch, 'train_mask'):
-                                num_classes = output_train.shape[1]
-                            else:
-                                num_classes = output.shape[1]
-                            self._create_metrics_for_classes(num_classes, loss.device)
-                            self.metrics_initialized = True
-                            
-                        if self.train_acc:
-                            if hasattr(batch, 'train_mask'):
-                                acc = self.train_acc(output_train, y_train)
-                            else:
-                                acc = self.train_acc(output, y)
-                            self.log("train_acc", acc, prog_bar=True)
-                        
-                return loss
+                # Optimizer step
+                opt.step()
+                opt.zero_grad()
                 
-            else:
-                # Fallback to generic compute_step
-                result = self._compute_step(batch, "train")
-                # IMPORTANT: Always return just the loss tensor
-                return result["loss"]
+                # Update EMA if enabled
+                self._update_ema()
                 
+                # Step scheduler if using step-based scheduler
+                if scheduler and self.scheduler_type in ["onecycle", "cosine_warm_restarts"]:
+                    scheduler.step()
+            
+            # Log learning rate
+            current_lr = opt.param_groups[0]['lr']
+            self.log("learning_rate", current_lr, on_step=True, on_epoch=False)
+            
+            # Log gradient norm
+            if (batch_idx + 1) % 100 == 0:
+                grad_norm = self._compute_gradient_norm()
+                self.log("grad_norm", grad_norm, on_step=True, on_epoch=False)
+            
+            return result["loss"]
+            
         except Exception as e:
-            logger.error(f"❌ Training step failed: {e}")
+            logger.error(f"Training step {batch_idx} failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
-            if hasattr(batch, '__dict__'):
-                logger.error(f"   Batch attributes: {list(batch.__dict__.keys())}")
+            if hasattr(batch, "shape"):
+                logger.error(f"   Batch shape: {batch.shape}")
             raise
+
+    def _compute_gradient_norm(self) -> float:
+        """Compute the L2 norm of gradients."""
+        total_norm = 0.0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm += param_norm.item() ** 2
+        return total_norm ** 0.5
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Validation step with mask handling. 🧪"""
@@ -725,15 +782,86 @@ class AstroLightningModule(LightningModule):
             logger.error(f"   Batch type: {type(batch)}")
             raise
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        """Configure optimizers and learning rate schedulers. 🔧"""
-        # Simple optimizer configuration to avoid "No inf checks" error
-        optimizer = torch.optim.Adam(
+    def configure_optimizers(self) -> Dict[str, Any]:
+        """
+        Configure optimizers and schedulers with 2025 best practices.
+        
+        Includes:
+        - AdamW with decoupled weight decay
+        - Multiple scheduler options
+        - Warmup support
+        - Gradient accumulation awareness
+        """
+        # Configure optimizer
+        optimizer = AdamW(
             self.parameters(),
             lr=self.learning_rate,
-            weight_decay=self.weight_decay
+            weight_decay=self.weight_decay,
+            betas=(0.9, 0.999),
+            eps=1e-8,
         )
-        return optimizer
+        
+        # Configure scheduler
+        config = {"optimizer": optimizer}
+        
+        if self.scheduler_type == "cosine":
+            scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=self.trainer.estimated_stepping_batches,
+                eta_min=self.learning_rate * 0.01,
+            )
+            config["lr_scheduler"] = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            }
+            
+        elif self.scheduler_type == "cosine_warm_restarts":
+            scheduler = CosineAnnealingWarmRestarts(
+                optimizer,
+                T_0=self.trainer.estimated_stepping_batches // 4,
+                T_mult=2,
+                eta_min=self.learning_rate * 0.01,
+            )
+            config["lr_scheduler"] = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            }
+            
+        elif self.scheduler_type == "onecycle":
+            scheduler = OneCycleLR(
+                optimizer,
+                max_lr=self.learning_rate,
+                total_steps=self.trainer.estimated_stepping_batches,
+                pct_start=0.1,
+                anneal_strategy="cos",
+                div_factor=25,
+                final_div_factor=10000,
+            )
+            config["lr_scheduler"] = {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,
+            }
+            
+        elif self.scheduler_type == "plateau":
+            scheduler = ReduceLROnPlateau(
+                optimizer,
+                mode="min",
+                factor=0.5,
+                patience=5,
+                verbose=False,
+                min_lr=self.learning_rate * 0.001,
+            )
+            config["lr_scheduler"] = {
+                "scheduler": scheduler,
+                "interval": "epoch",
+                "monitor": "val_loss",
+                "frequency": 1,
+            }
+        
+        return config
 
     def predict_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Prediction step with error handling."""
@@ -761,54 +889,52 @@ class AstroLightningModule(LightningModule):
             raise
 
     def on_train_start(self) -> None:
-        """Called when training starts - detect classes if needed."""
-        super().on_train_start()
-
-        # Auto-detect classes if not set and we have a dataloader
-        if self.num_classes is None and self.task_type == "classification":
-            try:
-                if hasattr(self, "trainer") and self.trainer is not None:
-                    dataloader = self.trainer.train_dataloader
-                    if dataloader is not None:
-                        detected_classes = self._detect_num_classes_from_data(
-                            dataloader
-                        )
+        """
+        Called at the beginning of training.
+        Log important hyperparameters and model info.
+        """
+        try:
+            # Auto-detect number of classes from first batch if needed
+            if self.num_classes is None and hasattr(self.trainer, "train_dataloader"):
+                dataloader = self.trainer.train_dataloader
+                if dataloader is not None:
+                    detected_classes = self._detect_num_classes_from_data(dataloader)
+                    if detected_classes > 0:
                         self.num_classes = detected_classes
+                        # Recreate metrics with correct number of classes
+                        self._setup_metrics()
+                        device = next(self.parameters()).device
+                        self._create_metrics_for_classes(self.num_classes, device)
 
-                        # Recreate model with correct number of classes
-                        if self.model_config is not None:
-                            self.model = self._create_model_from_config(
-                                self.model_config
-                            )
-                            logger.info(
-                                f"Recreated model with {detected_classes} classes"
-                            )
-                        else:
-                            # Recreate default model with correct classes
-                            self.model = self._create_default_model()
-                            logger.info(
-                                f"Recreated default model with {detected_classes} classes"
-                            )
-
-                            # Recreate metrics with correct number of classes
-                            self._create_metrics_for_classes(self.num_classes, self.device)
-                            logger.info(
-                                f"Recreated metrics with {detected_classes} classes"
-                            )
-
-                            # Move model to correct device
-                            if hasattr(self, "device"):
-                                self.model = self.model.to(self.device)
-                                logger.info(f"Moved model to device: {self.device}")
-            except Exception as e:
-                logger.error(f"Error during class detection: {e}")
-
-        logger.info("Training started")
-        logger.info(f"   Model: {type(self.model).__name__}")
-        logger.info(f"   Task: {self.task_type}")
-        logger.info(f"   Device: {self.device}")
-        if self.num_classes is not None:
-            logger.info(f"   Classes: {self.num_classes}")
+            # Log model info
+            total_params = sum(p.numel() for p in self.model.parameters())
+            trainable_params = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+            
+            self.log_dict({
+                "model/total_params": float(total_params),
+                "model/trainable_params": float(trainable_params),
+                "model/num_classes": float(self.num_classes) if self.num_classes else 0,
+            })
+            
+            # Log training configuration
+            self.log_dict({
+                "config/learning_rate": self.learning_rate,
+                "config/weight_decay": self.weight_decay,
+                "config/gradient_accumulation_steps": float(self.gradient_accumulation_steps),
+                "config/gradient_clip_val": self.gradient_clip_val,
+                "config/scheduler_type": 0.0,  # Just for logging presence
+                "config/use_compile": float(self.use_compile),
+                "config/use_ema": float(self.use_ema),
+                "config/label_smoothing": self.label_smoothing,
+            })
+            
+            logger.info(f"Training started with {trainable_params:,} trainable parameters")
+            logger.info(f"Number of classes: {self.num_classes}")
+            logger.info(f"Using scheduler: {self.scheduler_type}")
+            logger.info(f"Gradient accumulation steps: {self.gradient_accumulation_steps}")
+            
+        except Exception as e:
+            logger.error(f"Error in on_train_start: {e}")
 
     def on_train_end(self) -> None:
         """Called when training ends."""

@@ -57,7 +57,16 @@ logger = logging.getLogger(__name__)
 torch.serialization.add_safe_globals([
     torch_geometric.data.data.DataEdgeAttr,
     torch_geometric.data.data.Data,
-    torch_geometric.data.batch.Batch
+    torch_geometric.data.batch.Batch,
+    torch_geometric.data.data.DataTensorAttr,
+    torch_geometric.data.data.DataEdgeAttr,
+    torch_geometric.data.data.Data,
+    torch_geometric.data.batch.Batch,
+    torch_geometric.data.hetero_data.HeteroData,
+    torch_geometric.data.storage.BaseStorage,
+    torch_geometric.data.storage.NodeStorage,
+    torch_geometric.data.storage.EdgeStorage,
+    torch_geometric.data.storage.GlobalStorage,
 ])
 
 # =========================================================================
@@ -475,20 +484,9 @@ def _polars_to_survey_tensor(
 
 class AstroDataset(InMemoryDataset):
     """
-    Advanced PyTorch Geometric dataset for astronomical data.
-
-    This dataset class is designed to handle various astronomical surveys
-    with high performance, lazy loading, and on-the-fly preprocessing.
-    It integrates seamlessly with PyTorch Lightning and the AstroLab tensor system.
-
-    Key Features:
-    - Lazy loading of data using Polars for memory efficiency.
-    - On-the-fly graph construction with k-NN.
-    - Survey-specific preprocessing pipelines.
-    - Compatibility with PyTorch Geometric's `DataLoader`.
-    - Streaming support for large datasets (future-proofing).
+    Minimal PyTorch Geometric dataset für astronomische Daten.
+    Lädt Daten einmal beim Init und hält sie im Speicher.
     """
-
     def __init__(
         self,
         root: str,
@@ -500,359 +498,70 @@ class AstroDataset(InMemoryDataset):
         pre_filter: Optional[Any] = None,
         use_streaming: bool = True,
     ):
-        """
-        Initialize the AstroDataset.
-
-        Args:
-            root: Root directory where the dataset should be stored.
-                  This directory will contain `raw` and `processed` subdirectories.
-            survey: The name of the survey (e.g., 'gaia', 'sdss').
-            k_neighbors: Number of neighbors for k-NN graph construction.
-            max_samples: Maximum number of samples to load (for debugging).
-            transform: A function/transform that takes in a `Data` object and
-                       returns a transformed version.
-            pre_transform: A function/transform that takes in a `Data` object and
-                           returns a transformed version. The data object will be
-                           transformed before every access.
-            pre_filter: A function that takes in a `Data` object and returns a
-                        boolean value, indicating whether the data object should
-                        be included in the final dataset.
-            use_streaming: Flag to indicate if streaming should be used.
-        """
         self.survey = survey
         self.k_neighbors = k_neighbors
-        self.max_samples = max_samples
+        self.max_samples = int(max_samples) if max_samples is not None else None
         self.use_streaming = use_streaming
         self.survey_config = get_survey_config(survey)
         super().__init__(root, transform, pre_transform, pre_filter)
-        
-        # Load processed Parquet and create graph on-demand
-        processed_path = Path(self.processed_paths[0])
-        if processed_path.exists():
-            df = pl.read_parquet(processed_path)
-            graph_data = self._create_graph_from_dataframe(df)
-            self.data, self.slices = self.collate([graph_data])
-        else:
-            # Will be created during process()
-            self.data, self.slices = None, None
+        self._processed_dir = Path(self.root) / "processed" / self.survey
+        self._processed_dir.mkdir(parents=True, exist_ok=True)
+        self._pt_path = self._processed_dir / f"{self.survey}.pt"
+        self._parquet_path = self._processed_dir / f"{self.survey}.parquet"
+        self._load_data()
 
-    @property
-    def raw_dir(self) -> str:
-        # Use direct raw directory without survey subdirectories
-        return os.path.join(self.root, "raw")
-
-    @property
-    def processed_dir(self) -> str:
-        # Use direct processed directory without survey subdirectories
-        return os.path.join(self.root, "processed")
-
-    @property
-    def raw_file_names(self) -> List[str]:
-        """Names of raw files in the `raw_dir`. (Not used for ML workflows)"""
-        return [f"{self.survey}.parquet"]
-
-    @property
-    def processed_file_names(self) -> List[str]:
-        """Processed Parquet file (not PyG graph)."""
-        return [f"{self.survey}.parquet"]
-
-    def download(self):
-        """Check if processed Parquet data exists and raise if missing."""
-        processed_path = Path(self.root) / "processed" / f"{self.survey}.parquet"
-        if not processed_path.exists():
-            raise FileNotFoundError(
-                f"Processed Parquet file not found: {processed_path}\n"
-                f"Run: uv run astro-lab preprocess --surveys {self.survey}"
-            )
-
-    def process(self):
-        """Load processed Parquet and create graph on-demand."""
-        processed_path = Path(self.root) / "processed" / f"{self.survey}.parquet"
-        if not processed_path.exists():
-            raise FileNotFoundError(
-                f"Processed Parquet file not found: {processed_path}\n"
-                f"Run: uv run astro-lab preprocess --surveys {self.survey}"
-            )
-        logger.info(f"🔄 Loading processed {self.survey} from Parquet: {processed_path}")
-        df = pl.read_parquet(processed_path)
+    def _load_data(self):
+        """Lädt Daten einmal beim Initialisieren."""
+        if self._pt_path.exists():
+            print(f"🔄 Lade Graph aus: {self._pt_path}")
+            try:
+                graph_data = torch.load(self._pt_path, weights_only=False)
+                self.data, self.slices = self.collate([graph_data])
+                return
+            except Exception:
+                print("⚠️ Fehler beim Laden von .pt, nutze Parquet...")
+        if not self._parquet_path.exists():
+            raise FileNotFoundError(f"Parquet nicht gefunden: {self._parquet_path}")
+        print(f"🔄 Lade Parquet: {self._parquet_path}")
+        df = pl.read_parquet(self._parquet_path)
         graph_data = self._create_graph_from_dataframe(df)
         self.data, self.slices = self.collate([graph_data])
-        logger.info(f"✅ Loaded {len(df)} objects and created graph with {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges")
+        torch.save(graph_data, self._pt_path)
+        print(f"💾 Graph gespeichert: {self._pt_path}")
 
     def _create_graph_from_dataframe(self, df: pl.DataFrame) -> Data:
-        """Create PyG graph from Polars DataFrame with GPU acceleration."""
-        # Extract coordinates
-        coord_cols = self._get_coordinate_columns()
-        coords = df.select(coord_cols).to_numpy()
-        
-        # Extract features
-        feature_cols = self._get_feature_columns()
-        if feature_cols:
-            features = df.select(feature_cols).to_numpy()
-        else:
-            # Use coordinates as features if no other features available
+        coord_cols = self.survey_config.get("coordinates", ["ra", "dec"])
+        feature_cols = self.survey_config.get("features", coord_cols)
+        coords = df.select([c for c in coord_cols if c in df.columns]).to_numpy()
+        features = df.select([c for c in feature_cols if c in df.columns]).to_numpy() if feature_cols else coords
+        if features.shape[1] == 0:
             features = coords
-        
-        # Convert to tensors
         pos = torch.tensor(coords, dtype=torch.float32)
         x = torch.tensor(features, dtype=torch.float32)
-        
-        # Create synthetic labels for classification tasks
-        # For Gaia: classify stars based on their color (G-RP magnitude)
-        if self.survey == "gaia" and "phot_g_mean_mag" in df.columns and "phot_rp_mean_mag" in df.columns:
-            # Calculate color index (G - RP)
-            g_mag = df["phot_g_mean_mag"].to_numpy()
-            rp_mag = df["phot_rp_mean_mag"].to_numpy()
-            color_index = g_mag - rp_mag
-            
-            # Create 4 classes based on color (spectral type proxy)
-            # Class 0: Blue stars (O, B types) - color < 0.5
-            # Class 1: White/blue stars (A, F types) - 0.5 <= color < 1.0
-            # Class 2: Yellow stars (G, K types) - 1.0 <= color < 1.5
-            # Class 3: Red stars (M types) - color >= 1.5
-            y = torch.zeros(len(df), dtype=torch.long)
-            y[color_index < 0.5] = 0
-            y[(color_index >= 0.5) & (color_index < 1.0)] = 1
-            y[(color_index >= 1.0) & (color_index < 1.5)] = 2
-            y[color_index >= 1.5] = 3
-        else:
-            # For other surveys or if color not available, create random labels for testing
-            num_classes = 4  # Default number of classes
-            y = torch.randint(0, num_classes, (len(df),), dtype=torch.long)
-        
-        # Create k-NN graph with GPU acceleration
+        y = torch.zeros(len(df), dtype=torch.long)
         device = get_optimal_device()
         pos_device = pos.to(device)
-        
-        # Use torch_cluster for GPU-accelerated k-NN
         edge_index = torch_cluster.knn_graph(pos_device, k=self.k_neighbors, batch=None)
-        
-        # Move back to CPU for storage
         edge_index = edge_index.cpu()
-        
-        # Create PyG Data object with labels
-        data = Data(
-            x=x,
-            pos=pos,
-            edge_index=edge_index,
-            y=y,  # Add labels
-            num_nodes=len(pos)
-        )
-        
-        # Add survey metadata (both naming conventions for compatibility)
+        data = Data(x=x, pos=pos, edge_index=edge_index, y=y, num_nodes=len(pos))
         data.survey_name = self.survey
-        data.survey = self.survey  # For backward compatibility
+        data.survey = self.survey
         data.k_neighbors = self.k_neighbors
-        
         return data
 
-    def _get_coordinate_columns(self) -> List[str]:
-        """Get coordinate column names for the survey."""
-        # Return standardized coordinate columns (all surveys use these after preprocessing)
-        return ["ra", "dec"]
-
-    def _get_feature_columns(self) -> List[str]:
-        """Get feature column names for the survey after preprocessing."""
-        if self.survey == "gaia":
-            return ["ra", "dec", "parallax", "pmra", "pmdec", 
-                   "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
-        elif self.survey == "nsa":
-            return ["ra", "dec", "z", "mag"]
-        elif self.survey == "linear":
-            return ["ra", "dec", "mag", "period", "amplitude"]
-        elif self.survey == "exoplanet":
-            return ["ra", "dec", "period", "planet_radius", "planet_mass", "sy_dist"]
-        elif self.survey == "sdss":
-            return ["ra", "dec", "z", "r", "g", "i", "u", "z_mag"]
-        else:
-            # Generic fallback
-            return ["ra", "dec"]
-
-    # Survey-specific preprocessing methods
-    def _preprocess_gaia_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Preprocess Gaia data."""
-        return df.filter(
-            pl.col("parallax").is_not_null() & 
-            (pl.col("parallax") > 0) &
-            pl.col("phot_g_mean_mag").is_not_null()
-        ).select([
-            "ra", "dec", "parallax", "pmra", "pmdec",
-            "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"
-        ])
-
-    def _preprocess_gaia_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Preprocess Gaia data (lazy version)."""
-        return lf.filter(
-            pl.col("parallax").is_not_null() & 
-            (pl.col("parallax") > 0) &
-            pl.col("phot_g_mean_mag").is_not_null()
-        ).select([
-            "ra", "dec", "parallax", "pmra", "pmdec",
-            "phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"
-        ])
-
-    def _preprocess_sdss_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Preprocess SDSS data."""
-        return df.filter(
-            pl.col("ra").is_not_null() & 
-            pl.col("dec").is_not_null() &
-            pl.col("z").is_not_null()
-        ).select([
-            "ra", "dec", "z", "r", "g", "i", "u", "z_mag"
-        ])
-
-    def _preprocess_sdss_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Preprocess SDSS data (lazy version)."""
-        return lf.filter(
-            pl.col("ra").is_not_null() & 
-            pl.col("dec").is_not_null() &
-            pl.col("z").is_not_null()
-        ).select([
-            "ra", "dec", "z", "r", "g", "i", "u", "z_mag"
-        ])
-
-    def _preprocess_nsa_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Preprocess NSA data."""
-        return df.filter(
-            pl.col("RA").is_not_null() & 
-            pl.col("DEC").is_not_null()
-        ).select([
-            pl.col("RA").alias("ra"),
-            pl.col("DEC").alias("dec"), 
-            pl.col("Z").alias("z"),
-            pl.col("MAG").alias("mag")
-        ])
-
-    def _preprocess_nsa_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Preprocess NSA data (lazy version)."""
-        return lf.filter(
-            pl.col("RA").is_not_null() & 
-            pl.col("DEC").is_not_null()
-        ).select([
-            pl.col("RA").alias("ra"),
-            pl.col("DEC").alias("dec"),
-            pl.col("Z").alias("z"),
-            pl.col("MAG").alias("mag")
-        ])
-
-    def _preprocess_linear_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Preprocess LINEAR data."""
-        return df.filter(
-            pl.col("raLIN").is_not_null() & 
-            pl.col("decLIN").is_not_null() &
-            pl.col("<mL>").is_not_null()
-        ).select([
-            pl.col("raLIN").alias("ra"),
-            pl.col("decLIN").alias("dec"),
-            pl.col("<mL>").alias("mag"),
-            pl.col("LP1").alias("period"),
-            pl.col("std").alias("amplitude")
-        ])
-
-    def _preprocess_linear_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Preprocess LINEAR data (lazy version)."""
-        return lf.filter(
-            pl.col("raLIN").is_not_null() & 
-            pl.col("decLIN").is_not_null() &
-            pl.col("<mL>").is_not_null()
-        ).select([
-            pl.col("raLIN").alias("ra"),
-            pl.col("decLIN").alias("dec"),
-            pl.col("<mL>").alias("mag"),
-            pl.col("LP1").alias("period"),
-            pl.col("std").alias("amplitude")
-        ])
-
-    def _preprocess_exoplanet_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Preprocess exoplanet data."""
-        # First filter the data
-        df_filtered = df.filter(
-            pl.col("pl_orbper").is_not_null() & 
-            pl.col("sy_dist").is_not_null()
-        )
-        
-        # Create synthetic coordinates for the filtered data
-        n_objects = len(df_filtered)
-        np.random.seed(42)  # For reproducible results
-        
-        return df_filtered.with_columns([
-            # Create synthetic RA/DEC for testing purposes
-            pl.Series("ra", np.random.uniform(0, 360, n_objects)),
-            pl.Series("dec", np.random.uniform(-90, 90, n_objects)),
-            pl.col("pl_orbper").alias("period"),
-            pl.col("pl_radj").alias("planet_radius"),
-            pl.col("pl_massj").alias("planet_mass")
-        ]).select([
-            "ra", "dec", "period", "planet_radius", "planet_mass", "sy_dist"
-        ])
-
-    def _preprocess_exoplanet_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Preprocess exoplanet data (lazy version)."""
-        # For lazy version, collect first to add synthetic coordinates
-        df = lf.collect()
-        return pl.LazyFrame(self._preprocess_exoplanet_data(df))
-
-    def _preprocess_generic_data(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Preprocess generic data."""
-        return df.filter(
-            pl.col("ra").is_not_null() & 
-            pl.col("dec").is_not_null()
-        )
-
-    def _preprocess_generic_data_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Preprocess generic data (lazy version)."""
-        return lf.filter(
-            pl.col("ra").is_not_null() & 
-            pl.col("dec").is_not_null()
-        )
-
     def len(self) -> int:
-        """Number of samples in dataset."""
-        if self.data is None or self.slices is None:
-            # Try to process if not already done
-            if not Path(self.processed_paths[0]).exists():
-                self.process()
-            else:
-                # Load existing processed data
-                df = pl.read_parquet(self.processed_paths[0])
-                graph_data = self._create_graph_from_dataframe(df)
-                self.data, self.slices = self.collate([graph_data])
-        
-        if self.slices is None:
-            return 1 if hasattr(self.data, "num_nodes") else 0
-        
-        return len(self.slices[list(self.slices.keys())[0]]) - 1
+        return 1 if hasattr(self.data, "num_nodes") else 0
 
     def get(self, idx: int) -> Data:
-        """Get sample by index."""
-        if self.data is None or self.slices is None:
-            # Try to process if not already done
-            if not Path(self.processed_paths[0]).exists():
-                self.process()
-            else:
-                # Load existing processed data
-                df = pl.read_parquet(self.processed_paths[0])
-                graph_data = self._create_graph_from_dataframe(df)
-                self.data, self.slices = self.collate([graph_data])
-        
-        if self.slices is None:
-            if idx == 0:
-                return self.data
-            else:
-                raise IndexError(f"Index {idx} out of range for single graph dataset")
-        
-        return super().get(idx)
+        if idx == 0:
+            return self.data
+        else:
+            raise IndexError(f"Index {idx} out of range for single graph dataset")
 
     def get_info(self) -> Dict[str, Any]:
-        """Get dataset information."""
         if len(self) == 0:
             return {"error": "Dataset empty"}
-        
         sample = self[0]
-        
-        # Get column information based on survey config
-        columns = self._get_feature_columns()
-        
         return {
             "survey": self.survey,
             "num_samples": len(self),
@@ -860,9 +569,6 @@ class AstroDataset(InMemoryDataset):
             "num_edges": sample.edge_index.shape[1] if hasattr(sample, "edge_index") else 0,
             "num_features": sample.x.shape[1] if hasattr(sample, "x") else 0,
             "k_neighbors": self.k_neighbors,
-            "use_streaming": self.use_streaming,
-            "file_path": str(Path(self.root) / "processed" / f"{self.survey}.parquet"),
-            "columns": columns,  # Add columns information for tests
         }
 
 

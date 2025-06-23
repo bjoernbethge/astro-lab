@@ -1,45 +1,121 @@
 # AstroLab Default Configuration
 # =============================
+# Updated for 2025 best practices
 
 # Data Configuration
 data:
-  dataset: gaia # Specify dataset
+  dataset: gaia # Specify dataset: gaia, sdss, nsa, exoplanet
   data_dir: data/processed
   batch_size: 32
-  num_workers: 0 # Windows multiprocessing fix
+  num_workers: null # Auto-detect optimal workers (set to 0 for Windows)
   max_samples: 5000
+  k_neighbors: 8
   return_tensor: true
   split_ratios: [0.7, 0.15, 0.15]
 
+  # Data loading optimizations (2025)
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 2
+  drop_last: true
+  use_distributed_sampler: true
+
 # Model Configuration
 model:
-  type: gaia_classifier # Use supported model type
+  type: gaia_classifier # Supported: gaia_classifier, sdss_galaxy_classifier
   params:
     hidden_dim: 128
-    num_classes: 8
+    num_classes: null # Auto-detect from data
+    num_layers: 3
     dropout: 0.1
+    conv_type: gcn # Options: gcn, gat, sage, transformer
     use_batch_norm: true
+    activation: relu
+    pooling: mean # Options: mean, max, attention
 
 # Training Configuration
 training:
+  # Basic settings
   max_epochs: 100
   learning_rate: 0.001
   weight_decay: 0.0001
 
+  # Advanced optimization (2025)
+  gradient_accumulation_steps: 1
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: norm # Options: norm, value
+
+  # Learning rate scheduler
+  scheduler_type: cosine # Options: cosine, onecycle, plateau, cosine_warm_restarts
+  warmup_steps: 0
+
+  # Mixed precision training
+  precision: 16-mixed # Options: 32, 16-mixed, bf16-mixed
+  use_compile: false # PyTorch 2.0+ torch.compile
+
+  # Model EMA (Exponential Moving Average)
+  use_ema: false
+  ema_decay: 0.999
+
+  # Regularization
+  label_smoothing: 0.0
+
   # Early stopping
   patience: 10
 
+  # Stochastic Weight Averaging
+  use_swa: false
+  swa_lr: 0.001
+  swa_epoch_start: 0.8
+
+  # Distributed training
+  devices: auto # Number of GPUs or 'auto'
+  strategy: auto # Options: auto, ddp, fsdp, deepspeed_stage_2
+
+  # FSDP configuration (for models > 1B parameters)
+  fsdp_cpu_offload: false
+  fsdp_sharding_strategy: FULL_SHARD
+
+  # Performance tuning
+  deterministic: true # For reproducibility
+  benchmark: false # Enable for consistent workloads
+  profiler: null # Options: simple, advanced, pytorch
+
+  # Logging settings
+  log_every_n_steps: 50
+  val_check_interval: 1.0
+
 # MLflow Configuration
 mlflow:
-  tracking_uri: ./mlruns
+  tracking_uri: file:./data/experiments/mlruns
   experiment_name: astro_lab_default
-  experiment_description: "Default AstroLab experiment"
+  experiment_description: "Default AstroLab experiment with 2025 optimizations"
 
   tags:
     survey: gaia
     task: classification
-    version: v1.0
+    version: v2.0
+    year: 2025
 
+# Callbacks Configuration
 callbacks:
   early_stopping:
+    monitor: val_loss
     patience: 10
+    mode: min
+
+  model_checkpoint:
+    monitor: val_loss
+    save_top_k: 3
+    mode: min
+
+  lr_monitor:
+    logging_interval: step
+# Advanced Features (optional) - move to training section for better compatibility
+# gradient_accumulation_schedule: null
+# Example:
+# training:
+#   gradient_accumulation_schedule:
+#     0: 1
+#     10: 2
+#     20: 4

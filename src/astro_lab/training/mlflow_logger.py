@@ -40,12 +40,12 @@ class AstroMLflowLogger(MLFlowLogger):
         # Set up MLflow tracking URI and artifact location
         if tracking_uri is None:
             # Use proper file URI format for Windows
-            mlruns_path = Path.cwd() / "mlruns"
+            mlruns_path = Path.cwd() / "data" / "experiments" / "mlruns"
             tracking_uri = f"file:///{mlruns_path.as_posix()}"
 
         if artifact_location is None:
             # Use proper file URI format for Windows
-            artifacts_path = Path.cwd() / "data" / "experiments" / "mlruns"
+            artifacts_path = Path.cwd() / "data" / "experiments" / "artifacts"
             artifact_location = f"file:///{artifacts_path.as_posix()}"
 
         # Set environment variable for consistency
@@ -553,7 +553,12 @@ def setup_mlflow_experiment(
     # Use data_config system if no tracking URI provided
     if tracking_uri is None:
         data_config.ensure_experiment_directories(experiment_name)
-        tracking_uri = str(data_config.mlruns_dir)
+        exp_paths = data_config.get_experiment_paths(experiment_name)
+        tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
+        
+        # Set artifact location if not provided
+        if artifact_location is None:
+            artifact_location = f"file://{exp_paths['artifacts'].absolute()}"
 
     mlflow.set_tracking_uri(tracking_uri)
 

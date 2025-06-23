@@ -388,52 +388,34 @@ class AstroDataManager:
     def process_for_ml(
         self,
         raw_file: Union[str, Path],
-        output_name: Optional[str] = None,
+        survey: Optional[str] = None,
         filters: Optional[Dict] = None,
     ) -> Path:
-        """Process raw catalog for ML training."""
-
+        """Process raw catalog for ML training and save as {survey}.parquet in processed/{survey}/"""
         raw_file = Path(raw_file)
-
-        if output_name is None:
-            output_name = f"ml_{raw_file.stem}"
-
-        output_file = self.processed_dir / "ml_ready" / f"{output_name}.parquet"
-
-        print(f"🔄 Processing {raw_file.name} for ML...")
-
-        # Load raw data
+        if survey is None:
+            # Survey muss explizit angegeben werden!
+            raise ValueError("survey muss für ML-Processing angegeben werden!")
+        processed_dir = self.processed_dir / survey
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        output_path = processed_dir / f"{survey}.parquet"
+        print(f"\U0001F504 Processing {raw_file.name} for ML as {output_path} ...")
         df = pl.read_parquet(raw_file)
-
-        # Apply filters
         if filters:
             for col, (min_val, max_val) in filters.items():
                 if col in df.columns:
                     df = df.filter(pl.col(col).is_between(min_val, max_val))
-
-        # Remove rows with missing critical data
         critical_cols = ["ra", "dec"]
         if "phot_g_mean_mag" in df.columns:
             critical_cols.append("phot_g_mean_mag")
         elif "psfMag_r" in df.columns:
             critical_cols.append("psfMag_r")
-
         df = df.drop_nulls(subset=critical_cols)
-
-        # Normalize coordinates
-        df = df.with_columns(
-            [
-                (pl.col("ra") / 360.0).alias("ra_norm"),
-                ((pl.col("dec") + 90) / 180.0).alias("dec_norm"),
-            ]
-        )
-
-        # Save processed data
-        output_path = self.processed_dir / f"{raw_file.stem}.parquet"
+        df = df.with_columns([
+            (pl.col("ra") / 360.0).alias("ra_norm"),
+            ((pl.col("dec") + 90) / 180.0).alias("dec_norm"),
+        ])
         df.write_parquet(output_path)
-
-        # Save processing metadata
-
         metadata = {
             "source_file": str(raw_file),
             "processing_date": datetime.datetime.now().isoformat(),
@@ -442,73 +424,60 @@ class AstroDataManager:
             "n_sources_output": len(df),
             "columns": df.columns,
         }
-
         metadata_file = output_path.with_suffix(".json")
         with open(metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
-
-        print(f"✅ Processed {len(df):,} sources for ML")
+        print(f"\U00002705 Processed {len(df):,} sources for ML: {output_path}")
         return output_path
 
     def list_catalogs(self, data_type: str = "all") -> pl.DataFrame:
-        """List available catalogs."""
-
+        """List available catalogs, only survey-basiert für processed."""
         catalogs = []
-
         if data_type in ["all", "raw"]:
             for parquet_file in self.raw_dir.rglob("*.parquet"):
                 metadata_file = parquet_file.with_suffix(".json")
-
                 if metadata_file.exists():
                     with open(metadata_file) as f:
                         metadata = json.load(f)
                 else:
                     metadata = {"source": "Unknown", "n_sources": 0}
-
-                catalogs.append(
-                    {
-                        "name": parquet_file.name,
-                        "type": "raw",
-                        "source": metadata.get("source", "Unknown"),
-                        "n_sources": metadata.get("n_sources", 0),
-                        "size_mb": parquet_file.stat().st_size / 1024**2,
-                        "path": str(parquet_file),
-                    }
-                )
-
+                catalogs.append({
+                    "name": parquet_file.name,
+                    "type": "raw",
+                    "source": metadata.get("source", "Unknown"),
+                    "n_sources": metadata.get("n_sources", 0),
+                    "size_mb": parquet_file.stat().st_size / 1024**2,
+                    "path": str(parquet_file),
+                })
         if data_type in ["all", "processed"]:
-            for parquet_file in self.processed_dir.rglob("*.parquet"):
-                metadata_file = parquet_file.with_suffix(".json")
-
-                if metadata_file.exists():
-                    with open(metadata_file) as f:
-                        metadata = json.load(f)
-                else:
-                    metadata = {"source": "Unknown", "n_sources": 0}
-
-                catalogs.append(
-                    {
-                        "name": parquet_file.name,
-                        "type": "processed",
-                        "source": metadata.get("source_file", "Unknown"),
-                        "n_sources": metadata.get("n_sources_output", 0),
-                        "size_mb": parquet_file.stat().st_size / 1024**2,
-                        "path": str(parquet_file),
-                    }
-                )
-
+            # Nur survey-basiert anzeigen
+            for survey_dir in (self.processed_dir).iterdir():
+                if survey_dir.is_dir():
+                    parquet_file = survey_dir / f"{survey_dir.name}.parquet"
+                    if parquet_file.exists():
+                        metadata_file = parquet_file.with_suffix(".json")
+                        if metadata_file.exists():
+                            with open(metadata_file) as f:
+                                metadata = json.load(f)
+                        else:
+                            metadata = {"source": "Unknown", "n_sources": 0}
+                        catalogs.append({
+                            "name": parquet_file.name,
+                            "type": "processed",
+                            "source": metadata.get("source_file", "Unknown"),
+                            "n_sources": metadata.get("n_sources_output", 0),
+                            "size_mb": parquet_file.stat().st_size / 1024**2,
+                            "path": str(parquet_file),
+                        })
         if not catalogs:
-            return pl.DataFrame(
-                {
-                    "name": [],
-                    "type": [],
-                    "source": [],
-                    "n_sources": [],
-                    "size_mb": [],
-                    "path": [],
-                }
-            )
-
+            return pl.DataFrame({
+                "name": [],
+                "type": [],
+                "source": [],
+                "n_sources": [],
+                "size_mb": [],
+                "path": [],
+            })
         return pl.DataFrame(catalogs).sort("size_mb", descending=True)
 
     def load_catalog(self, catalog_path: Union[str, Path]) -> pl.DataFrame:
@@ -732,7 +701,7 @@ class AstroDataManager:
 
         dataset = AstroDataset(
             root=str(self.processed_dir),
-            survey_name=survey_name,
+            survey=survey_name,
             force_reload=force_reload,
         )
 

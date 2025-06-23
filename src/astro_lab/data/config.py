@@ -80,6 +80,11 @@ class DataConfig:
         """Configuration files directory."""
         return self.base_dir / "configs"
 
+    @property
+    def artifacts_dir(self) -> Path:
+        """MLflow artifacts directory."""
+        return self.experiments_dir / "artifacts"
+
     def get_survey_raw_dir(self, survey: str) -> Path:
         """Get raw directory for specific survey."""
         return self.raw_dir / survey
@@ -139,11 +144,13 @@ class DataConfig:
         mlruns_dir = self.mlruns_dir
         checkpoint_dir = self.checkpoints_dir / experiment_name
         logs_dir = self.logs_dir / experiment_name
+        artifacts_dir = self.artifacts_dir
 
         # Create only if they don't exist
         mlruns_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_dir.mkdir(parents=True, exist_ok=True)
         logs_dir.mkdir(parents=True, exist_ok=True)
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"🧪 Created experiment directories for {experiment_name}")
 
@@ -176,7 +183,8 @@ class DataConfig:
         return {
             "mlruns": self.mlruns_dir,
             "checkpoints": self.checkpoints_dir / experiment_name,
-            "config": self.configs_dir / f"{experiment_name}.yaml",
+            "artifacts": self.artifacts_dir,
+            "logs": self.logs_dir / experiment_name,
         }
 
     def migrate_old_structure(self):

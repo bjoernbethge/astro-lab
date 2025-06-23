@@ -71,7 +71,7 @@ def create_default_config(output_path: str = "config.yaml") -> None:
             },
             "mlflow": {
                 "experiment_name": "default_experiment",
-                "tracking_uri": "file:./mlruns"
+                "tracking_uri": "file:./data/experiments/mlruns"
             },
         }
 
@@ -91,7 +91,7 @@ def ensure_mlflow_block(config: dict) -> dict:
     if "experiment_name" not in config["mlflow"]:
         config["mlflow"]["experiment_name"] = config.get("training", {}).get("experiment_name", "default_experiment")
     if "tracking_uri" not in config["mlflow"]:
-        config["mlflow"]["tracking_uri"] = "file:./mlruns"
+        config["mlflow"]["tracking_uri"] = "file:./data/experiments/mlruns"
     return config
 
 def train_from_config(config_path: str) -> None:

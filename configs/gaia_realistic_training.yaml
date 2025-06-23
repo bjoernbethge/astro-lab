@@ -1,7 +1,8 @@
 # Realistic Gaia Stellar Classification Training
 # =============================================
-# Stable configuration to avoid NaN losses and get good results
+# Stable configuration with 2025 optimizations
 
+# Model Configuration
 model:
   type: gaia_classifier
   params:
@@ -13,12 +14,21 @@ model:
     use_batch_norm: true
     conv_type: "gcn" # Stable GCN layers
     activation: "relu"
+    pooling: "mean"
 
+# Data Configuration
 data:
   dataset: gaia
   data_dir: data/processed
   batch_size: 64 # Larger batch for stability
+  max_samples: null # Use all available samples
+  k_neighbors: 8
+
+  # Data loading optimizations (2025)
   num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  prefetch_factor: 2
   return_tensor: true
   split_ratios: [0.7, 0.15, 0.15] # Standard splits
 
@@ -26,66 +36,76 @@ data:
   normalize: true
   standardize: true
 
+# Training Configuration
 training:
+  # Basic settings
   max_epochs: 20
-  learning_rate: 0.0001 # Very conservative for 3M samples
+  learning_rate: 0.0001 # Conservative for large datasets
   weight_decay: 0.0001
 
-  # Gradient clipping to prevent explosions
-  gradient_clip_val: 0.5 # Stricter clipping
+  # Advanced optimization (2025)
+  gradient_accumulation_steps: 1
+  gradient_clip_val: 0.5 # Stricter clipping for stability
+  gradient_clip_algorithm: "norm"
 
-  # Task configuration
-  task: "stellar_classification"
+  # Learning rate scheduler
+  scheduler_type: "cosine" # More stable than step
+  warmup_steps: 100 # Warmup for stability
 
-  # Learning rate scheduling
-  lr_scheduler:
-    type: "step"
-    step_size: 10
-    gamma: 0.5
+  # Mixed precision (2025)
+  precision: "16-mixed" # Enable when stable
+  use_compile: false # Disable initially for debugging
 
-# Loss and optimization
-loss:
-  type: "cross_entropy"
+  # Model EMA for better generalization
+  use_ema: true
+  ema_decay: 0.999
+
+  # Regularization
   label_smoothing: 0.1 # Helps with overfitting
 
-optimizer:
-  type: "adam"
-  betas: [0.9, 0.999]
-  eps: 1e-8
+  # Callbacks
+  patience: 5 # Early stopping patience
+  use_swa: false # Enable later if needed
 
-# MLflow tracking
+  # Hardware settings
+  devices: auto
+  strategy: auto # Will use DDP if multiple GPUs
+
+  # Performance tuning
+  deterministic: true # For reproducibility
+  benchmark: false # For consistent timing
+  profiler: null # Enable for performance analysis
+
+# MLflow Configuration
 mlflow:
   tracking_uri: ./mlruns
-  experiment_name: gaia_realistic_training
-  experiment_description: "Stable Gaia stellar classification with proper hyperparameters"
+  experiment_name: gaia_realistic_training_2025
+  experiment_description: "Stable Gaia stellar classification with 2025 optimizations"
 
   tags:
     survey: Gaia
     task: stellar_classification
-    version: v1.0
+    version: v2.0
     stable: true
+    year: 2025
 
-# Callbacks for training stability
-callbacks:
-  early_stopping:
-    patience: 5
-    min_delta: 0.001
-    monitor: val_loss
-    mode: min
-
-  model_checkpoint:
-    monitor: val_loss
-    mode: min
-    save_top_k: 3
-    save_last: true
-    filename: "gaia_epoch_{epoch:02d}_loss_{val_loss:.4f}"
-
-  learning_rate_monitor:
-    logging_interval: epoch
-
+# Advanced Features
+advanced:
   # Gradient monitoring to catch problems early
-  gradient_monitor:
-    log_interval: 10
+  log_gradient_norm: true
+  gradient_log_interval: 10
+
+  # Model validation
+  check_finite_gradients: true
+  check_finite_losses: true
+  log_nan_warnings: true
+
+  # Memory optimization
+  empty_cache_freq: 100
+
+  # Logging
+  log_every_n_steps: 50
+  val_check_interval: 1.0
 
 # Validation and metrics
 validation:
@@ -96,25 +116,11 @@ validation:
     - "recall"
     - "confusion_matrix"
 
-# Resource management
-resources:
-  gpu: true
-  mixed_precision: false # Disable for stability initially
-  compile_model: false # Disable for debugging
-
-# Logging and debugging
-logging:
-  level: INFO
-  log_model_summary: true
-  log_gradients: true
-  log_predictions: false # Disable to reduce overhead
-
 # Reproducibility
 seed: 42
-deterministic: true
 
-# Model validation
-validation_checks:
-  check_finite_gradients: true
-  check_finite_losses: true
-  log_nan_warnings: true
+# Production readiness
+production:
+  save_onnx: false # Export to ONNX when ready
+  optimize_for_inference: false
+  quantize: false # 8-bit quantization for deployment
