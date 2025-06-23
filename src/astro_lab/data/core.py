@@ -548,7 +548,7 @@ class AstroDataset(InMemoryDataset):
 
     @property
     def raw_file_names(self) -> List[str]:
-        """Names of raw files in the `raw_dir`."""
+        """Names of raw files in the `raw_dir`. (Not used for ML workflows)"""
         return [f"{self.survey}.parquet"]
 
     @property
@@ -557,125 +557,27 @@ class AstroDataset(InMemoryDataset):
         return [f"{self.survey}.parquet"]
 
     def download(self):
-        """Check if raw Parquet data exists and convert if needed."""
-        # Handle different naming patterns for different surveys
-        if self.survey == "exoplanet":
-            raw_path = Path(self.root) / "raw" / "exoplanet" / "confirmed_exoplanets.parquet"
-        elif self.survey == "linear":
-            # LINEAR data might be in subdirectory with different name
-            raw_path = Path(self.root) / "raw" / "linear" / "linear_raw.parquet"
-            if not raw_path.exists():
-                # Try alternative naming
-                raw_path = Path(self.root) / "raw" / f"{self.survey}.parquet"
-        else:
-            # Standard naming for gaia, nsa, etc.
-            raw_path = Path(self.root) / "raw" / f"{self.survey}.parquet"
-        
-        if raw_path.exists():
-            return  # Raw data already exists
-        
-        # Check if we need to convert from other formats
-        if self.survey == "nsa":
-            from astro_lab.data.utils import convert_nsa_fits_to_parquet
-            
-            raw_dir = Path("data/raw/nsa")
-            fits_file = raw_dir / "nsa_v1_0_1.fits"
-            parquet_file = raw_dir / "nsa.parquet"
-            
-            if fits_file.exists() and not parquet_file.exists():
-                convert_nsa_fits_to_parquet(fits_file, parquet_file)
-        
-        # Copy to expected location if needed
-        if not raw_path.exists():
+        """Check if processed Parquet data exists and raise if missing."""
+        processed_path = Path(self.root) / "processed" / f"{self.survey}.parquet"
+        if not processed_path.exists():
             raise FileNotFoundError(
-                f"Raw Parquet file not found: {raw_path}\n"
+                f"Processed Parquet file not found: {processed_path}\n"
                 f"Run: uv run astro-lab preprocess --surveys {self.survey}"
             )
 
     def process(self):
-        """Modern Parquet → processed Parquet pipeline using Polars."""
-        # Use same path logic as download method
-        if self.survey == "exoplanet":
-            raw_path = Path(self.root) / "raw" / "exoplanet" / "confirmed_exoplanets.parquet"
-        elif self.survey == "linear":
-            raw_path = Path(self.root) / "raw" / "linear" / "linear_raw.parquet"
-            if not raw_path.exists():
-                raw_path = Path(self.root) / "raw" / f"{self.survey}.parquet"
-        else:
-            raw_path = Path(self.root) / "raw" / f"{self.survey}.parquet"
-            
+        """Load processed Parquet and create graph on-demand."""
         processed_path = Path(self.root) / "processed" / f"{self.survey}.parquet"
-        
-        if not raw_path.exists():
-            raise FileNotFoundError(f"Raw Parquet file not found: {raw_path}")
-
-        logger.info(f"🔄 Processing {self.survey} from Parquet: {raw_path}")
-        
-        try:
-            # Step 1: Load with Polars (streaming for large files)
-            if self.use_streaming:
-                lf = pl.scan_parquet(raw_path)
-                logger.info("📊 Using streaming mode for large dataset")
-            else:
-                df = pl.read_parquet(raw_path)
-                logger.info(f"📊 Loaded {len(df)} objects, {len(df.columns)} columns")
-            
-            # Step 2: Apply survey-specific preprocessing
-            if self.use_streaming:
-                lf_clean = self._apply_survey_preprocessing_lazy(lf)
-                if self.max_samples:
-                    lf_clean = lf_clean.head(self.max_samples)
-                df_clean = lf_clean.collect()
-            else:
-                df_clean = self._apply_survey_preprocessing(df)
-                if self.max_samples and len(df_clean) > self.max_samples:
-                    df_clean = df_clean.sample(self.max_samples, seed=42)
-            
-            logger.info(f"🧹 Preprocessed: {len(df_clean)} objects")
-            
-            # Step 3: Save processed Parquet
-            processed_path.parent.mkdir(parents=True, exist_ok=True)
-            df_clean.write_parquet(processed_path)
-            
-            # Step 4: Create PyG graph on-the-fly for InMemoryDataset
-            graph_data = self._create_graph_from_dataframe(df_clean)
-            self.data, self.slices = self.collate([graph_data])
-            
-            logger.info(f"✅ Processed {len(df_clean)} objects and created graph with {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to process {raw_path}: {e}")
-            raise
-
-    def _apply_survey_preprocessing(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Apply survey-specific preprocessing."""
-        if self.survey == "gaia":
-            return self._preprocess_gaia_data(df)
-        elif self.survey == "sdss":
-            return self._preprocess_sdss_data(df)
-        elif self.survey == "nsa":
-            return self._preprocess_nsa_data(df)
-        elif self.survey == "linear":
-            return self._preprocess_linear_data(df)
-        elif self.survey == "exoplanet":
-            return self._preprocess_exoplanet_data(df)
-        else:
-            return self._preprocess_generic_data(df)
-
-    def _apply_survey_preprocessing_lazy(self, lf: pl.LazyFrame) -> pl.LazyFrame:
-        """Apply survey-specific preprocessing (lazy version)."""
-        if self.survey == "gaia":
-            return self._preprocess_gaia_data_lazy(lf)
-        elif self.survey == "sdss":
-            return self._preprocess_sdss_data_lazy(lf)
-        elif self.survey == "nsa":
-            return self._preprocess_nsa_data_lazy(lf)
-        elif self.survey == "linear":
-            return self._preprocess_linear_data_lazy(lf)
-        elif self.survey == "exoplanet":
-            return self._preprocess_exoplanet_data_lazy(lf)
-        else:
-            return self._preprocess_generic_data_lazy(lf)
+        if not processed_path.exists():
+            raise FileNotFoundError(
+                f"Processed Parquet file not found: {processed_path}\n"
+                f"Run: uv run astro-lab preprocess --surveys {self.survey}"
+            )
+        logger.info(f"🔄 Loading processed {self.survey} from Parquet: {processed_path}")
+        df = pl.read_parquet(processed_path)
+        graph_data = self._create_graph_from_dataframe(df)
+        self.data, self.slices = self.collate([graph_data])
+        logger.info(f"✅ Loaded {len(df)} objects and created graph with {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges")
 
     def _create_graph_from_dataframe(self, df: pl.DataFrame) -> Data:
         """Create PyG graph from Polars DataFrame with GPU acceleration."""
