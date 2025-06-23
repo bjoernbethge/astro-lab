@@ -237,9 +237,9 @@ class TestFeatureTensorIntegration:
         names = ["ra", "dec", "mag_g", "mag_r"]
         feature_tensor = FeatureTensor(data=data, feature_names=names)
         
-        # Create column mapping for SurveyTensor with string values (column names)
+        # Create column mapping for SurveyTensor with integer indices
         column_mapping = {
-            "ra": "ra", "dec": "dec", "mag_g": "mag_g", "mag_r": "mag_r"
+            "ra": 0, "dec": 1, "mag_g": 2, "mag_r": 3
         }
         
         # Create SurveyTensor with the tensor data directly, not the FeatureTensor

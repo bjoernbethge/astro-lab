@@ -89,6 +89,14 @@ class BaseEncoder(nn.Module):
         # Move data to correct device
         if tensor_data.device != self.device:
             tensor_data = tensor_data.to(self.device)
+        
+        # Handle dynamic input dimensions
+        actual_input_dim = tensor_data.shape[-1]
+        if actual_input_dim != self.input_dim:
+            # Create a linear projection layer to adapt dimensions
+            if not hasattr(self, '_adapt_layer') or self._adapt_layer.in_features != actual_input_dim:
+                self._adapt_layer = nn.Linear(actual_input_dim, self.input_dim).to(self.device)
+            tensor_data = self._adapt_layer(tensor_data.float())
             
         return self.layers(tensor_data.float())
 

@@ -15,6 +15,7 @@ import traceback
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+import platform
 
 import click
 import yaml
@@ -22,6 +23,60 @@ import yaml
 # Configure clean logging
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
+
+# Windows emoji handling
+def safe_print(message: str) -> str:
+    """Remove emojis on Windows to avoid encoding issues."""
+    if platform.system() == "Windows":
+        # Replace common emojis with ASCII equivalents
+        replacements = {
+            "⭐": "*",
+            "🚀": ">>",
+            "📖": "[Examples]",
+            "💡": "[Tip]",
+            "🔧": "[Config]",
+            "📋": "[Info]",
+            "⚡": "[Quick]",
+            "🌟": "**",
+            "📊": "[Stats]",
+            "📈": "[Analysis]",
+            "✅": "[OK]",
+            "❌": "[ERROR]",
+            "⚠️": "[WARNING]",
+            "🔄": "[Processing]",
+            "💾": "[Saved]",
+            "📁": "[Directory]",
+            "📄": "[File]",
+            "🎉": "[Success]",
+            "🎯": "[Target]",
+            "📝": "[Config]",
+            "🏗️": "[Model]",
+            "🕸️": "[Graph]",
+            "🧠": "[ML]",
+            "⏹️": "[Stopped]",
+            "🌌": "[Survey]",
+        }
+        for emoji, replacement in replacements.items():
+            message = message.replace(emoji, replacement)
+    return message
+
+# Wrap logger methods
+original_info = logger.info
+original_error = logger.error
+original_warning = logger.warning
+
+def safe_info(msg, *args, **kwargs):
+    original_info(safe_print(str(msg)), *args, **kwargs)
+
+def safe_error(msg, *args, **kwargs):
+    original_error(safe_print(str(msg)), *args, **kwargs)
+
+def safe_warning(msg, *args, **kwargs):
+    original_warning(safe_print(str(msg)), *args, **kwargs)
+
+logger.info = safe_info
+logger.error = safe_error
+logger.warning = safe_warning
 
 # Removed memory.py - using simple gc instead
 import gc
@@ -57,7 +112,7 @@ def main():
     parser = argparse.ArgumentParser(
         description="AstroLab - Astronomical Machine Learning Laboratory",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog=safe_print("""
 🚀 Available Commands:
 
 astro-lab preprocess         Easy preprocessing - process all surveys or specific files
@@ -94,7 +149,7 @@ astro-lab train --config my_config.yaml
 astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 
 💡 Use 'astro-lab <command> --help' for detailed options!
-        """,
+        """),
     )
 
     parser.add_argument("--version", action="version", version="AstroLab 0.1.0")

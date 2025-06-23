@@ -30,34 +30,51 @@ class PhotometricTensor(AstroTensorBase):
             bands: List of photometric band names (e.g., ["u", "g", "r", "i", "z"])
             **kwargs: Additional arguments passed to parent
         """
+        # Handle case where another AstroTensorBase is passed
+        if hasattr(data, 'data') and isinstance(data.data, torch.Tensor):
+            # Extract the actual tensor data
+            tensor_data = data.data
+            # Copy metadata if available
+            if hasattr(data, 'meta') and 'meta' not in kwargs:
+                kwargs['meta'] = data.meta.copy()
+            # Use bands from the passed tensor if available
+            if hasattr(data, 'bands') and bands is None:
+                bands = data.bands
+        else:
+            tensor_data = data
+            
         # Set default bands if not provided
         if bands is None:
-            if isinstance(data, torch.Tensor):
-                num_bands = data.shape[1] if data.dim() > 1 else 1
+            if isinstance(tensor_data, torch.Tensor):
+                num_bands = tensor_data.shape[1] if tensor_data.dim() > 1 else 1
+            elif isinstance(tensor_data, np.ndarray):
+                num_bands = tensor_data.shape[1] if tensor_data.ndim > 1 else 1
             else:
-                num_bands = data.shape[1] if data.ndim > 1 else 1
+                num_bands = 1
             bands = [f"band_{i}" for i in range(num_bands)]
             
         # Convert data to tensor
-        if not isinstance(data, torch.Tensor):
-            data = torch.tensor(data, dtype=torch.float32)
+        if not isinstance(tensor_data, torch.Tensor):
+            tensor_data = torch.tensor(tensor_data, dtype=torch.float32)
             
         # Pass bands through kwargs to avoid direct assignment
         kwargs['bands'] = bands
-        super().__init__(data=data, **kwargs)
+        super().__init__(data=tensor_data, **kwargs)
 
     def _validate(self) -> None:
         """Validates the integrity of the photometric tensor data and metadata."""
+        # Call parent validation first
+        super()._validate()
+        
         if self.data.dim() < 1:
             raise ValueError("PhotometricTensor requires at least 1D data.")
 
         if not self.bands:
-            raise ValueError("PhotometricTensor requires a list of band names.")
+            raise ValueError("PhotometricTensor requires band names.")
 
         if self.data.shape[-1] != len(self.bands):
             raise ValueError(
-                f"Data's last dimension ({self.data.shape[-1]}) does not match "
-                f"the number of bands ({len(self.bands)})."
+                f"Data's last dimension ({self.data.shape[-1]}) doesn't match number of bands ({len(self.bands)})."
             )
 
         if self.measurement_errors is not None:
@@ -65,9 +82,20 @@ class PhotometricTensor(AstroTensorBase):
                 raise TypeError("measurement_errors must be a torch.Tensor.")
             if self.measurement_errors.shape != self.data.shape:
                 raise ValueError(
-                    f"measurement_errors shape ({self.measurement_errors.shape}) does not match "
-                    f"data shape ({self.data.shape})."
+                    f"measurement_errors shape ({self.measurement_errors.shape}) doesn't match data shape ({self.data.shape})."
                 )
+        
+        # Additional validation from the second method
+        # Check if number of bands matches data columns (redundant but kept for compatibility)
+        if self.data.dim() > 1 and len(self.bands) != self.data.shape[1]:
+            raise ValueError(f"Number of bands ({len(self.bands)}) doesn't match data columns ({self.data.shape[1]})")
+        
+        # Validate band names
+        valid_bands = {'u', 'g', 'r', 'i', 'z', 'U', 'B', 'V', 'R', 'I', 'J', 'H', 'K', 'y'}
+        invalid_bands = set(self.bands) - valid_bands
+        if invalid_bands and not any(band.startswith('band_') for band in invalid_bands):
+            # Only warn for non-generic band names
+            pass  # Allow custom band names for flexibility
 
     def get_band_data(self, band: str) -> torch.Tensor:
         """Extracts data for a specific band by name."""
@@ -268,18 +296,3 @@ class PhotometricTensor(AstroTensorBase):
             'J': 0.902, 'H': 0.576, 'K': 0.367
         }
         return {band: default_extinctions.get(band, 1.0) for band in self.bands}
-
-    def _validate(self) -> None:
-        """Validate the photometric tensor data and bands."""
-        super()._validate()
-        
-        # Check if number of bands matches data columns
-        if self.data.dim() > 1 and len(self.bands) != self.data.shape[1]:
-            raise ValueError(f"Number of bands ({len(self.bands)}) doesn't match data columns ({self.data.shape[1]})")
-        
-        # Validate band names
-        valid_bands = {'u', 'g', 'r', 'i', 'z', 'U', 'B', 'V', 'R', 'I', 'J', 'H', 'K', 'y'}
-        invalid_bands = set(self.bands) - valid_bands
-        if invalid_bands and not any(band.startswith('band_') for band in invalid_bands):
-            # Only warn for non-generic band names
-            pass  # Allow custom band names for flexibility

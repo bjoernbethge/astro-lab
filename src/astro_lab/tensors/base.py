@@ -106,6 +106,14 @@ class AstroTensorBase(BaseModel):
             raise ValueError("Tensor contains non-finite values (NaN or Inf).")
         return v
 
+    def _validate(self) -> None:
+        """
+        Base validation method that can be overridden by subclasses.
+        Called after initialization to perform additional validation.
+        """
+        # Base implementation does nothing - subclasses can override
+        pass
+
     def _create_new_instance(self, new_data: torch.Tensor, **extra_meta) -> Self:
         """
         Helper to create a new instance with updated data, preserving all other

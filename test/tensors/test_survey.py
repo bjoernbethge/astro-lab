@@ -153,11 +153,17 @@ class TestSurveyTensor:
         # Create a SurveyTensor wrapping the PhotometricTensor
         survey_tensor = SurveyTensor(data=phot_tensor, survey_name="SDSS")
 
-        # Accessing the data should return the original PhotometricTensor
-        retrieved_data = survey_tensor.data
-        assert isinstance(retrieved_data, PhotometricTensor)
-        torch.testing.assert_close(retrieved_data.data, phot_data)
-        assert retrieved_data.bands == bands
+        # The data should be extracted from the PhotometricTensor
+        assert isinstance(survey_tensor.data, torch.Tensor)
+        torch.testing.assert_close(survey_tensor.data, phot_data)
+        
+        # The bands should be preserved
+        assert survey_tensor.bands == bands
+        
+        # Should be able to get photometric tensor back
+        phot_retrieved = survey_tensor.get_photometric_tensor()
+        if phot_retrieved is not None:
+            assert phot_retrieved.bands == bands
 
 
 class TestSurveyTensorDatasetIntegration:

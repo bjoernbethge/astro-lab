@@ -6,6 +6,7 @@ Provides pytest configuration and common fixtures for testing
 the AstroLab framework.
 """
 
+import os
 import sys
 import tempfile
 import warnings
@@ -18,6 +19,14 @@ import pytest
 import torch
 import shutil
 
+# Performance optimization: Disable CUDA for tests unless explicitly needed
+if "CUDA_VISIBLE_DEVICES" not in os.environ:
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+# Optimize PyTorch settings for testing
+torch.set_num_threads(1)  # Reduce thread contention in parallel tests
+torch.set_grad_enabled(False)  # Disable gradients by default for faster tests
+
 # Add src to Python path for testing
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root / "src"))
@@ -29,9 +38,35 @@ sys.path.insert(0, str(project_root / "src"))
 warnings.filterwarnings("ignore", category=UserWarning, module="torch")
 warnings.filterwarnings("ignore", category=FutureWarning, module="torch")
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Memory management
 import gc
+
+# Test performance helpers
+def is_ci_environment():
+    """Check if we're running in a CI environment."""
+    ci_vars = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "JENKINS", "TRAVIS"]
+    return any(os.environ.get(var) for var in ci_vars)
+
+def should_skip_slow_tests():
+    """Check if slow tests should be skipped."""
+    return os.environ.get("SKIP_SLOW_TESTS", "").lower() in ("1", "true", "yes")
+
+# Pytest hooks for performance optimization
+def pytest_runtest_setup(item):
+    """Setup for each test - apply skip conditions."""
+    # Skip slow tests if requested
+    if should_skip_slow_tests() and "slow" in item.keywords:
+        pytest.skip("Skipping slow test (SKIP_SLOW_TESTS=1)")
+    
+    # Skip tests that require data if in CI
+    if is_ci_environment() and "requires_data" in item.keywords:
+        pytest.skip("Skipping data-dependent test in CI")
+    
+    # Skip CUDA tests if no GPU available
+    if "cuda" in item.keywords and not torch.cuda.is_available():
+        pytest.skip("CUDA not available")
 
 
 @pytest.fixture(autouse=True)
