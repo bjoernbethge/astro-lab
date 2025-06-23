@@ -36,17 +36,20 @@ class FeatureTensor(AstroTensorBase):
     data: torch.Tensor
     feature_names: List[str] = Field(default_factory=list, description="Names of features")
     
-    @field_validator("data", mode="before")
-    def allow_nan_inf(cls, v: Any) -> Any:
-        """Override base validator to allow non-finite values for feature engineering."""
-        return v
-        
     @field_validator("data")
+    @classmethod
     def validate_feature_data(cls, v):
+        """
+        Custom validator for FeatureTensor.
+        This overrides the base class validator to allow NaNs for imputation.
+        """
         if v.ndim == 1:
-            return v.unsqueeze(1)
+            v = v.unsqueeze(1)
         if v.ndim != 2:
             raise ValueError(f"FeatureTensor requires 2D data [N, F], but got shape {v.shape}")
+        if v.numel() == 0:
+            raise ValueError("FeatureTensor cannot be empty.")
+        # We explicitly DO NOT check for isfinite here, as this tensor is used for imputation.
         return v
 
     def __init__(self, data: torch.Tensor, **kwargs: Any):

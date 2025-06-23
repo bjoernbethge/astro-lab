@@ -65,6 +65,7 @@ class BaseAstroGNN(nn.Module):
         activation: str = "relu",
         use_residual: bool = True,
         use_layer_norm: bool = True,
+        device: Optional[Union[str, torch.device]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -76,6 +77,11 @@ class BaseAstroGNN(nn.Module):
         self.activation = activation
         self.use_residual = use_residual
         self.use_layer_norm = use_layer_norm
+
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
 
         # Input projection layer
         self.input_projection = nn.Linear(input_dim, hidden_dim)
@@ -96,6 +102,9 @@ class BaseAstroGNN(nn.Module):
 
         # Apply weight initialization
         self.apply(initialize_weights)
+
+        # Move model to the specified device
+        self.to(self.device)
 
     def _build_conv_layers(self) -> nn.ModuleList:
         """Build graph convolution layers based on conv_type."""

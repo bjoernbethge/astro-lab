@@ -23,7 +23,7 @@ os.environ["ASTROML_DATA"] = str(_data_dir)
 
 # Import main modules
 from astro_lab import data
-from astro_lab.models import *
+# from astro_lab.models import * # This causes cascading import errors
 from astro_lab.tensors import *
 from astro_lab.utils import *
 

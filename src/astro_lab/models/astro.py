@@ -76,17 +76,20 @@ class AstroSurveyGNN(BaseAstroGNN):
         if self.use_photometry:
             self.photometry_encoder = PhotometryEncoder(
                 input_dim=len(kwargs.get("photometry_bands", [])), 
-                output_dim=hidden_dim // 2
+                output_dim=hidden_dim // 2,
+                device=self.device
             )
         if self.use_spectroscopy:
             self.spectroscopy_encoder = SpectroscopyEncoder(
                 input_dim=kwargs.get("spectroscopy_features", 100), 
-                output_dim=hidden_dim // 2
+                output_dim=hidden_dim // 2,
+                device=self.device
             )
         if self.use_astrometry:
             self.astrometry_encoder = AstrometryEncoder(
                 input_dim=kwargs.get("astrometry_features", 5), 
-                output_dim=hidden_dim // 2
+                output_dim=hidden_dim // 2,
+                device=self.device
             )
 
         # Feature fusion
@@ -115,6 +118,7 @@ class AstroSurveyGNN(BaseAstroGNN):
         )
 
         self.apply(initialize_weights)
+        self.to(self.device) # Ensure the entire model is on the correct device
 
     def _calculate_fusion_dim(self) -> int:
         """Calculate dimension for feature fusion."""
@@ -128,83 +132,74 @@ class AstroSurveyGNN(BaseAstroGNN):
 
         return max(dim, self.hidden_dim)
 
-    def extract_survey_features(self, survey_tensor: SurveyTensor) -> torch.Tensor:
-        """Extract features from SurveyTensor using native methods."""
+    def extract_survey_features(self, survey_data: Union[SurveyTensor, Dict[str, Any]]) -> torch.Tensor:
+        """Extract and fuse features from a SurveyTensor or a dictionary of tensors."""
         features = []
+        
+        is_tensor_obj = not isinstance(survey_data, dict)
+
+        def get_data_from_source(feature_type: str):
+            if is_tensor_obj:
+                try:
+                    method_name = f"get_{feature_type}_tensor"
+                    return getattr(survey_data, method_name)()
+                except (ValueError, AttributeError):
+                    return None
+            else:
+                return survey_data.get(feature_type)
 
         if self.use_photometry:
-            try:
-                phot_tensor = survey_tensor.get_photometric_tensor()
-                phot_features = self.photometry_encoder(phot_tensor)
-                features.append(phot_features)
-            except (ValueError, AttributeError):
-                batch_size = len(survey_tensor)
-                phot_features = torch.zeros(
-                    batch_size, self.hidden_dim // 2, device=survey_tensor._data.device
-                )
-                features.append(phot_features)
+            phot_data = get_data_from_source("photometry")
+            if phot_data is not None:
+                features.append(self.photometry_encoder(phot_data.to(self.device)))
 
         if self.use_astrometry:
-            try:
-                spatial_tensor = survey_tensor.get_spatial_tensor()
-                astro_features = self.astrometry_encoder(spatial_tensor)
-                features.append(astro_features)
-            except (ValueError, AttributeError):
-                batch_size = len(survey_tensor)
-                astro_features = torch.zeros(
-                    batch_size, self.hidden_dim // 2, device=survey_tensor._data.device
-                )
-                features.append(astro_features)
+            astro_data = get_data_from_source("astrometry") or get_data_from_source("spatial")
+            if astro_data is not None:
+                features.append(self.astrometry_encoder(astro_data.to(self.device)))
 
         if self.use_spectroscopy:
-            try:
-                spec_features = self.spectroscopy_encoder(survey_tensor)
-                features.append(spec_features)
-            except (ValueError, AttributeError):
-                batch_size = len(survey_tensor)
-                spec_features = torch.zeros(
-                    batch_size, self.hidden_dim // 2, device=survey_tensor._data.device
-                )
-                features.append(spec_features)
+            spec_data = get_data_from_source("spectroscopy")
+            if spec_data is not None:
+                features.append(self.spectroscopy_encoder(spec_data.to(self.device)))
 
-        if features:
+        if not features:
+             raise ValueError("No features could be extracted from the input data.")
+
+        if len(features) > 1:
             combined_features = torch.cat(features, dim=-1)
             fused_features = self.feature_fusion(combined_features)
         else:
-            raw_data = survey_tensor._data
-            if not hasattr(self, "raw_data_proj"):
-                self.raw_data_proj = Linear(raw_data.size(-1), self.hidden_dim).to(
-                    raw_data.device
-                )
-            fused_features = self.raw_data_proj(raw_data)
-
+            fused_features = features[0]
+            
         return fused_features
 
     def forward(
         self,
-        x: Union[torch.Tensor, SurveyTensor],
+        x: Union[torch.Tensor, SurveyTensor, Dict[str, Any]],
         edge_index: torch.Tensor,
         batch: Optional[torch.Tensor] = None,
         return_embeddings: bool = False,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """Forward pass with native tensor support."""
-        # Handle different input types
-        if hasattr(x, "_data") and hasattr(x, "get_photometric_tensor"):
-            h = self.extract_survey_features(x)  # type: ignore
+        # Ensure edge_index is on the correct device
+        edge_index = edge_index.to(self.device)
+        if batch is not None:
+            batch = batch.to(self.device)
+
+        if isinstance(x, (SurveyTensor, dict)):
+            h = self.extract_survey_features(x)
         else:
-            h = x if isinstance(x, torch.Tensor) else x._data  # type: ignore
-            if h.dim() == 1:
-                h = h.unsqueeze(0)
+            h = x.to(self.device)
 
         if not isinstance(h, torch.Tensor):
-            h = h._data  # type: ignore
+            h = h.data.to(self.device)
 
         if h.size(-1) != self.hidden_dim:
             if not hasattr(self, "input_proj"):
                 self.input_proj = Linear(h.size(-1), self.hidden_dim).to(h.device)
             h = self.input_proj(h)
 
-        # Graph convolutions
         for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
             h_prev = h
             h = conv(h, edge_index)
@@ -222,15 +217,9 @@ class AstroSurveyGNN(BaseAstroGNN):
         if "graph" in self.task:
             if batch is None:
                 batch = torch.zeros(h.size(0), dtype=torch.long, device=h.device)
-
-            if self.pooling == "mean":
-                h = global_mean_pool(h, batch)
-            elif self.pooling == "max":
-                h = global_max_pool(h, batch)
-            elif self.pooling == "add":
-                h = global_add_pool(h, batch)
-            else:
-                h = global_mean_pool(h, batch)
+            
+            pooling_fn = self.get_pooling_fn(self.pooling)
+            h = pooling_fn(h, batch)
 
         output = self.output_head(h)
 

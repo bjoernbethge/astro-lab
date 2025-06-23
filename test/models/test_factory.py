@@ -34,12 +34,17 @@ from astro_lab.tensors import SurveyTensor, PhotometricTensor, LightcurveTensor
 # Mock data for testing
 @pytest.fixture
 def mock_survey_data():
-    photometry = torch.randn(10, 5)
-    return {"photometry": PhotometricTensor(data=photometry, bands=['u','g','r','i','z'])}
+    photometry = PhotometricTensor(data=torch.randn(10, 5), bands=['u','g','r','i','z'])
+    edge_index = torch.randint(0, 10, (2, 20), dtype=torch.long)
+    # The GNN expects a dictionary of tensors for features `x` and a separate `edge_index`
+    return {"photometry": photometry, "edge_index": edge_index}
 
 @pytest.fixture
 def mock_temporal_data():
-    lightcurve = torch.randn(10, 20, 1) # 10 samples, 20 time steps, 1 feature
+    # A single lightcurve with 20 time steps, and 2 features (time, mag)
+    lightcurve = torch.randn(20, 2)
+    # Sort by time
+    lightcurve[:, 0] = torch.sort(lightcurve[:, 0]).values
     return {"lightcurve": LightcurveTensor(data=lightcurve)}
 
 
@@ -97,7 +102,7 @@ class TestModelFactory:
             "gaia", task="stellar_classification", photometry_bands=['u','g','r','i','z']
         )
         assert isinstance(model, AstroSurveyGNN)
-        output = model(mock_survey_data)
+        output = model(mock_survey_data, mock_survey_data["edge_index"])
         assert output.shape[0] == 10
 
     def test_temporal_model_creation(self, mock_temporal_data):
@@ -127,7 +132,7 @@ class TestModelFactory:
             config, task="multi_property_prediction"
         )
         assert isinstance(model, AstroSurveyGNN)
-        output = model(mock_survey_data)
+        output = model(mock_survey_data, mock_survey_data["edge_index"])
         assert output.shape[0] == 10
 
 
@@ -229,7 +234,7 @@ class TestConvenienceFunctions:
         """Test create_gaia_classifier convenience function."""
         model = create_gaia_classifier(num_classes=7, hidden_dim=128, photometry_bands=['u','g','r','i','z'])
         assert isinstance(model, AstroSurveyGNN)
-        output = model(mock_survey_data)
+        output = model(mock_survey_data, mock_survey_data["edge_index"])
         assert output.shape == (10, 7)
 
     def test_create_sdss_galaxy_model(self, mock_survey_data):
@@ -329,7 +334,7 @@ class TestModelIntegration:
         """Test that factory-created models are compatible with data."""
         factory = ModelFactory()
         model = factory.create_survey_model("gaia", task="stellar_classification", photometry_bands=['u','g','r','i','z'])
-        output = model(mock_survey_data)
+        output = model(mock_survey_data, mock_survey_data["edge_index"])
         assert output.shape[0] == 10
         assert output.shape[1] > 1
 
@@ -337,7 +342,7 @@ class TestModelIntegration:
         """Test forward pass of factory-created models."""
         factory = ModelFactory()
         model = factory.create_survey_model("sdss", task="galaxy_property_prediction", photometry_bands=['u','g','r','i','z'])
-        output = model(mock_survey_data)
+        output = model(mock_survey_data, mock_survey_data["edge_index"])
         assert output.shape[0] == 10
 
     def test_device_consistency(self):
@@ -360,6 +365,7 @@ class TestModelIntegration:
         # Create test input with deterministic values
         batch_size = 5
         photometry_data = torch.randn(batch_size, 5) # 5 bands
+        edge_index = torch.randint(0, batch_size, (2, 10), dtype=torch.long)
         photometry_tensor = PhotometricTensor(data=photometry_data, bands=['u','g','r','i','z'])
         x = {"photometry": photometry_tensor}
         
@@ -367,14 +373,14 @@ class TestModelIntegration:
         model_cpu = model.cpu()
         model_cpu.eval()  # Set to eval mode for consistent behavior
         with torch.no_grad():
-            output_cpu = model_cpu(x)
+            output_cpu = model_cpu(x, edge_index)
         
         # Test on GPU
         model_gpu = model.cuda()
         model_gpu.eval()  # Set to eval mode for consistent behavior
         with torch.no_grad():
             gpu_photometry_tensor = PhotometricTensor(data=photometry_data.cuda(), bands=['u','g','r','i','z'])
-            output_gpu = model_gpu({"photometry": gpu_photometry_tensor})
+            output_gpu = model_gpu({"photometry": gpu_photometry_tensor}, edge_index.cuda())
         
         # Compare outputs with much higher tolerance for PyTorch Geometric
         # CPU/GPU differences are expected in GNNs due to different implementations

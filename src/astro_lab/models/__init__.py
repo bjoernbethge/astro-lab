@@ -64,7 +64,7 @@ from .encoders import (
     PhotometryEncoder,
     SpectroscopyEncoder,
     create_encoder,
-    EncoderRegistry,
+    ENCODER_REGISTRY,
 )
 
 # Factory and registry
@@ -169,7 +169,7 @@ __all__ = [
     "SpectroscopyEncoder",
     "LightcurveEncoder",
     "create_encoder",
-    "EncoderRegistry",
+    "ENCODER_REGISTRY",
     
     # Output Heads
     "OutputHeadRegistry",

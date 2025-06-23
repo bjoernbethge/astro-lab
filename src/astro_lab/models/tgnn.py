@@ -315,11 +315,12 @@ class ALCDEFTemporalGNN(nn.Module):
         self.task = task
         self.dropout = dropout
 
-        # Encoders for node features
-        self.lightcurve_encoder = LightcurveEncoder(
-            input_dim=config.get("lightcurve_features", 1),
-            hidden_dim=hidden_dim, 
-            output_dim=hidden_dim
+        # Encoder for lightcurve data
+        self.encoder = LightcurveEncoder(
+            input_dim=kwargs.get("lightcurve_features", 1),
+            hidden_dim=hidden_dim,
+            output_dim=hidden_dim,
+            num_layers=num_layers,
         )
         if self.use_static_features:
             self.static_encoder = nn.Linear(
@@ -361,7 +362,7 @@ class ALCDEFTemporalGNN(nn.Module):
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
         """Forward pass with native lightcurve support."""
         # Extract features using existing LightcurveEncoder
-        h = self.lightcurve_encoder(lightcurve)
+        h = self.encoder(lightcurve)
 
         # Graph convolutions for temporal relationships
         for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):

@@ -17,10 +17,9 @@ from astro_lab.models.encoders import (
     SpectroscopyEncoder,
     AstrometryEncoder,
     LightcurveEncoder,
+    create_encoder,
+    ENCODER_REGISTRY,
 )
-from astro_lab.models.factory import create_encoder
-
-# Import real tensor classes
 from astro_lab.tensors import (
     LightcurveTensor,
     PhotometricTensor,

@@ -170,3 +170,24 @@ ENCODER_REGISTRY = {
     "lightcurve": LightcurveEncoder,
     "spatial_3d": Spatial3DEncoder,
 }
+
+
+def create_encoder(encoder_type: str, **kwargs: Any) -> BaseEncoder:
+    """
+    Factory function to create an encoder based on its type.
+
+    Args:
+        encoder_type: The type of encoder to create (e.g., 'photometry').
+        **kwargs: Arguments to pass to the encoder's constructor.
+
+    Returns:
+        An instance of the specified encoder.
+
+    Raises:
+        ValueError: If the encoder_type is not found in the registry.
+    """
+    if encoder_type not in ENCODER_REGISTRY:
+        raise ValueError(f"Unknown encoder type: '{encoder_type}'. Available encoders are: {list(ENCODER_REGISTRY.keys())}")
+    
+    encoder_class = ENCODER_REGISTRY[encoder_type]
+    return encoder_class(**kwargs)
