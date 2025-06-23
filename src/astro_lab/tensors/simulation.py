@@ -17,6 +17,7 @@ import torch
 from pydantic import Field, field_validator, model_validator, PrivateAttr
 from typing_extensions import Self
 from torch_geometric.data import Data as PyGData
+import json
 
 from .base import AstroTensorBase
 
@@ -45,47 +46,69 @@ class CosmologyCalculator:
 
     def hubble_parameter(self, z: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
         """Calculate Hubble parameter H(z)."""
-        return self.H0 * torch.sqrt(
-            self.Omega_m * (1 + z) ** 3
-            + self.Omega_k * (1 + z) ** 2
+        was_tensor = isinstance(z, torch.Tensor)
+        # Ensure calculation is done with tensors
+        z_tensor = torch.as_tensor(z, dtype=torch.float32)
+
+        h_sq = (
+            self.Omega_m * (1 + z_tensor) ** 3
+            + self.Omega_k * (1 + z_tensor) ** 2
             + self.Omega_Lambda
         )
+        result = self.H0 * torch.sqrt(h_sq)
+        
+        # Return the same type as the input
+        return result if was_tensor else result.item()
 
     def _comoving_distance_integrand(self, z_prime):
+        # hubble_parameter now correctly returns a float for a float input
         return 1.0 / self.hubble_parameter(z_prime)
 
     def comoving_distance(self, z: Union[float, np.ndarray, torch.Tensor]) -> Union[float, np.ndarray, torch.Tensor]:
         """Calculate comoving distance (in Mpc)."""
         from scipy.integrate import quad
         
+        c = 299792.458  # Speed of light in km/s
+        
         def single_comoving_distance(z_val):
-            c = 299792.458  # Speed of light in km/s
+            # The integral of 1/H(z) gives a result in units of 1/(km/s/Mpc) = s*Mpc/km
+            # Multiplying by c (km/s) gives the distance in Mpc.
             distance, _ = quad(self._comoving_distance_integrand, 0, z_val)
             return c * distance
 
-        if isinstance(z, (np.ndarray, torch.Tensor)):
+        if isinstance(z, torch.Tensor):
+            if z.dim() == 0:
+                return single_comoving_distance(z.item())
+            # Efficiently handle tensor inputs
+            results = [single_comoving_distance(zi.item()) for zi in z]
+            return torch.tensor(results, device=z.device, dtype=torch.float32)
+        elif isinstance(z, np.ndarray):
             return np.vectorize(single_comoving_distance)(z)
+            
         return single_comoving_distance(z)
 
     def angular_diameter_distance(self, z: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
         """Calculate angular diameter distance."""
-        return self.comoving_distance(z) / (1 + z)
+        return self.comoving_distance(z) / (1.0 + z)
 
     def luminosity_distance(self, z: Union[float, torch.Tensor]) -> Union[float, torch.Tensor]:
         """Calculate luminosity distance."""
-        return self.comoving_distance(z) * (1 + z)
+        return self.comoving_distance(z) * (1.0 + z)
 
     def _age_integrand(self, z):
+        # hubble_parameter now correctly returns a float for a float input
         return 1.0 / ((1 + z) * self.hubble_parameter(z))
 
     def age_of_universe(self, z: Union[float, torch.Tensor] = 0) -> Union[float, torch.Tensor]:
         """Calculate the age of the universe at redshift z (in Gyr)."""
         from scipy.integrate import quad
         
-        # FIX: Handle tensor input for logspace
-        if isinstance(z, torch.Tensor) and z.dim() > 0:
-            ages = [self.age_of_universe(zi.item()) for zi in z]
-            return torch.tensor(ages, device=z.device, dtype=z.dtype)
+        if isinstance(z, torch.Tensor):
+            if z.dim() == 0:
+                z = z.item() # Treat as float
+            else:
+                ages = [self.age_of_universe(zi.item()) for zi in z]
+                return torch.tensor(ages, device=z.device, dtype=torch.float32)
 
         # Integration from z to infinity
         integral, _ = quad(self._age_integrand, z, np.inf)
@@ -222,7 +245,8 @@ class SimulationTensor(AstroTensorBase):
             simulation_name=self.simulation_name,
             particle_type=self.particle_type,
             box_size=self.box_size,
-            redshift=self.redshift
+            redshift=self.redshift,
+            meta=self.meta,
         )
 
     @classmethod
@@ -235,12 +259,14 @@ class SimulationTensor(AstroTensorBase):
         if hasattr(data, 'x') and data.x is not None:
             tensor_data = torch.cat([data.pos, data.x], dim=1)
 
-        sim_kwargs = {k: v for k, v in data if k not in ['x', 'pos', 'edge_index']}
+        sim_kwargs = {k: v for k, v in data if k not in ['x', 'pos', 'edge_index', 'meta']}
         sim_kwargs.update(kwargs)
-        
+        if hasattr(data, "meta") and data.meta is not None:
+            sim_kwargs["meta"] = data.meta
+
         return cls(
             data=tensor_data,
-            edge_index=data.edge_index,
+            edge_index=getattr(data, "edge_index", None),
             **sim_kwargs
         )
 
@@ -250,6 +276,11 @@ class SimulationTensor(AstroTensorBase):
         # For now, we mutate in place, which is not ideal.
         object.__setattr__(self, 'redshift', new_redshift)
         self._update_cosmological_metadata()
+
+        return self._create_new_instance(
+            data=self.data.clone(), 
+            redshift=new_redshift
+        )
 
     def to_pyvista(self, scalars: Optional[Union[str, torch.Tensor]] = None) -> Any:
         """Convert particle positions to a PyVista PolyData object for 3D visualization."""
@@ -263,14 +294,16 @@ class SimulationTensor(AstroTensorBase):
 
         if scalars is not None:
             if isinstance(scalars, str):
-                if self.features is None or scalars not in self.feature_names:
-                    raise ValueError(f"Feature '{scalars}' not found in feature_names.")
-                scalar_data = self.features[:, self.feature_names.index(scalars)]
-            else:
-                scalar_data = torch.as_tensor(scalars)
-
-            poly[str(scalars) if isinstance(scalars, str) else "scalars"] = scalar_data.detach().cpu().numpy()
-
+                if self.feature_names and scalars in self.feature_names:
+                    idx = self.feature_names.index(scalars)
+                    point_cloud = poly.point_data
+                    point_cloud[scalars] = self.features[:, idx].cpu().numpy()
+                else:
+                    logger.warning(f"Feature '{scalars}' not found in feature_names.")
+            elif isinstance(scalars, torch.Tensor):
+                point_cloud = poly.point_data
+                point_cloud["custom_scalars"] = scalars.cpu().numpy()
+            
         return poly
 
     def to_blender(self, name: str = "simulation") -> Dict[str, Any]:
@@ -278,29 +311,50 @@ class SimulationTensor(AstroTensorBase):
         # FIX: Provide a default function to handle tensor serialization
         def tensor_serializer(obj):
             if isinstance(obj, torch.Tensor):
-                return obj.tolist()
-            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+                return obj.cpu().numpy().tolist()
+            raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
-        return {
+        positions_list = self.positions.cpu().numpy().tolist()
+        
+        # Prepare feature data for Blender custom properties
+        features_dict = {}
+        if self.features is not None and self.feature_names:
+            for i, fname in enumerate(self.feature_names):
+                features_dict[fname] = self.features[:, i].cpu().numpy().tolist()
+
+        return json.loads(json.dumps({
             "name": name,
-            "type": "geometry",
-            "positions": self.positions.detach().cpu().numpy(),
-            "edges": self.edge_index.detach().cpu().numpy().T if self.edge_index is not None else [],
-            "metadata": self.model_dump_json(exclude={'data', 'edge_index'}, default=tensor_serializer)
-        }
+            "positions": positions_list,
+            "features": features_dict,
+            "meta": self.meta,
+            "model_dump": self.model_dump(exclude={"data", "edge_index"})
+        }, default=tensor_serializer))
         
     def memory_info(self) -> Dict[str, str]:
-        """Returns information about the tensor's memory usage."""
+        """Return memory usage information."""
         total_bytes = self.data.element_size() * self.data.nelement()
         if self.edge_index is not None:
             total_bytes += self.edge_index.element_size() * self.edge_index.nelement()
         
-        gb = total_bytes / (1024 ** 3)
-        return {"total_size_gb": f"{gb:.4f}"}
+        mem_bytes = total_bytes
+        if self.edge_index is not None:
+            mem_bytes += self.edge_index.element_size() * self.edge_index.nelement()
+            
+        total_mem_mb = mem_bytes / (1024 * 1024)
+        return {
+            "total_size_mb": f"{total_mem_mb:.2f}",
+            "device": str(self.device),
+            "dtype": str(self.dtype)
+        }
 
     def __repr__(self) -> str:
-        base_repr = super().__repr__()
-        return f"{base_repr[:-1]}, sim='{self.simulation_name}', particles={self.num_particles}, z={self.redshift:.2f})"
+        """A more informative representation of the SimulationTensor."""
+        feature_str = f", features={list(self.feature_names)}" if self.feature_names else ""
+        edge_str = f", edges={self.edge_index.shape[1]}" if self.edge_index is not None else ""
+        return (
+            f"SimulationTensor(name='{self.simulation_name}', particles={self.num_particles}, "
+            f"redshift={self.redshift:.2f}{feature_str}{edge_str}, device={self.device})"
+        )
 
 
 __all__ = [
