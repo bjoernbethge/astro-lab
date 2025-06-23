@@ -344,42 +344,47 @@ class TestTrainingConfigurations:
 class TestHyperparameterOptimization:
     """Test hyperparameter optimization functionality in AstroTrainer."""
 
-    @pytest.mark.parametrize("dataset_fixture", ["gaia_dataset"])
+    @pytest.mark.parametrize("dataset_fixture", ["nsa_dataset"])  # Use NSA instead of Gaia since it has more samples
     def test_optimize_hyperparameters_basic(self, request, dataset_fixture):
-        """Test basic hyperparameter optimization using dataset fixture."""
-        # Get dataset from parametrized fixture
+        """Test basic hyperparameter optimization using synthetic data."""
+        # Get dataset from parametrized fixture for metadata only
         dataset = request.getfixturevalue(dataset_fixture)
+        
+        # Create synthetic dataloaders like the working trainer tests
+        def create_synthetic_dataloader(batch_size=8, num_batches=3):
+            """Create synthetic dataloader for testing hyperparameter optimization."""
+            data_list = []
+            for _ in range(num_batches):
+                x = torch.randn(50, 6)  # 50 nodes, 6 features (similar to NSA)
+                edge_index = torch.randint(0, 50, (2, 150))  # 150 edges
+                y = torch.randint(0, 3, (50,))  # 3 classes for classification
+                
+                from torch_geometric.data import Data
+                data = Data(x=x, edge_index=edge_index, y=y, num_nodes=50)
+                data.survey = "nsa"  # Add survey metadata
+                data_list.append(data)
+                
+            from torch_geometric.loader import DataLoader
+            return DataLoader(data_list, batch_size=1, shuffle=True)
 
-        # Create dataloaders from the fixture
-        from torch_geometric.loader import DataLoader
-        train_loader = DataLoader([dataset[i] for i in range(8)], batch_size=2, shuffle=True)
-        val_loader = DataLoader([dataset[i] for i in range(8, 10)], batch_size=2, shuffle=False)
+        train_loader = create_synthetic_dataloader()
+        val_loader = create_synthetic_dataloader()
 
-        # Create model and lightning module
-        model = AstroSurveyGNN(hidden_dim=32, output_dim=4)
+        # Create model and lightning module like in test_cuda.py
+        model = AstroSurveyGNN(hidden_dim=32, output_dim=3)  # 3 classes
         lightning_module = AstroLightningModule(
             model=model,
             task_type="classification",
             learning_rate=1e-3
         )
 
-        # Mock AstroTrainer to avoid actual optimization
-        class MockAstroTrainer:
-            def __init__(self, **kwargs):
-                pass
-
-            def optimize_hyperparameters(self, **kwargs):
-                return {
-                    "best_params": {"learning_rate": 0.001, "dropout": 0.2},
-                    "best_value": 0.95,
-                    "n_trials": 2
-                }
-
-        # Create trainer
-        trainer = MockAstroTrainer(
+        # Use simplified AstroTrainer without complex config (like test_cuda.py)
+        from astro_lab.training.trainer import AstroTrainer
+        
+        trainer = AstroTrainer(
             lightning_module=lightning_module,
-            max_epochs=2,  # Very short for testing
-            enable_progress_bar=False,
+            max_epochs=1,  # Very short for testing
+            enable_progress_bar=False,  # Disable for cleaner test output
         )
 
         # Run optimization with minimal trials
@@ -387,7 +392,7 @@ class TestHyperparameterOptimization:
             train_dataloader=train_loader,
             val_dataloader=val_loader,
             n_trials=2,  # Just 2 trials for testing
-            timeout=60,  # 1 minute timeout
+            timeout=30,  # 30 second timeout
         )
 
         # Check results
