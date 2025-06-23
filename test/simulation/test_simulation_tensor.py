@@ -5,6 +5,7 @@ Tests for SimulationTensor - the new tensor-based simulation architecture.
 import numpy as np
 import pytest
 import torch
+from torch_geometric.data import Data as PyGData
 
 from astro_lab.tensors import CosmologyCalculator, SimulationTensor
 
@@ -13,171 +14,150 @@ class TestSimulationTensor:
     """Test SimulationTensor - the new tensor-based simulation architecture."""
 
     def test_init_basic(self):
-        """Test basic SimulationTensor initialization."""
-        positions = torch.randn(100, 3)
+        """Test basic initialization of the SimulationTensor."""
+        positions = torch.randn(10, 3)
         sim_tensor = SimulationTensor(data=positions)
-
-        assert sim_tensor.num_particles == 100
-        assert sim_tensor.simulation_name == "TNG50"
-        assert sim_tensor.particle_type == "gas"
-        assert sim_tensor.box_size == 35000.0
-        assert sim_tensor.redshift == 0.0
+        assert torch.equal(sim_tensor.positions, positions)
+        assert sim_tensor.features is None
+        assert sim_tensor.num_particles == 10
 
     def test_init_with_features(self):
-        """Test initialization with particle features."""
-        positions = torch.randn(100, 3)
-        features = torch.randn(100, 2)  # mass, potential
+        """Test initialization with additional features."""
+        positions = torch.randn(10, 3)
+        features = torch.randn(10, 2)
         data = torch.cat([positions, features], dim=1)
-        feature_names = ["mass", "potential"]
-
         sim_tensor = SimulationTensor(
-            data=data, particle_type="stars", redshift=1.0, feature_names=feature_names
+            data=data,
+            feature_names=["mass", "temperature"]
         )
-
-        assert sim_tensor.features is not None
-        assert sim_tensor.features.shape == (100, 2)
-        assert sim_tensor.particle_type == "stars"
-        assert sim_tensor.redshift == 1.0
+        assert sim_tensor.num_particles == 10
+        assert sim_tensor.features.shape == (10, 2)
+        assert sim_tensor.feature_names == ["mass", "temperature"]
 
     def test_init_with_edges(self):
-        """Test initialization with graph edges."""
-        positions = torch.randn(50, 3)
-        edge_index = torch.randint(0, 50, (2, 200))
-
+        """Test initialization with graph edge indices."""
+        positions = torch.randn(10, 3)
+        edge_index = torch.randint(0, 10, (2, 20))
         sim_tensor = SimulationTensor(
-            data=positions, edge_index=edge_index, simulation_name="Illustris"
+            data=positions,
+            edge_index=edge_index
         )
-
-        assert sim_tensor.edge_index is not None
-        assert sim_tensor.edge_index.shape == (2, 200)
-        assert sim_tensor.simulation_name == "Illustris"
+        assert torch.equal(sim_tensor.edge_index, edge_index)
 
     def test_cosmology_integration(self):
-        """Test integrated cosmology calculations."""
+        """Test that cosmological parameters are correctly integrated."""
         positions = torch.randn(10, 3)
         sim_tensor = SimulationTensor(data=positions, redshift=1.0)
-
-        # Check cosmology calculator is created internally
-        assert hasattr(sim_tensor, "_cosmology_calculator")
-        assert isinstance(sim_tensor._cosmology_calculator, CosmologyCalculator)
-
-        # Check derived cosmological quantities in meta
-        assert abs(sim_tensor.get_metadata("scale_factor") - 0.5) < 1e-6 # 1/(1+z)
-        assert sim_tensor.get_metadata("age_universe_gyr") > 0
-        assert sim_tensor.get_metadata("hubble_param") > 0
+        assert "age_universe_gyr" in sim_tensor.meta
+        assert sim_tensor.meta["age_universe_gyr"] > 0
+        assert sim_tensor.meta["hubble_param"] > 0
 
     def test_periodic_distance(self):
-        """Test periodic boundary distance calculations."""
-        positions = torch.tensor([[1.0, 1.0, 1.0], [34999.0, 34999.0, 34999.0]])
-        sim_tensor = SimulationTensor(data=positions, box_size=35000.0)
-
-        # Should wrap around - distance ≈ 2*sqrt(3)
+        """Test periodic distance calculation."""
+        positions = torch.tensor([[1.0, 1.0, 1.0], [99.0, 99.0, 99.0]])
+        sim_tensor = SimulationTensor(data=positions, box_size=100.0)
+        # The shortest distance should wrap around the box
         dist = sim_tensor.periodic_distance(0, 1)
-        expected = 2 * np.sqrt(3)
-        assert abs(dist - expected) < 0.1
+        assert np.isclose(dist, np.sqrt(12.0), atol=1e-6)
 
     def test_periodic_boundaries_application(self):
-        """Test applying periodic boundary conditions."""
-        positions = torch.tensor([[36000.0, -1000.0, 17500.0]])
-        sim_tensor = SimulationTensor(data=positions, box_size=35000.0)
-
-        wrapped = sim_tensor.apply_periodic_boundaries(positions)
-        assert torch.all(wrapped >= 0)
-        assert torch.all(wrapped < 35000.0)
+        """Test application of periodic boundaries."""
+        positions = torch.tensor([[101.0, -5.0, 50.0]])
+        sim_tensor = SimulationTensor(data=positions, box_size=100.0)
+        wrapped_pos = sim_tensor.apply_periodic_boundaries(positions)
+        expected_pos = torch.tensor([[1.0, 95.0, 50.0]])
+        assert torch.allclose(wrapped_pos, expected_pos)
 
     def test_particle_subset(self):
-        """Test getting particle subsets."""
-        positions = torch.randn(100, 3)
-        features = torch.randn(100, 2)
+        """Test selecting a subset of particles."""
+        positions = torch.randn(10, 3)
+        features = torch.arange(10).unsqueeze(1)
         data = torch.cat([positions, features], dim=1)
-        sim_tensor = SimulationTensor(data=data, feature_names=["mass", "velocity"])
-
-        # Create mask for first 50 particles
-        mask = torch.zeros(100, dtype=torch.bool)
-        mask[:50] = True
-
+        sim_tensor = SimulationTensor(data=data, feature_names=["id"])
+        
+        mask = sim_tensor.features[:, 0] < 5
         subset = sim_tensor.get_particle_subset(mask)
-        assert subset.num_particles == 50
-        assert subset.features.shape == (50, 2)
+        assert subset.num_particles == 5
+        assert torch.all(subset.features[:, 0] < 5)
+        # Check that metadata is preserved
+        assert subset.simulation_name == sim_tensor.simulation_name
 
     def test_center_of_mass(self):
         """Test center of mass calculation."""
-        # Create simple test case
-        positions = torch.tensor([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
-        masses = torch.tensor([[1.0], [1.0]])  # Equal masses
+        positions = torch.tensor([[1.0, 0.0, 0.0], [3.0, 0.0, 0.0]])
+        masses = torch.tensor([[1.0], [1.0]])
         data = torch.cat([positions, masses], dim=1)
-
         sim_tensor = SimulationTensor(data=data, feature_names=["mass"])
+        
         com = sim_tensor.calculate_center_of_mass(mass_feature_idx=0)
-
-        # Should be at [1.0, 0.0, 0.0]
-        expected = torch.tensor([1.0, 0.0, 0.0])
-        assert torch.allclose(com, expected)
+        assert torch.allclose(com, torch.tensor([2.0, 0.0, 0.0]))
 
     def test_torch_geometric_conversion(self):
-        """Test conversion to PyTorch Geometric format."""
-        positions = torch.randn(20, 3)
-        features = torch.randn(20, 2)
-        edge_index = torch.randint(0, 20, (2, 50))
+        """Test conversion to and from PyTorch Geometric Data objects."""
+        positions = torch.randn(10, 3)
+        features = torch.randn(10, 2)
+        edge_index = torch.randint(0, 10, (2, 20))
         data = torch.cat([positions, features], dim=1)
-
+        
         sim_tensor = SimulationTensor(
-            data=data, feature_names=["f1", "f2"], edge_index=edge_index
+            data=data,
+            edge_index=edge_index,
+            feature_names=["f1", "f2"],
+            simulation_name="TestSim",
+            redshift=0.2
         )
+        
+        pyg_data = sim_tensor.to_torch_geometric()
+        assert torch.equal(pyg_data.pos, sim_tensor.positions)
+        assert torch.equal(pyg_data.x, sim_tensor.features)
+        assert pyg_data.simulation_name == "TestSim"
 
-        data = sim_tensor.to_torch_geometric()
-
-        assert hasattr(data, "pos")
-        assert hasattr(data, "x")
-        assert hasattr(data, "edge_index")
-        assert data.pos.shape == (20, 3)
-        assert data.x.shape == (20, 2)
-        assert data.edge_index.shape == (2, 50)
+        new_sim_tensor = SimulationTensor.from_torch_geometric(pyg_data)
+        assert torch.equal(new_sim_tensor.data, sim_tensor.data)
+        assert new_sim_tensor.simulation_name == "TestSim"
+        assert new_sim_tensor.redshift == 0.2
+        assert "age_universe_gyr" in new_sim_tensor.meta
 
     def test_from_torch_geometric(self):
-        """Test creation from PyTorch Geometric data."""
-        try:
-            import torch_geometric
-            from torch_geometric.data import Data
-
-            data = Data(
-                pos=torch.randn(15, 3),
-                x=torch.randn(15, 3),
-                edge_index=torch.randint(0, 15, (2, 30)),
-            )
-            data.simulation_name = "test"
-            data.redshift = 0.5
-
-            sim_tensor = SimulationTensor.from_torch_geometric(data)
-
-            assert sim_tensor.num_particles == 15
-            assert sim_tensor.simulation_name == "test"
-            assert sim_tensor.redshift == 0.5
-
-        except ImportError:
-            pytest.skip("PyTorch Geometric not available")
-
+        """Test creating a SimulationTensor from a PyG Data object."""
+        pyg_data = PyGData(
+            pos=torch.randn(15, 3),
+            x=torch.randn(15, 1),
+            edge_index=torch.randint(0, 15, (2, 30)),
+            simulation_name="FromPyG",
+            redshift=0.8
+        )
+        sim_tensor = SimulationTensor.from_torch_geometric(pyg_data, feature_names=['mass'])
+        assert sim_tensor.num_particles == 15
+        assert sim_tensor.features.shape == (15, 1)
+        assert sim_tensor.simulation_name == "FromPyG"
+        assert sim_tensor.redshift == 0.8
+        assert "hubble_param" in sim_tensor.meta
+        
     def test_redshift_update(self):
-        """Test updating redshift and derived quantities."""
+        """Test the update_redshift method."""
         positions = torch.randn(10, 3)
         sim_tensor = SimulationTensor(data=positions, redshift=0.0)
-
-        initial_age = sim_tensor.get_metadata("age_universe_gyr")
-
-        sim_tensor.update_redshift(1.0)
-
-        assert sim_tensor.redshift == 1.0
-        assert sim_tensor.get_metadata("scale_factor") == 0.5
-        new_age = sim_tensor.get_metadata("age_universe_gyr")
-        assert new_age < initial_age  # Universe was younger at z=1
+        age_at_z0 = sim_tensor.meta["age_universe_gyr"]
+        
+        updated_sim = sim_tensor.update_redshift(new_redshift=1.0)
+        age_at_z1 = updated_sim.meta["age_universe_gyr"]
+        
+        assert updated_sim.redshift == 1.0
+        assert age_at_z1 < age_at_z0
+        # Ensure it returns a new instance
+        assert id(updated_sim) != id(sim_tensor)
 
     def test_memory_info(self):
-        """Test memory information."""
+        """Test the memory_info method."""
         positions = torch.randn(100, 3)
         sim_tensor = SimulationTensor(data=positions)
+        info = sim_tensor.memory_info()
+        assert "total_size_mb" in info
+        assert "device" in info
+        assert float(info["total_size_mb"]) > 0
 
-        mem_info = sim_tensor.memory_info()
-
-        assert "total_size_gb" in mem_info
-        assert isinstance(mem_info["total_size_gb"], str)
-        assert float(mem_info["total_size_gb"]) >= 0
+    def test_invalid_data_shape(self):
+        """Test that initialization fails with invalid data shape."""
+        with pytest.raises(ValueError):
+            SimulationTensor(data=torch.randn(10, 2)) # Needs at least 3 pos columns

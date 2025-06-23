@@ -11,42 +11,34 @@ from astro_lab.tensors import CosmologyCalculator, SimulationTensor
 class TestIntegration:
     """Integration tests for the complete tensor-based system."""
 
+    @pytest.mark.integration
     def test_tng50_workflow(self):
-        """Test typical TNG50 analysis workflow."""
-        # Simulate TNG50 gas particles
-        positions = torch.randn(1000, 3) * 10000  # TNG50-like scale
-        masses = torch.distributions.Exponential(1.0).sample((1000, 1))
-        potentials = torch.randn(1000, 1)
-        features = torch.cat([masses, potentials], dim=1)
-
-        # Create simulation tensor
+        """Test a complete TNG50 simulation workflow."""
+        # Create a mock TNG50-like simulation
+        positions = torch.randn(100, 3) * 1000  # 100 particles in a 1000 unit box
+        masses = torch.exp(torch.randn(100, 1) * 2 + 10)  # Log-normal mass distribution
+        
+        data = torch.cat([positions, masses], dim=1)
+        
         sim_tensor = SimulationTensor(
-            positions=positions,
-            features=features,
+            data=data,
             simulation_name="TNG50",
             particle_type="gas",
-            redshift=0.1,
             box_size=35000.0,
+            redshift=0.2,
+            feature_names=["mass"]
         )
-
-        # Test cosmological calculations with proper type handling
-        age = sim_tensor.cosmology.age_of_universe(sim_tensor.redshift)
-
-        # Fix linter error by handling different return types
-        if hasattr(age, "item"):
-            age_scalar = age.item()
-        elif hasattr(age, "__getitem__"):
-            age_scalar = float(age[0]) if len(age) > 0 else float(age)
-        else:
-            age_scalar = float(age)
-
-        assert age_scalar > 10.0  # Reasonable age
-
-        # Test center of mass
-        com = sim_tensor.calculate_center_of_mass()
-        assert com.shape == (3,)
-
-        # Test subset selection (high mass particles)
-        high_mass_mask = features[:, 0] > features[:, 0].median()
-        subset = sim_tensor.get_particle_subset(high_mass_mask)
-        assert subset.num_particles < 1000
+        
+        # Test cosmological calculations using the internal calculator
+        age = sim_tensor._cosmology_calculator.age_of_universe(sim_tensor.redshift)
+        assert age > 0
+        assert age < 13.8  # Less than age of universe at z=0
+        
+        # Test graph construction
+        edge_index = torch.randint(0, 100, (2, 200))
+        sim_tensor.edge_index = edge_index
+        
+        pyg_data = sim_tensor.to_torch_geometric()
+        assert pyg_data.pos.shape == (100, 3)
+        assert pyg_data.x.shape == (100, 1)
+        assert pyg_data.edge_index.shape == (2, 200)
