@@ -15,7 +15,7 @@ class TestSimulationTensor:
     def test_init_basic(self):
         """Test basic SimulationTensor initialization."""
         positions = torch.randn(100, 3)
-        sim_tensor = SimulationTensor(positions)
+        sim_tensor = SimulationTensor(data=positions)
 
         assert sim_tensor.num_particles == 100
         assert sim_tensor.simulation_name == "TNG50"
@@ -27,9 +27,11 @@ class TestSimulationTensor:
         """Test initialization with particle features."""
         positions = torch.randn(100, 3)
         features = torch.randn(100, 2)  # mass, potential
+        data = torch.cat([positions, features], dim=1)
+        feature_names = ["mass", "potential"]
 
         sim_tensor = SimulationTensor(
-            positions=positions, features=features, particle_type="stars", redshift=1.0
+            data=data, particle_type="stars", redshift=1.0, feature_names=feature_names
         )
 
         assert sim_tensor.features is not None
@@ -43,7 +45,7 @@ class TestSimulationTensor:
         edge_index = torch.randint(0, 50, (2, 200))
 
         sim_tensor = SimulationTensor(
-            positions=positions, edge_index=edge_index, simulation_name="Illustris"
+            data=positions, edge_index=edge_index, simulation_name="Illustris"
         )
 
         assert sim_tensor.edge_index is not None
@@ -53,41 +55,42 @@ class TestSimulationTensor:
     def test_cosmology_integration(self):
         """Test integrated cosmology calculations."""
         positions = torch.randn(10, 3)
-        sim_tensor = SimulationTensor(positions, redshift=1.0)
+        sim_tensor = SimulationTensor(data=positions, redshift=1.0)
 
-        # Check cosmology calculator
-        cosmo = sim_tensor.cosmology
-        assert isinstance(cosmo, CosmologyCalculator)
+        # Check cosmology calculator is created internally
+        assert hasattr(sim_tensor, "_cosmology_calculator")
+        assert isinstance(sim_tensor._cosmology_calculator, CosmologyCalculator)
 
-        # Check derived cosmological quantities
-        assert sim_tensor.get_metadata("scale_factor") == 0.5  # 1/(1+z)
+        # Check derived cosmological quantities in meta
+        assert abs(sim_tensor.get_metadata("scale_factor") - 0.5) < 1e-6 # 1/(1+z)
         assert sim_tensor.get_metadata("age_universe_gyr") > 0
         assert sim_tensor.get_metadata("hubble_param") > 0
 
     def test_periodic_distance(self):
         """Test periodic boundary distance calculations."""
         positions = torch.tensor([[1.0, 1.0, 1.0], [34999.0, 34999.0, 34999.0]])
-        sim_tensor = SimulationTensor(positions, box_size=35000.0)
+        sim_tensor = SimulationTensor(data=positions, box_size=35000.0)
 
         # Should wrap around - distance ≈ 2*sqrt(3)
         dist = sim_tensor.periodic_distance(0, 1)
         expected = 2 * np.sqrt(3)
-        assert abs(dist.item() - expected) < 0.1
+        assert abs(dist - expected) < 0.1
 
     def test_periodic_boundaries_application(self):
         """Test applying periodic boundary conditions."""
         positions = torch.tensor([[36000.0, -1000.0, 17500.0]])
-        sim_tensor = SimulationTensor(positions, box_size=35000.0)
+        sim_tensor = SimulationTensor(data=positions, box_size=35000.0)
 
         wrapped = sim_tensor.apply_periodic_boundaries(positions)
-        assert 0 <= wrapped[0, 0] < 35000.0  # Wrapped x
-        assert 0 <= wrapped[0, 1] < 35000.0  # Wrapped y
+        assert torch.all(wrapped >= 0)
+        assert torch.all(wrapped < 35000.0)
 
     def test_particle_subset(self):
         """Test getting particle subsets."""
         positions = torch.randn(100, 3)
         features = torch.randn(100, 2)
-        sim_tensor = SimulationTensor(positions, features=features)
+        data = torch.cat([positions, features], dim=1)
+        sim_tensor = SimulationTensor(data=data, feature_names=["mass", "velocity"])
 
         # Create mask for first 50 particles
         mask = torch.zeros(100, dtype=torch.bool)
@@ -102,9 +105,10 @@ class TestSimulationTensor:
         # Create simple test case
         positions = torch.tensor([[0.0, 0.0, 0.0], [2.0, 0.0, 0.0]])
         masses = torch.tensor([[1.0], [1.0]])  # Equal masses
+        data = torch.cat([positions, masses], dim=1)
 
-        sim_tensor = SimulationTensor(positions, features=masses)
-        com = sim_tensor.calculate_center_of_mass()
+        sim_tensor = SimulationTensor(data=data, feature_names=["mass"])
+        com = sim_tensor.calculate_center_of_mass(mass_feature_idx=0)
 
         # Should be at [1.0, 0.0, 0.0]
         expected = torch.tensor([1.0, 0.0, 0.0])
@@ -115,9 +119,10 @@ class TestSimulationTensor:
         positions = torch.randn(20, 3)
         features = torch.randn(20, 2)
         edge_index = torch.randint(0, 20, (2, 50))
+        data = torch.cat([positions, features], dim=1)
 
         sim_tensor = SimulationTensor(
-            positions=positions, features=features, edge_index=edge_index
+            data=data, feature_names=["f1", "f2"], edge_index=edge_index
         )
 
         data = sim_tensor.to_torch_geometric()
@@ -155,7 +160,7 @@ class TestSimulationTensor:
     def test_redshift_update(self):
         """Test updating redshift and derived quantities."""
         positions = torch.randn(10, 3)
-        sim_tensor = SimulationTensor(positions, redshift=0.0)
+        sim_tensor = SimulationTensor(data=positions, redshift=0.0)
 
         initial_age = sim_tensor.get_metadata("age_universe_gyr")
 
@@ -169,12 +174,10 @@ class TestSimulationTensor:
     def test_memory_info(self):
         """Test memory information."""
         positions = torch.randn(100, 3)
-        sim_tensor = SimulationTensor(positions)
+        sim_tensor = SimulationTensor(data=positions)
 
         mem_info = sim_tensor.memory_info()
 
-        assert "device" in mem_info
-        assert "dtype" in mem_info
-        assert "shape" in mem_info
-        assert "data_ptr" in mem_info
-        assert mem_info["shape"] == [100, 3]
+        assert "total_size_gb" in mem_info
+        assert isinstance(mem_info["total_size_gb"], str)
+        assert float(mem_info["total_size_gb"]) > 0

@@ -8,7 +8,7 @@ import polars as pl
 import astropy.io.fits as fits
 
 from astro_lab.data import AstroDataset
-from astro_lab.tensors import SurveyTensor
+from astro_lab.tensors import SurveyTensor, PhotometricTensor
 
 
 class TestSurveyTensor:
@@ -82,11 +82,12 @@ class TestSurveyTensor:
         # Create data with photometric bands
         n_objects = 50
         bands = ["u", "g", "r", "i", "z"]
+        mag_cols = [f"modelMag_{b}" for b in bands]
         data = torch.randn(n_objects, len(bands) + 2)  # +2 for ra, dec
 
         column_mapping = {"ra": 0, "dec": 1}
-        for i, band in enumerate(bands):
-            column_mapping[band] = i + 2
+        for i, col in enumerate(mag_cols):
+            column_mapping[col] = i + 2
 
         survey = SurveyTensor(
             data=data, survey_name="sdss", column_mapping=column_mapping
@@ -141,6 +142,22 @@ class TestSurveyTensor:
         dumped = survey.model_dump()
         assert "column_mapping" in dumped
         assert "metadata" not in dumped or "column_mapping" not in dumped.get("metadata", {})
+
+    def test_nested_tensor_access(self):
+        """Test accessing data from nested tensors."""
+        # Create a nested PhotometricTensor
+        phot_data = torch.randn(10, 5)
+        bands = ["u", "g", "r", "i", "z"]
+        phot_tensor = PhotometricTensor(data=phot_data, bands=bands)
+
+        # Create a SurveyTensor wrapping the PhotometricTensor
+        survey_tensor = SurveyTensor(data=phot_tensor, survey_name="SDSS")
+
+        # Accessing the data should return the original PhotometricTensor
+        retrieved_data = survey_tensor.data
+        assert isinstance(retrieved_data, PhotometricTensor)
+        torch.testing.assert_close(retrieved_data.data, phot_data)
+        assert retrieved_data.bands == bands
 
 
 class TestSurveyTensorDatasetIntegration:

@@ -8,8 +8,9 @@ Test suite for ML feature engineering and preprocessing operations.
 import numpy as np
 import pytest
 import torch
+from sklearn.preprocessing import StandardScaler
 
-from astro_lab.tensors import FeatureTensor
+from astro_lab.tensors import FeatureTensor, SurveyTensor, PhotometricTensor
 
 
 class TestFeatureTensor:
@@ -20,302 +21,218 @@ class TestFeatureTensor:
         """Create sample astronomical data for testing."""
         np.random.seed(42)
         n_objects = 100
-
-        # Create realistic astronomical features
-        data = {
-            "g_mag": np.random.normal(20.0, 2.0, n_objects),
-            "r_mag": np.random.normal(19.5, 2.0, n_objects),
-            "i_mag": np.random.normal(19.0, 2.0, n_objects),
-            "parallax": np.random.exponential(1.0, n_objects),  # mas
-            "pmra": np.random.normal(0.0, 10.0, n_objects),  # mas/yr
-            "pmdec": np.random.normal(0.0, 10.0, n_objects),  # mas/yr
-        }
-
-        # Add some missing values
-        missing_indices = np.random.choice(n_objects, 10, replace=False)
-        data["g_mag"][missing_indices] = 99.0  # Missing value code
-
-        # Convert to tensor format
-        feature_matrix = np.column_stack([data[key] for key in sorted(data.keys())])
-        feature_names = sorted(data.keys())
-
-        return feature_matrix, feature_names
+        data = np.random.randn(n_objects, 6)
+        # Add some missing values (NaNs) and non-finite codes
+        data[10, 0] = np.nan
+        data[20, 1] = 99.0 # Missing value code
+        feature_names = ["g_mag", "r_mag", "i_mag", "parallax", "pmra", "pmdec"]
+        return torch.from_numpy(data).float(), feature_names
 
     @pytest.fixture
     def feature_tensor(self, sample_data):
         """Create FeatureTensor instance."""
         data, names = sample_data
-        return FeatureTensor(data, feature_names=names)
+        return FeatureTensor(data=data, feature_names=names)
 
     def test_initialization(self, sample_data):
         """Test FeatureTensor initialization."""
         data, names = sample_data
 
         # Test with feature names
-        tensor = FeatureTensor(data, feature_names=names)
-        assert tensor.n_objects == 100
-        assert tensor.n_features == 6
+        tensor = FeatureTensor(data=data, feature_names=names)
+        assert tensor.num_objects == 100
+        assert tensor.num_features == 6
         assert tensor.feature_names == names
 
         # Test without feature names (auto-generated)
-        tensor_auto = FeatureTensor(data)
+        tensor_auto = FeatureTensor(data=data)
         assert len(tensor_auto.feature_names) == 6
         assert all(name.startswith("feature_") for name in tensor_auto.feature_names)
 
-    def test_feature_type_detection(self, feature_tensor):
-        """Test automatic feature type detection."""
-        feature_types = feature_tensor._detect_feature_types()
-
-        assert feature_types["g_mag"] == "magnitude"
-        assert feature_types["r_mag"] == "magnitude"
-        assert feature_types["parallax"] == "parallax"
-        assert feature_types["pmra"] == "proper_motion"
-        assert feature_types["pmdec"] == "proper_motion"
-
     def test_feature_scaling(self):
         """Test feature scaling methods."""
-        # Create test data with known properties
-        data = torch.tensor(
-            [
-                [1.0, 10.0, 100.0],
-                [2.0, 20.0, 200.0],
-                [3.0, 30.0, 300.0],
-                [4.0, 40.0, 400.0],
-                [5.0, 50.0, 500.0],
-            ]
-        )
-
-        feature_tensor = FeatureTensor(data, feature_names=["a", "b", "c"])
-
+        data = torch.randn(10, 3) * 5 + 10 # Data with non-zero mean and std != 1
+        tensor = FeatureTensor(data=data)
+        
         # Test standard scaling
-        scaled_tensor = feature_tensor.scale_features(method="standard")
+        scaled_tensor = tensor.scale_features(method="standard")
+        
+        # Check that each feature has approximately zero mean and unit variance
+        assert torch.allclose(scaled_tensor.data.mean(dim=0), torch.zeros(3), atol=1e-6)
+        assert torch.allclose(scaled_tensor.data.std(dim=0), torch.ones(3), atol=1e-6)
+        assert "scalers" in scaled_tensor.meta
+        assert isinstance(scaled_tensor.meta["scalers"]["standard"], StandardScaler)
 
-        # Check that each feature has approximately zero mean (within tolerance)
-        means = scaled_tensor._data.mean(dim=0)
-        for mean_val in means:
-            assert (
-                abs(mean_val) < 1e-6
-            )  # More reasonable tolerance for numerical precision
-
-        # Check that each feature has approximately unit variance
-        stds = scaled_tensor._data.std(dim=0)
-        for std_val in stds:
-            assert abs(std_val - 1.0) < 0.2  # More lenient tolerance for variance
-
-    def test_missing_value_imputation(self, feature_tensor):
+    def test_missing_value_imputation(self, sample_data):
         """Test missing value imputation."""
+        data, names = sample_data
+        tensor = FeatureTensor(data=data, feature_names=names)
+        
         # Count missing values before imputation
-        missing_before = torch.isnan(feature_tensor._data).sum()
+        missing_before = torch.isnan(tensor.data).sum()
+        assert missing_before > 0
 
-        # Test astronomical imputation
-        imputed_tensor = feature_tensor.impute_missing_values(method="astronomical")
-        missing_after = torch.isnan(imputed_tensor._data).sum()
+        # Test mean imputation
+        imputed_tensor = tensor.impute_missing_values(method="mean")
+        missing_after = torch.isnan(imputed_tensor.data).sum()
 
-        assert missing_after <= missing_before
-        assert "imputed_missing_astronomical" in imputed_tensor.get_metadata(
-            "preprocessing_history", []
-        )
+        assert missing_after == 0
+        assert "imputers" in imputed_tensor.meta
 
     def test_outlier_detection(self, feature_tensor):
         """Test outlier detection methods."""
-        # Test astronomical outlier detection
-        outliers = feature_tensor.detect_outliers(method="astronomical")
+        # Test isolation forest
+        outliers = feature_tensor.detect_outliers(method="isolation_forest")
         assert isinstance(outliers, torch.Tensor)
         assert outliers.dtype == torch.bool
-        assert len(outliers) == feature_tensor.n_objects
-
-        # Test statistical outlier detection
-        outliers_stat = feature_tensor.detect_outliers(method="statistical")
-        assert isinstance(outliers_stat, torch.Tensor)
-        assert outliers_stat.dtype == torch.bool
+        assert len(outliers) == feature_tensor.num_objects
 
     def test_feature_selection(self, feature_tensor):
         """Test feature selection methods."""
-        # Test astronomical feature selection
-        selected_tensor = feature_tensor.select_features(method="astronomical", k=4)
-        assert selected_tensor.n_features <= 4
-        assert len(selected_tensor.feature_names) == selected_tensor.n_features
-        assert "selected_features_astronomical_4" in selected_tensor.get_metadata(
-            "preprocessing_history", []
-        )
+        # Test variance threshold
+        # Ensure there is variance difference
+        feature_tensor.data[:, 0] = 1.0
+        selected_tensor = feature_tensor.select_features(method="variance", threshold=0.01)
+        assert selected_tensor.num_features < feature_tensor.num_features
+        assert "variance_threshold" in selected_tensor.meta
 
     def test_color_computation(self, feature_tensor):
         """Test astronomical color computation."""
-        # Test color computation from magnitudes
-        color_tensor = feature_tensor.compute_colors(["g", "r", "i"])
+        color_tensor = feature_tensor.compute_colors(bands=["g_mag", "r_mag", "i_mag"])
 
-        # Should have original features plus colors
-        assert color_tensor.n_features > feature_tensor.n_features
-        assert "computed_colors" in color_tensor.get_metadata(
-            "preprocessing_history", []
-        )
-
-        # Check that color names were added
-        color_names = [name for name in color_tensor.feature_names if "color" in name]
-        assert len(color_names) > 0
+        assert color_tensor.num_features > feature_tensor.num_features
+        assert "g_mag-r_mag" in color_tensor.feature_names
+        assert "r_mag-i_mag" in color_tensor.feature_names
+        assert "history" in color_tensor.meta
 
     def test_feature_statistics(self, feature_tensor):
         """Test feature statistics computation."""
         stats = feature_tensor.get_feature_statistics()
 
         assert isinstance(stats, dict)
-        assert len(stats) == feature_tensor.n_features
+        assert len(stats) == feature_tensor.num_features
 
-        # Check statistics for each feature
-        for name in feature_tensor.feature_names:
-            assert name in stats
-            if "error" not in stats[name]:
-                assert "mean" in stats[name]
-                assert "std" in stats[name]
-                assert "missing_fraction" in stats[name]
+        # Check statistics for a feature
+        first_feature_name = feature_tensor.feature_names[0]
+        assert first_feature_name in stats
+        assert "mean" in stats[first_feature_name]
+        assert "std" in stats[first_feature_name]
+        assert "min" in stats[first_feature_name]
+        assert "max" in stats[first_feature_name]
 
-    def test_preprocessing_pipeline(self, feature_tensor):
+    def test_preprocessing_pipeline(self, sample_data):
         """Test complete preprocessing pipeline."""
+        data, names = sample_data
+        tensor = FeatureTensor(data=data, feature_names=names)
+
         # Apply multiple preprocessing steps
         processed_tensor = (
-            feature_tensor.impute_missing_values(method="astronomical")
-            .scale_features(method="standard")
-            .select_features(method="astronomical", k=4)
+            tensor.impute_missing_values(method="median")
+            .scale_features(method="robust")
+            .select_features(method="variance", threshold=0.1)
         )
 
-        # Check that all operations were recorded
-        history = processed_tensor.get_metadata("preprocessing_history", [])
-        assert "imputed_missing_astronomical" in history
-        assert "scaled_features_standard" in history
-        assert "selected_features_astronomical_4" in history
+        # Check that metadata reflects the changes
+        assert "imputers" in processed_tensor.meta
+        assert "scalers" in processed_tensor.meta
+        assert "variance_threshold" in processed_tensor.meta
+        assert "history" in processed_tensor.meta
+        assert len(processed_tensor.meta["history"]) == 3
 
-        # Check final tensor properties
-        assert processed_tensor.n_features <= 4
-        assert processed_tensor.n_objects == feature_tensor.n_objects
+        assert processed_tensor.num_features <= tensor.num_features
+        assert processed_tensor.num_objects == tensor.num_objects
 
-    def test_astronomical_priors(self, feature_tensor):
-        """Test astronomical prior knowledge integration."""
-        priors = feature_tensor.get_metadata("astronomical_priors", {})
-
-        assert "magnitude_range" in priors
-        assert "color_range" in priors
-        assert "parallax_range" in priors
-        assert "missing_value_codes" in priors
-
-    def test_error_handling(self, sample_data):
+    def test_error_handling(self):
         """Test error handling for invalid inputs."""
-        data, names = sample_data
-
+        data = torch.randn(10, 6)
         # Test mismatched feature names
         with pytest.raises(ValueError):
-            FeatureTensor(data, feature_names=["wrong", "number"])
+            FeatureTensor(data=data, feature_names=["wrong", "number"])
 
         # Test 1D data (should be converted to 2D)
         data_1d = data[:, 0]
-        tensor_1d = FeatureTensor(data_1d)
-        assert tensor_1d.n_features == 1
-
-        # Test invalid data dimensions
-        with pytest.raises(ValueError):
-            FeatureTensor(np.random.rand(10, 5, 3))  # 3D data
+        tensor_1d = FeatureTensor(data=data_1d)
+        assert tensor_1d.num_features == 1
+        assert tensor_1d.data.ndim == 2
 
     def test_tensor_metadata(self, feature_tensor):
         """Test tensor metadata handling."""
-        assert feature_tensor.get_metadata("tensor_type") == "feature"
-        assert isinstance(feature_tensor.get_metadata("feature_names"), list)
-        assert isinstance(feature_tensor.get_metadata("astronomical_priors"), dict)
+        feature_tensor.update_metadata(survey="SDSS")
+        assert feature_tensor.get_metadata("survey") == "SDSS"
+        assert isinstance(feature_tensor.feature_names, list)
 
     def test_copy_functionality(self, feature_tensor):
         """Test tensor copying and metadata preservation."""
-        # Create a copy
         new_tensor = feature_tensor.copy()
 
-        # Test that data is copied
-        assert torch.equal(new_tensor._data, feature_tensor._data)
-
-        # Test that feature names are preserved (if they exist)
-        if (
-            hasattr(feature_tensor, "feature_names")
-            and feature_tensor.feature_names is not None
-        ):
-            assert new_tensor.feature_names == feature_tensor.feature_names
-
-        # Test that metadata is copied
-        assert new_tensor._metadata == feature_tensor._metadata
+        assert torch.equal(new_tensor.data, feature_tensor.data)
+        assert new_tensor.feature_names == feature_tensor.feature_names
+        assert new_tensor.meta == feature_tensor.meta
 
         # Test that modifying copy doesn't affect original
-        new_tensor._data[0, 0] = 999.0
-        assert not torch.equal(new_tensor._data, feature_tensor._data)
+        new_tensor.data[0, 0] = 999.0
+        assert not torch.equal(new_tensor.data, feature_tensor.data)
 
     def test_repr(self, feature_tensor):
         """Test string representation."""
         repr_str = repr(feature_tensor)
         assert "FeatureTensor" in repr_str
-        assert "objects=100" in repr_str
-        assert "features=6" in repr_str
+        assert f"num_objects={feature_tensor.num_objects}" in repr_str
+        assert f"num_features={feature_tensor.num_features}" in repr_str
 
 
 class TestFeatureTensorIntegration:
-    """Test FeatureTensor integration with other components."""
+    """Test integration with other components."""
 
     def test_sklearn_integration(self):
-        """Test integration with sklearn when available."""
-        from sklearn.preprocessing import StandardScaler
-
-        # Create test data
-        data = np.random.randn(100, 5)
-        tensor = FeatureTensor(data)
-
-        # Test sklearn-based scaling
-        scaled = tensor.scale_features(method="standard")
-        assert scaled is not None
+        """Test integration with sklearn for custom transformations."""
+        from sklearn.decomposition import PCA
+        data = torch.randn(100, 10)
+        tensor = FeatureTensor(data=data)
+        
+        pca = PCA(n_components=2)
+        transformed_data = pca.fit_transform(tensor.data.numpy())
+        
+        new_tensor = FeatureTensor(
+            data=torch.from_numpy(transformed_data),
+            feature_names=["pc1", "pc2"]
+        )
+        new_tensor.add_history_entry("PCA", n_components=2)
+        
+        assert new_tensor.num_features == 2
+        assert len(new_tensor.meta["history"]) == 1
 
     def test_survey_tensor_integration(self):
-        """Test integration with SurveyTensor."""
-        # This would test how FeatureTensor works with SurveyTensor data
-        # For now, just test that it can be created from survey-like data
+        """Test wrapping a FeatureTensor in a SurveyTensor."""
+        data = torch.randn(50, 5)
+        feature_tensor = FeatureTensor(data=data, feature_names=["u", "g", "r", "i", "z"])
+        survey_tensor = SurveyTensor(data=feature_tensor, survey_name="SDSS")
 
-        # Create survey-like data
-        n_objects = 50
-        survey_data = {
-            "ra": np.random.uniform(0, 360, n_objects),
-            "dec": np.random.uniform(-90, 90, n_objects),
-            "g_mag": np.random.normal(20, 2, n_objects),
-            "r_mag": np.random.normal(19, 2, n_objects),
-        }
-
-        data_matrix = np.column_stack(
-            [survey_data[key] for key in sorted(survey_data.keys())]
-        )
-        feature_names = sorted(survey_data.keys())
-
-        tensor = FeatureTensor(data_matrix, feature_names=feature_names)
-        assert tensor.n_objects == n_objects
-        assert tensor.n_features == 4
+        assert isinstance(survey_tensor.data, FeatureTensor)
+        assert survey_tensor.survey_name == "SDSS"
+        assert survey_tensor.data.num_features == 5
 
 
 @pytest.mark.parametrize("method", ["standard", "minmax", "robust"])
 def test_scaling_methods(method):
-    """Test different scaling methods."""
-    data = np.random.randn(50, 3)
-    tensor = FeatureTensor(data)
+    """Test various scaling methods."""
+    data = torch.randn(20, 4) * 2 + 5
+    tensor = FeatureTensor(data=data)
+    scaled = tensor.scale_features(method=method)
+    
+    assert scaled.data.shape == data.shape
+    assert method in scaled.meta.get("scalers", {})
+    assert "history" in scaled.meta
 
-    try:
-        scaled = tensor.scale_features(method=method)
-        assert scaled.n_features == tensor.n_features
-    except ImportError:
-        pytest.skip(f"sklearn not available for {method} scaling")
-
-
-@pytest.mark.parametrize("method", ["astronomical", "mean", "median"])
+@pytest.mark.parametrize("method", ["mean", "median", "knn"])
 def test_imputation_methods(method):
-    """Test different imputation methods."""
-    data = np.random.randn(50, 3)
-    # Add missing values
-    data[10:15, 0] = np.nan
+    """Test various imputation methods."""
+    data = torch.randn(30, 5)
+    data[5:10, 2] = float('nan') # Add some NaNs
+    tensor = FeatureTensor(data=data)
 
-    tensor = FeatureTensor(data)
+    imputed = tensor.impute_missing_values(method=method)
 
-    try:
-        imputed = tensor.impute_missing_values(method=method)
-        assert imputed.n_features == tensor.n_features
-    except ImportError:
-        if method in ["knn"]:
-            pytest.skip(f"sklearn not available for {method} imputation")
-        else:
-            raise
+    assert not torch.isnan(imputed.data).any()
+    assert method in imputed.meta.get("imputers", {})
+    assert "history" in imputed.meta

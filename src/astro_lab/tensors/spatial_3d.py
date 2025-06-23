@@ -8,32 +8,83 @@ import torch
 import numpy as np
 from astropy.coordinates import SkyCoord
 import astropy.units as u
-from typing import Any
+from typing import Any, Dict, List, Optional, Union
+from typing_extensions import Self
 
 from .base import AstroTensorBase
 
 class Spatial3DTensor(AstroTensorBase):
     """
-    A specialized tensor for handling 3D spatial coordinates (x, y, z).
-    This is a simplified, robust version for core functionality.
+    Represents 3D spatial coordinates (e.g., Cartesian x, y, z) for celestial
+    objects, providing methods for coordinate transformations and calculations.
     """
 
-    def __init__(self, data: torch.Tensor, coordinate_system: str = "icrs", unit: str = "kpc", epoch: float = 2000.0, **kwargs):
+    def __init__(
+        self,
+        data: Union[torch.Tensor, List, Any],
+        frame: str = "icrs",
+        unit: str = "parsec",
+        **kwargs,
+    ):
         """
         Initializes the Spatial3DTensor.
-        Expects a tensor of shape (N, 3) for N points.
+
+        Args:
+            data: A tensor of 3D coordinates, shape [..., 3].
+            frame: The coordinate frame (e.g., 'icrs', 'galactic').
+            unit: The distance unit (e.g., 'parsec', 'au').
+            **kwargs: Additional metadata.
         """
-        if not isinstance(data, torch.Tensor):
-            raise TypeError("Spatial3DTensor data must be a torch.Tensor.")
-        if data.ndim != 2 or data.shape[1] != 3:
-            raise ValueError(f"Expected a tensor of shape (N, 3), but got {data.shape}")
-        
-        super().__init__(data, **kwargs)
-        
-        # Store metadata
-        self._coordinate_system = coordinate_system
-        self._unit = unit
-        self._epoch = epoch
+        spatial_meta = {"frame": frame, "unit": unit}
+        kwargs.update(spatial_meta)
+
+        super().__init__(data=data, **kwargs)
+        self._validate()
+
+    def _validate(self) -> None:
+        """Validates the structure of the spatial data."""
+        if self.data.dim() < 1:
+            raise ValueError("Spatial data must be at least 1D.")
+        if self.data.shape[-1] != 3:
+            raise ValueError(
+                f"Last dimension must be 3 for 3D spatial data, but got {self.data.shape[-1]}."
+            )
+
+    @property
+    def x(self) -> torch.Tensor:
+        return self.data[..., 0]
+
+    @property
+    def y(self) -> torch.Tensor:
+        return self.data[..., 1]
+
+    @property
+    def z(self) -> torch.Tensor:
+        return self.data[..., 2]
+
+    def to_unit(self, new_unit: str) -> Self:
+        """
+        Converts the coordinates to a new distance unit.
+        NOTE: This is a placeholder for a real conversion library.
+        """
+        # This should be implemented with a proper astro unit conversion library
+        # For now, we'll just update the metadata.
+        print(f"Placeholder: Converting units from {self.meta.get('unit')} to {new_unit}")
+        new_meta = self.meta.copy()
+        new_meta['unit'] = new_unit
+        return self.__class__(data=self.data.clone(), **new_meta)
+
+    def to_frame(self, new_frame: str) -> Self:
+        """
+        Transforms the coordinates to a new reference frame.
+        NOTE: This is a placeholder for a real transformation library.
+        """
+        # This should be implemented with a library like astropy.coordinates
+        print(f"Placeholder: Transforming frame from {self.meta.get('frame')} to {new_frame}")
+        new_meta = self.meta.copy()
+        new_meta['frame'] = new_frame
+        # In a real implementation, the data would change.
+        return self.__class__(data=self.data.clone(), **new_meta)
 
     @classmethod
     def from_cartesian(
@@ -99,21 +150,6 @@ class Spatial3DTensor(AstroTensorBase):
         return cls.from_cartesian(x, y, z, **kwargs)
         
     @property
-    def x(self) -> torch.Tensor:
-        """Returns the x-coordinates."""
-        return self.data[:, 0]
-
-    @property
-    def y(self) -> torch.Tensor:
-        """Returns the y-coordinates."""
-        return self.data[:, 1]
-
-    @property
-    def z(self) -> torch.Tensor:
-        """Returns the z-coordinates."""
-        return self.data[:, 2]
-
-    @property
     def cartesian(self) -> torch.Tensor:
         """Returns the cartesian coordinates."""
         return self.data
@@ -121,17 +157,17 @@ class Spatial3DTensor(AstroTensorBase):
     @property
     def coordinate_system(self) -> str:
         """Returns the coordinate system."""
-        return self._coordinate_system
+        return self.get_metadata("frame", "icrs")
 
     @property
     def unit(self) -> str:
         """Returns the unit."""
-        return self._unit
+        return self.get_metadata("unit", "parsec")
 
     @property
     def epoch(self) -> float:
         """Returns the epoch."""
-        return self._epoch
+        return self.get_metadata("epoch", 2000.0)
 
     def distance_to_origin(self) -> torch.Tensor:
         """Calculate distance to origin for all points."""
@@ -186,6 +222,35 @@ class Spatial3DTensor(AstroTensorBase):
         
         return separation
 
+    def to_torch_geometric(self, k: Optional[int] = None, add_self_loops: bool = True) -> "Data":
+        """
+        Convert to a torch_geometric.data.Data object, optionally building a k-NN graph.
+
+        Args:
+            k (int, optional): If provided, constructs a k-NN graph.
+            add_self_loops (bool): If True, adds self-loops to the graph.
+
+        Returns:
+            torch_geometric.data.Data: A PyG Data object.
+        """
+        try:
+            from torch_geometric.data import Data
+            from torch_geometric.nn import knn_graph
+        except ImportError:
+            raise ImportError("torch_geometric is required. Please install it with 'uv pip install torch-geometric'.")
+
+        edge_index = None
+        if k is not None:
+            edge_index = knn_graph(self.data, k=k, loop=add_self_loops)
+
+        # Use positions as features if no other features are available
+        return Data(
+            pos=self.data,
+            x=self.data,  # Using positions as node features
+            edge_index=edge_index,
+            **self._metadata
+        )
+
     def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:
         """Perform cone search around a center point."""
         # Convert center to spherical coordinates
@@ -205,17 +270,6 @@ class Spatial3DTensor(AstroTensorBase):
         
         # Return indices of points within radius
         return torch.where(separation <= radius_deg)[0]
-
-    def get_metadata(self, key: str) -> Any:
-        """Get metadata value by key."""
-        if key == "unit":
-            return self._unit
-        elif key == "coordinate_system":
-            return self._coordinate_system
-        elif key == "epoch":
-            return self._epoch
-        else:
-            return super().get_metadata(key) if hasattr(super(), 'get_metadata') else None
 
     def __repr__(self) -> str:
         return f"Spatial3DTensor(points={self.shape[0]}, device='{self.device}')"

@@ -28,7 +28,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 # Import base class first
-from .base import AstroTensorBase, transfer_direct
+from .base import AstroTensorBase
 from .clustering import ClusteringTensor
 
 # Import refactored components
@@ -129,7 +129,6 @@ class SurveyTensorConfig(BaseModel):
 __all__ = [
     # Base class
     "AstroTensorBase",
-    "transfer_direct",
     # Tensor classes
     "Spatial3DTensor",
     "PhotometricTensor",

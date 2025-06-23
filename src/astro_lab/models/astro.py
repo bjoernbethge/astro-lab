@@ -72,13 +72,22 @@ class AstroSurveyGNN(BaseAstroGNN):
         self.stellar_radius = stellar_radius
         self.pooling = pooling
 
-        # Feature encoders
-        if use_photometry:
-            self.photometry_encoder = PhotometryEncoder(hidden_dim // 2)
-        if use_astrometry:
-            self.astrometry_encoder = AstrometryEncoder(hidden_dim // 2)
-        if use_spectroscopy:
-            self.spectroscopy_encoder = SpectroscopyEncoder(hidden_dim // 2)
+        # Encoder for different data modalities
+        if self.use_photometry:
+            self.photometry_encoder = PhotometryEncoder(
+                input_dim=len(kwargs.get("photometry_bands", [])), 
+                output_dim=hidden_dim // 2
+            )
+        if self.use_spectroscopy:
+            self.spectroscopy_encoder = SpectroscopyEncoder(
+                input_dim=kwargs.get("spectroscopy_features", 100), 
+                output_dim=hidden_dim // 2
+            )
+        if self.use_astrometry:
+            self.astrometry_encoder = AstrometryEncoder(
+                input_dim=kwargs.get("astrometry_features", 5), 
+                output_dim=hidden_dim // 2
+            )
 
         # Feature fusion
         fusion_dim = self._calculate_fusion_dim()

@@ -315,8 +315,15 @@ class ALCDEFTemporalGNN(nn.Module):
         self.task = task
         self.dropout = dropout
 
-        # Use existing LightcurveEncoder
-        self.lightcurve_encoder = LightcurveEncoder(hidden_dim)
+        # Encoders for node features
+        self.lightcurve_encoder = LightcurveEncoder(
+            input_dim=config.get("lightcurve_features", 1),
+            hidden_dim=hidden_dim, 
+            output_dim=hidden_dim
+        )
+        if self.use_static_features:
+            self.static_encoder = nn.Linear(
+                config.get("static_features_dim", 1), hidden_dim)
 
         # Graph convolution layers for temporal relationships
         self.convs = nn.ModuleList(

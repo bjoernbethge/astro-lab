@@ -1,354 +1,172 @@
 """
-Feature Encoders for AstroLab Tensors
+Encoder Modules for AstroLab Models
+===================================
 
-Specialized encoders for different astronomical data types:
-- AstrometryEncoder: Astrometric/spatial data
-- PhotometryEncoder: Photometric/magnitude data
-- SpectroscopyEncoder: Spectral/redshift data
-- MultiModalEncoder: Combined astronomical features
+This module provides a suite of encoder classes designed to process various types
+of astronomical data encapsulated in AstroLab's tensor objects. Each encoder is
+a `torch.nn.Module` tailored to a specific data modality, such as photometry,
+spectroscopy, or time-series data.
 
-Robust implementation with automatic fallbacks and error handling.
+The encoders serve as the initial layers in a larger neural network, transforming
+raw tensor data into a fixed-size latent representation suitable for downstream
+tasks like classification, regression, or clustering. They are designed to be
+modular and composable within the AstroLab model-building framework.
 """
-
-import logging
-from typing import Any, Union, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, TYPE_CHECKING, Union
 
 import torch
 import torch.nn as nn
-from torch_geometric.nn import Linear
 
-from astro_lab.tensors import (
-    LightcurveTensor,
-    PhotometricTensor,
-    Spatial3DTensor,
-    SpectralTensor,
-    SurveyTensor,
-)
-from astro_lab.models.layers import LayerFactory
+from .layers import LayerFactory
 
-# Configure logging
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from astro_lab.tensors import (
+        AstrometryTensor,
+        FeatureTensor,
+        LightcurveTensor,
+        PhotometricTensor,
+        Spatial3DTensor,
+        SpectralTensor,
+        SurveyTensor,
+    )
+
 
 class BaseEncoder(nn.Module):
-    """Base encoder with robust error handling."""
-
-    def __init__(self, output_dim: int, expected_input_dim: int):
+    """
+    Base class for all encoders. It defines the basic interface and provides
+    a common initialization for device handling.
+    """
+    def __init__(self, input_dim: int, output_dim: int, **kwargs):
         super().__init__()
+        self.input_dim = input_dim
         self.output_dim = output_dim
-        self.expected_input_dim = expected_input_dim
+        self.device = kwargs.get('device', torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+        self.layers = self._create_layers()
+        self.to(self.device)
 
-        # Fallback projection for wrong input sizes
-        self.fallback_projection = nn.Linear(expected_input_dim, output_dim)
+    def _create_layers(self) -> nn.Module:
+        """
+        Creates the neural network layers for the encoder. Subclasses should
+        implement this method to define their specific architecture.
+        """
+        # Default implementation is a simple MLP
+        return nn.Sequential(
+            nn.Linear(self.input_dim, (self.input_dim + self.output_dim) // 2),
+            nn.ReLU(),
+            nn.Linear((self.input_dim + self.output_dim) // 2, self.output_dim),
+        )
 
-    def create_fallback_features(self, tensor: Any) -> torch.Tensor:
-        """Create fallback features when extraction fails."""
-        batch_size = self._get_batch_size(tensor)
-        return torch.zeros(batch_size, self.output_dim, device=self._get_device(tensor))
+    def forward(self, tensor: Any, *args, **kwargs) -> torch.Tensor:
+        """
+        Defines the forward pass of the encoder. Subclasses must implement this.
+        """
+        raise NotImplementedError("Subclasses must implement the forward method.")
+    
+    def process_batch(self, data: torch.Tensor) -> torch.Tensor:
+        """
+        A helper method to process a batch of data through the layers.
+        Handles device placement and layer application.
+        """
+        if data.device != self.device:
+            data = data.to(self.device)
+        return self.layers(data.float())
 
-    def _get_batch_size(self, tensor: Any) -> int:
-        """Get batch size from tensor."""
-        if hasattr(tensor, "_data"):
-            return tensor._data.size(0)
-        elif hasattr(tensor, "size"):
-            return tensor.size(0)
-        else:
-            return 1
 
-    def _get_device(self, tensor: Any):
-        """Get device from tensor."""
-        if hasattr(tensor, "_data"):
-            return tensor._data.device
-        elif hasattr(tensor, "device"):
-            return tensor.device
-        else:
-            return torch.device("cpu")
+class LightcurveEncoder(BaseEncoder):
+    """Encodes lightcurve data using an LSTM."""
+
+    def __init__(self, input_dim: int, hidden_dim: int, output_dim: int, num_layers: int = 1, **kwargs):
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        super().__init__(input_dim=input_dim, output_dim=output_dim, **kwargs)
+        # Note: BaseEncoder's _create_layers is not used here, we define layers directly
+        
+    def _create_layers(self) -> nn.Module:
+        """Override to create LSTM and Linear layers."""
+        return nn.ModuleDict({
+            'lstm': nn.LSTM(self.input_dim, self.hidden_dim, self.num_layers, batch_first=True),
+            'fc': nn.Linear(self.hidden_dim, self.output_dim)
+        })
+
+    def forward(self, lightcurve_tensor: "LightcurveTensor") -> torch.Tensor:
+        """Forward pass for the lightcurve encoder."""
+        data = lightcurve_tensor.data
+        if data.dim() == 2:
+            data = data.unsqueeze(0)  # Add batch dimension if missing
+        
+        data = data.to(self.device)
+        
+        # We only need the last hidden state
+        _, (hidden, _) = self.layers['lstm'](data)
+        
+        # Pass the last hidden state through the fully connected layer
+        return self.layers['fc'](hidden[-1])
+
+
+class AstrometryEncoder(BaseEncoder):
+    """Encodes astrometric data."""
+    def __init__(self, input_dim: int, output_dim: int, **kwargs: Any):
+        super().__init__(input_dim, output_dim, **kwargs)
+
+    def forward(
+        self, astrometry_tensor: "AstrometryTensor", *args: Any, **kwargs: Any
+    ) -> torch.Tensor:
+        """Process the astrometric tensor."""
+        data = astrometry_tensor.data
+        if data.dim() == 1:
+            data = data.unsqueeze(0)
+        return self.process_batch(data)
+
+
+class SpectroscopyEncoder(BaseEncoder):
+    """Encodes spectroscopic data."""
+    def __init__(self, input_dim: int, output_dim: int, **kwargs: Any):
+        super().__init__(input_dim, output_dim, **kwargs)
+
+    def forward(
+        self, spectroscopy_tensor: "SpectralTensor", *args: Any, **kwargs: Any
+    ) -> torch.Tensor:
+        """Process the spectroscopy tensor."""
+        data = spectroscopy_tensor.data
+        if data.dim() == 1:
+            data = data.unsqueeze(0)
+        return self.process_batch(data)
+
 
 class PhotometryEncoder(BaseEncoder):
-    """Encoder for photometric tensor features."""
+    """Encodes photometric data."""
+    def __init__(self, input_dim: int, output_dim: int, **kwargs: Any):
+        super().__init__(input_dim, output_dim, **kwargs)
 
-    def __init__(self, output_dim: int):
-        super().__init__(output_dim, expected_input_dim=32)
-        self.encoder = nn.Sequential(
-            LayerFactory.create_mlp(32, 64),  # Standard photometric features
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            LayerFactory.create_mlp(64, output_dim),
-        )
+    def forward(
+        self, photometric_tensor: "PhotometricTensor", *args: Any, **kwargs: Any
+    ) -> torch.Tensor:
+        """Process the photometric tensor."""
+        data = photometric_tensor.data
+        if data.dim() == 1:
+            data = data.unsqueeze(0)
+        return self.process_batch(data)
 
-    def forward(self, phot_tensor: PhotometricTensor) -> torch.Tensor:
-        """Extract photometric features."""
-        try:
-            # Use native PhotometricTensor methods
-            data = phot_tensor._data  # Direct access to underlying data
 
-            # Handle very small input dimensions
-            if data.size(-1) == 1:
-                # For single band, create simple features
-                features = torch.cat(
-                    [
-                        data,  # Original magnitude
-                        torch.zeros_like(data),  # No variation for single band
-                        data,  # Max = original
-                        data,  # Min = original
-                    ],
-                    dim=-1,
-                )
-            else:
-                # Compute basic photometric statistics
-                features = torch.cat(
-                    [
-                        data.mean(dim=-1, keepdim=True),  # Mean magnitude
-                        data.std(dim=-1, keepdim=True),  # Magnitude variation
-                        data.max(dim=-1, keepdim=True)[0],  # Brightest magnitude
-                        data.min(dim=-1, keepdim=True)[0],  # Faintest magnitude
-                    ],
-                    dim=-1,
-                )
+class Spatial3DEncoder(BaseEncoder):
+    """Encodes 3D spatial data."""
+    def __init__(self, input_dim: int, output_dim: int, **kwargs: Any):
+        super().__init__(input_dim, output_dim, **kwargs)
 
-                # Add color indices if multi-band
-                if data.size(-1) >= 2:
-                    colors = []
-                    for i in range(min(data.size(-1) - 1, 4)):  # Max 4 colors
-                        colors.append(data[..., i] - data[..., i + 1])
-                    if colors:
-                        color_tensor = torch.stack(colors, dim=-1)
-                        features = torch.cat([features, color_tensor], dim=-1)
+    def forward(
+        self, spatial_tensor: "Spatial3DTensor", *args: Any, **kwargs: Any
+    ) -> torch.Tensor:
+        """Process the 3D spatial tensor."""
+        data = spatial_tensor.data
+        if data.dim() == 1:
+            data = data.unsqueeze(0)
+        return self.process_batch(data)
 
-            # Pad or truncate to expected size
-            if features.size(-1) < 32:
-                padding = torch.zeros(
-                    *features.shape[:-1], 32 - features.size(-1), device=features.device
-                )
-                features = torch.cat([features, padding], dim=-1)
-            else:
-                features = features[..., :32]
-
-            # Replace any NaN values with zeros
-            features = torch.where(
-                torch.isnan(features), torch.zeros_like(features), features
-            )
-
-            return self.encoder(features)
-
-        except Exception:
-            # Fallback: use raw data
-            raw_data = phot_tensor._data
-            if raw_data.size(-1) < 32:
-                padding = torch.zeros(
-                    *raw_data.shape[:-1], 32 - raw_data.size(-1), device=raw_data.device
-                )
-                raw_data = torch.cat([raw_data, padding], dim=-1)
-            else:
-                raw_data = raw_data[..., :32]
-
-            # Replace any NaN values with zeros
-            raw_data = torch.where(
-                torch.isnan(raw_data), torch.zeros_like(raw_data), raw_data
-            )
-
-            return self.encoder(raw_data)
-
-class AstrometryEncoder(nn.Module):
-    """Encoder for astrometric/spatial tensor features."""
-
-    def __init__(self, output_dim: int):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            LayerFactory.create_mlp(16, 32),  # Coordinate + proper motion features
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            LayerFactory.create_mlp(32, output_dim),
-        )
-
-    def forward(self, spatial_tensor: Spatial3DTensor) -> torch.Tensor:
-        """Extract astrometric features."""
-        try:
-            # Use native Spatial3DTensor data
-            data = spatial_tensor._data  # Direct access to coordinates
-
-            # Extract coordinate features
-            if data.size(-1) >= 3:
-                # Assume RA, DEC, distance/parallax format
-                coords = data[..., :3]
-
-                # Add proper motions if available
-                if data.size(-1) >= 5:
-                    pm = data[..., 3:5]  # pmra, pmdec
-                    features = torch.cat([coords, pm], dim=-1)
-                else:
-                    features = coords
-
-                # Add distance-derived features if available
-                if data.size(-1) >= 6:
-                    dist_features = data[..., 5:6]
-                    features = torch.cat([features, dist_features], dim=-1)
-            else:
-                features = data
-
-            # Pad or truncate to expected size
-            if features.size(-1) < 16:
-                padding = torch.zeros(
-                    *features.shape[:-1], 16 - features.size(-1), device=features.device
-                )
-                features = torch.cat([features, padding], dim=-1)
-            else:
-                features = features[..., :16]
-
-            return self.encoder(features)
-
-        except Exception:
-            # Fallback: use raw data
-            raw_data = spatial_tensor._data
-            if raw_data.size(-1) < 16:
-                padding = torch.zeros(
-                    *raw_data.shape[:-1], 16 - raw_data.size(-1), device=raw_data.device
-                )
-                raw_data = torch.cat([raw_data, padding], dim=-1)
-            else:
-                raw_data = raw_data[..., :16]
-
-            return self.encoder(raw_data)
-
-class SpectroscopyEncoder(nn.Module):
-    """Encoder for spectroscopic tensor features."""
-
-    def __init__(self, output_dim: int):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            LayerFactory.create_mlp(64, 128),  # Spectral features
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            LayerFactory.create_mlp(128, output_dim),
-        )
-
-    def forward(self, spec_tensor: Union[SpectralTensor, SurveyTensor]) -> torch.Tensor:
-        """Extract spectroscopic features."""
-        try:
-            # Use native tensor data
-            data = spec_tensor._data  # Direct access to spectral data
-
-            # Compute spectral statistics
-            features = torch.cat(
-                [
-                    data.mean(dim=-1, keepdim=True),  # Mean flux
-                    data.std(dim=-1, keepdim=True),  # Flux variation
-                    data.max(dim=-1, keepdim=True)[0],  # Peak flux
-                    data.min(dim=-1, keepdim=True)[0],  # Min flux
-                ],
-                dim=-1,
-            )
-
-            # Add spectral moments/indices if spectrum is long enough
-            if data.size(-1) >= 10:
-                # Simple spectral indices (blue/red ratio, etc.)
-                blue_flux = data[..., : data.size(-1) // 3].mean(dim=-1, keepdim=True)
-                red_flux = data[..., 2 * data.size(-1) // 3 :].mean(
-                    dim=-1, keepdim=True
-                )
-                color_index = blue_flux - red_flux
-                features = torch.cat([features, color_index], dim=-1)
-
-            # Pad to expected size
-            if features.size(-1) < 64:
-                padding = torch.zeros(
-                    *features.shape[:-1], 64 - features.size(-1), device=features.device
-                )
-                features = torch.cat([features, padding], dim=-1)
-            else:
-                features = features[..., :64]
-
-            return self.encoder(features)
-
-        except Exception:
-            # Fallback: use raw data
-            raw_data = spec_tensor._data
-            if raw_data.size(-1) < 64:
-                padding = torch.zeros(
-                    *raw_data.shape[:-1], 64 - raw_data.size(-1), device=raw_data.device
-                )
-                raw_data = torch.cat([raw_data, padding], dim=-1)
-            else:
-                raw_data = raw_data[..., :64]
-
-            return self.encoder(raw_data)
-
-class LightcurveEncoder(nn.Module):
-    """Encoder for lightcurve/time-series tensor features."""
-
-    def __init__(self, output_dim: int):
-        super().__init__()
-        self.encoder = nn.Sequential(
-            LayerFactory.create_mlp(32, 64),  # Lightcurve features
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            LayerFactory.create_mlp(64, output_dim),
-        )
-
-    def forward(self, lc_tensor: LightcurveTensor) -> torch.Tensor:
-        """Extract lightcurve features."""
-        try:
-            # Use raw lightcurve data
-            raw_data = lc_tensor._data
-
-            # If 3D (batch, time, features), aggregate over time dimension
-            if raw_data.dim() == 3:
-                # Compute statistics over time dimension
-                features = torch.cat(
-                    [
-                        raw_data.mean(dim=1),  # Mean over time
-                        raw_data.std(dim=1),  # Std over time
-                        raw_data.max(dim=1)[0],  # Max over time
-                        raw_data.min(dim=1)[0],  # Min over time
-                    ],
-                    dim=-1,
-                )
-            elif raw_data.dim() == 2:
-                # If 2D (time, features), treat as single lightcurve
-                # Aggregate over time dimension to get single feature vector
-                features = torch.cat(
-                    [
-                        raw_data.mean(
-                            dim=0, keepdim=True
-                        ),  # Mean over time -> (1, features)
-                        raw_data.std(
-                            dim=0, keepdim=True
-                        ),  # Std over time -> (1, features)
-                        raw_data.max(dim=0, keepdim=True)[
-                            0
-                        ],  # Max over time -> (1, features)
-                        raw_data.min(dim=0, keepdim=True)[
-                            0
-                        ],  # Min over time -> (1, features)
-                    ],
-                    dim=-1,
-                )
-            else:
-                # If 1D, treat as single sample
-                features = raw_data.unsqueeze(0)  # (features,) -> (1, features)
-
-            # Pad or truncate to expected size (32)
-            if features.size(-1) < 32:
-                padding = torch.zeros(
-                    *features.shape[:-1], 32 - features.size(-1), device=features.device
-                )
-                features = torch.cat([features, padding], dim=-1)
-            else:
-                features = features[..., :32]
-
-            return self.encoder(features)
-
-        except Exception:
-            # Fallback: create simple features with batch size 1
-            raw_data = lc_tensor._data
-            device = raw_data.device
-
-            # Create simple fallback features for single lightcurve
-            fallback_features = torch.randn(1, 32, device=device)
-            return self.encoder(fallback_features)
-
-__all__ = [
-    "PhotometryEncoder",
-    "AstrometryEncoder",
-    "SpectroscopyEncoder",
-    "LightcurveEncoder",
-]
+# Encoder registry for the model factory
+ENCODER_REGISTRY = {
+    "photometry": PhotometryEncoder,
+    "spectroscopy": SpectroscopyEncoder,
+    "astrometry": AstrometryEncoder,
+    "lightcurve": LightcurveEncoder,
+    "spatial_3d": Spatial3DEncoder,
+}

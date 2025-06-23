@@ -21,7 +21,7 @@ class TestOrbitTensor:
         )  # Eccentricity < 1
 
         orbital = OrbitTensor(
-            orbital_elements,
+            data=orbital_elements,
             element_type="keplerian",
             attractor="earth",
         )
@@ -34,14 +34,14 @@ class TestOrbitTensor:
         """Test orbital element validation."""
         # Wrong number of elements
         with pytest.raises(ValueError):
-            OrbitTensor(torch.randn(10, 5))  # Should be 6 elements
+            OrbitTensor(data=torch.randn(10, 5))  # Should be 6 elements
 
     def test_orbital_properties(self):
         """Test orbital tensor properties."""
         elements = torch.rand(5, 6)
         elements[:, 1] = 0.5  # Set eccentricity
 
-        orbital = OrbitTensor(elements)
+        orbital = OrbitTensor(data=elements)
 
         # Test methods exist
         assert hasattr(orbital, "to_cartesian")

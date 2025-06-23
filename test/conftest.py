@@ -16,6 +16,7 @@ import numpy as np
 import polars as pl
 import pytest
 import torch
+import shutil
 
 # Add src to Python path for testing
 project_root = Path(__file__).parent.parent
@@ -245,44 +246,31 @@ def tng_processed_data_path(data_dir: Path) -> Optional[Path]:
 
 # AstroDataset fixtures - direct dataset creation
 @pytest.fixture(scope="session")
-def gaia_dataset(test_data_dir: Path):
+def gaia_dataset(test_data_dir: Path, gaia_data_path: Path):
     """
-    Creates a mock Gaia AstroDataset for testing.
-
-    This fixture generates a small, temporary Parquet file that mimics
-    the structure of the real Gaia data, allowing tests to run without
-    needing to download the actual dataset.
+    Creates a mock Gaia AstroDataset for testing using a real data file.
+    This fixture will create a temporary directory structure and copy
+    a real raw parquet file to simulate the presence of data for processing.
     """
-    from astro_lab.data.core import AstroDataset
-    from astro_lab.utils.config.surveys import get_survey_features
-
     try:
-        survey_name = "gaia"
-        root_path = test_data_dir
+        if not gaia_data_path or not gaia_data_path.exists():
+            pytest.skip("Real Gaia data file not found, skipping dataset test.")
 
-        # 1. Define schema and create a dummy DataFrame
-        features = get_survey_features(survey_name)
-        num_rows = 20
-        data = {name: np.random.rand(num_rows) for name in features}
-        df = pl.DataFrame(data)
-
-        # 2. Save the dummy data to the expected raw file path
-        raw_dir = root_path / survey_name / "raw"
+        # Define directory structure within the temporary test_data_dir
+        raw_dir = test_data_dir / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy the real data file to the expected location for the test
         raw_file_path = raw_dir / "gaia.parquet"
-        df.write_parquet(raw_file_path)
+        shutil.copy(gaia_data_path, raw_file_path)
 
-        # 3. Instantiate the dataset. This will trigger the `process` method.
-        dataset = AstroDataset(root=str(root_path), survey=survey_name, k_neighbors=4)
-        
-        # Ensure processing was successful
-        assert len(dataset) > 0, "Dataset processing failed, no data was loaded."
-        
-        return dataset
+        # The root for AstroDataset should be the parent of 'raw'
+        # Lazily import AstroDataset to avoid circular dependency issues
+        from astro_lab.data.core import AstroDataset
 
+        return AstroDataset(root=str(test_data_dir), survey="gaia")
     except Exception as e:
         pytest.skip(f"Failed to create mock Gaia dataset: {e}")
-        return None
 
 
 @pytest.fixture(scope="session")

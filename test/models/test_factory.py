@@ -8,6 +8,7 @@ Tests for model factory pattern and registry system with new unified architectur
 import pytest
 import torch
 import torch.nn as nn
+from typing import Dict, Any
 
 from astro_lab.models.factory import (
     ModelFactory,
@@ -19,9 +20,27 @@ from astro_lab.models.factory import (
     get_model_info,
     list_available_models,
 )
-from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
+from astro_lab.models.config import (
+    ModelConfig,
+    EncoderConfig,
+    GraphConfig,
+    OutputConfig,
+)
 from astro_lab.models.layers import LayerFactory
 from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
+from astro_lab.models.astro import AstroSurveyGNN
+from astro_lab.tensors import SurveyTensor, PhotometricTensor, LightcurveTensor
+
+# Mock data for testing
+@pytest.fixture
+def mock_survey_data():
+    photometry = torch.randn(10, 5)
+    return {"photometry": PhotometricTensor(data=photometry, bands=['u','g','r','i','z'])}
+
+@pytest.fixture
+def mock_temporal_data():
+    lightcurve = torch.randn(10, 20, 1) # 10 samples, 20 time steps, 1 feature
+    return {"lightcurve": LightcurveTensor(data=lightcurve)}
 
 
 class TestModelRegistry:
@@ -71,63 +90,45 @@ class TestModelFactory:
         assert hasattr(factory, "TASK_CONFIGS")
         assert isinstance(factory.TASK_CONFIGS, dict)
 
-    def test_survey_specific_creation(self):
+    def test_survey_specific_creation(self, mock_survey_data):
         """Test creating survey-specific models."""
         factory = ModelFactory()
+        model = factory.create_survey_model(
+            "gaia", task="stellar_classification", photometry_bands=['u','g','r','i','z']
+        )
+        assert isinstance(model, AstroSurveyGNN)
+        output = model(mock_survey_data)
+        assert output.shape[0] == 10
 
-        # Test only available survey types
-        available_surveys = get_available_surveys()
-
-        for survey in available_surveys:
-            try:
-                model = factory.create_survey_model(
-                    survey, task="stellar_classification"
-                )
-                assert isinstance(model, nn.Module)
-            except (ValueError, ImportError, AttributeError):
-                # Survey configuration or model might not be fully implemented
-                pass
-
-    def test_temporal_model_creation(self):
+    def test_temporal_model_creation(self, mock_temporal_data):
         """Test creating temporal models."""
         factory = ModelFactory()
-
-        try:
-            model = factory.create_temporal_model(
-                model_type="alcdef", task="period_detection"
-            )
-            assert isinstance(model, nn.Module)
-        except (ValueError, ImportError, AttributeError):
-            # Temporal model might not be fully implemented
-            pass
+        model = factory.create_temporal_model(
+            "alcdef", task="period_detection", lightcurve_features=1
+        )
+        assert model is not None
+        output = model(mock_temporal_data)
+        assert output.shape[0] == 10
 
     def test_3d_stellar_model_creation(self):
         """Test creating 3D stellar models."""
         factory = ModelFactory()
+        with pytest.raises(NotImplementedError):
+            factory.create_3d_stellar_model("star_formation", task="property_prediction")
 
-        try:
-            model = factory.create_3d_stellar_model(
-                model_type="point_cloud", num_stars=100, radius=0.5
-            )
-            assert isinstance(model, nn.Module)
-        except (ValueError, ImportError, AttributeError):
-            # 3D model might not be fully implemented
-            pass
-
-    def test_multi_survey_model_creation(self):
+    def test_multi_survey_model_creation(self, mock_survey_data):
         """Test creating multi-survey models."""
         factory = ModelFactory()
-
-        try:
-            model = factory.create_multi_survey_model(
-                surveys=["gaia", "sdss"],
-                task="stellar_classification",
-                fusion_strategy="attention",
-            )
-            assert isinstance(model, nn.Module)
-        except (ValueError, ImportError, AttributeError):
-            # Multi-survey model might not be fully implemented
-            pass
+        config = {
+            "surveys": ["gaia", "sdss"],
+            "photometry_bands": ['u','g','r','i','z']
+        }
+        model = factory.create_multi_survey_model(
+            config, task="multi_property_prediction"
+        )
+        assert isinstance(model, AstroSurveyGNN)
+        output = model(mock_survey_data)
+        assert output.shape[0] == 10
 
 
 class TestConfigObjects:
@@ -224,57 +225,41 @@ class TestConfigObjects:
 class TestConvenienceFunctions:
     """Test convenience functions for model creation."""
 
-    def test_create_gaia_classifier(self):
+    def test_create_gaia_classifier(self, mock_survey_data):
         """Test create_gaia_classifier convenience function."""
-        try:
-            model = create_gaia_classifier(num_classes=7, hidden_dim=128)
-            assert isinstance(model, nn.Module)
-        except (ImportError, AttributeError):
-            # Model might not be fully implemented
-            pass
+        model = create_gaia_classifier(num_classes=7, hidden_dim=128, photometry_bands=['u','g','r','i','z'])
+        assert isinstance(model, AstroSurveyGNN)
+        output = model(mock_survey_data)
+        assert output.shape == (10, 7)
 
-    def test_create_sdss_galaxy_model(self):
+    def test_create_sdss_galaxy_model(self, mock_survey_data):
         """Test create_sdss_galaxy_model convenience function."""
-        try:
-            model = create_sdss_galaxy_model(task="galaxy_property_prediction")
-            assert isinstance(model, nn.Module)
-        except (ImportError, AttributeError):
-            # Model might not be fully implemented
-            pass
+        model = create_sdss_galaxy_model(task="galaxy_property_prediction", photometry_bands=['u','g','r','i','z'])
+        assert isinstance(model, AstroSurveyGNN)
 
     def test_create_lsst_transient_detector(self):
         """Test create_lsst_transient_detector convenience function."""
         # Skip this test since lsst is not in available surveys
         pytest.skip("LSST survey not available in current configuration")
 
-    def test_create_asteroid_period_detector(self):
+    def test_create_asteroid_period_detector(self, mock_temporal_data):
         """Test create_asteroid_period_detector convenience function."""
-        try:
-            model = create_asteroid_period_detector()
-            assert isinstance(model, nn.Module)
-        except (ImportError, AttributeError):
-            # Model might not be fully implemented
-            pass
+        model = create_asteroid_period_detector(lightcurve_features=1)
+        assert model is not None
+        output = model(mock_temporal_data)
+        assert output.shape[0] == 10
 
     def test_list_available_models_function(self):
         """Test list_available_models convenience function."""
-        try:
-            available_models = list_available_models()
-            assert isinstance(available_models, dict)
-        except (ImportError, AttributeError):
-            # Function might not be fully implemented
-            pass
+        models = list_available_models()
+        assert "surveys" in models
+        assert "temporal" in models
 
     def test_get_model_info_function(self):
         """Test get_model_info convenience function."""
-        try:
-            # Create a simple model to test with
-            model = nn.Linear(10, 5)
-            info = get_model_info(model)
-            assert isinstance(info, dict)
-        except (ImportError, AttributeError):
-            # Function might not be fully implemented
-            pass
+        info = get_model_info("gaia")
+        assert "description" in info
+        assert "default_task" in info
 
 
 class TestSurveyConfigurations:
@@ -321,65 +306,39 @@ class TestErrorHandling:
     def test_invalid_survey_type(self):
         """Test error handling for invalid survey type."""
         factory = ModelFactory()
-
         with pytest.raises(ValueError):
-            factory.create_survey_model("invalid_survey", task="stellar_classification")
+            factory.create_survey_model("invalid_survey", "some_task")
 
     def test_invalid_task_type(self):
         """Test error handling for invalid task type."""
         factory = ModelFactory()
-
         with pytest.raises(ValueError):
-            factory.create_survey_model("gaia", task="invalid_task")
+            factory.create_survey_model("gaia", "invalid_task")
 
     def test_invalid_model_type_in_registry(self):
         """Test error handling for invalid model type in registry."""
         registry = ModelRegistry()
-
         with pytest.raises(ValueError):
-            registry.create("invalid_model_type")
+            registry.create("invalid_type")
 
 
 class TestModelIntegration:
     """Test integration between factory and models."""
 
-    def test_factory_model_compatibility(self):
+    def test_factory_model_compatibility(self, mock_survey_data):
         """Test that factory-created models are compatible with data."""
         factory = ModelFactory()
+        model = factory.create_survey_model("gaia", task="stellar_classification", photometry_bands=['u','g','r','i','z'])
+        output = model(mock_survey_data)
+        assert output.shape[0] == 10
+        assert output.shape[1] > 1
 
-        try:
-            model = factory.create_survey_model("gaia", task="stellar_classification")
-
-            # Test with dummy data
-            x = torch.randn(10, 64)  # 10 nodes, 64 features
-            edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
-
-            output = model(x, edge_index)
-            assert isinstance(output, torch.Tensor)
-            assert not torch.isnan(output).any()
-
-        except (ImportError, AttributeError):
-            # Model might not be fully implemented
-            pass
-
-    def test_model_forward_pass(self):
+    def test_model_forward_pass(self, mock_survey_data):
         """Test forward pass of factory-created models."""
         factory = ModelFactory()
-
-        try:
-            model = factory.create_survey_model("sdss", task="galaxy_property_prediction")
-
-            # Test forward pass
-            x = torch.randn(8, 128)
-            edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
-
-            output = model(x, edge_index)
-            assert output.shape[0] == 8  # Same number of nodes
-            assert not torch.isnan(output).any()
-
-        except (ImportError, AttributeError):
-            # Model might not be fully implemented
-            pass
+        model = factory.create_survey_model("sdss", task="galaxy_property_prediction", photometry_bands=['u','g','r','i','z'])
+        output = model(mock_survey_data)
+        assert output.shape[0] == 10
 
     def test_device_consistency(self):
         """Test that model outputs are consistent between CPU and GPU."""
@@ -396,29 +355,30 @@ class TestModelIntegration:
         torch.backends.cudnn.benchmark = False
         
         # Create model
-        model = create_gaia_classifier()
+        model = create_gaia_classifier(photometry_bands=['u','g','r','i','z'])
         
         # Create test input with deterministic values
         batch_size = 5
-        input_dim = 16  # Default input dimension
-        x = torch.randn(batch_size, input_dim)
-        edge_index = torch.tensor([[0, 1, 2, 3, 4], [1, 2, 3, 4, 0]], dtype=torch.long)
+        photometry_data = torch.randn(batch_size, 5) # 5 bands
+        photometry_tensor = PhotometricTensor(data=photometry_data, bands=['u','g','r','i','z'])
+        x = {"photometry": photometry_tensor}
         
         # Test on CPU
         model_cpu = model.cpu()
         model_cpu.eval()  # Set to eval mode for consistent behavior
         with torch.no_grad():
-            output_cpu = model_cpu(x, edge_index)
+            output_cpu = model_cpu(x)
         
         # Test on GPU
         model_gpu = model.cuda()
         model_gpu.eval()  # Set to eval mode for consistent behavior
         with torch.no_grad():
-            output_gpu = model_gpu(x.cuda(), edge_index.cuda())
+            gpu_photometry_tensor = PhotometricTensor(data=photometry_data.cuda(), bands=['u','g','r','i','z'])
+            output_gpu = model_gpu({"photometry": gpu_photometry_tensor})
         
         # Compare outputs with much higher tolerance for PyTorch Geometric
         # CPU/GPU differences are expected in GNNs due to different implementations
-        assert torch.allclose(output_cpu, output_gpu.cpu(), atol=1e-2, rtol=1e-2)
+        assert torch.allclose(output_cpu, output_gpu.cpu(), atol=1e-5, rtol=1e-4)
         
         # Reset deterministic settings
         torch.backends.cudnn.deterministic = False
