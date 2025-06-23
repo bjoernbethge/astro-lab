@@ -17,11 +17,8 @@ uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/
 # Process data (recommended first step)
 astro-lab process --surveys gaia --max-samples 1000
 
-# Run interactive widget
-uv run python demo_astrolab_widget.py
-
-# Start development environment
-uv run marimo edit
+# Start interactive development environment
+marimo edit
 ```
 
 ## 🌟 Key Features
