@@ -173,35 +173,44 @@ class TestSurveyTensorDatasetIntegration:
     def test_gaia_survey_tensor_integration(self, gaia_dataset):
         """Test Gaia dataset SurveyTensor integration."""
         assert len(gaia_dataset) > 0
-
-        # Test basic dataset functionality
         first_item = gaia_dataset[0]
         assert first_item is not None, "Dataset returned None for first item"
         assert hasattr(first_item, "x")  # PyG Data object
+        # Zusätzliche Prüfung auf standardisierte Spalten
+        columns = gaia_dataset.get_info().get("columns", [])
+        assert "ra" in columns and "dec" in columns, (
+            f"Gaia-Dataset hat nicht die erwarteten Spalten: {columns}")
 
     @pytest.mark.slow
     def test_nsa_survey_tensor_integration(self, nsa_dataset):
         """Test NSA dataset SurveyTensor integration."""
-        # Einfach testen: Funktioniert das vorhandene NSA-Dataset?
         assert len(nsa_dataset) > 0
         first_item = nsa_dataset[0]
         assert first_item is not None
         assert hasattr(first_item, "x")  # PyG Data object
+        columns = nsa_dataset.get_info().get("columns", [])
+        assert "ra" in columns and "dec" in columns, (
+            f"NSA-Dataset hat nicht die erwarteten Spalten: {columns}")
 
     @pytest.mark.slow
     def test_exoplanet_survey_tensor_integration(self, exoplanet_dataset):
         """Test Exoplanet dataset SurveyTensor integration."""
-        # Einfach testen: Funktioniert das vorhandene Exoplanet-Dataset?
         assert len(exoplanet_dataset) > 0
         first_item = exoplanet_dataset[0]
         assert first_item is not None
         assert hasattr(first_item, "x")  # PyG Data object
+        columns = exoplanet_dataset.get_info().get("columns", [])
+        assert "ra" in columns and "dec" in columns, (
+            f"Exoplanet-Dataset hat nicht die erwarteten Spalten: {columns}")
 
     def test_cross_survey_operations(self, gaia_dataset, nsa_dataset):
         """Test cross-survey tensor operations."""
-        # Einfach testen: Sind die vorhandenen Datasets verfügbar?
         assert len(gaia_dataset) > 0
         assert len(nsa_dataset) > 0
+        gaia_cols = gaia_dataset.get_info().get("columns", [])
+        nsa_cols = nsa_dataset.get_info().get("columns", [])
+        assert "ra" in gaia_cols and "dec" in gaia_cols
+        assert "ra" in nsa_cols and "dec" in nsa_cols
 
     def test_survey_tensor_quality_cuts(self):
         """Test survey tensor quality cuts."""

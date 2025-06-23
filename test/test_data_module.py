@@ -73,6 +73,9 @@ class TestAstroDataManager:
         assert gaia_dataset.len() > 0
         sample = gaia_dataset.get(0)
         assert hasattr(sample, "x")
+        columns = info.get("columns", [])
+        assert "ra" in columns and "dec" in columns, (
+            f"Gaia-Dataset hat nicht die erwarteten Spalten: {columns}")
 
 
 class TestIntegratedDataModule:
@@ -111,6 +114,9 @@ class TestIntegratedDataModule:
         assert gaia_dataset.len() > 0
         sample = gaia_dataset.get(0)
         assert hasattr(sample, "x")
+        columns = info.get("columns", [])
+        assert "ra" in columns and "dec" in columns, (
+            f"Gaia-Dataset hat nicht die erwarteten Spalten: {columns}")
 
     def test_load_nsa_data_integrated(self, nsa_dataset):
         info = nsa_dataset.get_info()
@@ -118,6 +124,9 @@ class TestIntegratedDataModule:
         assert nsa_dataset.len() > 0
         sample = nsa_dataset.get(0)
         assert hasattr(sample, "x")
+        columns = info.get("columns", [])
+        assert "ra" in columns and "dec" in columns, (
+            f"NSA-Dataset hat nicht die erwarteten Spalten: {columns}")
 
 
 class TestCosmicWebAnalysis:
