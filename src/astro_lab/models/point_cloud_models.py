@@ -73,15 +73,18 @@ class StellarPointCloudGNN(BaseAstroGNN):
 
     def __init__(
         self,
+        input_dim: int = 1,  # Add input_dim parameter
         hidden_dim: int = 128,
         num_neighbors: int = 6,
         sample_points: int = 1024,
         radius: float = 0.1,  # Physical radius in parsecs
         use_gravitational_mp: bool = True,
+        device: Optional[Union[str, torch.device]] = None,
         **kwargs,
     ):
-        super().__init__(hidden_dim=hidden_dim, **kwargs)
+        super().__init__(hidden_dim=hidden_dim, device=device, **kwargs)
 
+        self.input_dim = input_dim
         self.num_neighbors = num_neighbors
         self.sample_points = sample_points
         self.radius = radius
@@ -100,7 +103,8 @@ class StellarPointCloudGNN(BaseAstroGNN):
         for _ in range(3):
             local_nn = LayerFactory.create_mlp(hidden_dim + 3, hidden_dim)
             global_nn = LayerFactory.create_mlp(hidden_dim, hidden_dim)
-            self.pointnet_layers.append(PointNetConv(local_nn, global_nn))
+            pointnet_layer = PointNetConv(local_nn, global_nn)
+            self.pointnet_layers.append(pointnet_layer)
 
         # GAT layers for adaptive star weighting (brightness/importance)
         self.attention_layers = nn.ModuleList(
@@ -114,12 +118,15 @@ class StellarPointCloudGNN(BaseAstroGNN):
         if use_gravitational_mp:
             self.grav_mp = GravitationalMessagePassing(hidden_dim)
 
-        # Stellar feature encoder
+        # Stellar feature encoder - now uses input_dim
         self.stellar_encoder = nn.Sequential(
-            LayerFactory.create_mlp(1, hidden_dim // 4),  # Start with magnitude
+            LayerFactory.create_mlp(input_dim, hidden_dim // 4),  # Use input_dim
             nn.ReLU(),
             LayerFactory.create_mlp(hidden_dim // 4, hidden_dim),
         )
+        
+        # Move all components to the correct device
+        self.to(self.device)
 
     def build_stellar_graph(
         self,
@@ -250,9 +257,16 @@ class HierarchicalStellarGNN(BaseAstroGNN):
             # Ensure correct dimensions
             if h_scale.size(-1) != self.hidden_dim:
                 # Add projection if needed
-                if not hasattr(self, f'projection_{scale}'):
-                    setattr(self, f'projection_{scale}', nn.Linear(h_scale.size(-1), self.hidden_dim))
-                h_scale = getattr(self, f'projection_{scale}')(h_scale)
+                projection_name = f'projection_{scale}'
+                if not hasattr(self, projection_name):
+                    projection = nn.Linear(h_scale.size(-1), self.hidden_dim)
+                    # Move to correct device
+                    if hasattr(self, 'device'):
+                        projection = projection.to(self.device)
+                    elif h_scale.device != torch.device('cpu'):
+                        projection = projection.to(h_scale.device)
+                    setattr(self, projection_name, projection)
+                h_scale = getattr(self, projection_name)(h_scale)
 
             scale_features.append(h_scale)
 
