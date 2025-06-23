@@ -85,22 +85,23 @@ class LightcurveEncoder(BaseEncoder):
         """Override to create LSTM and Linear layers."""
         return nn.ModuleDict({
             'lstm': nn.LSTM(self.input_dim, self.hidden_dim, self.num_layers, batch_first=True),
-            'fc': nn.Linear(self.hidden_dim, self.output_dim)
+            'attention': nn.MultiheadAttention(embed_dim=self.hidden_dim, num_heads=4, batch_first=True),
         })
 
     def forward(self, lightcurve_tensor: "LightcurveTensor") -> torch.Tensor:
-        """Forward pass for the lightcurve encoder."""
+        """Processes a lightcurve tensor through an RNN."""
         data = lightcurve_tensor.data
+
+        # Add a batch dimension if it's a single lightcurve
         if data.dim() == 2:
-            data = data.unsqueeze(0)  # Add batch dimension if missing
+            data = data.unsqueeze(0)
+
+        # RNN processes the sequence
+        # rnn_output shape: (batch_size, seq_len, hidden_dim)
+        rnn_output, (hidden, _) = self.layers['lstm'](data)
         
-        data = data.to(self.device)
-        
-        # We only need the last hidden state
-        _, (hidden, _) = self.layers['lstm'](data)
-        
-        # Pass the last hidden state through the fully connected layer
-        return self.layers['fc'](hidden[-1])
+        # Return the full sequence of features for graph processing
+        return rnn_output
 
 
 class AstrometryEncoder(BaseEncoder):

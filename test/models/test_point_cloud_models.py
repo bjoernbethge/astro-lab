@@ -124,12 +124,13 @@ class TestHierarchicalStellarGNN:
 
     def test_forward_pass(self):
         """Test forward pass with position and features."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = HierarchicalStellarGNN(
             input_dim=4, hidden_dim=48, scales=[0.5, 2.0, 8.0]
-        )
+        ).to(device)
 
-        pos = torch.randn(30, 3)  # 30 stars, 3D positions
-        x = torch.randn(30, 4)  # 4 features per star
+        pos = torch.randn(30, 3).to(device)  # 30 stars, 3D positions
+        x = torch.randn(30, 4).to(device)  # 4 features per star
 
         output = model(pos, x)
         assert output.shape == (30, 48)  # batch_size, hidden_dim
@@ -137,16 +138,17 @@ class TestHierarchicalStellarGNN:
 
     def test_multi_scale_processing(self):
         """Test multi-scale processing with different scales."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Test with single scale
-        model_single = HierarchicalStellarGNN(input_dim=2, hidden_dim=32, scales=[1.0])
+        model_single = HierarchicalStellarGNN(input_dim=2, hidden_dim=32, scales=[1.0]).to(device)
 
         # Test with multiple scales
         model_multi = HierarchicalStellarGNN(
             input_dim=2, hidden_dim=32, scales=[0.1, 1.0, 5.0]
-        )
+        ).to(device)
 
-        pos = torch.randn(20, 3)
-        x = torch.randn(20, 2)
+        pos = torch.randn(20, 3).to(device)
+        x = torch.randn(20, 2).to(device)
 
         output_single = model_single(pos, x)
         output_multi = model_multi(pos, x)
@@ -158,19 +160,20 @@ class TestHierarchicalStellarGNN:
 
     def test_attention_mechanism(self):
         """Test attention mechanism in hierarchical processing."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Both models use attention (GATConv) by default
         model_with_att = HierarchicalStellarGNN(
             input_dim=2, hidden_dim=32, scales=[1.0]
-        )
+        ).to(device)
 
         model_without_att = HierarchicalStellarGNN(
             input_dim=2,
             hidden_dim=32,
             scales=[2.0],  # Different scale to get different results
-        )
+        ).to(device)
 
-        pos = torch.randn(15, 3)
-        x = torch.randn(15, 2)
+        pos = torch.randn(15, 3).to(device)
+        x = torch.randn(15, 2).to(device)
 
         output_with = model_with_att(pos, x)
         output_without = model_without_att(pos, x)
@@ -198,12 +201,13 @@ class TestStellarClusterGNN:
 
     def test_forward_pass(self):
         """Test forward pass with stellar cluster data."""
-        model = StellarClusterGNN(hidden_dim=64, cluster_detection=True)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = StellarClusterGNN(hidden_dim=64, cluster_detection=True).to(device)
 
-        pos = torch.randn(50, 3)  # 50 stars, 3D positions
-        colors = torch.randn(50, 2)  # 2 color indices (reduced from 5)
-        magnitudes = torch.randn(50, 3)  # 3 magnitude bands (reduced from 6)
-        edge_index = torch.randint(0, 50, (2, 100))  # Cluster connections
+        pos = torch.randn(50, 3).to(device)  # 50 stars, 3D positions
+        colors = torch.randn(50, 2).to(device)  # 2 color indices (reduced from 5)
+        magnitudes = torch.randn(50, 3).to(device)  # 3 magnitude bands (reduced from 6)
+        edge_index = torch.randint(0, 50, (2, 100)).to(device)  # Cluster connections
 
         output = model(pos, colors, magnitudes, edge_index)
         assert isinstance(output, dict)
@@ -214,12 +218,13 @@ class TestStellarClusterGNN:
 
     def test_age_estimation_output(self):
         """Test age estimation functionality."""
-        model = StellarClusterGNN(hidden_dim=48, age_estimation=True)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = StellarClusterGNN(hidden_dim=48, age_estimation=True).to(device)
 
-        pos = torch.randn(25, 3)
-        colors = torch.randn(25, 2)  # 2 color indices
-        magnitudes = torch.randn(25, 3)  # 3 magnitude bands (total 5 features)
-        edge_index = torch.randint(0, 25, (2, 50))
+        pos = torch.randn(25, 3).to(device)
+        colors = torch.randn(25, 2).to(device)  # 2 color indices
+        magnitudes = torch.randn(25, 3).to(device)  # 3 magnitude bands (total 5 features)
+        edge_index = torch.randint(0, 25, (2, 50)).to(device)
 
         output = model(pos, colors, magnitudes, edge_index)
 
@@ -234,14 +239,15 @@ class TestStellarClusterGNN:
 
     def test_without_cluster_features(self):
         """Test model without cluster-specific features."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = StellarClusterGNN(
             hidden_dim=32, cluster_detection=False, age_estimation=False
-        )
+        ).to(device)
 
-        pos = torch.randn(20, 3)
-        colors = torch.randn(20, 2)
-        magnitudes = torch.randn(20, 3)
-        edge_index = torch.randint(0, 20, (2, 40))
+        pos = torch.randn(20, 3).to(device)
+        colors = torch.randn(20, 2).to(device)
+        magnitudes = torch.randn(20, 3).to(device)
+        edge_index = torch.randint(0, 20, (2, 40)).to(device)
 
         output = model(pos, colors, magnitudes, edge_index)
         assert isinstance(output, dict)
@@ -272,10 +278,11 @@ class TestGalacticStructureGNN:
 
     def test_forward_pass(self):
         """Test forward pass with galactic coordinate data."""
-        model = GalacticStructureGNN(hidden_dim=128, spiral_detection=True)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = GalacticStructureGNN(hidden_dim=128, spiral_detection=True).to(device)
 
-        galactic_coords = torch.randn(100, 6)  # l, b, distance, pm_l, pm_b, vrad
-        edge_index = torch.randint(0, 100, (2, 200))
+        galactic_coords = torch.randn(100, 6).to(device)  # l, b, distance, pm_l, pm_b, vrad
+        edge_index = torch.randint(0, 100, (2, 200)).to(device)
 
         output = model(galactic_coords, edge_index)
         assert isinstance(output, dict)
@@ -286,13 +293,14 @@ class TestGalacticStructureGNN:
 
     def test_metallicity_prediction(self):
         """Test metallicity prediction functionality."""
-        model_with_metallicity = GalacticStructureGNN(hidden_dim=64, halo_analysis=True)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model_with_metallicity = GalacticStructureGNN(hidden_dim=64, halo_analysis=True).to(device)
         model_without_metallicity = GalacticStructureGNN(
             hidden_dim=64, halo_analysis=False
-        )
+        ).to(device)
 
-        galactic_coords = torch.randn(30, 6)
-        edge_index = torch.randint(0, 30, (2, 60))
+        galactic_coords = torch.randn(30, 6).to(device)
+        edge_index = torch.randint(0, 30, (2, 60)).to(device)
 
         output_with = model_with_metallicity(galactic_coords, edge_index)
         output_without = model_without_metallicity(galactic_coords, edge_index)
@@ -307,15 +315,16 @@ class TestGalacticStructureGNN:
 
     def test_different_structure_types(self):
         """Test different galactic structure detection types."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = GalacticStructureGNN(
             hidden_dim=48,
             spiral_detection=True,
             bar_detection=True,
             halo_analysis=False,
-        )
+        ).to(device)
 
-        galactic_coords = torch.randn(40, 6)
-        edge_index = torch.randint(0, 40, (2, 80))
+        galactic_coords = torch.randn(40, 6).to(device)
+        edge_index = torch.randint(0, 40, (2, 80)).to(device)
 
         output = model(galactic_coords, edge_index)
         assert isinstance(output, dict)
@@ -330,21 +339,22 @@ class TestPointCloudModelIntegration:
 
     def test_model_compatibility(self):
         """Test that different models can work with similar inputs."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Create compatible models
         stellar_model = StellarPointCloudGNN(
             input_dim=1, hidden_dim=32
-        )  # StellarPointCloudGNN uses stellar_encoder for 1 feature
-        hierarchical_model = HierarchicalStellarGNN(input_dim=2, hidden_dim=32)
+        ).to(device)  # StellarPointCloudGNN uses stellar_encoder for 1 feature
+        hierarchical_model = HierarchicalStellarGNN(input_dim=2, hidden_dim=32).to(device)
 
-        pos = torch.randn(20, 3)
+        pos = torch.randn(20, 3).to(device)
 
         # Test StellarPointCloudGNN with Data object (1 feature)
-        x_stellar = torch.randn(20, 1)  # 1 feature for stellar_encoder
-        stellar_data = Data(x=x_stellar, pos=pos)
+        x_stellar = torch.randn(20, 1).to(device)  # 1 feature for stellar_encoder
+        stellar_data = Data(x=x_stellar, pos=pos).to(device)
         stellar_output = stellar_model(stellar_data)
 
         # Test HierarchicalStellarGNN with tensors (2 features)
-        x_hierarchical = torch.randn(20, 2)  # 2 features for input_projection
+        x_hierarchical = torch.randn(20, 2).to(device)  # 2 features for input_projection
         hierarchical_output = hierarchical_model(pos, x_hierarchical)
 
         # Both should produce valid outputs
@@ -356,16 +366,17 @@ class TestPointCloudModelIntegration:
 
     def test_different_hidden_dimensions(self):
         """Test models with different hidden dimensions."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         hidden_dims = [16, 32, 64]
 
         for hidden_dim in hidden_dims:
             model = StellarPointCloudGNN(
                 input_dim=1, hidden_dim=hidden_dim
-            )  # 1 feature for stellar_encoder
+            ).to(device)  # 1 feature for stellar_encoder
 
-            pos = torch.randn(15, 3)
-            x = torch.randn(15, 1)  # 1 feature
-            data = Data(x=x, pos=pos)
+            pos = torch.randn(15, 3).to(device)
+            x = torch.randn(15, 1).to(device)  # 1 feature
+            data = Data(x=x, pos=pos).to(device)
 
             output = model(data)
             assert isinstance(output, dict)
@@ -374,12 +385,13 @@ class TestPointCloudModelIntegration:
 
     def test_batch_processing(self):
         """Test batch processing with point cloud models."""
-        model = StellarPointCloudGNN(input_dim=1, hidden_dim=32)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = StellarPointCloudGNN(input_dim=1, hidden_dim=32).to(device)
 
         batch_size = 25
-        pos = torch.randn(batch_size, 3)
-        x = torch.randn(batch_size, 1)
-        data = Data(x=x, pos=pos)
+        pos = torch.randn(batch_size, 3).to(device)
+        x = torch.randn(batch_size, 1).to(device)
+        data = Data(x=x, pos=pos).to(device)
 
         output = model(data)
         assert isinstance(output, dict)
@@ -390,11 +402,12 @@ class TestPointCloudModelIntegration:
 
     def test_device_consistency(self):
         """Test that models maintain device consistency."""
-        model = StellarPointCloudGNN(input_dim=1, hidden_dim=16)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = StellarPointCloudGNN(input_dim=1, hidden_dim=16).to(device)
 
-        pos = torch.randn(10, 3)
-        x = torch.randn(10, 1)
-        data = Data(x=x, pos=pos)
+        pos = torch.randn(10, 3).to(device)
+        x = torch.randn(10, 1).to(device)
+        data = Data(x=x, pos=pos).to(device)
 
         # Test CPU
         output_cpu = model(data)
@@ -405,7 +418,7 @@ class TestPointCloudModelIntegration:
         # Test GPU if available
         if torch.cuda.is_available():
             model_gpu = model.cuda()
-            data_gpu = Data(x=x.cuda(), pos=pos.cuda())
+            data_gpu = Data(x=x.cuda(), pos=pos.cuda()).to(device)
             output_gpu = model_gpu(data_gpu)
             assert isinstance(output_gpu, dict)
             assert "embeddings" in output_gpu

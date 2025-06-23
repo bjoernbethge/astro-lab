@@ -38,8 +38,7 @@ class TestBaseAstroGNN:
 
     def test_all_conv_types(self):
         """Test all supported convolution types."""
-
-        # Define supported conv types explicitly since ConvType is a Literal, not an enum
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         conv_types: list[ConvType] = ["gcn", "gat", "sage", "transformer"]
 
         for conv_type in conv_types:
@@ -48,21 +47,23 @@ class TestBaseAstroGNN:
                 hidden_dim=32,
                 conv_type=conv_type,
                 num_layers=2,
+                device=device,
             )
 
-            x = torch.randn(5, 8)
-            edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+            x = torch.randn(5, 8).to(device)
+            edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long).to(device)
 
             output = model(x, edge_index)
-            assert output.shape == (5, 32)  # hidden_dim, not output_dim
+            assert output.shape == (5, 32)
             assert not torch.isnan(output).any()
 
     def test_graph_forward_method(self):
         """Test graph_forward method specifically."""
-        model = BaseAstroGNN(input_dim=10, hidden_dim=48, num_layers=3)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = BaseAstroGNN(input_dim=10, hidden_dim=48, num_layers=3, device=device)
 
-        x = torch.randn(6, 48)  # Already projected to hidden_dim
-        edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
+        x = torch.randn(6, 48).to(device)
+        edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long).to(device)
 
         # Test normal forward
         output = model.graph_forward(x, edge_index)
@@ -104,12 +105,14 @@ class TestBaseTemporalGNN:
 
     def test_initialization(self):
         """Test BaseTemporalGNN initializes correctly."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseTemporalGNN(
             input_dim=10,
             hidden_dim=32,
             conv_type="gat",
             recurrent_type="lstm",
             recurrent_layers=2,
+            device=device,
         )
 
         assert isinstance(model, nn.Module)
@@ -122,25 +125,27 @@ class TestBaseTemporalGNN:
 
     def test_temporal_forward_pass(self):
         """Test forward pass with temporal data."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseTemporalGNN(
-            input_dim=10, hidden_dim=32, conv_type="gcn", recurrent_type="lstm"
+            input_dim=10, hidden_dim=32, conv_type="gcn", recurrent_type="lstm", device=device
         )
 
         # Test temporal data
-        x = torch.randn(5, 10)  # 5 nodes, 10 features
-        temporal_features = torch.randn(5, 32)  # 5 nodes, hidden_dim features
-        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+        x = torch.randn(5, 10).to(device)
+        temporal_features = torch.randn(5, 32).to(device)
+        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long).to(device)
 
         output = model(x, edge_index, temporal_features)
-        assert output.shape == (5, 32)  # hidden_dim output
+        assert output.shape == (5, 32)
         assert not torch.isnan(output).any()
 
     def test_temporal_forward_method(self):
         """Test temporal_forward method specifically."""
-        model = BaseTemporalGNN(input_dim=8, hidden_dim=24)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = BaseTemporalGNN(input_dim=8, hidden_dim=24, device=device)
 
         # Test with multiple snapshots
-        snapshots = [torch.randn(4, 24), torch.randn(4, 24), torch.randn(4, 24)]
+        snapshots = [torch.randn(4, 24).to(device), torch.randn(4, 24).to(device), torch.randn(4, 24).to(device)]
 
         output = model.temporal_forward(snapshots)
         assert output.shape == (4, 24)
@@ -163,6 +168,7 @@ class TestBaseTemporalGNN:
         )
 
         # Create model using config
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseTemporalGNN(
             input_dim=10,
             hidden_dim=config.graph.hidden_dim,
@@ -170,6 +176,7 @@ class TestBaseTemporalGNN:
             num_layers=config.graph.num_layers,
             recurrent_type="lstm",
             recurrent_layers=2,
+            device=device,
         )
 
         assert model.hidden_dim == config.graph.hidden_dim
@@ -181,11 +188,13 @@ class TestBaseTNGModel:
 
     def test_initialization(self):
         """Test BaseTNGModel initializes correctly."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseTNGModel(
             input_dim=12,
             hidden_dim=64,
             cosmological_features=True,
             redshift_encoding=True,
+            device=device,
         )
 
         assert isinstance(model, nn.Module)
@@ -198,26 +207,29 @@ class TestBaseTNGModel:
 
     def test_forward_pass(self):
         """Test forward pass with cosmological data."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseTNGModel(
             input_dim=12,
             hidden_dim=64,
             cosmological_features=True,
             redshift_encoding=False,  # Disable for simpler test
+            device=device,
         )
 
-        x = torch.randn(8, 12)
-        edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
+        x = torch.randn(8, 12).to(device)
+        edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long).to(device)
 
         output = model(x, edge_index)
-        assert output.shape == (8, 64)  # hidden_dim output
+        assert output.shape == (8, 64)
         assert not torch.isnan(output).any()
 
     def test_cosmological_encoding(self):
         """Test cosmological encoding with redshift."""
-        model = BaseTNGModel(input_dim=8, hidden_dim=32, redshift_encoding=True)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = BaseTNGModel(input_dim=8, hidden_dim=32, redshift_encoding=True, device=device)
 
-        x = torch.randn(6, 8)
-        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+        x = torch.randn(6, 8).to(device)
+        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long).to(device)
         redshift = 2.5
 
         output = model(x, edge_index, redshift=redshift)
@@ -238,6 +250,7 @@ class TestBaseTNGModel:
         )
 
         # Create model using config
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseTNGModel(
             input_dim=12,
             hidden_dim=config.graph.hidden_dim,
@@ -245,6 +258,7 @@ class TestBaseTNGModel:
             num_layers=config.graph.num_layers,
             cosmological_features=True,
             redshift_encoding=False,
+            device=device,
         )
 
         assert model.hidden_dim == config.graph.hidden_dim
@@ -256,9 +270,10 @@ class TestFeatureFusion:
 
     def test_concat_fusion(self):
         """Test concatenation fusion."""
-        fusion = FeatureFusion(input_dims=[16, 32, 8], output_dim=64, dropout=0.1)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        fusion = FeatureFusion(input_dims=[16, 32, 8], output_dim=64, dropout=0.1).to(device)
 
-        features = [torch.randn(5, 16), torch.randn(5, 32), torch.randn(5, 8)]
+        features = [torch.randn(5, 16).to(device), torch.randn(5, 32).to(device), torch.randn(5, 8).to(device)]
 
         fused = fusion(features)
         assert fused.shape == (5, 64)
@@ -266,60 +281,56 @@ class TestFeatureFusion:
 
     def test_different_input_combinations(self):
         """Test different input dimension combinations."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # Test with 2 inputs
-        fusion_2 = FeatureFusion(input_dims=[10, 20], output_dim=32)
-        features_2 = [torch.randn(3, 10), torch.randn(3, 20)]
+        fusion_2 = FeatureFusion(input_dims=[10, 20], output_dim=32).to(device)
+        features_2 = [torch.randn(3, 10).to(device), torch.randn(3, 20).to(device)]
         output_2 = fusion_2(features_2)
         assert output_2.shape == (3, 32)
 
         # Test with 4 inputs
-        fusion_4 = FeatureFusion(input_dims=[8, 16, 12, 4], output_dim=48)
+        fusion_4 = FeatureFusion(input_dims=[8, 16, 12, 4], output_dim=48).to(device)
         features_4 = [
-            torch.randn(7, 8),
-            torch.randn(7, 16),
-            torch.randn(7, 12),
-            torch.randn(7, 4),
+            torch.randn(7, 8).to(device),
+            torch.randn(7, 16).to(device),
+            torch.randn(7, 12).to(device),
+            torch.randn(7, 4).to(device),
         ]
         output_4 = fusion_4(features_4)
         assert output_4.shape == (7, 48)
 
     def test_fusion_module_components(self):
         """Test individual components of fusion module."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         fusion = FeatureFusion(
             input_dims=[16, 32], output_dim=64
-        )
+        ).to(device)
         # Test that fusion has expected components
         assert hasattr(fusion, "fusion")
         # Test forward pass
-        features = [torch.randn(5, 16), torch.randn(5, 32)]
+        features = [torch.randn(5, 16).to(device), torch.randn(5, 32).to(device)]
         output = fusion(features)
         assert output.shape == (5, 64)
 
     def test_with_config_object(self):
-        """Test FeatureFusion with Config object."""
-        config = ModelConfig(
-            name="test_feature_fusion",
-            description="Test FeatureFusion with config",
-            encoder=EncoderConfig(
-                use_photometry=True,
-                use_astrometry=True,
-                use_spectroscopy=False,
-            ),
+        """Test creating a fusion module from a configuration object."""
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Mock config
+        encoder_config = EncoderConfig(
+            photometry_dim=16,
+            astrometry_dim=8,
+            spectroscopy_dim=32,
         )
+        graph_config = GraphConfig(hidden_dim=64)
 
-        # Create fusion using config
-        input_dims = []
-        if config.encoder.use_photometry:
-            input_dims.append(16)
-        if config.encoder.use_astrometry:
-            input_dims.append(32)
-        if config.encoder.use_spectroscopy:
-            input_dims.append(24)
+        input_dims = [encoder_config.photometry_dim, encoder_config.astrometry_dim, encoder_config.spectroscopy_dim]
+        fusion = FeatureFusion(input_dims=input_dims, output_dim=graph_config.hidden_dim).to(device)
 
-        fusion = FeatureFusion(input_dims=input_dims, output_dim=64)
-
+        assert fusion.fusion[0].in_features == sum(input_dims)
+        assert fusion.fusion[0].out_features == graph_config.hidden_dim
+        
         # Test with features matching config
-        features = [torch.randn(5, dim) for dim in input_dims]
+        features = [torch.randn(5, dim).to(device) for dim in input_dims]
         output = fusion(features)
         assert output.shape == (5, 64)
 
@@ -329,33 +340,29 @@ class TestLayerFactoryIntegration:
 
     def test_layer_factory_with_base_gnn(self):
         """Test LayerFactory creating layers for BaseAstroGNN."""
-        factory = LayerFactory()
-
-        # Create conv layer using factory
-        conv_layer = factory.create_conv_layer("gcn", 16, 32)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        conv_layer = LayerFactory.create_conv_layer("gcn", 16, 32).to(device)
         assert isinstance(conv_layer, nn.Module)
 
         # Test forward pass
-        x = torch.randn(5, 16)
-        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+        x = torch.randn(5, 16).to(device)
+        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long).to(device)
         output = conv_layer(x, edge_index)
         assert output.shape == (5, 32)
 
     def test_layer_factory_mlp_for_fusion(self):
         """Test LayerFactory creating MLPs for feature fusion."""
-        factory = LayerFactory()
-
-        # Create MLP using factory
-        mlp = factory.create_mlp(
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        mlp = LayerFactory.create_mlp(
             64,  # input_dim
             [128],  # hidden_dims_or_output_dim
             32,  # output_dim
             activation="relu",
             dropout=0.1,
-        )
+        ).to(device)
 
         # Test forward pass
-        x = torch.randn(5, 64)
+        x = torch.randn(5, 64).to(device)
         output = mlp(x)
         assert output.shape == (5, 32)
 
@@ -377,11 +384,13 @@ class TestBaseClassesIntegration:
         )
 
         # Test BaseAstroGNN with config
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = BaseAstroGNN(
             input_dim=16,
             hidden_dim=config.graph.hidden_dim,
             conv_type=config.graph.conv_type,
             num_layers=config.graph.num_layers,
+            device=device,
         )
 
         assert model.hidden_dim == config.graph.hidden_dim
@@ -401,11 +410,13 @@ class TestBaseClassesIntegration:
         )
 
         # Test multiple base classes with same config
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         base_gnn = BaseAstroGNN(
             input_dim=16,
             hidden_dim=config.graph.hidden_dim,
             conv_type=config.graph.conv_type,
             num_layers=config.graph.num_layers,
+            device=device,
         )
 
         temporal_gnn = BaseTemporalGNN(
@@ -415,6 +426,7 @@ class TestBaseClassesIntegration:
             num_layers=config.graph.num_layers,
             recurrent_type="lstm",
             recurrent_layers=2,
+            device=device,
         )
 
         assert base_gnn.hidden_dim == temporal_gnn.hidden_dim

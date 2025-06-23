@@ -198,7 +198,7 @@ class BaseTemporalGNN(BaseAstroGNN):
                 num_layers=self.recurrent_layers,
                 dropout=self.dropout if self.recurrent_layers > 1 else 0,
                 batch_first=True,
-            )
+            ).to(self.device)
         elif self.recurrent_type == "gru":
             return nn.GRU(
                 input_size=self.hidden_dim,
@@ -206,7 +206,7 @@ class BaseTemporalGNN(BaseAstroGNN):
                 num_layers=self.recurrent_layers,
                 dropout=self.dropout if self.recurrent_layers > 1 else 0,
                 batch_first=True,
-            )
+            ).to(self.device)
         else:
             raise ValueError(f"Unknown recurrent_type: {self.recurrent_type}")
 
@@ -296,20 +296,15 @@ class BaseTNGModel(BaseTemporalGNN):
     def encode_with_cosmology(
         self, x: torch.Tensor, edge_index: torch.Tensor, redshift: float
     ) -> torch.Tensor:
-        """Standard cosmological encoding."""
-        # Graph forward pass
+        """Encodes graph features with cosmological information."""
         h = self.graph_forward(self.input_projection(x), edge_index)
 
-        # Ensure we have a tensor
-        if isinstance(h, list):
-            h = h[-1]
-
-        # Add redshift encoding if enabled
+        # Encode redshift and add it to the features
         if self.redshift_encoding:
-            z_tensor = torch.full((h.size(0), 1), redshift, device=h.device)
+            # Create a tensor for the redshift on the correct device
+            z_tensor = torch.tensor([redshift], dtype=torch.float32).to(self.device)
             z_encoded = self.redshift_encoder(z_tensor)
-            h_combined = torch.cat([h, z_encoded], dim=1)
-            h = self.time_projection(h_combined)
+            h = h + z_encoded.unsqueeze(0).expand_as(h)
 
         return h
 

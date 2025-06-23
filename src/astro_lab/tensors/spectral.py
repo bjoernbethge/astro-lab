@@ -5,6 +5,7 @@ Spectral tensor for astronomical spectroscopy data.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from pydantic import Field
 from typing_extensions import Self
 import numpy as np
 
@@ -15,90 +16,41 @@ class SpectralTensor(AstroTensorBase):
     Represents spectral data for celestial objects, including flux/intensity
     as a function of wavelength or frequency.
     """
+    wavelengths: torch.Tensor = Field(..., description="A 1D tensor of wavelength values.")
+    uncertainties: Optional[torch.Tensor] = Field(default=None, description="Measurement uncertainties, same shape as data.")
+    spectral_resolution: Optional[float] = Field(default=None, description="The spectral resolution (R = lambda / delta_lambda).")
+    redshift: float = Field(default=0.0, description="Redshift value.")
+    flux_units: str = Field(default="erg/s/cm2/A", description="Flux units.")
+    wavelength_units: str = Field(default="Angstrom", description="Wavelength units.")
+    instrument: Optional[str] = Field(default=None, description="Instrument name.")
 
-    _metadata_fields = [
-        "wavelengths",
-        "redshift",
-        "flux_units",
-        "wavelength_units",
-        "spectral_resolution",
-        "instrument",
-    ]
-
-    def __init__(
-        self,
-        data: Union[torch.Tensor, List, Any],
-        wavelengths: torch.Tensor,
-        uncertainties: Optional[torch.Tensor] = None,
-        spectral_resolution: Optional[float] = None,
-        **kwargs,
-    ):
-        """
-        Initializes the SpectralTensor.
-
-        Args:
-            data: Spectral data, shape [..., n_wavelengths].
-            wavelengths: A 1D tensor of wavelength values.
-            uncertainties: Measurement uncertainties, same shape as data.
-            spectral_resolution: The spectral resolution (R = lambda / delta_lambda).
-            **kwargs: Additional metadata.
-        """
-        spectral_meta = {
-            "wavelengths": wavelengths,
-            "uncertainties": uncertainties,
-            "spectral_resolution": spectral_resolution,
-        }
-        kwargs.update(spectral_meta)
-
-        super().__init__(data=data, **kwargs)
+    def __init__(self, **data: Any):
+        """Initializes the SpectralTensor using Pydantic fields."""
+        super().__init__(**data)
         self._validate()
 
     def _validate(self) -> None:
         """Validates the structure of the spectral data."""
         if self.data.dim() < 1:
             raise ValueError("Spectral data must be at least 1D.")
-        
-        wavelengths = self.meta.get('wavelengths')
-        if wavelengths is None:
-            raise ValueError("SpectralTensor requires a 'wavelengths' tensor.")
             
-        if not isinstance(wavelengths, torch.Tensor) or wavelengths.dim() != 1:
+        if not isinstance(self.wavelengths, torch.Tensor) or self.wavelengths.dim() != 1:
             raise ValueError("'wavelengths' must be a 1D torch.Tensor.")
 
-        if self.data.shape[-1] != len(wavelengths):
+        if self.data.shape[-1] != len(self.wavelengths):
             raise ValueError(
                 f"Last dimension of data ({self.data.shape[-1]}) must match "
-                f"the length of the wavelengths tensor ({len(wavelengths)})."
+                f"the length of the wavelengths tensor ({len(self.wavelengths)})."
             )
-
-    @property
-    def wavelengths(self) -> torch.Tensor:
-        return self.meta.get("wavelengths")
-
-    @property
-    def redshift(self) -> float:
-        """Redshift value."""
-        return self.meta.get("redshift", 0.0)
-
-    @property
-    def flux_units(self) -> str:
-        """Flux units."""
-        return self.meta.get("flux_units", "erg/s/cm2/A")
-
-    @property
-    def wavelength_units(self) -> str:
-        """Wavelength units."""
-        return self.meta.get("wavelength_units", "Angstrom")
-
-    @property
-    def spectral_resolution(self) -> Optional[float]:
-        """Spectral resolution."""
-        return self.meta.get("spectral_resolution")
-
-    @property
-    def instrument(self) -> Optional[str]:
-        """Instrument name."""
-        return self.meta.get("instrument")
+        
+        if self.uncertainties is not None:
+            if not isinstance(self.uncertainties, torch.Tensor):
+                raise TypeError("uncertainties must be a torch.Tensor.")
+            if self.uncertainties.shape != self.data.shape:
+                raise ValueError(
+                    f"uncertainties shape ({self.uncertainties.shape}) does not match "
+                    f"data shape ({self.data.shape})."
+                )
 
     @property
     def n_wavelengths(self) -> int:
@@ -108,14 +60,12 @@ class SpectralTensor(AstroTensorBase):
     @property
     def wavelength_range(self) -> Tuple[float, float]:
         """Wavelength range (min, max)."""
-        wavelengths = self.wavelengths
-        return (float(wavelengths.min()), float(wavelengths.max()))
+        return (float(self.wavelengths.min()), float(self.wavelengths.max()))
 
     @property
     def delta_wavelength(self) -> torch.Tensor:
         """Wavelength differences between adjacent bins."""
-        wavelengths = self.wavelengths
-        return wavelengths[1:] - wavelengths[:-1]
+        return self.wavelengths[1:] - self.wavelengths[:-1]
 
     @property
     def rest_wavelengths(self) -> torch.Tensor:
@@ -138,12 +88,10 @@ class SpectralTensor(AstroTensorBase):
             New SpectralTensor with redshift applied
         """
         new_wavelengths = self.wavelengths * (1 + z)
-
-        new_metadata = self.meta.copy()
-        new_metadata["wavelengths"] = new_wavelengths
-        new_metadata["redshift"] = self.redshift + z
-
-        return SpectralTensor(self.data, **new_metadata)
+        return self._create_new_instance(
+            wavelengths=new_wavelengths,
+            redshift=self.redshift + z
+        )
 
     def deredshift(self) -> "SpectralTensor":
         """Remove redshift, returning to rest frame."""
@@ -162,11 +110,7 @@ class SpectralTensor(AstroTensorBase):
             Tuple of (velocities, flux_data)
         """
         c = 299792.458  # km/s
-        wavelengths = self.wavelengths
-
-        # Calculate velocities
-        velocities = c * (wavelengths - rest_wavelength) / rest_wavelength
-
+        velocities = c * (self.wavelengths - rest_wavelength) / rest_wavelength
         return velocities, self.data
 
     def measure_line(
@@ -182,19 +126,14 @@ class SpectralTensor(AstroTensorBase):
         Returns:
             Dictionary with line measurements
         """
-        wavelengths = self.wavelengths
-        flux = self.data
-
-        # Find indices within window
-        mask = torch.abs(wavelengths - wavelength) <= window / 2
+        mask = torch.abs(self.wavelengths - wavelength) <= window / 2
 
         if not mask.any():
             raise ValueError(f"No data found within {window} of {wavelength}")
 
-        line_wavelengths = wavelengths[mask]
-        line_flux = flux[..., mask]
+        line_wavelengths = self.wavelengths[mask]
+        line_flux = self.data[..., mask]
 
-        # Basic measurements
         peak_idx = torch.argmax(line_flux, dim=-1)
         peak_wavelength = line_wavelengths[peak_idx]
         peak_flux = torch.max(line_flux, dim=-1)[0]
@@ -213,6 +152,50 @@ class SpectralTensor(AstroTensorBase):
             "equivalent_width": equivalent_width,
             "line_center": torch.tensor(wavelength),
         }
+
+    def normalize(self, wavelength: float) -> Self:
+        """Normalize the spectrum by the flux at a given wavelength."""
+        flux_at_wl = self.get_flux_at_wavelength(wavelength)
+        # Avoid division by zero
+        normalized_data = self.data / (flux_at_wl.unsqueeze(-1) + 1e-9)
+        return self._create_new_instance(new_data=normalized_data)
+
+    def resample(self, new_wavelengths: torch.Tensor) -> Self:
+        """Resample the spectrum to a new wavelength grid using interpolation."""
+        # Note: torch.interpolat is not in stable PyTorch yet. Using numpy for now.
+        # This requires moving data to CPU.
+        current_wavelengths_np = self.wavelengths.cpu().numpy()
+        current_data_np = self.data.cpu().numpy()
+        new_wavelengths_np = new_wavelengths.cpu().numpy()
+
+        # Interpolate each spectrum in the batch
+        if self.data.dim() > 1:
+            resampled_data_np = np.array([
+                np.interp(new_wavelengths_np, current_wavelengths_np, spectrum)
+                for spectrum in current_data_np
+            ])
+        else:
+            resampled_data_np = np.interp(new_wavelengths_np, current_wavelengths_np, current_data_np)
+
+        resampled_data = torch.from_numpy(resampled_data_np).to(dtype=self.dtype, device=self.device)
+        
+        return self._create_new_instance(new_data=resampled_data, wavelengths=new_wavelengths)
+
+    def get_flux_at_wavelength(self, wavelength: float) -> torch.Tensor:
+        """Get flux at a specific wavelength using interpolation."""
+        # Using numpy for interpolation
+        wavelengths_np = self.wavelengths.cpu().numpy()
+        data_np = self.data.cpu().numpy()
+        
+        if self.data.dim() > 1:
+            interpolated_flux = np.array([
+                np.interp(wavelength, wavelengths_np, spectrum)
+                for spectrum in data_np
+            ])
+        else:
+            interpolated_flux = np.interp(wavelength, wavelengths_np, data_np)
+            
+        return torch.from_numpy(np.array(interpolated_flux)).to(dtype=self.dtype, device=self.device)
 
     def atmospheric_transmission_spectrum(
         self,
@@ -567,28 +550,6 @@ class SpectralTensor(AstroTensorBase):
             w_range = f"λ={w_min:.1f}-{w_max:.1f} {self.meta.get('wavelength_units', '')}"
         return f"SpectralTensor({shape_str}, {w_range}, {z_str})"
 
-    def get_flux_at_wavelength(self, wavelength: float) -> torch.Tensor:
-        """
-        Get flux at a specific wavelength (requires interpolation).
-
-        Args:
-            wavelength: Wavelength to get flux at
-
-        Returns:
-            Flux at the specified wavelength
-        """
-        if self.flux_units is None or "erg" not in self.flux_units:
-            raise ValueError("Flux unit must be specified for luminosity calculation")
-
-        # Simplified luminosity calculation (assumes constant flux over wavelength)
-        # Proper calculation requires integration over a bandpass.
-        dl = self.meta.get("distance_lum")  # Luminosity distance
-        if dl is None:
-            raise ValueError("Luminosity distance ('distance_lum') required in metadata")
-
-        # This is a very rough estimate
-        return self.data * 4 * torch.pi * (dl**2)
-
     def to_dict(self) -> Dict[str, any]:
         """Convert to dictionary."""
         data_dict = super().to_dict()
@@ -600,39 +561,3 @@ class SpectralTensor(AstroTensorBase):
         """Create from dictionary."""
         flux = data_dict.pop("flux", None)
         return cls(data=flux, **data_dict)
-
-    def normalize(self, wavelength: float) -> Self:
-        """Normalizes the spectrum by the flux at a given wavelength."""
-        # Find the index closest to the given wavelength
-        idx = (torch.abs(self.wavelengths - wavelength)).argmin()
-        
-        # Get the flux value for normalization (avoiding division by zero)
-        norm_flux = self.data[..., idx].unsqueeze(-1)
-        safe_norm_flux = torch.where(norm_flux == 0, torch.tensor(1.0), norm_flux)
-        
-        normalized_data = self.data / safe_norm_flux
-        return self._create_new_instance(new_data=normalized_data)
-
-    def resample(self, new_wavelengths: torch.Tensor) -> Self:
-        """Resamples the spectrum to a new set of wavelengths using interpolation."""
-        original_wavelengths_np = self.wavelengths.cpu().numpy()
-        new_wavelengths_np = new_wavelengths.cpu().numpy()
-        
-        # Ensure data is on CPU for numpy operations
-        data_np = self.data.cpu().numpy()
-
-        # Interpolate each spectrum in the batch
-        resampled_data_list = []
-        for i in range(data_np.shape[0]):
-             resampled_data_list.append(
-                torch.from_numpy(
-                    np.interp(new_wavelengths_np, original_wavelengths_np, data_np[i])
-                ).float()
-            )
-        
-        resampled_data = torch.stack(resampled_data_list)
-        
-        new_meta = self.meta.copy()
-        new_meta['wavelengths'] = new_wavelengths
-        
-        return self.__class__(data=resampled_data, **new_meta)

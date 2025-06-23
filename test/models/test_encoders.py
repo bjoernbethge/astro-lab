@@ -51,20 +51,6 @@ class TestBaseEncoder:
             cuda_encoder = BaseEncoder(input_dim=8, output_dim=16, device=cuda_device)
             assert cuda_encoder.device.type == "cuda"
 
-    def test_batch_size_detection(self):
-        """Test batch size detection."""
-        encoder = BaseEncoder(input_dim=8, output_dim=16, expected_input_dim=8)
-        x = torch.randn(10, 8)
-        assert encoder.get_batch_size(x) == 10
-
-    def test_fallback_features(self):
-        """Test fallback feature creation."""
-        encoder = BaseEncoder(input_dim=16, output_dim=32, expected_input_dim=16)
-        x = torch.randn(5, 10)  # Mismatched dimension
-        fallback = encoder.create_fallback_features(x)
-        assert fallback.shape == (5, 32)
-        assert torch.all(fallback == 0)
-
 
 class TestPhotometryEncoder:
     """Test the photometry encoder."""
@@ -99,6 +85,28 @@ class TestPhotometryEncoder:
         photometric_tensor = PhotometricTensor(data=magnitudes, bands=["g", "r"])
         output = encoder(photometric_tensor)
         assert output.shape == (2, 64)
+
+    def test_dimension_mismatch_handling(self):
+        """Test handling of mismatched input dimensions."""
+        encoder = PhotometryEncoder(input_dim=5, output_dim=64)
+        with pytest.raises(ValueError):
+             # This should fail because the number of bands (5) doesn't match the data dim (4)
+             PhotometricTensor(data=torch.randn(10, 4), bands=['u','g','r','i','z'])
+
+    def test_single_object_handling(self):
+        """Test handling of a single lightcurve (no batch)."""
+        encoder = LightcurveEncoder(input_dim=2, hidden_dim=32, output_dim=48)
+        
+        # Create a single lightcurve (no batch dimension)
+        lightcurve_data = torch.randn(50, 2) # time, mag
+        # Ensure time is monotonically increasing for the validator
+        lightcurve_data[:, 0] = torch.sort(lightcurve_data[:, 0]).values
+        
+        lightcurve_tensor = LightcurveTensor(data=lightcurve_data, bands=['time', 'mag'])
+        
+        # The encoder should handle this gracefully by unsqueezing and squeezing
+        output = encoder(lightcurve_tensor)
+        assert output.shape == (1, 50, 48) # batch, seq_len, out_dim
 
 
 class TestAstrometryEncoder:
@@ -158,13 +166,13 @@ class TestSpectroscopyEncoder:
         assert output.shape == (5, 96)
 
     def test_survey_tensor_compatibility(self):
-        """Test that the encoder can handle a SurveyTensor."""
+        """Test that the encoder can handle a SpectralTensor."""
+        encoder = SpectroscopyEncoder(input_dim=100, output_dim=128)
         spectral_data = torch.randn(10, 100)
-        spectral_tensor = SpectralTensor(data=spectral_data, wave=torch.linspace(3000, 9000, 100))
-        survey_tensor = SurveyTensor(data=spectral_tensor, survey_name="SDSS")
-
-        encoder = SpectroscopyEncoder(input_dim=100, hidden_dim=64, output_dim=128)
-        output = encoder(survey_tensor)
+        wavelengths = torch.linspace(3000, 9000, 100)
+        spectral_tensor = SpectralTensor(data=spectral_data, wavelengths=wavelengths)
+        
+        output = encoder(spectral_tensor)
         assert output.shape == (10, 128)
 
 

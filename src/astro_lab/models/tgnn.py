@@ -305,15 +305,21 @@ class ALCDEFTemporalGNN(nn.Module):
         num_layers: int = 3,
         task: str = "period_detection",  # period_detection, shape_modeling, classification
         dropout: float = 0.1,
+        device: Optional[Union[str, torch.device]] = None,
         **kwargs,
     ):
         super().__init__()
 
+        if device is None:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(device)
+
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
-        self.num_layers = num_layers
-        self.task = task
         self.dropout = dropout
+        self.task = task
+        self.use_static_features = kwargs.get("use_static_features", False)
 
         # Encoder for lightcurve data
         self.encoder = LightcurveEncoder(
@@ -321,37 +327,41 @@ class ALCDEFTemporalGNN(nn.Module):
             hidden_dim=hidden_dim,
             output_dim=hidden_dim,
             num_layers=num_layers,
+            dropout=dropout,
+            device=self.device
         )
+
+        # Optional encoder for static (non-temporal) features
         if self.use_static_features:
-            self.static_encoder = nn.Linear(
-                config.get("static_features_dim", 1), hidden_dim)
+            static_input_dim = kwargs.get("static_features_dim", 16)
+            self.static_encoder = nn.Sequential(
+                Linear(static_input_dim, hidden_dim // 2),
+                nn.ReLU(),
+                Linear(hidden_dim // 2, hidden_dim // 2),
+            ).to(self.device)
+            fusion_dim = hidden_dim + hidden_dim // 2
+        else:
+            self.static_encoder = None
+            fusion_dim = hidden_dim
 
-        # Graph convolution layers for temporal relationships
+        # Graph convolutions for temporal relationships (if needed)
         self.convs = nn.ModuleList(
-            [LayerFactory.create_conv_layer("gcn", hidden_dim, hidden_dim) for _ in range(num_layers)]
-        )
-
-        self.norms = nn.ModuleList(
-            [nn.LayerNorm(hidden_dim) for _ in range(num_layers)]
+            [GCNConv(fusion_dim, fusion_dim) for _ in range(num_layers)]
         )
 
         # Task-specific output heads
-        if task == "period_detection":
-            self.output_head = PeriodDetectionHead(hidden_dim, output_dim)
-        elif task == "shape_modeling":
-            self.output_head = ShapeModelingHead(hidden_dim, output_dim)
-        elif task == "classification":
-            self.output_head = ClassificationHead(hidden_dim, output_dim)
+        if self.task == "period_detection":
+            self.output_head = PeriodDetectionHead(fusion_dim, output_dim)
+        elif self.task == "shape_modeling":
+            self.output_head = ShapeModelingHead(fusion_dim, output_dim)
+        elif self.task == "classification":
+            num_classes = kwargs.get("num_classes", 2)
+            self.output_head = ClassificationHead(fusion_dim, num_classes)
         else:
-            # Generic regression head
-            self.output_head = nn.Sequential(
-                LayerFactory.create_mlp(hidden_dim, hidden_dim // 2),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                LayerFactory.create_mlp(hidden_dim // 2, output_dim),
-            )
+            raise ValueError(f"Unknown task for ALCDEFTemporalGNN: {self.task}")
 
         self.apply(initialize_weights)
+        self.to(self.device)
 
     def forward(
         self,
@@ -360,34 +370,44 @@ class ALCDEFTemporalGNN(nn.Module):
         batch: Optional[torch.Tensor] = None,
         return_embeddings: bool = False,
     ) -> Union[torch.Tensor, Dict[str, torch.Tensor]]:
-        """Forward pass with native lightcurve support."""
-        # Extract features using existing LightcurveEncoder
+        """
+        Forward pass for the ALCDEF Temporal GNN.
+        """
+        # 1. ENCODE
+        # h shape: (batch_size, num_timesteps, hidden_dim)
         h = self.encoder(lightcurve)
 
-        # Graph convolutions for temporal relationships
-        for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
+        # If we processed a single lightcurve, squeeze the batch dimension
+        if h.shape[0] == 1:
+            h = h.squeeze(0)
+
+        # 2. CONVOLVE
+        # Apply graph convolutions over the timesteps
+        for i, conv in enumerate(self.convs):
             h_prev = h
             h = conv(h, edge_index)
-            h = norm(h)
+            h = self.norms[i](h)
             h = F.relu(h)
-
-            if self.training:
-                h = F.dropout(h, p=self.dropout)
-
-            if i > 0 and h.size(-1) == h_prev.size(-1):
+            h = F.dropout(h, p=self.dropout, training=self.training)
+            if self.use_residual:
                 h = h + h_prev
 
-        embeddings = h
+        # 3. POOL
+        # Pool the node (timestep) embeddings into a single graph embedding
+        # If we have a batch, use torch_geometric's pooling
+        if batch is not None:
+             pooled_h = global_mean_pool(h, batch)
+        else:
+             # Otherwise, just take the mean
+             pooled_h = torch.mean(h, dim=0)
 
-        # Global pooling for sequence-level tasks
-        if batch is None:
-            batch = torch.zeros(h.size(0), dtype=torch.long, device=h.device)
-
-        pooled = global_mean_pool(h, batch)
-        output = self.output_head(pooled)
+        # 4. PREDICT
+        # Pass through the appropriate output head based on the task
+        output = self.output_head(pooled_h)
 
         if return_embeddings:
-            return {"output": output, "embeddings": embeddings}
+            return {"predictions": output, "embeddings": pooled_h}
+
         return output
 
 class PeriodDetectionHead(nn.Module):

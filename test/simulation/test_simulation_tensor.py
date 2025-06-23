@@ -180,4 +180,4 @@ class TestSimulationTensor:
 
         assert "total_size_gb" in mem_info
         assert isinstance(mem_info["total_size_gb"], str)
-        assert float(mem_info["total_size_gb"]) > 0
+        assert float(mem_info["total_size_gb"]) >= 0

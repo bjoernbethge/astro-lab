@@ -101,10 +101,23 @@ class AstroTensorBase(BaseModel):
         return v
 
     def _create_new_instance(self, new_data: torch.Tensor, **extra_meta) -> Self:
-        """Helper to create a new instance with updated data and metadata."""
-        # Create a new dictionary for the new instance's data and metadata.
-        new_instance_data = {"data": new_data, "meta": self.meta.copy()}
-        new_instance_data["meta"].update(extra_meta)
+        """
+        Helper to create a new instance with updated data, preserving all other
+        Pydantic fields and metadata from the original instance.
+        """
+        # Dump the current model's data, excluding the 'data' field itself,
+        # to preserve all other attributes like 'bands', 'coordinate_system', etc.
+        new_instance_data = self.model_dump(exclude={"data"})
+        
+        # Update with the new tensor data
+        new_instance_data["data"] = new_data
+        
+        # Update metadata if any extra is provided
+        if extra_meta:
+            if "meta" not in new_instance_data:
+                new_instance_data["meta"] = {}
+            new_instance_data["meta"].update(extra_meta)
+            
         return self.__class__(**new_instance_data)
 
     # =========================================================================

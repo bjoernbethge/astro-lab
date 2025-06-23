@@ -5,6 +5,7 @@ Photometric tensor for multi-band astronomical measurements.
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+from pydantic import Field
 from typing_extensions import Self
 
 from .base import AstroTensorBase
@@ -14,44 +15,13 @@ class PhotometricTensor(AstroTensorBase):
     Represents photometric data for a set of celestial objects, including
     magnitudes or fluxes in different bands, along with associated metadata.
     """
+    bands: List[str] = Field(..., description="A list of band names corresponding to the last dimension of data.")
+    measurement_errors: Optional[torch.Tensor] = Field(default=None, description="Measurement uncertainties, same shape as data.")
+    photometric_system: str = Field(default="AB", description="The photometric system (e.g., 'AB', 'Vega').")
+    is_magnitude: bool = Field(default=True, description="True if the data is in magnitudes, False if in flux.")
 
-    def __init__(
-        self,
-        data: Union[torch.Tensor, List, Any],
-        bands: List[str],
-        measurement_errors: Optional[torch.Tensor] = None,
-        extinction_coefficients: Optional[Dict[str, float]] = None,
-        photometric_system: str = "AB",
-        is_magnitude: bool = True,
-        zero_points: Optional[Dict[str, float]] = None,
-        **kwargs,
-    ):
-        """
-        Initializes the PhotometricTensor.
-
-        Args:
-            data: Photometric measurements, shape [..., n_bands].
-            bands: A list of band names corresponding to the last dimension of data.
-            measurement_errors: Measurement uncertainties, same shape as data.
-            extinction_coefficients: Extinction coefficients per band.
-            photometric_system: The photometric system (e.g., "AB", "Vega").
-            is_magnitude: True if the data is in magnitudes, False if in flux.
-            zero_points: Zero point magnitudes per band.
-            **kwargs: Additional metadata to be stored.
-        """
-        # Consolidate all photometry-specific metadata
-        photometry_meta = {
-            "bands": bands,
-            "measurement_errors": measurement_errors,
-            "extinction_coefficients": extinction_coefficients or {},
-            "photometric_system": photometric_system,
-            "is_magnitude": is_magnitude,
-            "zero_points": zero_points or {},
-        }
-        # Combine with any other metadata passed in kwargs
-        kwargs.update(photometry_meta)
-        
-        super().__init__(data=data, **kwargs)
+    def __init__(self, **data: Any):
+        super().__init__(**data)
         self._validate()
 
     def _validate(self) -> None:
@@ -59,37 +29,23 @@ class PhotometricTensor(AstroTensorBase):
         if self.data.dim() < 1:
             raise ValueError("PhotometricTensor requires at least 1D data.")
 
-        bands = self.meta.get("bands", [])
-        if not bands:
+        if not self.bands:
             raise ValueError("PhotometricTensor requires a list of band names.")
 
-        if self.data.shape[-1] != len(bands):
+        if self.data.shape[-1] != len(self.bands):
             raise ValueError(
                 f"Data's last dimension ({self.data.shape[-1]}) does not match "
-                f"the number of bands ({len(bands)})."
+                f"the number of bands ({len(self.bands)})."
             )
 
-        errors = self.meta.get("measurement_errors")
-        if errors is not None:
-            if not isinstance(errors, torch.Tensor):
+        if self.measurement_errors is not None:
+            if not isinstance(self.measurement_errors, torch.Tensor):
                 raise TypeError("measurement_errors must be a torch.Tensor.")
-            if errors.shape != self.data.shape:
+            if self.measurement_errors.shape != self.data.shape:
                 raise ValueError(
-                    f"measurement_errors shape ({errors.shape}) does not match "
+                    f"measurement_errors shape ({self.measurement_errors.shape}) does not match "
                     f"data shape ({self.data.shape})."
                 )
-
-    @property
-    def bands(self) -> List[str]:
-        return self.meta.get("bands", [])
-
-    @property
-    def measurement_errors(self) -> Optional[torch.Tensor]:
-        return self.meta.get("measurement_errors")
-
-    @property
-    def is_magnitude(self) -> bool:
-        return self.meta.get("is_magnitude", True)
 
     def get_band_data(self, band: str) -> torch.Tensor:
         """Extracts data for a specific band by name."""
@@ -122,9 +78,11 @@ class PhotometricTensor(AstroTensorBase):
             # Error propagation: dF = F * dM * ln(10) / 2.5
             new_errors = flux_data * self.measurement_errors * (torch.log(torch.tensor(10.0)) / 2.5)
         
-        new_meta = self.meta.copy()
-        new_meta.update(is_magnitude=False, measurement_errors=new_errors)
-        return self.__class__(data=flux_data, **new_meta)
+        return self._create_new_instance(
+            new_data=flux_data, 
+            is_magnitude=False, 
+            measurement_errors=new_errors
+        )
 
     def to_magnitude(self) -> Self:
         """Converts flux data to magnitude."""
@@ -139,9 +97,11 @@ class PhotometricTensor(AstroTensorBase):
             # Error propagation: dM = (2.5 / ln(10)) * (dF / F)
             new_errors = (2.5 / torch.log(torch.tensor(10.0))) * (self.measurement_errors / self.data)
             
-        new_meta = self.meta.copy()
-        new_meta.update(is_magnitude=True, measurement_errors=new_errors)
-        return self.__class__(data=mag_data, **new_meta)
+        return self._create_new_instance(
+            new_data=mag_data, 
+            is_magnitude=True, 
+            measurement_errors=new_errors
+        )
 
     def filter_bands(self, bands_to_keep: List[str]) -> Self:
         """Creates a new tensor containing only the specified bands."""
@@ -151,14 +111,17 @@ class PhotometricTensor(AstroTensorBase):
             raise ValueError(f"Bands not found: {missing}")
             
         filtered_data = self.data[..., indices]
+        new_bands = [self.bands[i] for i in indices]
         
-        new_meta = self.meta.copy()
-        new_meta["bands"] = [self.bands[i] for i in indices]
-        
+        new_errors = None
         if self.measurement_errors is not None:
-            new_meta["measurement_errors"] = self.measurement_errors[..., indices]
+            new_errors = self.measurement_errors[..., indices]
             
-        return self.__class__(data=filtered_data, **new_meta)
+        return self._create_new_instance(
+            new_data=filtered_data, 
+            bands=new_bands, 
+            measurement_errors=new_errors
+        )
 
     def apply_extinction(
         self, extinction_values: Union[Dict[str, float], torch.Tensor]
