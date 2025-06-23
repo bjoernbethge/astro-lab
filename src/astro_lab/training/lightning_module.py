@@ -26,8 +26,9 @@ from astro_lab.models.factory import create_gaia_classifier
 from astro_lab.models.tgnn import ALCDEFTemporalGNN
 from astro_lab.training.config import TrainingConfig
 
-# Setup logging
+# Setup logging - only errors
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.ERROR)
 
 class AstroLightningModule(LightningModule):
     """
@@ -87,27 +88,18 @@ class AstroLightningModule(LightningModule):
         self._step_times = []
         self._memory_usage = []
 
-        logger.info(
-            f"✅ AstroLightningModule initialized with task_type: {self.task_type}"
-        )
-
     def _initialize_model(self, model: Optional[torch.nn.Module]) -> None:
         """Initialize model with robust error handling."""
         try:
             if model is not None:
                 self.model = model
-                logger.info(f"✅ Using provided model: {type(model).__name__}")
             elif self.model_config is not None:
                 self.model = self._create_model_from_config(self.model_config)
-                logger.info(
-                    f"✅ Created model from config: {type(self.model).__name__}"
-                )
             else:
                 # Create default model
                 self.model = self._create_default_model()
-                logger.info(f"✅ Created default model: {type(self.model).__name__}")
         except Exception as e:
-            logger.error(f"❌ Failed to initialize model: {e}")
+            logger.error(f"Failed to initialize model: {e}")
             raise
 
     def _load_num_classes_from_metadata(self) -> Optional[int]:
@@ -133,48 +125,29 @@ class AstroLightningModule(LightningModule):
                     if "classification" in metadata:
                         num_classes = metadata["classification"].get("num_classes")
                         if num_classes:
-                            logger.info(f"📋 Found {num_classes} classes in metadata: {path}")
                             return int(num_classes)
                     
                     # Fallback: check for direct num_classes field
                     if "num_classes" in metadata:
                         num_classes = metadata["num_classes"]
-                        logger.info(f"📋 Found {num_classes} classes in metadata: {path}")
                         return int(num_classes)
             
-            logger.debug("No class information found in metadata files")
             return None
             
-        except Exception as e:
-            logger.debug(f"Error loading metadata: {e}")
+        except Exception:
             return None
 
     def _setup_metrics(self) -> None:
-        """Setup torchmetrics for performance tracking."""
+        """Setup torchmetrics for performance tracking. 📊"""
         if self.task_type == "classification":
-            # Use detected num_classes or fallback to 4 for Gaia
-            num_classes = self.num_classes or 4
-            
-            # Create metrics and move to device
-            self.train_acc = MulticlassAccuracy(
-                num_classes=num_classes, average="macro"
-            ).to(self.device)
-            self.val_acc = MulticlassAccuracy(
-                num_classes=num_classes, average="macro"
-            ).to(self.device)
-            self.test_acc = MulticlassAccuracy(
-                num_classes=num_classes, average="macro"
-            ).to(self.device)
-
-            self.train_f1 = F1Score(
-                task="multiclass", num_classes=num_classes, average="macro"
-            ).to(self.device)
-            self.val_f1 = F1Score(
-                task="multiclass", num_classes=num_classes, average="macro"
-            ).to(self.device)
-            self.test_f1 = F1Score(
-                task="multiclass", num_classes=num_classes, average="macro"
-            ).to(self.device)
+            # Don't initialize metrics here - we'll do it dynamically
+            # when we see the actual data
+            self.train_acc = None
+            self.val_acc = None
+            self.test_acc = None
+            self.train_f1 = None
+            self.val_f1 = None
+            self.test_f1 = None
         else:
             # For regression tasks
             self.train_acc = None
@@ -183,6 +156,30 @@ class AstroLightningModule(LightningModule):
             self.train_f1 = None
             self.val_f1 = None
             self.test_f1 = None
+            
+    def _create_metrics_for_classes(self, num_classes: int, device: torch.device) -> None:
+        """Create metrics with the correct number of classes. 🎯"""
+        if self.task_type == "classification":
+            # Create metrics with detected number of classes
+            self.train_acc = MulticlassAccuracy(
+                num_classes=num_classes, average="macro"
+            ).to(device)
+            self.val_acc = MulticlassAccuracy(
+                num_classes=num_classes, average="macro"
+            ).to(device)
+            self.test_acc = MulticlassAccuracy(
+                num_classes=num_classes, average="macro"
+            ).to(device)
+
+            self.train_f1 = F1Score(
+                task="multiclass", num_classes=num_classes, average="macro"
+            ).to(device)
+            self.val_f1 = F1Score(
+                task="multiclass", num_classes=num_classes, average="macro"
+            ).to(device)
+            self.test_f1 = F1Score(
+                task="multiclass", num_classes=num_classes, average="macro"
+            ).to(device)
 
     def _detect_num_classes_from_data(self, dataloader) -> int:
         """
@@ -202,8 +199,24 @@ class AstroLightningModule(LightningModule):
                 if i >= 10:  # Limit to first 10 batches for efficiency
                     break
 
-                if isinstance(batch, dict):
-                    targets = batch.get("target")
+                # Handle PyTorch Geometric Data objects specifically
+                if hasattr(batch, '__class__') and batch.__class__.__name__ == 'DataBatch':
+                    # This is a batched PyG data object
+                    if hasattr(batch, 'y'):
+                        targets = batch.y
+                    else:
+                        continue
+                elif hasattr(batch, 'y') and hasattr(batch, 'x') and hasattr(batch, 'edge_index'):
+                    # Single PyG Data object
+                    targets = batch.y
+                elif isinstance(batch, list) and len(batch) > 0:
+                    # List of PyG Data objects
+                    if hasattr(batch[0], 'y'):
+                        targets = batch[0].y
+                    else:
+                        continue
+                elif isinstance(batch, dict):
+                    targets = batch.get("target") or batch.get("y")
                 elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
                     targets = batch[1]  # Assume (data, target) format
                 else:
@@ -216,9 +229,6 @@ class AstroLightningModule(LightningModule):
                         all_targets.append(torch.tensor(targets).flatten())
 
             if not all_targets:
-                logger.warning(
-                    "No targets found in dataloader, using default 7 classes"
-                )
                 return 7
 
             # Concatenate all targets and find unique values
@@ -226,20 +236,10 @@ class AstroLightningModule(LightningModule):
             unique_classes = torch.unique(all_targets)
             num_classes = len(unique_classes)
 
-            # Ensure classes are 0-indexed
-            min_class = unique_classes.min().item()
-            max_class = unique_classes.max().item()
-
-            if min_class != 0:
-                logger.warning(f"Classes start from {min_class}, not 0")
-
-            logger.info(
-                f"🔍 Automatically detected {num_classes} classes: {unique_classes.tolist()}"
-            )
             return num_classes
 
         except Exception as e:
-            logger.error(f"❌ Error detecting classes from data: {e}")
+            logger.error(f"Error detecting classes from data: {e}")
             return 7
 
     def _create_default_model(self) -> torch.nn.Module:
@@ -280,7 +280,7 @@ class AstroLightningModule(LightningModule):
             self.model_config = default_config
             return self._create_model_from_config(default_config)
         except Exception as e:
-            logger.error(f"❌ Failed to create default model: {e}")
+            logger.error(f"Failed to create default model: {e}")
             raise
 
     def _create_model_from_config(self, config: ModelConfig) -> torch.nn.Module:
@@ -310,19 +310,12 @@ class AstroLightningModule(LightningModule):
                 if metadata_classes is not None:
                     output_dim = metadata_classes
                     self.num_classes = metadata_classes
-                    logger.info(f"📋 Using {output_dim} classes from dataset metadata")
                 elif self.num_classes is not None:
                     # Use automatically detected number of classes
                     output_dim = self.num_classes
-                    logger.info(f"🎯 Using detected {output_dim} classes for stellar classification")
                 else:
-                    # Fallback: use config value but warn
-                    logger.warning(f"⚠️ No classes detected, using config output_dim: {output_dim}")
+                    # Fallback: use config value
                     self.num_classes = output_dim
-
-            logger.info(
-                f"🔧 Creating AstroSurveyGNN with input_dim={input_dim}, hidden_dim={config.graph.hidden_dim}, output_dim={output_dim}"
-            )
 
             return AstroSurveyGNN(
                 input_dim=input_dim,
@@ -339,7 +332,7 @@ class AstroLightningModule(LightningModule):
                 use_spatial_3d=config.encoder.use_spatial_3d,
             )
         except Exception as e:
-            logger.error(f"❌ Failed to create model from config: {e}")
+            logger.error(f"Failed to create model from config: {e}")
             raise
 
     def _auto_create_projection_head(self) -> Optional[torch.nn.Module]:
@@ -362,11 +355,10 @@ class AstroLightningModule(LightningModule):
                 torch.nn.Linear(self.projection_dim, self.projection_dim)
             )
             
-            logger.info(f"✅ Created projection head: {input_dim} -> {self.projection_dim}")
             return projection_head
             
         except Exception as e:
-            logger.error(f"❌ Failed to create projection head: {e}")
+            logger.error(f"Failed to create projection head: {e}")
             return None
 
     def forward(
@@ -398,7 +390,7 @@ class AstroLightningModule(LightningModule):
             return output
 
         except Exception as e:
-            logger.error(f"❌ Forward pass failed: {e}")
+            logger.error(f"Forward pass failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
             logger.error(f"   Batch shape: {getattr(batch, 'shape', 'N/A')}")
             raise
@@ -420,14 +412,14 @@ class AstroLightningModule(LightningModule):
             # Check for invalid class indices
             if torch.any(targets < 0) or torch.any(targets >= outputs.shape[1]):
                 logger.error(
-                    f"❌ Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}"
+                    f"Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}"
                 )
                 raise ValueError(
                     f"Target contains invalid class indices: min={targets.min().item()}, max={targets.max().item()}, num_classes={outputs.shape[1]}"
                 )
             if outputs.shape[0] != targets.shape[0]:
                 logger.error(
-                    f"❌ Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}"
+                    f"Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}"
                 )
                 raise ValueError(
                     f"Output/target batch size mismatch: outputs={outputs.shape}, targets={targets.shape}"
@@ -472,11 +464,6 @@ class AstroLightningModule(LightningModule):
                 # Multiple targets per sample - take mean (regression fallback)
                 targets = targets.mean(dim=1)
 
-            # Debug: Log shapes and value ranges
-            logger.debug(
-                f"Batch {stage}: outputs.shape={outputs.shape}, targets.shape={targets.shape}, targets.min={targets.min().item()}, targets.max={targets.max().item()}"
-            )
-
             # Compute loss
             loss = self._compute_loss(outputs, targets)
 
@@ -490,7 +477,7 @@ class AstroLightningModule(LightningModule):
             }
 
         except Exception as e:
-            logger.error(f"❌ {stage} step failed: {e}")
+            logger.error(f"{stage} step failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
             logger.error(
                 f"   Batch keys: {list(batch.keys()) if isinstance(batch, dict) else 'N/A'}"
@@ -520,11 +507,11 @@ class AstroLightningModule(LightningModule):
             if not self.metrics_initialized or outputs.dim() > 1 and outputs.size(1) != self.num_classes:
                 detected_classes = outputs.size(1) if outputs.dim() > 1 else 2
                 if self.num_classes != detected_classes:
-                    logger.info(f"🔍 Auto-detected {detected_classes} classes, updating metrics")
+                    logger.info(f"Auto-detected {detected_classes} classes, updating metrics")
                     self.num_classes = detected_classes
                 
                 # Setup metrics on correct device
-                self._setup_metrics()
+                self._create_metrics_for_classes(self.num_classes, self.device)
                 self.metrics_initialized = True
             
             # Use metrics if they exist
@@ -540,141 +527,213 @@ class AstroLightningModule(LightningModule):
                         f1 = f1_metric(outputs, targets)
                         self.log(f"{stage}_f1", f1, sync_dist=True)
                 except Exception as e:
-                    logger.warning(f"⚠️ Metrics computation failed: {e}")
+                    logger.warning(f"Metrics computation failed: {e}")
                     # Continue without failing
 
     def training_step(self, batch: Union[torch.Tensor, Dict[str, torch.Tensor], Any], batch_idx: int) -> torch.Tensor:
-        """Training step with proper gradient handling."""
+        """Training step with proper gradient handling. 🚂"""
         try:
-            # Ensure batch is properly formatted for GNN
-            if isinstance(batch, dict):
-                x = batch.get("x")
-                edge_index = batch.get("edge_index")
-                y = batch.get("y")
-            elif hasattr(batch, 'x') and hasattr(batch, 'edge_index'):
-                # PyTorch Geometric Data object
+            # Handle PyTorch Geometric Data objects
+            if hasattr(batch, 'x') and hasattr(batch, 'edge_index') and hasattr(batch, 'y'):
+                # Direct PyG Data object
                 x = batch.x
                 edge_index = batch.edge_index
-                y = getattr(batch, 'y', None)
-            else:
-                # Fallback for tensor input
-                x = batch
-                edge_index = None
-                y = None
-            
-            # Ensure tensors require gradients
-            if x is not None and not x.requires_grad:
-                x = x.detach().requires_grad_(True)
-            
-            # Forward pass
-            if self.task_type == "unsupervised":
-                # Unsupervised learning with projection head
-                if self.projection_head is not None:
-                    embeddings = self.model(x, edge_index)
-                    projections = self.projection_head(embeddings)
-                    # Use contrastive loss or reconstruction loss
-                    loss = torch.nn.functional.mse_loss(projections, embeddings.detach())
-                else:
-                    # Simple reconstruction loss
+                y = batch.y
+                
+                # For node classification with masks
+                if hasattr(batch, 'train_mask'):
+                    # Apply mask to get only training nodes
+                    train_mask = batch.train_mask
+                    x_train = x[train_mask]
+                    y_train = y[train_mask]
+                    
+                    # Forward pass through model
                     output = self.model(x, edge_index)
-                    loss = torch.nn.functional.mse_loss(output, x)
-            else:
-                # Supervised learning
-                output = self.model(x, edge_index)
-                if y is not None:
+                    
+                    # Get predictions for training nodes only
+                    output_train = output[train_mask]
+                    
+                    # Compute loss on training nodes
                     if self.task_type == "classification":
-                        loss = torch.nn.functional.cross_entropy(output, y)
+                        loss = F.cross_entropy(output_train, y_train)
                     else:
-                        loss = torch.nn.functional.mse_loss(output, y)
+                        loss = F.mse_loss(output_train, y_train)
                 else:
-                    # Fallback loss
-                    loss = torch.nn.functional.mse_loss(output, torch.zeros_like(output))
-            
-            # Log metrics
-            self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-            
-            return loss
-            
+                    # Full graph without masks
+                    output = self.model(x, edge_index)
+                    if self.task_type == "classification":
+                        loss = F.cross_entropy(output, y)
+                    else:
+                        loss = F.mse_loss(output, y)
+                        
+                # Log metrics
+                self.log("train_loss", loss, prog_bar=True)
+                if self.task_type == "classification":
+                    with torch.no_grad():
+                        # Lazy initialize metrics if needed
+                        if self.train_acc is None:
+                            if hasattr(batch, 'train_mask'):
+                                num_classes = output_train.shape[1]
+                            else:
+                                num_classes = output.shape[1]
+                            self._create_metrics_for_classes(num_classes, loss.device)
+                            self.metrics_initialized = True
+                            
+                        if self.train_acc:
+                            if hasattr(batch, 'train_mask'):
+                                acc = self.train_acc(output_train, y_train)
+                            else:
+                                acc = self.train_acc(output, y)
+                            self.log("train_acc", acc, prog_bar=True)
+                        
+                return loss
+                
+            else:
+                # Fallback to generic compute_step
+                result = self._compute_step(batch, "train")
+                # IMPORTANT: Always return just the loss tensor
+                return result["loss"]
+                
         except Exception as e:
             logger.error(f"❌ Training step failed: {e}")
-            # Return a dummy loss to prevent training from crashing
-            return torch.tensor(0.0, requires_grad=True, device=self.device)
+            logger.error(f"   Batch type: {type(batch)}")
+            if hasattr(batch, '__dict__'):
+                logger.error(f"   Batch attributes: {list(batch.__dict__.keys())}")
+            raise
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        """Validation step with error handling."""
+        """Validation step with mask handling. 🧪"""
         try:
-            result = self._compute_step(batch, "val")
-            return result["loss"]
+            # Handle PyTorch Geometric Data objects with validation masks
+            if hasattr(batch, 'x') and hasattr(batch, 'edge_index') and hasattr(batch, 'y'):
+                x = batch.x
+                edge_index = batch.edge_index
+                y = batch.y
+                
+                # For node classification with masks
+                if hasattr(batch, 'val_mask'):
+                    val_mask = batch.val_mask
+                    
+                    # Forward pass through entire graph
+                    output = self.model(x, edge_index)
+                    
+                    # Get predictions and targets for validation nodes only
+                    output_val = output[val_mask]
+                    y_val = y[val_mask]
+                    
+                    # Compute loss on validation nodes
+                    if self.task_type == "classification":
+                        loss = F.cross_entropy(output_val, y_val)
+                    else:
+                        loss = F.mse_loss(output_val, y_val)
+                    
+                    # Log metrics
+                    self.log("val_loss", loss, prog_bar=True)
+                    if self.task_type == "classification" and self.val_acc:
+                        with torch.no_grad():
+                            acc = self.val_acc(output_val, y_val)
+                            self.log("val_acc", acc, prog_bar=True)
+                            if self.val_f1:
+                                f1 = self.val_f1(output_val, y_val)
+                                self.log("val_f1", f1)
+                else:
+                    # Full graph without masks
+                    output = self.model(x, edge_index)
+                    if self.task_type == "classification":
+                        loss = F.cross_entropy(output, y)
+                    else:
+                        loss = F.mse_loss(output, y)
+                    
+                    # Log metrics
+                    self.log("val_loss", loss, prog_bar=True)
+                    if self.task_type == "classification" and self.val_acc:
+                        with torch.no_grad():
+                            acc = self.val_acc(output, y)
+                            self.log("val_acc", acc, prog_bar=True)
+                            
+                return loss
+                
+            else:
+                # Fallback to generic compute_step
+                result = self._compute_step(batch, "val")
+                return result["loss"]
+                
         except Exception as e:
             logger.error(f"❌ Validation step failed: {e}")
+            logger.error(f"   Batch type: {type(batch)}")
             raise
 
     def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        """Test step with error handling."""
+        """Test step with comprehensive evaluation. 🎯"""
         try:
-            result = self._compute_step(batch, "test")
-            return result["loss"]
+            # Handle PyTorch Geometric Data objects with test masks
+            if hasattr(batch, 'x') and hasattr(batch, 'edge_index') and hasattr(batch, 'y'):
+                x = batch.x
+                edge_index = batch.edge_index
+                y = batch.y
+                
+                # For node classification with masks
+                if hasattr(batch, 'test_mask'):
+                    test_mask = batch.test_mask
+                    
+                    # Forward pass through entire graph
+                    output = self.model(x, edge_index)
+                    
+                    # Get predictions and targets for test nodes only
+                    output_test = output[test_mask]
+                    y_test = y[test_mask]
+                    
+                    # Compute loss on test nodes
+                    if self.task_type == "classification":
+                        loss = F.cross_entropy(output_test, y_test)
+                    else:
+                        loss = F.mse_loss(output_test, y_test)
+                    
+                    # Log metrics
+                    self.log("test_loss", loss)
+                    if self.task_type == "classification" and self.test_acc:
+                        with torch.no_grad():
+                            acc = self.test_acc(output_test, y_test)
+                            self.log("test_acc", acc)
+                            if self.test_f1:
+                                f1 = self.test_f1(output_test, y_test)
+                                self.log("test_f1", f1)
+                else:
+                    # Full graph without masks
+                    output = self.model(x, edge_index)
+                    if self.task_type == "classification":
+                        loss = F.cross_entropy(output, y)
+                    else:
+                        loss = F.mse_loss(output, y)
+                    
+                    # Log metrics
+                    self.log("test_loss", loss)
+                    if self.task_type == "classification" and self.test_acc:
+                        with torch.no_grad():
+                            acc = self.test_acc(output, y)
+                            self.log("test_acc", acc)
+                            
+                return loss
+                
+            else:
+                # Fallback to generic compute_step
+                result = self._compute_step(batch, "test")
+                return result["loss"]
+                
         except Exception as e:
             logger.error(f"❌ Test step failed: {e}")
+            logger.error(f"   Batch type: {type(batch)}")
             raise
 
-    def configure_optimizers(self) -> Union[torch.optim.Optimizer, Dict[str, Any]]:
-        """Configure optimizers and schedulers."""
-        try:
-            # Get optimizer parameters from config or use defaults
-            lr = getattr(self, "learning_rate", 1e-3)
-            weight_decay = getattr(self, "weight_decay", 1e-4)
-
-            optimizer = AdamW(
-                self.parameters(),
-                lr=lr,
-                weight_decay=weight_decay,
-            )
-
-            # Configure scheduler if training config is available
-            if self.training_config and hasattr(self.training_config, "scheduler"):
-                scheduler_config = self.training_config.scheduler
-                scheduler_type = getattr(scheduler_config, "type", "cosine")
-
-                if scheduler_type == "cosine":
-                    scheduler = CosineAnnealingLR(
-                        optimizer,
-                        T_max=scheduler_config.max_epochs,
-                        eta_min=scheduler_config.min_lr,
-                    )
-                elif scheduler_type == "onecycle":
-                    # Estimate steps per epoch if not available
-                    steps_per_epoch = getattr(scheduler_config, "steps_per_epoch", 100)
-                    scheduler = OneCycleLR(
-                        optimizer,
-                        max_lr=lr,
-                        epochs=scheduler_config.max_epochs,
-                        steps_per_epoch=steps_per_epoch,
-                    )
-                elif scheduler_type == "reduce_on_plateau":
-                    scheduler = ReduceLROnPlateau(
-                        optimizer, mode="min", factor=0.5, patience=5
-                    )
-                else:
-                    scheduler = None
-            else:
-                scheduler = None
-
-            if scheduler:
-                return {
-                    "optimizer": optimizer,
-                    "lr_scheduler": {
-                        "scheduler": scheduler,
-                        "monitor": "val_loss",
-                    },
-                }
-            else:
-                return optimizer
-
-        except Exception as e:
-            logger.error(f"❌ Failed to configure optimizers: {e}")
-            # Fallback to simple AdamW
-            return AdamW(self.parameters(), lr=1e-3)
+    def configure_optimizers(self) -> torch.optim.Optimizer:
+        """Configure optimizers and learning rate schedulers. 🔧"""
+        # Simple optimizer configuration to avoid "No inf checks" error
+        optimizer = torch.optim.Adam(
+            self.parameters(),
+            lr=self.learning_rate,
+            weight_decay=self.weight_decay
+        )
+        return optimizer
 
     def predict_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Prediction step with error handling."""
@@ -698,7 +757,7 @@ class AstroLightningModule(LightningModule):
                 return outputs
 
         except Exception as e:
-            logger.error(f"❌ Prediction step failed: {e}")
+            logger.error(f"Prediction step failed: {e}")
             raise
 
     def on_train_start(self) -> None:
@@ -722,29 +781,29 @@ class AstroLightningModule(LightningModule):
                                 self.model_config
                             )
                             logger.info(
-                                f"🔄 Recreated model with {detected_classes} classes"
+                                f"Recreated model with {detected_classes} classes"
                             )
                         else:
                             # Recreate default model with correct classes
                             self.model = self._create_default_model()
                             logger.info(
-                                f"🔄 Recreated default model with {detected_classes} classes"
+                                f"Recreated default model with {detected_classes} classes"
                             )
 
-                        # Recreate metrics with correct number of classes
-                        self._setup_metrics()
-                        logger.info(
-                            f"🔄 Recreated metrics with {detected_classes} classes"
-                        )
+                            # Recreate metrics with correct number of classes
+                            self._create_metrics_for_classes(self.num_classes, self.device)
+                            logger.info(
+                                f"Recreated metrics with {detected_classes} classes"
+                            )
 
-                        # Move model to correct device
-                        if hasattr(self, "device"):
-                            self.model = self.model.to(self.device)
-                            logger.info(f"🔄 Moved model to device: {self.device}")
+                            # Move model to correct device
+                            if hasattr(self, "device"):
+                                self.model = self.model.to(self.device)
+                                logger.info(f"Moved model to device: {self.device}")
             except Exception as e:
-                logger.error(f"❌ Error during class detection: {e}")
+                logger.error(f"Error during class detection: {e}")
 
-        logger.info("🚀 Training started")
+        logger.info("Training started")
         logger.info(f"   Model: {type(self.model).__name__}")
         logger.info(f"   Task: {self.task_type}")
         logger.info(f"   Device: {self.device}")
@@ -753,14 +812,14 @@ class AstroLightningModule(LightningModule):
 
     def on_train_end(self) -> None:
         """Called when training ends."""
-        logger.info("✅ Training completed")
+        logger.info("Training completed")
 
     def on_validation_start(self) -> None:
         """Called when validation starts."""
-        logger.info("🔍 Validation started")
+        logger.info("Validation started")
 
     def on_test_start(self) -> None:
         """Called when testing starts."""
-        logger.info("🔍 Testing started")
+        logger.info("Testing started")
 
 __all__ = ["AstroLightningModule"]

@@ -16,7 +16,9 @@ from torch_geometric.loader import DataLoader
 from .core import AstroDataset
 from .config import data_config
 
+# Configure logging to avoid duplicates
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 
 
 class AstroDataModule(L.LightningDataModule):
@@ -57,8 +59,6 @@ class AstroDataModule(L.LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         """Setup dataset and create train/val/test splits."""
         if self.dataset is None:
-            logger.info(f"📊 Setting up dataset for survey: {self.survey}")
-
             # Determine the root directory for the data
             root = self.data_root if self.data_root is not None else str(data_config.base_dir)
             
@@ -93,13 +93,6 @@ class AstroDataModule(L.LightningDataModule):
         data.train_mask[indices[:train_size]] = True
         data.val_mask[indices[train_size : train_size + val_size]] = True
         data.test_mask[indices[train_size + val_size :]] = True
-
-        logger.info(
-            f"📊 Split {self.survey}: "
-            f"Train={data.train_mask.sum()}, "
-            f"Val={data.val_mask.sum()}, "
-            f"Test={data.test_mask.sum()}"
-        )
 
     def train_dataloader(self):
         """Create training dataloader."""

@@ -20,8 +20,9 @@ from typing import Dict, List, Optional, Union
 os.environ.setdefault('ASTROPHOT_LOG_LEVEL', 'ERROR')
 os.environ.setdefault('ASTROPHOT_LOG_FILE', '')
 
-# Configure logging
+# Configure logging - reduce level to avoid duplicates
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.WARNING)
 
 class DataConfig:
     """

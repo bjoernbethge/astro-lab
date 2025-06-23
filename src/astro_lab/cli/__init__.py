@@ -20,63 +20,92 @@ import platform
 import click
 import yaml
 
-# Configure clean logging
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Configure clean logging ONLY ONCE at module level
+# This prevents duplicate messages
 logger = logging.getLogger(__name__)
+if not logger.handlers:  # Only configure if not already configured
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False  # Prevent propagation to root logger
 
-# Windows emoji handling
+# Windows emoji handling 🖥️
 def safe_print(message: str) -> str:
     """Remove emojis on Windows to avoid encoding issues."""
     if platform.system() == "Windows":
         # Replace common emojis with ASCII equivalents
         replacements = {
             "⭐": "*",
-            "🚀": ">>",
-            "📖": "[Examples]",
+            "🚀": "[>]",
+            "📖": "[Docs]",
             "💡": "[Tip]",
-            "🔧": "[Config]",
+            "🔧": "[Setup]",
             "📋": "[Info]",
-            "⚡": "[Quick]",
+            "⚡": "[Fast]",
             "🌟": "**",
-            "📊": "[Stats]",
-            "📈": "[Analysis]",
+            "📊": "[Data]",
+            "📈": "[Stats]",
             "✅": "[OK]",
             "❌": "[ERROR]",
-            "⚠️": "[WARNING]",
-            "🔄": "[Processing]",
-            "💾": "[Saved]",
-            "📁": "[Directory]",
+            "⚠️": "[WARN]",
+            "🔄": "[...]",
+            "💾": "[Save]",
+            "📁": "[Dir]",
             "📄": "[File]",
-            "🎉": "[Success]",
-            "🎯": "[Target]",
+            "🎉": "[Done!]",
+            "🎯": "[>]",
             "📝": "[Config]",
-            "🏗️": "[Model]",
+            "🏗️": "[Build]",
             "🕸️": "[Graph]",
-            "🧠": "[ML]",
-            "⏹️": "[Stopped]",
-            "🌌": "[Survey]",
+            "🧠": "[AI]",
+            "⏹️": "[Stop]",
+            "🌌": "[Space]",
+            "🔬": "[Science]",
+            "🌠": "[*]",
+            "💫": "[~]",
+            "✨": "[*]",
+            "🪐": "[o]",
+            "🛸": "[UFO]",
+            "🌍": "[Earth]",
+            "🎓": "[Learn]",
+            "🔍": "[Search]",
+            "📐": "[Math]",
+            "🧪": "[Test]",
+            "⏱️": "[Time]",
+            "🔴": "[o]",
+            "🟢": "[o]",
+            "🔵": "[o]",
+            "🟡": "[o]",
+            "🟣": "[o]",
         }
         for emoji, replacement in replacements.items():
             message = message.replace(emoji, replacement)
     return message
 
-# Wrap logger methods
-original_info = logger.info
-original_error = logger.error
-original_warning = logger.warning
+# Wrap logger methods for emoji safety
+def create_safe_logger(base_logger):
+    """Create a logger with safe emoji handling."""
+    class SafeLogger:
+        def __init__(self, logger):
+            self._logger = logger
+            
+        def info(self, msg, *args, **kwargs):
+            self._logger.info(safe_print(str(msg)), *args, **kwargs)
+            
+        def error(self, msg, *args, **kwargs):
+            self._logger.error(safe_print(str(msg)), *args, **kwargs)
+            
+        def warning(self, msg, *args, **kwargs):
+            self._logger.warning(safe_print(str(msg)), *args, **kwargs)
+            
+        def debug(self, msg, *args, **kwargs):
+            self._logger.debug(safe_print(str(msg)), *args, **kwargs)
+    
+    return SafeLogger(base_logger)
 
-def safe_info(msg, *args, **kwargs):
-    original_info(safe_print(str(msg)), *args, **kwargs)
-
-def safe_error(msg, *args, **kwargs):
-    original_error(safe_print(str(msg)), *args, **kwargs)
-
-def safe_warning(msg, *args, **kwargs):
-    original_warning(safe_print(str(msg)), *args, **kwargs)
-
-logger.info = safe_info
-logger.error = safe_error
-logger.warning = safe_warning
+# Use the safe logger
+logger = create_safe_logger(logger)
 
 # Removed memory.py - using simple gc instead
 import gc
@@ -93,7 +122,7 @@ from astro_lab.data import (
     load_catalog,
     save_splits_to_parquet,
 )
-from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy, find_or_create_catalog_file, create_graph_from_dataframe
+from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy, find_or_create_catalog_file, create_graph_from_dataframe, get_survey_input_file
 from astro_lab.models.factory import ModelFactory
 from astro_lab.training.trainer import AstroTrainer
 from astro_lab.utils.config.loader import ConfigLoader
@@ -105,9 +134,14 @@ __all__ = [
 
 def main():
     """Main CLI entry point with streamlined interface."""
-    # Welcome message
-    logger.info("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory!")
-    logger.info("")
+    # Check if this is a train command to skip welcome message
+    if len(sys.argv) > 1 and sys.argv[1] == "train":
+        # Skip welcome for train command 🚂
+        pass
+    else:
+        # Welcome message for other commands 🌟
+        logger.info("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory! 🔬")
+        logger.info("")
 
     parser = argparse.ArgumentParser(
         description="AstroLab - Astronomical Machine Learning Laboratory",
@@ -115,11 +149,11 @@ def main():
         epilog=safe_print("""
 🚀 Available Commands:
 
-astro-lab preprocess         Easy preprocessing - process all surveys or specific files
-astro-lab download          Download astronomical datasets
-astro-lab train             ML-Model Training with Lightning + MLflow
-astro-lab optimize          Hyperparameter optimization with Optuna
-astro-lab config            Configuration management
+astro-lab preprocess     🔄 Easy preprocessing - process all surveys or specific files
+astro-lab download      📡 Download astronomical datasets  
+astro-lab train         🧠 ML-Model Training with Lightning + MLflow
+astro-lab optimize      🎯 Hyperparameter optimization with Optuna
+astro-lab config        🔧 Configuration management
 
 📖 Examples:
 
@@ -132,7 +166,7 @@ astro-lab preprocess --surveys gaia nsa
 # Process specific file with survey config
 astro-lab preprocess data/gaia_catalog.parquet --config gaia
 
-# With detailed parameters
+# With detailed parameters  
 astro-lab preprocess --surveys gaia --k-neighbors 8 --max-samples 10000 --splits
 
 # Process catalog (statistics are shown automatically)
@@ -245,6 +279,9 @@ astro-lab train --dataset gaia --model gaia_classifier --epochs 50
     preprocess_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Detailed output"
     )
+
+    # New option
+    preprocess_parser.add_argument("--no-graph", action="store_true", help="Do not generate graph/PT file during preprocessing")
 
     # Download subcommand
     download_parser = subparsers.add_parser(
@@ -656,9 +693,19 @@ def _process_all_surveys(args):
         # Determine surveys to process
         surveys_to_process = args.surveys if args.surveys else all_surveys
 
+        # Determine max_samples for display (TNG50(-4) default is 3_000_000)
+        max_samples_display = {}
+        for survey in surveys_to_process:
+            if survey.lower() in ["tng50", "tng50-4"]:
+                max_samples_display[survey] = args.max_samples if args.max_samples is not None else 3_000_000
+            else:
+                max_samples_display[survey] = args.max_samples or "all"
+
         logger.info(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
         logger.info(
-            f"🔧 Parameters: k={args.k_neighbors}, max_samples={args.max_samples or 'all'}"
+            "🔧 Parameters: " + ", ".join([
+                f"{s}: k={args.k_neighbors}, max_samples={max_samples_display[s]}" for s in surveys_to_process
+            ])
         )
         logger.info(f"📁 Output: {args.output_dir}")
         logger.info("")
@@ -673,13 +720,10 @@ def _process_all_surveys(args):
             logger.info(f"🔄 Processing {survey.upper()}...")
 
             try:
-                survey_data_dir = Path(f"data/raw/{survey}")
-                if not survey_data_dir.exists():
-                    logger.warning(f"⚠️  No data directory found for {survey}: {survey_data_dir}")
-                    continue
-
+                # Nutze die Utility für alle Surveys
+                from astro_lab.data.preprocessing import get_survey_input_file
                 try:
-                    data_file = find_or_create_catalog_file(survey, survey_data_dir)
+                    data_file = get_survey_input_file(survey, data_manager)
                 except FileNotFoundError as e:
                     logger.warning(f"⚠️  {e}")
                     continue
@@ -691,36 +735,30 @@ def _process_all_surveys(args):
                     logger.info(f"  📄 Processing {data_file.name}")
 
                 # Preprocess
+                ms = max_samples_display[survey]
+                if isinstance(ms, str):
+                    if ms.lower() == "all":
+                        ms = None
+                    else:
+                        try:
+                            ms = int(ms)
+                        except Exception:
+                            ms = None
                 lf = preprocess_catalog_lazy(
                     input_path=str(data_file),
                     survey_type=survey,
-                    max_samples=args.max_samples,
+                    max_samples=ms,
                     use_streaming=True,
+                    output_dir=survey_output_dir,
+                    write_graph=not args.no_graph,
+                    k_neighbors=args.k_neighbors,
+                    distance_threshold=args.distance_threshold,
                 )
                 df = lf.collect()
 
-                # Save processed data
-                processed_file = (
-                    survey_output_dir / f"{data_file.stem}_processed.parquet"
-                )
-                df.write_parquet(processed_file)
-
-                # Create graph
-                graph_file = (
-                    survey_output_dir / f"{survey}.pt"
-                )
-                graph_data = create_graph_from_dataframe(
-                    df=df,
-                    survey_type=survey,
-                    k_neighbors=args.k_neighbors,
-                    distance_threshold=args.distance_threshold,
-                    output_path=graph_file,
-                )
-
-                if args.verbose and graph_data:
-                    logger.info(
-                        f"    📊 Graph: {graph_data.num_nodes} nodes, {graph_data.edge_index.shape[1]} edges"
-                    )
+                # Die Files werden bereits im Preprocessing geschrieben
+                parquet_file = survey_output_dir / f"{survey}.parquet"
+                pt_file = survey_output_dir / f"{survey}.pt"
 
                 logger.info(f"✅ {survey.upper()} processed successfully")
                 successful += 1
@@ -743,11 +781,15 @@ def _process_all_surveys(args):
         for survey in surveys_to_process:
             survey_dir = output_dir / survey
             if survey_dir.exists():
-                pt_files = list(survey_dir.glob("*.pt"))
-                parquet_files = list(survey_dir.glob("*_processed.parquet"))
+                pt_files = list(survey_dir.glob(f"{survey}.pt"))
+                parquet_files = list(survey_dir.glob(f"{survey}.parquet"))
                 logger.info(
-                    f"   {survey.upper()}: {len(parquet_files)} processed files, {len(pt_files)} graphs"
+                    f"   {survey.upper()}: {len(parquet_files)} parquet files, {len(pt_files)} graphs"
                 )
+                if parquet_files:
+                    logger.info(f"     Parquet: {[str(f.relative_to(output_dir)) for f in parquet_files]}")
+                if pt_files:
+                    logger.info(f"     Graph:   {[str(f.relative_to(output_dir)) for f in pt_files]}")
             else:
                 logger.info(f"   {survey.upper()}: No processed data found")
 
@@ -787,93 +829,30 @@ def handle_download(args):
 
 
 def handle_train(args):
-    """Handle train command with clean, focused training."""
-    # Check if user provided any parameters at all
-    has_config = args.config is not None
-    has_dataset = args.dataset is not None
-    has_model = args.model is not None
+    """Handle train command by delegating to train module."""
+    # Simply pass args to train module
+    from .train import train_from_config, train_quick
     
-    # If no parameters provided, show helpful guidance
-    if not has_config and not has_dataset and not has_model:
-        logger.info("🧠 AstroLab Training - Machine Learning for Astronomy")
-        logger.info("=" * 55)
-        logger.info("")
-        logger.info("💡 You must provide either a configuration file or dataset + model:")
-        logger.info("")
-        logger.info("📋 Option 1: With configuration file (recommended)")
-        logger.info("   astro-lab train --config my_config.yaml")
-        logger.info("")
-        logger.info("⚡ Option 2: Quick training")
-        logger.info("   astro-lab train --dataset gaia --model gaia_classifier --epochs 50")
-        logger.info("")
-        logger.info("🔧 Available parameters:")
-        logger.info("   --dataset     : Dataset (gaia, sdss, nsa)")
-        logger.info("   --model       : Model type (gaia_classifier, sdss_galaxy_classifier)")
-        logger.info("   --epochs      : Number of epochs (default: 100)")
-        logger.info("   --batch-size  : Batch size (default: 32)")
-        logger.info("   --learning-rate: Learning rate (default: 0.001)")
-        logger.info("")
-        logger.info("📖 Examples:")
-        logger.info("   astro-lab train --dataset gaia --model gaia_classifier")
-        logger.info("   astro-lab train --config configs/gaia_optimization.yaml")
-        logger.info("   astro-lab train --dataset sdss --model sdss_galaxy_classifier --epochs 200")
-        logger.info("")
-        logger.info("💡 Tip: Use 'astro-lab config create' to create a default configuration")
-        return
-
     if args.config:
-        # Config-based training using clean training module
+        # Config-based training
         if not Path(args.config).exists():
-            logger.error(f"❌ Configuration file not found: {args.config}")
-            logger.info("💡 Use 'astro-lab config create' to create a default configuration")
-            return
-
-        try:
-            logger.info(f"🚀 Starting training with: {args.config}")
-            from .train import train_from_config
-            train_from_config(args.config)
-        except Exception as e:
-            logger.error(f"❌ Training failed: {e}")
+            print(f"Configuration file not found: {args.config}", file=sys.stderr)
             sys.exit(1)
-
+        train_from_config(args.config)
+    elif args.dataset and args.model:
+        # Quick training
+        train_quick(
+            dataset=args.dataset,
+            model=args.model,
+            epochs=args.epochs,
+            batch_size=args.batch_size
+        )
     else:
-        # Quick train mode - validate required parameters
-        missing_params = []
-        if not args.dataset:
-            missing_params.append("--dataset")
-        if not args.model:
-            missing_params.append("--model")
-            
-        if missing_params:
-            logger.error(f"❌ Missing parameters for quick training: {', '.join(missing_params)}")
-            logger.info("")
-            logger.info("🔧 Required parameters:")
-            logger.info("   --dataset : Choose a dataset (gaia, sdss, nsa)")
-            logger.info("   --model   : Choose a model type:")
-            logger.info("             • gaia_classifier")
-            logger.info("             • sdss_galaxy_classifier")
-            logger.info("             • lsst_transient_detector")
-            logger.info("")
-            logger.info("📖 Example:")
-            logger.info("   astro-lab train --dataset gaia --model gaia_classifier --epochs 50")
-            logger.info("")
-            logger.info("💡 Or use a configuration file:")
-            logger.info("   astro-lab train --config my_config.yaml")
-            return
-        
-        # Quick training using clean training module
-        try:
-            logger.info(f"🚀 Quick training: {args.dataset} + {args.model}")
-            from .train import train_quick
-            train_quick(
-                dataset=args.dataset,
-                model=args.model,
-                epochs=args.epochs,
-                batch_size=args.batch_size
-            )
-        except Exception as e:
-            logger.error(f"❌ Training failed: {e}")
-            sys.exit(1)
+        # Show help if insufficient arguments
+        print("Usage:", file=sys.stderr)
+        print("  astro-lab train --config <config.yaml>", file=sys.stderr)
+        print("  astro-lab train --dataset <dataset> --model <model> [--epochs N]", file=sys.stderr)
+        sys.exit(1)
 
 
 def handle_optimize(args):

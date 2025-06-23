@@ -695,6 +695,29 @@ class AstroDataset(InMemoryDataset):
         pos = torch.tensor(coords, dtype=torch.float32)
         x = torch.tensor(features, dtype=torch.float32)
         
+        # Create synthetic labels for classification tasks
+        # For Gaia: classify stars based on their color (G-RP magnitude)
+        if self.survey == "gaia" and "phot_g_mean_mag" in df.columns and "phot_rp_mean_mag" in df.columns:
+            # Calculate color index (G - RP)
+            g_mag = df["phot_g_mean_mag"].to_numpy()
+            rp_mag = df["phot_rp_mean_mag"].to_numpy()
+            color_index = g_mag - rp_mag
+            
+            # Create 4 classes based on color (spectral type proxy)
+            # Class 0: Blue stars (O, B types) - color < 0.5
+            # Class 1: White/blue stars (A, F types) - 0.5 <= color < 1.0
+            # Class 2: Yellow stars (G, K types) - 1.0 <= color < 1.5
+            # Class 3: Red stars (M types) - color >= 1.5
+            y = torch.zeros(len(df), dtype=torch.long)
+            y[color_index < 0.5] = 0
+            y[(color_index >= 0.5) & (color_index < 1.0)] = 1
+            y[(color_index >= 1.0) & (color_index < 1.5)] = 2
+            y[color_index >= 1.5] = 3
+        else:
+            # For other surveys or if color not available, create random labels for testing
+            num_classes = 4  # Default number of classes
+            y = torch.randint(0, num_classes, (len(df),), dtype=torch.long)
+        
         # Create k-NN graph with GPU acceleration
         device = get_optimal_device()
         pos_device = pos.to(device)
@@ -705,11 +728,12 @@ class AstroDataset(InMemoryDataset):
         # Move back to CPU for storage
         edge_index = edge_index.cpu()
         
-        # Create PyG Data object
+        # Create PyG Data object with labels
         data = Data(
             x=x,
             pos=pos,
             edge_index=edge_index,
+            y=y,  # Add labels
             num_nodes=len(pos)
         )
         

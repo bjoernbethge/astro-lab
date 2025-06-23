@@ -63,8 +63,8 @@ PrecisionType = Union[
     int,
 ]
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Configure logging - only errors
+logging.basicConfig(level=logging.ERROR)
 logger = logging.getLogger(__name__)
 
 # Suppress warnings - import warnings was already done above
@@ -159,7 +159,7 @@ class AstroTrainer(Trainer):
             mode=self.training_config.callbacks.mode,
             checkpoint_dir=self.checkpoint_dir,
         )
-        logger = self._setup_astro_logger()
+        logger_instance = self._setup_astro_logger()
 
         # Filter kwargs to avoid conflicts
         filtered_kwargs = {
@@ -171,7 +171,7 @@ class AstroTrainer(Trainer):
         # Determine if we should disable Lightning's default logging
         disable_lightning_logs = (
             getattr(self.training_config.logging, "use_mlflow", False)
-            and logger is not None
+            and logger_instance is not None
         )
 
         # Remove UI parameters from filtered_kwargs to avoid duplication - these are always set
@@ -186,7 +186,7 @@ class AstroTrainer(Trainer):
             devices=devices,
             precision=precision,
             callbacks=callbacks,
-            logger=logger,
+            logger=logger_instance,
             # UI parameters - always enabled, not configurable
             enable_progress_bar=True,
             enable_model_summary=True,
@@ -195,8 +195,6 @@ class AstroTrainer(Trainer):
             default_root_dir=None if disable_lightning_logs else None,
             **filtered_kwargs,
         )
-
-        print(f"🚀 AstroTrainer (Lightning 2.0+) for {self.survey} initialized!")
 
     def _setup_checkpoint_dir(
         self, checkpoint_dir: Optional[Union[str, Path]], experiment_name: str
@@ -240,7 +238,7 @@ class AstroTrainer(Trainer):
             save_last=True,  # Save last checkpoint as 'last.ckpt'
             filename=f"{experiment_short}_best_{{epoch:02d}}_{{val_loss:.3f}}_{timestamp}",
             auto_insert_metric_name=False,
-            verbose=True,
+            verbose=False,  # Changed to False
         )
         callbacks.append(checkpoint_callback)
 
@@ -249,7 +247,7 @@ class AstroTrainer(Trainer):
             monitor=monitor,
             mode=mode,
             patience=patience,
-            verbose=True,
+            verbose=False,  # Changed to False
         )
         callbacks.append(early_stopping)
 
@@ -277,16 +275,13 @@ class AstroTrainer(Trainer):
                 )
                 if not tracking_uri:
                     tracking_uri = "file:./mlruns"
-                    print(
-                        "⚠️ No tracking_uri found in Config, use Default: file:./mlruns"
-                    )
-                logger = AstroMLflowLogger(
+                logger_instance = AstroMLflowLogger(
                     experiment_name=self.experiment_name,
                     tracking_uri=tracking_uri,
                 )
-                return logger
+                return logger_instance
             except Exception as e:
-                print(f"⚠️ MLflow logger setup failed: {e}")
+                logger.error(f"MLflow logger setup failed: {e}")
                 return None
         else:
             return None
@@ -332,7 +327,7 @@ class AstroTrainer(Trainer):
             self._cleanup_after_training()
 
         except Exception as e:
-            print(f"❌ Training failed: {e}")
+            logger.error(f"Training failed: {e}")
             # Cleanup even on error
             self._cleanup_after_training()
             raise
@@ -343,7 +338,6 @@ class AstroTrainer(Trainer):
             # Clear CUDA cache
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                print("🧹 CUDA cache cleared")
 
             # Force garbage collection
             gc.collect()
@@ -355,10 +349,8 @@ class AstroTrainer(Trainer):
                         param.grad.detach_()
                         param.grad.zero_()
 
-            print("🧹 Memory cleanup completed")
-
         except Exception as e:
-            print(f"⚠️ Memory cleanup failed: {e}")
+            logger.error(f"Memory cleanup failed: {e}")
 
     def _auto_detect_classes(self, train_dataloader, val_dataloader, datamodule):
         """Automatic class detection from data."""
@@ -373,7 +365,6 @@ class AstroTrainer(Trainer):
                 target_dataloader = val_dataloader
 
             if target_dataloader is None:
-                print("⚠️ No DataLoader available for class detection")
                 return
 
             # Class detection from data
@@ -408,18 +399,12 @@ class AstroTrainer(Trainer):
             if targets:
                 all_targets = torch.cat(targets)
                 num_classes = int(all_targets.max().item()) + 1
-                print(
-                    f"🔍 Automatically detected {num_classes} classes from training data (min={all_targets.min().item()}, max={all_targets.max().item()})."
-                )
 
                 # Update Lightning module with correct number of classes
                 if (
                     hasattr(self.astro_module, "num_classes")
                     and self.astro_module.num_classes != num_classes
                 ):
-                    print(
-                        f"🔄 Updating Lightning module from {self.astro_module.num_classes} to {num_classes} classes"
-                    )
                     self.astro_module.num_classes = num_classes
 
                     # Recreate model with correct number of classes
@@ -440,9 +425,8 @@ class AstroTrainer(Trainer):
                                     self.astro_module.model_config
                                 )
                             )
-                            print(f"🔄 Model recreated with {num_classes} classes")
                         except Exception as e:
-                            print(f"❌ Error recreating model: {e}")
+                            logger.error(f"Error recreating model: {e}")
                             # Fallback
                             from astro_lab.models.astro import AstroSurveyGNN
 
@@ -454,9 +438,6 @@ class AstroTrainer(Trainer):
                                 num_layers=3,
                                 dropout=0.1,
                                 task="stellar_classification",
-                            )
-                            print(
-                                f"🔄 Fallback model created with {num_classes} classes"
                             )
                     else:
                         # Fallback: Create new model directly
@@ -471,17 +452,12 @@ class AstroTrainer(Trainer):
                             dropout=0.1,
                             task="stellar_classification",
                         )
-                        print(f"🔄 New model created with {num_classes} classes")
 
                     # Recreate metrics
                     self.astro_module._setup_metrics()
-                    print(f"🔄 Metrics recreated with {num_classes} classes")
-            else:
-                print("⚠️ Could not detect classes from training data")
 
         except Exception as e:
-            print(f"❌ Error during automatic class detection: {e}")
-            print("⚠️ Using default number of classes")
+            logger.error(f"Error during automatic class detection: {e}")
 
     def test(
         self,
@@ -515,7 +491,7 @@ class AstroTrainer(Trainer):
             return results
 
         except Exception as e:
-            print(f"❌ Testing failed: {e}")
+            logger.error(f"Testing failed: {e}")
             self._cleanup_after_training()
             raise
 
@@ -546,7 +522,7 @@ class AstroTrainer(Trainer):
                     dataloaders=predict_dataloader,
                 )
         except Exception as e:
-            print(f"❌ Prediction failed: {e}")
+            logger.error(f"Prediction failed: {e}")
             raise
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -708,20 +684,20 @@ class AstroTrainer(Trainer):
             except optuna.TrialPruned:
                 raise
             except Exception as e:
-                print(f"Trial failed: {e}")
+                logger.error(f"Trial failed: {e}")
                 return float("inf") if "loss" in monitor else float("-inf")
 
         # Run optimization
-        print(f"🔍 Starting hyperparameter optimization with {n_trials} trials...")
+        logger.info(f"Starting hyperparameter optimization with {n_trials} trials...")
         study.optimize(objective, n_trials=n_trials, timeout=timeout)
         
         # Get best parameters
         best_params = study.best_params
         best_value = study.best_value
         
-        print(f"✅ Optimization complete!")
-        print(f"📊 Best value: {best_value:.4f}")
-        print(f"🎯 Best parameters: {best_params}")
+        logger.info("Optimization complete!")
+        logger.info(f"Best value: {best_value:.4f}")
+        logger.info(f"Best parameters: {best_params}")
         
         # Return results
         return {
@@ -757,9 +733,8 @@ class AstroTrainer(Trainer):
             for checkpoint in checkpoints_to_remove:
                 try:
                     checkpoint.unlink()
-                    print(f"🗑️ Removed old checkpoint: {checkpoint.name}")
                 except Exception as e:
-                    print(f"⚠️ Failed to remove checkpoint {checkpoint.name}: {e}")
+                    logger.error(f"Failed to remove checkpoint {checkpoint.name}: {e}")
 
     def save_best_models_to_results(self, top_k: int = 3) -> Dict[str, Path]:
         """
@@ -786,12 +761,12 @@ class AstroTrainer(Trainer):
             # Get all checkpoints
             checkpoint_dir = Path(f"./experiments/{survey}/checkpoints")
             if not checkpoint_dir.exists():
-                print(f"⚠️ No checkpoint directory found: {checkpoint_dir}")
+                logger.error(f"No checkpoint directory found: {checkpoint_dir}")
                 return {}
 
             checkpoints = list(checkpoint_dir.glob("*.ckpt"))
             if not checkpoints:
-                print(f"⚠️ No checkpoints found in: {checkpoint_dir}")
+                logger.error(f"No checkpoints found in: {checkpoint_dir}")
                 return {}
 
             # Sort by validation loss (best first)
@@ -828,18 +803,17 @@ class AstroTrainer(Trainer):
                 try:
                     shutil.copy2(checkpoint_path, target_path)
                     saved_models[model_name] = target_path
-                    print(f"💾 Saved model {i + 1}: {target_path.name}")
                 except Exception as e:
-                    print(f"❌ Failed to save model {i + 1}: {e}")
+                    logger.error(f"Failed to save model {i + 1}: {e}")
 
             # Create README with model information
             self._create_models_readme(saved_models, checkpoints[:top_k])
 
-            print(f"✅ Saved {len(saved_models)} models to: {models_dir}")
+            logger.info(f"Saved {len(saved_models)} models to: {models_dir}")
             return saved_models
 
         except Exception as e:
-            print(f"❌ Failed to save models to results: {e}")
+            logger.error(f"Failed to save models to results: {e}")
             return {}
 
     def _create_models_readme(
@@ -879,10 +853,8 @@ class AstroTrainer(Trainer):
                 for i, checkpoint in enumerate(checkpoints_info[:10]):  # Show top 10
                     f.write(f"{i + 1}. `{checkpoint.name}`\n")
 
-            print(f"📝 Created README at {readme_path}")
-
         except Exception as e:
-            print(f"⚠️ Failed to create README: {e}")
+            logger.error(f"Failed to create README: {e}")
 
     def get_results_summary(self) -> Dict[str, Any]:
         """Get comprehensive results summary."""

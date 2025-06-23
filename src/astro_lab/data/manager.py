@@ -429,7 +429,8 @@ class AstroDataManager:
         )
 
         # Save processed data
-        df.write_parquet(output_file, compression="zstd")
+        output_path = self.processed_dir / f"{raw_file.stem}.parquet"
+        df.write_parquet(output_path)
 
         # Save processing metadata
 
@@ -442,12 +443,12 @@ class AstroDataManager:
             "columns": df.columns,
         }
 
-        metadata_file = output_file.with_suffix(".json")
+        metadata_file = output_path.with_suffix(".json")
         with open(metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
 
         print(f"✅ Processed {len(df):,} sources for ML")
-        return output_file
+        return output_path
 
     def list_catalogs(self, data_type: str = "all") -> pl.DataFrame:
         """List available catalogs."""
@@ -638,7 +639,7 @@ class AstroDataManager:
         processed_data = lf_processed.collect()
 
         # Save processed data
-        output_path = self.processed_dir / f"{file_path.stem}_processed.parquet"
+        output_path = self.processed_dir / f"{file_path.stem}.parquet"
         processed_data.write_parquet(output_path)
 
         results = {
