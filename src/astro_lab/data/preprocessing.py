@@ -1,32 +1,45 @@
 """
-AstroLab Data Preprocessing Module
-=================================
+AstroLab Data Preprocessing Module 🔬
+===================================
 
 Handles data preprocessing and graph creation for astronomical surveys.
 Moved from CLI to data module for better organization.
 """
 
+# Standard library imports
+import gc
 import json
 import logging
+import os
 import re
 import time
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+# Third-party imports
 import h5py
 import numpy as np
 import pandas as pd
 import polars as pl
 import torch
+import torch_cluster
 import yaml
 from torch_geometric.data import Data
-import os
-import torch_cluster
 
-from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys, SURVEY_CONFIGS
+# Internal imports
+from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
 from .config import data_config
+from astro_lab.data.utils import load_fits_optimized, convert_nsa_fits_to_parquet
+from astro_lab.tensors.crossmatch import CrossMatchTensor
+from astro_lab.tensors.survey import SurveyTensor
 
+# Configure logger without duplication
 logger = logging.getLogger(__name__)
+# Ensure no duplicate handlers
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    logger.propagate = False  # Prevent propagation
 
 # Survey alias mapping (extend as needed)
 SURVEY_ALIASES = {
@@ -62,24 +75,27 @@ def preprocess_catalog(
     survey_type: str,
     max_samples: Optional[int] = None,
     output_dir: Optional[Union[str, Path]] = None,
+    write_graph: bool = False,
+    k_neighbors: int = 8,
+    distance_threshold: float = 50.0,
     **kwargs,
 ) -> pl.DataFrame:
     """
-    Preprocess astronomical catalog data.
+    Preprocess astronomical catalog data. 📊
 
     Args:
         input_path: Path to input catalog file
         survey_type: Type of survey ('gaia', 'sdss', 'nsa', 'linear')
         max_samples: Maximum number of samples to process
         output_dir: Output directory for processed data
+        write_graph: Whether to write the graph data
+        k_neighbors: Number of neighbors for graph
+        distance_threshold: Distance threshold for edges
         **kwargs: Additional preprocessing parameters
 
     Returns:
         Preprocessed DataFrame
     """
-    # Simple garbage collection instead of complex memory management
-    import gc
-
     logger.info(f"🔄 Preprocessing {survey_type} catalog: {input_path}")
 
     # Load data
@@ -102,12 +118,21 @@ def preprocess_catalog(
         logger.info(f"📊 Sampled {max_samples} objects")
 
     # Save processed data
+    pt_path = None
     if output_dir:
-        output_path = Path(output_dir) / f"{survey_type}_processed.parquet"
+        output_path = Path(output_dir) / f"{survey_type}.parquet"
         output_path.parent.mkdir(parents=True, exist_ok=True)
         df_clean.write_parquet(output_path)
         logger.info(f"💾 Saved processed data to {output_path}")
-
+        # Optional: Schreibe PT-File
+        if write_graph:
+            pt_path = Path(output_dir) / f"{survey_type}.pt"
+            graph_data = create_graph_from_dataframe(
+                df_clean, survey_type, k_neighbors=k_neighbors, distance_threshold=distance_threshold
+            )
+            if graph_data is not None:
+                torch.save(graph_data, pt_path)
+                logger.info(f"💾 Saved graph to {pt_path}")
     return df_clean
 
 
@@ -117,10 +142,13 @@ def preprocess_catalog_lazy(
     max_samples: Optional[int] = None,
     output_dir: Optional[Union[str, Path]] = None,
     use_streaming: bool = True,
+    write_graph: bool = False,
+    k_neighbors: int = 8,
+    distance_threshold: float = 50.0,
     **kwargs,
 ) -> pl.LazyFrame:
     """
-    OPTIMIZED: Lazy preprocessing for large astronomical catalogs.
+    OPTIMIZED: Lazy preprocessing for large astronomical catalogs. ⚡
 
     Args:
         input_path: Path to input catalog file
@@ -128,6 +156,9 @@ def preprocess_catalog_lazy(
         max_samples: Maximum number of samples to process
         output_dir: Output directory for processed data
         use_streaming: Whether to use streaming for large files
+        write_graph: Whether to write the graph data
+        k_neighbors: Number of neighbors for graph
+        distance_threshold: Distance threshold for edges
         **kwargs: Additional preprocessing parameters
 
     Returns:
@@ -165,18 +196,28 @@ def preprocess_catalog_lazy(
         )
 
     # OPTIMIZED: Only collect if output is needed
+    pt_path = None
     if output_dir:
-        output_path = Path(output_dir) / f"{survey_type}_processed.parquet"
+        output_path = Path(output_dir) / f"{survey_type}.parquet"
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         if use_streaming:
-            # Use streaming for large datasets
             lf_clean.sink_parquet(output_path)
+            df_clean = pl.read_parquet(output_path)
         else:
-            lf_clean.collect().write_parquet(output_path)
+            df_clean = lf_clean.collect()
+            df_clean.write_parquet(output_path)
 
         logger.info(f"💾 Saved processed data to {output_path}")
-
+        # Optional: Schreibe PT-File
+        if write_graph:
+            pt_path = Path(output_dir) / f"{survey_type}.pt"
+            graph_data = create_graph_from_dataframe(
+                df_clean, survey_type, k_neighbors=k_neighbors, distance_threshold=distance_threshold
+            )
+            if graph_data is not None:
+                torch.save(graph_data, pt_path)
+                logger.info(f"💾 Saved graph to {pt_path}")
     return lf_clean
 
 
@@ -189,7 +230,7 @@ def create_graph_from_dataframe(
     **kwargs,
 ) -> Optional[Data]:
     """
-    Create PyTorch Geometric graph from Polars DataFrame.
+    Create PyTorch Geometric graph from Polars DataFrame. 🕸️
 
     Args:
         df: Input DataFrame
@@ -219,8 +260,14 @@ def create_graph_from_dataframe(
         )
 
     # Save graph if output path provided
-    if output_path and graph_data:
+    if output_path is None:
+        # Wenn kein expliziter Output-Path: Nutze den einfachen Namen wie beim Parquet
+        output_dir = Path("data/processed") / survey_type
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{survey_type}.pt"
+    else:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+    if graph_data:
         torch.save(graph_data, output_path)
         logger.info(f"💾 Saved graph to {output_path}")
 
@@ -238,7 +285,7 @@ def create_graph_datasets_from_splits(
     **kwargs,
 ) -> Dict[str, Optional[Data]]:
     """
-    Create graph datasets from train/val/test splits.
+    Create graph datasets from train/val/test splits. 📊
 
     Args:
         train_df: Training data
@@ -312,7 +359,7 @@ def _apply_survey_preprocessing_lazy(
 
 
 def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:
-    """Preprocess Gaia data."""
+    """Preprocess Gaia data. 🌟"""
     # Remove rows with missing coordinates
     df_clean = df.filter(
         pl.col("ra").is_not_null()
@@ -337,7 +384,7 @@ def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _preprocess_sdss_data(df: pl.DataFrame) -> pl.DataFrame:
-    """Preprocess SDSS data."""
+    """Preprocess SDSS data. 🌌"""
     # Remove rows with missing coordinates and redshift
     df_clean = df.filter(
         pl.col("ra").is_not_null()
@@ -349,7 +396,7 @@ def _preprocess_sdss_data(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _preprocess_nsa_data(df: pl.DataFrame) -> pl.DataFrame:
-    """Preprocess NSA data."""
+    """Preprocess NSA data. 🪐"""
     # Remove rows with missing coordinates
     df_clean = df.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
 
@@ -357,7 +404,7 @@ def _preprocess_nsa_data(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _preprocess_linear_data(df: pl.DataFrame) -> pl.DataFrame:
-    """Preprocess LINEAR data."""
+    """Preprocess LINEAR data. 💫"""
     # Rename coordinates for consistency
     if "raLIN" in df.columns and "decLIN" in df.columns:
         df = df.rename({"raLIN": "ra", "decLIN": "dec"})
@@ -367,7 +414,7 @@ def _preprocess_linear_data(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _preprocess_generic_data(df: pl.DataFrame) -> pl.DataFrame:
-    """Generic preprocessing for unknown survey types."""
+    """Generic preprocessing for unknown survey types. 📡"""
     # Remove rows with missing coordinates
     coord_cols = [
         col for col in df.columns if col.lower() in ["ra", "dec", "x", "y", "z"]
@@ -381,7 +428,7 @@ def _preprocess_generic_data(df: pl.DataFrame) -> pl.DataFrame:
 
 
 def _preprocess_gaia_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """OPTIMIZED: Lazy Gaia preprocessing."""
+    """OPTIMIZED: Lazy Gaia preprocessing. ⚡🌟"""
     return lf.filter(
         pl.col("ra").is_not_null()
         & pl.col("dec").is_not_null()
@@ -401,7 +448,7 @@ def _preprocess_gaia_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _preprocess_sdss_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """OPTIMIZED: Lazy SDSS preprocessing."""
+    """OPTIMIZED: Lazy SDSS preprocessing. ⚡🌌"""
     return lf.filter(
         pl.col("ra").is_not_null()
         & pl.col("dec").is_not_null()
@@ -410,12 +457,37 @@ def _preprocess_sdss_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _preprocess_nsa_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """OPTIMIZED: Lazy NSA preprocessing."""
+    """OPTIMIZED: Lazy NSA preprocessing. ⚡🪐"""
+    # Check for coordinate columns and rename if needed
+    schema = lf.collect_schema()
+    col_names = set(schema.names())
+    ra_col = None
+    dec_col = None
+    # Find possible RA/DEC columns
+    for candidate in ["ra", "RA", "ra_nsa"]:
+        if candidate in col_names:
+            ra_col = candidate
+            break
+    for candidate in ["dec", "DEC", "dec_nsa"]:
+        if candidate in col_names:
+            dec_col = candidate
+            break
+    # If needed, rename to 'ra'/'dec'
+    if ra_col != "ra" or dec_col != "dec":
+        rename_dict = {}
+        if ra_col and ra_col != "ra":
+            rename_dict[ra_col] = "ra"
+        if dec_col and dec_col != "dec":
+            rename_dict[dec_col] = "dec"
+        if rename_dict:
+            lf = lf.rename(rename_dict)
+            logger.info(f"[NSA] Renamed columns for coordinates: {rename_dict}")
+    # Filter for valid coordinates
     return lf.filter(pl.col("ra").is_not_null() & pl.col("dec").is_not_null())
 
 
 def _preprocess_linear_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """OPTIMIZED: Lazy LINEAR preprocessing."""
+    """OPTIMIZED: Lazy LINEAR preprocessing. ⚡💫"""
     # Rename coordinates for consistency if needed
     lf_renamed = lf
     try:
@@ -430,13 +502,13 @@ def _preprocess_linear_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 
 
 def _preprocess_generic_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """OPTIMIZED: Generic lazy preprocessing."""
+    """OPTIMIZED: Generic lazy preprocessing. ⚡📡"""
     # This is a simplified version - in practice, you'd inspect the schema
     return lf.filter(pl.all_horizontal(pl.all().is_not_null()))
 
 
 def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
-    """Create k-NN graph using GPU acceleration with torch-cluster."""
+    """Create k-NN graph using GPU acceleration with torch-cluster. 🚀"""
     import torch_cluster
     
     n_nodes = len(coords)
@@ -467,7 +539,7 @@ def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
 def _create_gaia_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create Gaia stellar graph."""
+    """Create Gaia stellar graph. 🌟"""
     # Extract coordinates
     coords = df.select(["ra", "dec"]).to_numpy()
 
@@ -518,7 +590,7 @@ def _create_gaia_graph(
 def _create_sdss_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create SDSS galaxy graph."""
+    """Create SDSS galaxy graph. 🌌"""
     # Extract coordinates
     coords = df.select(["ra", "dec", "z"]).to_numpy()
 
@@ -559,26 +631,39 @@ def _create_sdss_graph(
 def _create_nsa_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create NSA galaxy graph."""
+    """Create NSA galaxy graph. 🪐"""
+    # Robust coordinate extraction
+    z_candidates = ["z", "Z", "zdist", "ZDIST", "z_helio", "z_nsa"]
+    z_col = None
+    for candidate in z_candidates:
+        if candidate in df.columns:
+            z_col = candidate
+            break
+    if z_col is None:
+        logger.warning("[NSA] No redshift/dist column found! Using zeros as fallback.")
+        df = df.with_columns([pl.lit(0.0).alias("z_fallback")])
+        z_col = "z_fallback"
     # Extract coordinates
-    coords = df.select(["ra", "dec", "z"]).to_numpy()
-
+    coord_cols = [c for c in ["ra", "dec", z_col] if c in df.columns]
+    logger.info(f"[NSA] Using coordinates: {coord_cols}")
+    coords = df.select(coord_cols).to_numpy()
     # Create k-NN graph with GPU acceleration
     edge_index = _create_knn_graph_gpu(coords, k_neighbors)
-
-    # Prepare features
-    feature_cols = ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"]
-    available_features = [col for col in feature_cols if col in df.columns]
-
-    if not available_features:
-        available_features = ["mag_r"]  # Fallback
-
-    features = df.select(available_features).to_torch(dtype=pl.Float32)
-    features = torch.nan_to_num(features, nan=0.0)
-
+    # Prepare features: only numeric columns
+    numeric_cols = [col for col in df.columns if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]]
+    feature_cols = [c for c in ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"] if c in numeric_cols]
+    if not feature_cols:
+        feature_cols = numeric_cols
+    if not feature_cols:
+        logger.warning("[NSA] No numeric features found! Using dummy feature.")
+        features = torch.ones((len(df), 1), dtype=torch.float32)
+        feature_cols = ["dummy"]
+    else:
+        features = df.select(feature_cols).to_torch(dtype=pl.Float32)
+        features = torch.nan_to_num(features, nan=0.0)
+    logger.info(f"[NSA] Using features: {feature_cols}")
     # Create labels (galaxy classification)
     y = torch.randint(0, 3, (len(df),), dtype=torch.long)  # 3 galaxy types
-
     # Create graph
     data = Data(
         x=features,
@@ -587,20 +672,18 @@ def _create_nsa_graph(
         y=y,
         num_nodes=len(df),
     )
-
     # Add metadata
     data.survey_name = "NSA"
-    data.feature_names = available_features
-    data.coord_names = ["ra", "dec", "z"]
+    data.feature_names = feature_cols
+    data.coord_names = coord_cols
     data.k_neighbors = k_neighbors
-
     return data
 
 
 def _create_tng50_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create TNG50 simulation graph."""
+    """Create TNG50 simulation graph. ��"""
     # Extract 3D coordinates
     coords = df.select(["x", "y", "z"]).to_numpy()
 
@@ -641,7 +724,7 @@ def _create_tng50_graph(
 def _create_generic_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
 ) -> Data:
-    """Create generic astronomical graph."""
+    """Create generic astronomical graph. 🕸️"""
     # Find coordinate columns with flexible naming
     coord_patterns = [
         ["ra", "dec"],  # Standard
@@ -715,7 +798,7 @@ def perform_gaia_crossmatching(
     min_probability: float = 0.5,
 ) -> Dict[str, Any]:
     """
-    Perform Gaia cross-matching using CrossMatchTensor.
+    Perform Gaia cross-matching using CrossMatchTensor. 🔍
 
     Args:
         exoplanet_coords: DataFrame with exoplanet coordinates
@@ -726,8 +809,6 @@ def perform_gaia_crossmatching(
     Returns:
         Dictionary with cross-matching results
     """
-    from astro_lab.tensors.crossmatch import CrossMatchTensor
-
     logger.info(
         f"🔍 Performing Gaia cross-matching for {len(exoplanet_coords)} exoplanets"
     )
@@ -810,7 +891,7 @@ def enrich_exoplanets_with_gaia_coordinates(
     max_distance_arcsec: float = 5.0,
 ) -> pl.DataFrame:
     """
-    Enrich exoplanet data with host star coordinates from Gaia DR3 using real cross-matching.
+    Enrich exoplanet data with host star coordinates from Gaia DR3 using real cross-matching. 🌟
 
     Args:
         exoplanet_df: Exoplanet DataFrame with hostname column
@@ -1045,7 +1126,7 @@ def enrich_exoplanets_with_gaia_coordinates(
 
 
 def _preprocess_exoplanet_data(df: pl.DataFrame) -> pl.DataFrame:
-    """Preprocess exoplanet data with coordinate enrichment."""
+    """Preprocess exoplanet data with coordinate enrichment. 🌟"""
     logger.info("🔄 Preprocessing exoplanet data with coordinate enrichment")
 
     # Enrich with Gaia coordinates
@@ -1069,7 +1150,7 @@ def create_standardized_files(
     force: bool = False,
 ) -> Dict[str, Path]:
     """
-    Create standardized files for a survey.
+    Create standardized files for a survey. 📊
 
     Creates:
     - {survey}.parquet (standardized data)
@@ -1116,13 +1197,20 @@ def create_standardized_files(
     # Load input data
     logger.info(f"📂 Loading data from {input_parquet}")
     df = pl.read_parquet(input_parquet)
-    logger.info(f"📊 Loaded {len(df):,} Gaia stars with {len(df.columns)} columns")
-    
-    # Use ALL stars - no sampling limitation
-    print(f"📊 Using all {len(df):,} stars for graph processing")
+    logger.info(f"📊 Loaded {len(df):,} objects with {len(df.columns)} columns")
+
+    # Ensure max_samples is int or None
+    logger.info(f"[DEBUG] max_samples type: {type(max_samples)}, value: {max_samples}")
+
+    # Apply sampling if requested
+    if max_samples is not None and len(df) > max_samples:
+        df = df.sample(max_samples, seed=42)
+        logger.info(f"📉 Sampled to {max_samples} objects for processing")
+
+    print(f"📊 Using {len(df):,} objects for graph processing")
 
     # Extract coordinates and features
-    coords = df.select(["ra", "dec"]).to_numpy()
+    coords = df.select([c for c in ["ra", "dec"] if c in df.columns]).to_numpy()
     print(f"📍 Coordinates shape: {coords.shape}")
 
     # Create graph data
@@ -1259,84 +1347,148 @@ def process_survey(
     force: bool = False,
 ) -> Dict[str, Path]:
     """
-    Process a survey with automatic source file detection.
-
-    Args:
-        survey: Survey name
-        source_file: Source parquet file (auto-detected if None)
-        k_neighbors: Number of neighbors for graph
-        max_samples: Maximum samples to process
-        force: Overwrite existing files
-
-    Returns:
-        Dictionary with paths to created files
+    Process a survey with automatic source file detection. 📊
+    For TNG50(-4), process all HDF5 snapshots as a time series and save outputs under data/processed/tng50/ with simple names (tng50.parquet, tng50.pt, tng50_metadata.json).
+    If max_samples is set, sample the combined DataFrame before saving and graph creation.
     """
-    # Auto-detect source file if not provided
-    if source_file is None:
+    from pathlib import Path
+    import polars as pl
+    import torch
+    import json
+    logger = logging.getLogger(__name__)
+
+    # Special case: TNG50(-4) → time series graph processing
+    if survey.lower() in ["tng50", "tng50-4"]:
+        # Ensure max_samples is int or None
+        if isinstance(max_samples, str):
+            if max_samples.lower() == "all":
+                max_samples = None
+            else:
+                try:
+                    max_samples = int(max_samples)
+                except Exception:
+                    logger.warning(f"Invalid max_samples value: {max_samples}, using all data.")
+                    max_samples = None
+        # Default: limit to 2 million particles if not set
+        if max_samples is None:
+            max_samples = 2_000_000
+        # Find all HDF5 snapshots
         project_root = Path(__file__).parent.parent.parent.parent
-
-        # Try different common locations
-        possible_sources = [
-            project_root
-            / "data"
-            / "processed"
-            / survey
-            / f"{survey}_dr3_bright_all_sky_mag12.0_processed.parquet",
-            project_root
-            / "data"
-            / "raw"
-            / survey
-            / f"{survey}_dr3_bright_all_sky_mag12.0.parquet",
-            project_root / "data" / "processed" / f"{survey}_processed.parquet",
-            project_root / "data" / "raw" / f"{survey}.parquet",
-        ]
-
-        # Special handling for NSA FITS files
-        if survey == "nsa":
-            nsa_fits = project_root / "data" / "raw" / "nsa" / "nsa_v1_0_1.fits"
-            nsa_parquet = project_root / "data" / "raw" / "nsa" / "nsa.parquet"
-            
-            # Convert FITS to Parquet if needed using centralized function
-            if nsa_fits.exists() and not nsa_parquet.exists():
-                from astro_lab.data.utils import convert_nsa_fits_to_parquet
-                from astro_lab.data.config import get_survey_config
-                
-                # Get NSA features from config
-                nsa_config = get_survey_config("nsa")
-                features = nsa_config.get("features", [])
-                
-                convert_nsa_fits_to_parquet(nsa_fits, nsa_parquet, features)
-            
-            # Add NSA parquet to possible sources
-            if nsa_parquet.exists():
-                possible_sources.insert(0, nsa_parquet)
-
-        source_path = None
-        for path in possible_sources:
-            if path.exists():
-                source_path = path
-                break
-
-        if source_path is None:
-            raise FileNotFoundError(f"No source file found for survey '{survey}'")
-
-        logger.info(f"📂 Auto-detected source: {source_path}")
-    else:
-        source_path = Path(source_file)
-        if not source_path.exists():
-            raise FileNotFoundError(f"Source file not found: {source_path}")
-
-    return create_standardized_files(
-        survey=survey,
-        input_parquet=source_path,
-        k_neighbors=k_neighbors,
-        max_samples=max_samples,
-        force=force,
-    )
+        snapdir = project_root / "data" / "raw" / "TNG50-4" / "output" / "snapdir_099"
+        hdf5_files = sorted(snapdir.glob("snap_099.*.hdf5"), key=lambda x: int(x.stem.split(".")[-1]))
+        if not hdf5_files:
+            raise FileNotFoundError(f"No TNG50 HDF5 snapshots found in {snapdir}")
+        logger.info(f"🔍 Found {len(hdf5_files)} TNG50 snapshots in {snapdir}")
+        # Process all snapshots into a single DataFrame (time series)
+        all_snapshots = []
+        for i, hdf5_file in enumerate(hdf5_files):
+            logger.info(f"📊 Processing snapshot {i+1}/{len(hdf5_files)}: {hdf5_file.name}")
+            try:
+                with h5py.File(hdf5_file, "r") as f:
+                    snapshot_id = int(hdf5_file.stem.split(".")[-1])
+                    data_dict = {}
+                    if "PartType0" in f:
+                        group = f["PartType0"]
+                        if "Coordinates" in group:
+                            coords = np.array(group["Coordinates"][:])
+                            data_dict["x"] = coords[:, 0]
+                            data_dict["y"] = coords[:, 1]
+                            data_dict["z"] = coords[:, 2]
+                        for field in ["Masses", "Velocities", "Density", "Temperature", "Metallicity"]:
+                            if field in group:
+                                data = np.array(group[field][:])
+                                col_name = field.lower()
+                                if col_name.endswith("es"):
+                                    col_name = col_name[:-2]
+                                elif col_name.endswith("s"):
+                                    col_name = col_name[:-1]
+                                if data.ndim > 1:
+                                    for j in range(data.shape[1]):
+                                        data_dict[f"{col_name}_{j}"] = data[:, j]
+                                else:
+                                    data_dict[col_name] = data
+                    data_dict["snapshot_id"] = snapshot_id
+                    data_dict["time_step"] = i
+                    if "Header" in f:
+                        header = f["Header"]
+                        if "Redshift" in header:
+                            data_dict["redshift"] = header["Redshift"][0]
+                        if "Time" in header:
+                            data_dict["time_gyr"] = header["Time"][0]
+                        if "ScaleFactor" in header:
+                            data_dict["scale_factor"] = header["ScaleFactor"][0]
+                    df_snapshot = pl.DataFrame(data_dict)
+                    all_snapshots.append(df_snapshot)
+                    logger.info(f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} particles, {len(df_snapshot.columns)} columns")
+            except Exception as e:
+                logger.warning(f"⚠️ Error loading {hdf5_file.name}: {e}")
+                continue
+        if not all_snapshots:
+            raise ValueError("No valid TNG50 snapshots found")
+        combined_df = pl.concat(all_snapshots)
+        # Apply sampling if requested
+        if max_samples is not None and len(combined_df) > max_samples:
+            combined_df = combined_df.sample(max_samples, seed=42)
+            logger.info(f"📉 Sampled to {max_samples} particles for processing")
+        # Save as Parquet and Graph
+        output_dir = project_root / "data" / "processed" / "tng50"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        parquet_path = output_dir / "tng50.parquet"
+        pt_path = output_dir / "tng50.pt"
+        metadata_path = output_dir / "tng50_metadata.json"
+        combined_df.write_parquet(str(parquet_path))
+        logger.info(f"✅ TNG50 time series Parquet saved: {parquet_path}")
+        # Create graph (uses GPU for k-NN if available)
+        graph_data = _create_tng50_graph(combined_df, k_neighbors, 50.0)
+        torch.save(graph_data, pt_path)
+        logger.info(f"✅ TNG50 graph saved: {pt_path}")
+        # Metadata
+        metadata = {
+            "survey_name": "tng50",
+            "num_snapshots": len(hdf5_files),
+            "num_particles": len(combined_df),
+            "columns": combined_df.columns,
+            "k_neighbors": k_neighbors,
+            "max_samples": max_samples,
+        }
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+        logger.info(f"✅ TNG50 metadata saved: {metadata_path}")
+        return {"parquet": parquet_path, "graph": pt_path, "metadata": metadata_path}
+    # Special case: NSA → FITS→Parquet, dann Standard-Workflow
+    if survey.lower() == "nsa":
+        # Ensure max_samples is int or None
+        if isinstance(max_samples, str):
+            if max_samples.lower() == "all":
+                max_samples = None
+            else:
+                try:
+                    max_samples = int(max_samples)
+                except Exception:
+                    logger.warning(f"Invalid max_samples value: {max_samples}, using all data.")
+                    max_samples = None
+        project_root = Path(__file__).parent.parent.parent.parent
+        nsa_dir = project_root / "data" / "raw" / "nsa"
+        # Immer FITS→Parquet prüfen/ausführen
+        parquet_path = find_or_create_catalog_file("nsa", nsa_dir)
+        # Standardisierte Ausgabe
+        output_dir = project_root / "data" / "processed" / "nsa"
+        files = create_standardized_files(
+            survey="nsa",
+            input_parquet=parquet_path,
+            output_dir=output_dir,
+            k_neighbors=k_neighbors,
+            max_samples=max_samples,
+            force=force,
+        )
+        logger.info(f"✅ NSA processing complete: {files}")
+        return files
+    # Standard: all other surveys
+    # ... existing code ...
 
 
 def create_gaia_survey_tensor():
-    """Create proper SurveyTensor from all 3M Gaia stars using the tensor system."""
+    """Create proper SurveyTensor from all 3M Gaia stars using the tensor system. 🌟"""
     import polars as pl
     import torch
     from pathlib import Path
@@ -1497,14 +1649,14 @@ def create_gaia_survey_tensor():
 
 # Keep the original function for backward compatibility
 def process_large_gaia_dataset():
-    """Process the large Gaia dataset using GPU k-NN for fast graph creation (legacy)."""
+    """Process the large Gaia dataset using GPU k-NN for fast graph creation (legacy). 🌟"""
     print("⚠️ Using legacy PyG graph processing. Consider using create_gaia_survey_tensor() instead.")
     return create_gaia_survey_tensor()
 
 
 def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
     """
-    Sucht nach Parquet/CSV für einen Survey, erzeugt bei FITS automatisch Parquet und gibt den Pfad zurück.
+    Sucht nach Parquet/CSV für einen Survey, erzeugt bei FITS oder HDF5 automatisch Parquet und gibt den Pfad zurück. 📊
     """
     import polars as pl
     from astro_lab.data.utils import load_fits_optimized
@@ -1529,25 +1681,25 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
             parquet_path = data_dir / f"{survey}_v1_0_1.parquet"
             if not parquet_path.exists():
                 from astro_lab.data.utils import convert_nsa_fits_to_parquet
-                from astro_lab.data.config import get_survey_config
-                
                 # Get NSA features from config
                 nsa_config = get_survey_config("nsa")
                 features = nsa_config.get("features", [])
-                
                 convert_nsa_fits_to_parquet(fits_path, parquet_path, features)
-            
             return parquet_path
 
     # 4. Falls TNG50 und HDF5-Dateien vorhanden, konvertiere zu Time Series
     elif survey in ["tng50", "tng50-4"]:
-        # Suche nach TNG50 HDF5-Dateien in verschiedenen Verzeichnissen
+        # Robust: Suche in TNG50-4, tng50, snapdir_099
         possible_dirs = [
             data_dir,
             data_dir.parent / "TNG50-4" / "output" / "snapdir_099",
             data_dir.parent / "tng50",
         ]
-        
+        # Fallback: Wenn data_dir == .../tng50 und leer, dann suche in TNG50-4
+        if not data_dir.exists() or not any(data_dir.iterdir()):
+            alt_dir = data_dir.parent / "TNG50-4" / "output" / "snapdir_099"
+            if alt_dir.exists():
+                possible_dirs.insert(0, alt_dir)
         hdf5_files = []
         for search_dir in possible_dirs:
             if search_dir.exists():
@@ -1555,108 +1707,93 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
                 if hdf5_files:
                     logger.info(f"🔍 TNG50 HDF5-Dateien gefunden in: {search_dir}")
                     break
-        
         if hdf5_files:
             # Sortiere nach Snapshot-Nummer
             hdf5_files.sort(key=lambda x: int(x.stem.split('.')[-1]))
-            parquet_path = data_dir / f"{survey}_timeseries.parquet"
-            
+            # Schreibe das Parquet IMMER nach data/raw/tng50, damit die nachgelagerte Logik funktioniert
+            tng50_dir = data_dir.parent / "tng50"
+            tng50_dir.mkdir(parents=True, exist_ok=True)
+            parquet_path = tng50_dir / f"{survey}_timeseries.parquet"
             if not parquet_path.exists():
                 logger.info(f"🔄 Converting TNG50 Time Series: {len(hdf5_files)} Snapshots")
                 try:
                     from astro_lab.data.manager import AstroDataManager
-                    
-                    # Konsolidierte TNG50 Time Series Verarbeitung
                     all_snapshots = []
-                    
                     for i, hdf5_file in enumerate(hdf5_files):
                         logger.info(f"📊 Processing snapshot {i+1}/{len(hdf5_files)}: {hdf5_file.name}")
-                        
                         try:
                             with h5py.File(hdf5_file, "r") as f:
-                                # Extrahiere Zeitstempel aus Dateinamen (snap_099.5.hdf5 -> 5)
                                 snapshot_id = int(hdf5_file.stem.split('.')[-1])
-                                
-                                # Verwende vorhandene import_tng50_hdf5 Logik, aber für Time Series
                                 data_dict = {}
-                                
-                                # Suche nach PartType0 (Gas) - Hauptkomponente
                                 if "PartType0" in f:
                                     group = f["PartType0"]
-                                    
-                                    # Koordinaten (essentiell)
                                     if "Coordinates" in group:
                                         coords = np.array(group["Coordinates"][:])
                                         data_dict["x"] = coords[:, 0]
                                         data_dict["y"] = coords[:, 1]
                                         data_dict["z"] = coords[:, 2]
-                                    
-                                    # Andere Felder
                                     for field in ["Masses", "Velocities", "Density", "Temperature", "Metallicity"]:
                                         if field in group:
                                             data = np.array(group[field][:])
-                                            
-                                            # Sanitize field name
                                             col_name = field.lower()
                                             if col_name.endswith("es"):
                                                 col_name = col_name[:-2]
                                             elif col_name.endswith("s"):
                                                 col_name = col_name[:-1]
-                                            
                                             if data.ndim > 1:
-                                                # Vector quantities
                                                 for j in range(data.shape[1]):
                                                     data_dict[f"{col_name}_{j}"] = data[:, j]
                                             else:
                                                 data_dict[col_name] = data
-                                
-                                # Füge Time Series Metadaten hinzu
-                                data_dict["snapshot_id"] = snapshot_id
-                                data_dict["time_step"] = i
-                                
-                                # Kosmologische Parameter (falls verfügbar)
-                                if "Header" in f:
-                                    header = f["Header"]
-                                    if "Redshift" in header:
-                                        data_dict["redshift"] = header["Redshift"][0]
-                                    if "Time" in header:
-                                        data_dict["time_gyr"] = header["Time"][0]
-                                    if "ScaleFactor" in header:
-                                        data_dict["scale_factor"] = header["ScaleFactor"][0]
-                                
-                                # Erstelle DataFrame für diesen Snapshot
-                                df_snapshot = pl.DataFrame(data_dict)
-                                all_snapshots.append(df_snapshot)
-                                
-                                logger.info(f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} Partikel, {len(df_snapshot.columns)} Spalten")
-                                
+                                    data_dict["snapshot_id"] = snapshot_id
+                                    data_dict["time_step"] = i
+                                    if "Header" in f:
+                                        header = f["Header"]
+                                        if "Redshift" in header:
+                                            data_dict["redshift"] = header["Redshift"][0]
+                                        if "Time" in header:
+                                            data_dict["time_gyr"] = header["Time"][0]
+                                        if "ScaleFactor" in header:
+                                            data_dict["scale_factor"] = header["ScaleFactor"][0]
+                                    df_snapshot = pl.DataFrame(data_dict)
+                                    all_snapshots.append(df_snapshot)
+                                    logger.info(f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} Partikel, {len(df_snapshot.columns)} Spalten")
                         except Exception as e:
                             logger.warning(f"⚠️ Fehler beim Laden von {hdf5_file.name}: {e}")
                             continue
-                    
                     if all_snapshots:
-                        # Kombiniere alle Snapshots zu einem Time Series DataFrame
                         combined_df = pl.concat(all_snapshots)
-                        
-                        # Speichere als Time Series Parquet
                         combined_df.write_parquet(str(parquet_path))
-                        
                         logger.info(f"✅ TNG50 Time Series Parquet gespeichert: {parquet_path}")
                         logger.info(f"   {len(combined_df)} Partikel über {len(hdf5_files)} Zeitschritte")
                         logger.info(f"   Spalten: {combined_df.columns}")
-                        
                         return parquet_path
                     else:
                         raise ValueError("Keine gültigen TNG50 Snapshots gefunden")
-                        
                 except Exception as e:
                     logger.error(f"❌ Failed to convert TNG50 Time Series: {e}")
                     raise
             else:
                 return parquet_path
-
     # 4. Keine Daten gefunden
     raise FileNotFoundError(f"No suitable data file found for survey '{survey}' in {data_dir}")
+
+
+def get_survey_input_file(survey: str, data_manager) -> Path:
+    """Finde den Input-Parquet für einen Survey über DataManager/Config (nutzt für TNG50 die Speziallogik inkl. HDF5→Parquet)."""
+    survey = survey.lower()
+    if survey in ["tng50", "tng50-4"]:
+        tng_dir = data_manager.raw_dir / "tng50"
+        return find_or_create_catalog_file("tng50", tng_dir)
+    if survey == "nsa":
+        nsa_dir = data_manager.raw_dir / "nsa"
+        return find_or_create_catalog_file("nsa", nsa_dir)
+    # Standard: Suche nach Parquet in data/raw/{survey}/
+    survey_dir = data_manager.raw_dir / survey
+    parquet_files = list(survey_dir.glob("*.parquet"))
+    if parquet_files:
+        return parquet_files[0]
+    raise FileNotFoundError(f"No parquet file found for survey {survey} in {survey_dir}")
 
 
 if __name__ == "__main__":
