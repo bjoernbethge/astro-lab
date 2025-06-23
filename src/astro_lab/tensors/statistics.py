@@ -100,7 +100,8 @@ class StatisticsTensor(AstroTensorBase):
         }
         metadata.update(kwargs)
 
-        super().__init__(data_tensor, **metadata)
+        # Call parent constructor with proper keyword arguments for Pydantic
+        super().__init__(data=data_tensor, **metadata)
 
     @property
     def coordinates(self) -> Optional[torch.Tensor]:
@@ -115,12 +116,12 @@ class StatisticsTensor(AstroTensorBase):
     @property
     def n_objects(self) -> int:
         """Number of objects."""
-        return self._data.shape[0]
+        return self.data.shape[0]
 
     @property
     def n_observables(self) -> int:
         """Number of observables."""
-        return self._data.shape[1]
+        return self.data.shape[1]
 
     def luminosity_function(
         self,
@@ -145,7 +146,7 @@ class StatisticsTensor(AstroTensorBase):
         Returns:
             Tuple of (bin_centers, phi) where phi is number density
         """
-        magnitudes = self._data[:, magnitude_column]
+        magnitudes = self.data[:, magnitude_column]
         if weights is None:
             weights = self.weights
         else:
@@ -217,8 +218,8 @@ class StatisticsTensor(AstroTensorBase):
         Returns:
             Tuple of (mag_centers, color_centers, density)
         """
-        magnitudes = self._data[:, magnitude_column]
-        colors = self._data[:, color_column]
+        magnitudes = self.data[:, magnitude_column]
+        colors = self.data[:, color_column]
         weights = self.weights
 
         # Handle ranges
@@ -396,7 +397,7 @@ class StatisticsTensor(AstroTensorBase):
             )
 
             # Create bootstrap sample
-            bootstrap_data = self._data[indices]
+            bootstrap_data = self.data[indices]
             bootstrap_weights = (
                 self.weights[indices] if self.weights is not None else None
             )
@@ -406,7 +407,7 @@ class StatisticsTensor(AstroTensorBase):
 
             # Create temporary tensor for bootstrap
             bootstrap_tensor = StatisticsTensor(
-                bootstrap_data, coordinates=bootstrap_coords, weights=bootstrap_weights
+                data=bootstrap_data, coordinates=bootstrap_coords, weights=bootstrap_weights
             )
 
             # Recompute function based on type or name
@@ -520,13 +521,13 @@ class StatisticsTensor(AstroTensorBase):
             mask[indices[start_idx:end_idx]] = False
 
             # Create jackknife sample
-            jk_data = self._data[mask]
+            jk_data = self.data[mask]
             jk_weights = self.weights[mask] if self.weights is not None else None
             jk_coords = self.coordinates[mask] if self.coordinates is not None else None
 
             # Create temporary tensor
             jk_tensor = StatisticsTensor(
-                jk_data, coordinates=jk_coords, weights=jk_weights
+                data=jk_data, coordinates=jk_coords, weights=jk_weights
             )
 
             # Recompute function based on type or name
@@ -598,7 +599,7 @@ class StatisticsTensor(AstroTensorBase):
         Returns:
             Tuple of (magnitudes, completeness_fraction)
         """
-        magnitudes = self._data[:, magnitude_column]
+        magnitudes = self.data[:, magnitude_column]
         weights = self.weights
 
         # Create magnitude bins

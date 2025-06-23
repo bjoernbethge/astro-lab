@@ -24,9 +24,10 @@ class SpectralTensor(AstroTensorBase):
     wavelength_units: str = Field(default="Angstrom", description="Wavelength units.")
     instrument: Optional[str] = Field(default=None, description="Instrument name.")
 
-    def __init__(self, **data: Any):
+    def __init__(self, data: torch.Tensor, wavelengths: torch.Tensor, **kwargs: Any):
         """Initializes the SpectralTensor using Pydantic fields."""
-        super().__init__(**data)
+        # Ensure all arguments are passed as keywords to the parent Pydantic constructor
+        super().__init__(data=data, wavelengths=wavelengths, **kwargs)
         self._validate()
 
     def _validate(self) -> None:
@@ -288,7 +289,7 @@ class SpectralTensor(AstroTensorBase):
         # Create new spectral tensor
         metadata = self.meta.copy()
         return SpectralTensor(
-            total_depth,
+            data=total_depth,
             wavelengths=wavelengths,
             redshift=self.redshift,
             **{
@@ -441,7 +442,7 @@ class SpectralTensor(AstroTensorBase):
         corrected_flux = self * torch.pow(10, 0.4 * extinction)
 
         return SpectralTensor(
-            corrected_flux,
+            data=corrected_flux,
             wavelengths=wavelengths,
             redshift=getattr(self, "redshift", 0.0),
             flux_units=getattr(self, "flux_units", "erg/s/cm2/A"),

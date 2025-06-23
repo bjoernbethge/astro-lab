@@ -20,7 +20,7 @@ class TestSpectralTensor:
         wavelengths = torch.linspace(4000, 7000, n_wavelengths)
 
         spectral = SpectralTensor(
-            flux, wavelengths=wavelengths, flux_units="erg/s/cm2/A", redshift=0.1
+            data=flux, wavelengths=wavelengths, flux_units="erg/s/cm2/A", redshift=0.1
         )
 
         assert spectral.n_wavelengths == n_wavelengths
@@ -33,15 +33,15 @@ class TestSpectralTensor:
         flux = torch.randn(5, 100)
         wavelengths = torch.linspace(4000, 7000, 50)  # Wrong size
 
-        with pytest.raises(ValueError, match="must match wavelength array length"):
-            SpectralTensor(flux, wavelengths=wavelengths)
+        with pytest.raises(ValueError, match="Last dimension of data .* must match"):
+            SpectralTensor(data=flux, wavelengths=wavelengths)
 
     def test_spectral_properties(self):
         """Test spectral tensor properties."""
         flux = torch.randn(3, 200)
         wavelengths = torch.linspace(3000, 9000, 200)
 
-        spectral = SpectralTensor(flux, wavelengths=wavelengths)
+        spectral = SpectralTensor(data=flux, wavelengths=wavelengths)
 
         # Test wavelength range
         wave_min, wave_max = spectral.wavelength_range
@@ -57,7 +57,7 @@ class TestSpectralTensor:
         flux = torch.randn(2, 100)
         wavelengths = torch.linspace(4000, 7000, 100)
 
-        spectral = SpectralTensor(flux, wavelengths=wavelengths, redshift=0.5)
+        spectral = SpectralTensor(data=flux, wavelengths=wavelengths, redshift=0.5)
 
         # Test redshift correction methods exist
         assert hasattr(spectral, "apply_redshift")
@@ -66,7 +66,7 @@ class TestSpectralTensor:
     def test_tensor_pickling(self):
         """Test tensor serialization with pickle."""
         data = torch.randn(3, 3)
-        tensor = SpectralTensor(data, wavelengths=torch.linspace(4000, 7000, 3))
+        tensor = SpectralTensor(data=data, wavelengths=torch.linspace(4000, 7000, 3))
 
         # Test pickle serialization
         tensor_bytes = pickle.dumps(tensor)

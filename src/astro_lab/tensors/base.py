@@ -5,7 +5,7 @@ Base Tensor Classes - Core Tensor Infrastructure
 Provides base classes and interfaces for all tensor types in the AstroLab framework.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple
 
 import numpy as np
 import pandas as pd
@@ -65,6 +65,12 @@ class AstroTensorBase(BaseModel):
                 tensor_data = torch.tensor(data_input, dtype=torch.float32)
             elif isinstance(data_input, torch.Tensor):
                 tensor_data = data_input
+            elif hasattr(data_input, 'data') and isinstance(data_input.data, torch.Tensor):
+                # Handle other tensor types like FeatureTensor
+                tensor_data = data_input.data
+                # Copy metadata if available
+                if hasattr(data_input, 'meta'):
+                    values["meta"] = data_input.meta
             else:
                 raise TypeError(
                     f"Unsupported data type for tensor conversion: {type(data_input)}"
@@ -224,3 +230,21 @@ class AstroTensorBase(BaseModel):
     # Custom __getstate__ and __setstate__ are often not needed unless you
     # have complex, non-serializable objects that Pydantic can't handle.
     # The `json_encoders` in model_config helps with serialization to JSON.
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert tensor to dictionary representation for serialization."""
+        return {
+            "data": self.data.cpu().numpy().tolist() if isinstance(self.data, torch.Tensor) else self.data,
+            "meta": self.meta,
+            "tensor_type": self.meta.get("tensor_type", "base"),
+            "shape": list(self.data.shape) if hasattr(self.data, 'shape') else [],
+            "device": str(self.device) if hasattr(self, 'device') else "cpu",
+            "dtype": str(self.dtype) if hasattr(self, 'dtype') else "float32"
+        }
+
+    @classmethod
+    def from_dict(cls, data_dict: Dict[str, Any]) -> "AstroTensorBase":
+        """Create tensor from dictionary representation."""
+        tensor_data = torch.tensor(data_dict["data"], dtype=torch.float32)
+        meta = data_dict.get("meta", {})
+        return cls(data=tensor_data, meta=meta)

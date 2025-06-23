@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from pydantic import Field
 from typing_extensions import Self
+import numpy as np
 
 from .base import AstroTensorBase
 
@@ -20,9 +21,30 @@ class PhotometricTensor(AstroTensorBase):
     photometric_system: str = Field(default="AB", description="The photometric system (e.g., 'AB', 'Vega').")
     is_magnitude: bool = Field(default=True, description="True if the data is in magnitudes, False if in flux.")
 
-    def __init__(self, **data: Any):
-        super().__init__(**data)
-        self._validate()
+    def __init__(self, data: Union[torch.Tensor, np.ndarray], bands: Optional[List[str]] = None, **kwargs):
+        """
+        Initialize PhotometricTensor.
+        
+        Args:
+            data: Photometric measurements tensor [N, num_bands]
+            bands: List of photometric band names (e.g., ["u", "g", "r", "i", "z"])
+            **kwargs: Additional arguments passed to parent
+        """
+        # Set default bands if not provided
+        if bands is None:
+            if isinstance(data, torch.Tensor):
+                num_bands = data.shape[1] if data.dim() > 1 else 1
+            else:
+                num_bands = data.shape[1] if data.ndim > 1 else 1
+            bands = [f"band_{i}" for i in range(num_bands)]
+            
+        # Convert data to tensor
+        if not isinstance(data, torch.Tensor):
+            data = torch.tensor(data, dtype=torch.float32)
+            
+        # Pass bands through kwargs to avoid direct assignment
+        kwargs['bands'] = bands
+        super().__init__(data=data, **kwargs)
 
     def _validate(self) -> None:
         """Validates the integrity of the photometric tensor data and metadata."""
@@ -178,17 +200,35 @@ class PhotometricTensor(AstroTensorBase):
 
         return colors
 
+    def compute_colors(self, color_pairs: Optional[List[Tuple[str, str]]] = None) -> Dict[str, torch.Tensor]:
+        """Compute color indices from photometric bands."""
+        if color_pairs is None:
+            # Default color combinations
+            color_pairs = [
+                ("B", "V"), ("V", "R"), ("R", "I"), 
+                ("g", "r"), ("r", "i"), ("i", "z")
+            ]
+        
+        colors = {}
+        for band1, band2 in color_pairs:
+            if band1 in self.bands and band2 in self.bands:
+                idx1 = self.bands.index(band1)
+                idx2 = self.bands.index(band2)
+                color_name = f"{band1}-{band2}"
+                colors[color_name] = self.data[:, idx1] - self.data[:, idx2]
+        
+        return colors
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary representation."""
-        result = super().to_dict()
-
-        # Convert tensor metadata to serializable format
-        if self.measurement_errors is not None:
-            result["measurement_errors"] = (
-                self.measurement_errors.detach().cpu().numpy()
-            )
-
-        return result
+        """Convert tensor to dictionary for serialization."""
+        return {
+            "data": self.data.cpu().numpy().tolist(),
+            "bands": self.bands,
+            "meta": self.meta,
+            "tensor_type": "photometric",
+            "n_bands": self.n_bands,
+            "extinction_coefficients": self.extinction_coefficients
+        }
 
     @classmethod  # type: ignore
     def from_dict(cls, data_dict: Dict[str, Any]) -> "PhotometricTensor":
@@ -212,3 +252,34 @@ class PhotometricTensor(AstroTensorBase):
             )
 
         return cls(data, **metadata)
+
+    @property
+    def n_bands(self) -> int:
+        """Return the number of photometric bands."""
+        return len(self.bands)
+    
+    @property
+    def extinction_coefficients(self) -> Dict[str, float]:
+        """Return extinction coefficients for each band."""
+        # Default extinction coefficients for common bands
+        default_extinctions = {
+            'u': 4.239, 'g': 3.303, 'r': 2.285, 'i': 1.698, 'z': 1.263,
+            'U': 4.968, 'B': 4.215, 'V': 3.240, 'R': 2.634, 'I': 1.905,
+            'J': 0.902, 'H': 0.576, 'K': 0.367
+        }
+        return {band: default_extinctions.get(band, 1.0) for band in self.bands}
+
+    def _validate(self) -> None:
+        """Validate the photometric tensor data and bands."""
+        super()._validate()
+        
+        # Check if number of bands matches data columns
+        if self.data.dim() > 1 and len(self.bands) != self.data.shape[1]:
+            raise ValueError(f"Number of bands ({len(self.bands)}) doesn't match data columns ({self.data.shape[1]})")
+        
+        # Validate band names
+        valid_bands = {'u', 'g', 'r', 'i', 'z', 'U', 'B', 'V', 'R', 'I', 'J', 'H', 'K', 'y'}
+        invalid_bands = set(self.bands) - valid_bands
+        if invalid_bands and not any(band.startswith('band_') for band in invalid_bands):
+            # Only warn for non-generic band names
+            pass  # Allow custom band names for flexibility

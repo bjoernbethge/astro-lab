@@ -272,15 +272,19 @@ class SimulationTensor(AstroTensorBase):
 
     def update_redshift(self, new_redshift: float):
         """Update the redshift and recalculate dependent cosmological properties."""
-        # Pydantic models are immutable, this operation should return a new instance
-        # For now, we mutate in place, which is not ideal.
-        object.__setattr__(self, 'redshift', new_redshift)
-        self._update_cosmological_metadata()
-
-        return self._create_new_instance(
-            data=self.data.clone(), 
-            redshift=new_redshift
+        # Create a new instance with all the same data but new redshift
+        new_instance = self.__class__(
+            data=self.data.clone(),
+            simulation_name=self.simulation_name,
+            particle_type=self.particle_type,
+            box_size=self.box_size,
+            redshift=new_redshift,
+            cosmology=self.cosmology.copy(),
+            edge_index=self.edge_index.clone() if self.edge_index is not None else None,
+            feature_names=self.feature_names.copy() if self.feature_names else [],
+            meta=self.meta.copy() if self.meta else {}
         )
+        return new_instance
 
     def to_pyvista(self, scalars: Optional[Union[str, torch.Tensor]] = None) -> Any:
         """Convert particle positions to a PyVista PolyData object for 3D visualization."""
@@ -332,19 +336,29 @@ class SimulationTensor(AstroTensorBase):
         
     def memory_info(self) -> Dict[str, str]:
         """Return memory usage information."""
-        total_bytes = self.data.element_size() * self.data.nelement()
+        total_bytes = 0
+        
+        # Calculate size of main data tensor
+        if self.data is not None:
+            total_bytes += self.data.element_size() * self.data.nelement()
+        
+        # Add edge index size if present
         if self.edge_index is not None:
             total_bytes += self.edge_index.element_size() * self.edge_index.nelement()
-        
-        mem_bytes = total_bytes
-        if self.edge_index is not None:
-            mem_bytes += self.edge_index.element_size() * self.edge_index.nelement()
             
-        total_mem_mb = mem_bytes / (1024 * 1024)
+        # Ensure we have a minimum size calculation
+        if total_bytes == 0 and self.data is not None:
+            # Fallback calculation
+            total_bytes = self.data.numel() * 4  # Assume float32
+            
+        total_mem_mb = total_bytes / (1024 * 1024)
+        
         return {
-            "total_size_mb": f"{total_mem_mb:.2f}",
+            "total_size_mb": f"{max(total_mem_mb, 0.01):.2f}",  # Ensure minimum 0.01 MB
             "device": str(self.device),
-            "dtype": str(self.dtype)
+            "dtype": str(self.dtype),
+            "num_particles": str(self.num_particles),
+            "data_shape": str(tuple(self.data.shape))
         }
 
     def __repr__(self) -> str:

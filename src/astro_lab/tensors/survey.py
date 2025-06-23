@@ -11,25 +11,27 @@ from .photometric import PhotometricTensor
 class SurveyTensor(PhotometricTensor):
     """Tensor for representing survey data, including photometric information."""
 
-    column_mapping: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="Mapping from standard band names to column names in the data.",
-    )
+    survey_name: str = Field(..., description="Name of the astronomical survey")
+    column_mapping: Dict[str, str] = Field(default_factory=dict, description="Mapping of column names to data indices")
 
-    def __init__(self, data: Any, column_mapping: Optional[Dict[str, str]] = None, **kwargs):
-        """
-        Initializes the SurveyTensor, ensuring the parent PhotometricTensor
-        is created correctly with the necessary 'bands' information.
-        """
-        if column_mapping is None:
-            raise ValueError("SurveyTensor requires a 'column_mapping' keyword argument.")
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        self._validate()
 
-        # We need to pass 'bands' to the parent, and also 'column_mapping' to the base model
-        # so the pydantic field is populated.
-        kwargs["column_mapping"] = column_mapping
-        bands = list(column_mapping.keys())
+    @property
+    def n_objects(self) -> int:
+        """Number of objects in the survey."""
+        return self.data.shape[0]
 
-        super().__init__(data=data, bands=bands, **kwargs)
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert tensor to dictionary for serialization."""
+        return {
+            "data": self.data.cpu().numpy().tolist(),
+            "survey_name": self.survey_name,
+            "column_mapping": self.column_mapping,
+            "meta": self.meta,
+            "tensor_type": "survey"
+        }
 
     @property
     def bands(self) -> List[str]:

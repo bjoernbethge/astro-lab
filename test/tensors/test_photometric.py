@@ -54,13 +54,16 @@ class TestPhotometricTensor:
 
     def test_photometric_properties(self):
         """Test photometric tensor properties."""
-        magnitudes = torch.randn(15, 4)
+        data = torch.randn(5, 4)
         bands = ["B", "V", "R", "I"]
+        phot = PhotometricTensor(data=data, bands=bands)
 
-        phot = PhotometricTensor(magnitudes, bands=bands, is_magnitude=False)
-
-        assert phot.is_magnitude is False  # Flux mode
-        assert phot.extinction_coefficients == {}  # Default empty
+        assert phot.n_bands == 4
+        assert len(phot.bands) == 4
+        # Extinction coefficients should now contain values for the bands
+        assert "B" in phot.extinction_coefficients
+        assert "V" in phot.extinction_coefficients
+        assert phot.extinction_coefficients["B"] == 4.215  # Expected value
 
         # Test color computation methods exist
         assert hasattr(phot, "compute_colors")

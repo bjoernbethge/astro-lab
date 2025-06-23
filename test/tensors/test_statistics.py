@@ -50,28 +50,28 @@ class TestStatisticsTensor:
     def stats_tensor(self, sample_photometric_data):
         """Create StatisticsTensor instance."""
         data, coords, weights = sample_photometric_data
-        return StatisticsTensor(data, coordinates=coords, weights=weights)
+        return StatisticsTensor(data=data, coordinates=coords, weights=weights)
 
     def test_initialization(self, sample_photometric_data):
         """Test StatisticsTensor initialization."""
         data, coords, weights = sample_photometric_data
 
-        # Test with all parameters
-        tensor = StatisticsTensor(data, coordinates=coords, weights=weights)
+        # Test with all parameters - use keyword arguments for Pydantic compatibility
+        tensor = StatisticsTensor(data=data, coordinates=coords, weights=weights)
         assert tensor.n_objects == 200
         assert tensor.n_observables == 3
         assert tensor.coordinates.shape == (200, 2)
         assert tensor.weights.shape == (200,)
 
         # Test without coordinates and weights
-        tensor_simple = StatisticsTensor(data)
+        tensor_simple = StatisticsTensor(data=data)
         assert tensor_simple.n_objects == 200
         assert tensor_simple.coordinates is None
         assert tensor_simple.weights.shape == (200,)  # Should default to ones
 
         # Test 1D data
         data_1d = data[:, 0]
-        tensor_1d = StatisticsTensor(data_1d)
+        tensor_1d = StatisticsTensor(data=data_1d)
         assert tensor_1d.n_observables == 1
 
     def test_luminosity_function(self, stats_tensor):
@@ -268,7 +268,7 @@ class TestStatisticsTensor:
     def test_weighted_statistics(self, stats_tensor):
         """Test weighted statistical functions."""
         # Create weights (all equal for simplicity)
-        weights = torch.ones(len(stats_tensor._data))
+        weights = torch.ones(len(stats_tensor.data))
 
         # Test weighted luminosity function
         bin_centers, phi = stats_tensor.luminosity_function(
@@ -289,15 +289,15 @@ class TestStatisticsTensor:
         # Test mismatched coordinates
         bad_coords = coords[:50]  # Wrong size
         with pytest.raises(ValueError):
-            StatisticsTensor(data, coordinates=bad_coords)
+            StatisticsTensor(data=data, coordinates=bad_coords)
 
         # Test mismatched weights
         bad_weights = weights[:50]  # Wrong size
         with pytest.raises(ValueError):
-            StatisticsTensor(data, weights=bad_weights)
+            StatisticsTensor(data=data, weights=bad_weights)
 
         # Test invalid function name
-        tensor = StatisticsTensor(data)
+        tensor = StatisticsTensor(data=data)
         with pytest.raises(ValueError):
             tensor.bootstrap_errors("nonexistent_function")
 
@@ -337,7 +337,7 @@ class TestStatisticsTensorIntegration:
         dec = np.random.uniform(-30, 30, n_objects)
         coords = np.column_stack([ra, dec])
 
-        tensor = StatisticsTensor(data, coordinates=coords)
+        tensor = StatisticsTensor(data=data, coordinates=coords)
 
         # Compute multi-band luminosity functions
         for i, band in enumerate(["u", "g", "r", "i", "z"]):
@@ -368,7 +368,7 @@ class TestStatisticsTensorIntegration:
         # Flatten for statistics (each epoch is an "observable")
         data = np.array(magnitudes)  # [n_objects, n_epochs]
 
-        tensor = StatisticsTensor(data)
+        tensor = StatisticsTensor(data=data)
 
         # Compute statistics on magnitude variations
         assert tensor.n_objects == n_objects
@@ -382,7 +382,7 @@ class TestStatisticsTensorIntegration:
         data = np.random.randn(n_objects, 5)
         coords = np.random.uniform([0, -90], [360, 90], (n_objects, 2))
 
-        tensor = StatisticsTensor(data, coordinates=coords)
+        tensor = StatisticsTensor(data=data, coordinates=coords)
 
         # Test that basic operations complete
         bin_centers, phi = tensor.luminosity_function(bins=20)
@@ -399,7 +399,7 @@ class TestStatisticsTensorIntegration:
 def test_different_bin_numbers(n_bins):
     """Test luminosity function with different bin numbers."""
     data = np.random.normal(20, 2, (100, 1))
-    tensor = StatisticsTensor(data)
+    tensor = StatisticsTensor(data=data)
 
     bin_centers, phi = tensor.luminosity_function(bins=n_bins)
     assert len(bin_centers) == n_bins
@@ -410,7 +410,7 @@ def test_different_bin_numbers(n_bins):
 def test_luminosity_function_methods(method):
     """Test different luminosity function methods."""
     data = np.random.normal(20, 2, (100, 1))
-    tensor = StatisticsTensor(data)
+    tensor = StatisticsTensor(data=data)
 
     bin_centers, phi = tensor.luminosity_function(bins=10, method=method)
     assert len(bin_centers) == 10

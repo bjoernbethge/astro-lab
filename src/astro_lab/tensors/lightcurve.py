@@ -123,7 +123,7 @@ class LightcurveTensor(AstroTensorBase):
             "median": torch.median(mags).item(),
             "min": torch.min(mags).item(),
             "max": torch.max(mags).item(),
-            "time_span": self.times.max().item() - self.times.min().item(),
+            "time_span": self.time_span,
             "n_points": float(len(self.times)),
         }
 
@@ -302,11 +302,70 @@ class LightcurveTensor(AstroTensorBase):
 
         return bin_centers, binned_mags, bin_errors
 
+    @property
+    def period(self) -> float:
+        """Estimated period of the lightcurve in the same units as time."""
+        if hasattr(self, '_period') and self._period is not None:
+            return self._period
+        
+        # Simple period estimation using peak finding in frequency domain
+        time_col = 0  # Assuming first column is time
+        if self.data.shape[1] > 1:
+            times = self.data[:, time_col].cpu().numpy()
+            magnitudes = self.data[:, 1].cpu().numpy()  # Assuming second column is magnitude
+            
+            # Remove mean and compute FFT
+            magnitudes = magnitudes - np.mean(magnitudes)
+            if len(times) > 10:
+                try:
+                    # Simple frequency analysis
+                    freqs = np.fft.fftfreq(len(times), d=np.median(np.diff(times)))
+                    fft = np.abs(np.fft.fft(magnitudes))
+                    
+                    # Find peak frequency (excluding DC component)
+                    peak_idx = np.argmax(fft[1:len(fft)//2]) + 1
+                    if freqs[peak_idx] > 0:
+                        return 1.0 / freqs[peak_idx]
+                except:
+                    pass
+        
+        # Fallback: return time span as rough period estimate
+        if self.data.shape[0] > 1:
+            return float(self.data[-1, 0] - self.data[0, 0])
+        return 1.0
+
+    @property
+    def amplitude(self) -> float:
+        """Amplitude of the lightcurve (peak-to-peak magnitude difference)."""
+        if self.data.shape[1] > 1:
+            magnitudes = self.data[:, 1]  # Assuming second column is magnitude
+            return float(torch.max(magnitudes) - torch.min(magnitudes))
+        return 0.0
+
+    @property 
+    def n_observations(self) -> int:
+        """Number of observations in the lightcurve."""
+        return self.data.shape[0]
+
+    @property
+    def time_span(self) -> float:
+        """Return the time span of the lightcurve."""
+        if self.data.shape[0] > 1:
+            time_col = 0  # Assuming first column is time
+            times = self.data[:, time_col]
+            return float(torch.max(times) - torch.min(times))
+        return 0.0
+
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        data_dict = super().to_dict()
-        data_dict["magnitudes"] = data_dict.pop("data")
-        return data_dict
+        """Convert tensor to dictionary for serialization."""
+        return {
+            "data": self.data.cpu().numpy().tolist(),
+            "meta": self.meta,
+            "tensor_type": "lightcurve",
+            "period": self.period,
+            "amplitude": self.amplitude,
+            "n_observations": self.n_observations
+        }
 
     @classmethod
     def from_dict(cls, data_dict: Dict[str, Any]) -> "LightcurveTensor":

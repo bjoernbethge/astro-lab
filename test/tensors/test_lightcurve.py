@@ -37,17 +37,19 @@ class TestLightcurveTensor:
             LightcurveTensor(data=data)
 
     def test_lightcurve_properties(self):
-        """Test lightcurve properties."""
-        times = torch.linspace(0, 100, 50).unsqueeze(1)
-        magnitudes = torch.sin(2 * torch.pi * times / 10) + torch.randn(50).unsqueeze(1)
-        data = torch.cat([times, magnitudes], dim=1)
+        """Test lightcurve tensor basic properties."""
+        # Create lightcurve with time spanning from 0 to 100
+        times = torch.linspace(0, 100, 100).unsqueeze(1)  # Time from 0 to 100
+        magnitudes = torch.randn(100, 1)
+        data = torch.cat([times, magnitudes], dim=1)  # [time, magnitude]
+        
+        lightcurve = LightcurveTensor(data=data)
 
-        lc = LightcurveTensor(data=data)
-
-        # Test time range
-        time_span, _ = lc.get_time_range()
-        assert abs(time_span - 100.0) < 1e-5
+        assert lightcurve.n_observations == 100
+        # Check time span calculation
+        time_span = lightcurve.time_span
+        assert abs(time_span - 100.0) < 1e-5  # Should be exactly 100.0
 
         # Test methods exist
-        assert hasattr(lc, "phase_fold")
-        assert hasattr(lc, "compute_statistics")
+        assert hasattr(lightcurve, "phase_fold")
+        assert hasattr(lightcurve, "compute_statistics")

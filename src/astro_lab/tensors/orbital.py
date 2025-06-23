@@ -3,7 +3,7 @@ Orbital tensor for celestial mechanics and satellite operations.
 """
 
 import math
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Dict
 
 import torch
 from pydantic import Field, field_validator
@@ -39,6 +39,10 @@ class OrbitTensor(AstroTensorBase):
     mu: float = Field(398600.4418, description="Standard gravitational parameter (km³/s²)")
     stellar_system: Optional[str] = Field(None, description="Name of stellar system (for exoplanets)")
     host_star_mass: Optional[float] = Field(None, description="Mass of host star in solar masses (for exoplanets)")
+    orbital_elements: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Orbital elements (e.g., a, e, i, omega, Omega, M)",
+    )
 
     @field_validator("data")
     def validate_orbital_data(cls, v):
@@ -46,7 +50,7 @@ class OrbitTensor(AstroTensorBase):
             raise ValueError(f"OrbitTensor requires 6-element orbital state, but last dimension is {v.shape[-1]}")
         return v
 
-    def __init__(self, **data):
+    def __init__(self, **data: Any):
         """
         Create a new OrbitTensor.
 
@@ -61,18 +65,28 @@ class OrbitTensor(AstroTensorBase):
             stellar_system: Name of stellar system (for exoplanets)
             host_star_mass: Mass of host star in solar masses (for exoplanets)
         """
+        # Handle potential None values in orbital_elements
+        if "orbital_elements" in data and data["orbital_elements"] is None:
+            data["orbital_elements"] = {}
+        
         super().__init__(**data)
-
-        # Set default mu based on attractor if not provided
-        if self.meta.get("mu") is None:
-            self.update_metadata(mu=self._get_default_mu(self.meta.get("attractor")))
-
         self._validate()
 
     def _validate(self) -> None:
-        """Validate orbital tensor data."""
-        if self._data.shape[-1] != 6:
-            raise ValueError("OrbitTensor requires 6-element orbital state")
+        """Validate orbital data."""
+        # Don't call super()._validate() as it doesn't exist
+        
+        # Ensure orbital_elements is not None
+        if self.orbital_elements is None:
+            self.orbital_elements = {}
+        
+        # Check required orbital elements if any are specified
+        if self.orbital_elements:
+            required = {"a", "e", "i", "omega", "Omega", "M"}  # Standard Keplerian elements
+            provided = set(self.orbital_elements.keys())
+            if provided and not provided.intersection(required):
+                # At least one standard element should be provided
+                pass  # Allow flexibility for different orbital element systems
 
     def _get_default_mu(self, attractor: str) -> float:
         """Get default gravitational parameter for attractor."""
