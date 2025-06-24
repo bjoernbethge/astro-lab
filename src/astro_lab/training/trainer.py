@@ -290,7 +290,7 @@ class AstroTrainer(Trainer):
         self,
         train_dataloader: Optional[DataLoader] = None,
         val_dataloader: Optional[DataLoader] = None,
-        datamodule=None,
+        datamodule: Any = None,
         ckpt_path: Optional[Union[str, Path]] = None,
     ) -> None:
         """
@@ -462,7 +462,7 @@ class AstroTrainer(Trainer):
     def test(
         self,
         test_dataloader: Optional[DataLoader] = None,
-        datamodule=None,
+        datamodule: Any = None,
     ) -> List[Mapping[str, float]]:
         """
         Test the model with modern Lightning 2.0+ compatibility.
@@ -498,7 +498,7 @@ class AstroTrainer(Trainer):
     def predict(
         self,
         predict_dataloader: Optional[DataLoader] = None,
-        datamodule=None,
+        datamodule: Any = None,
     ) -> Optional[List[Any]]:
         """
         Make predictions with modern Lightning 2.0+ compatibility.
@@ -580,7 +580,7 @@ class AstroTrainer(Trainer):
         timeout: Optional[int] = None,
         search_space: Optional[Dict[str, Any]] = None,
         monitor: str = "val_loss",
-        **kwargs,
+        **kwargs: Any,
     ) -> Dict[str, Any]:
         """
         Optimize hyperparameters using Optuna directly in AstroTrainer.

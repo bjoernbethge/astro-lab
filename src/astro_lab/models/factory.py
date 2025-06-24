@@ -198,7 +198,7 @@ class ModelFactory:
 
     @classmethod
     def create_temporal_model(
-        cls, model_type: str = "alcdef", task: str = "period_detection", **kwargs
+        cls, model_type: str = "alcdef", task: str = "period_detection", **kwargs: Any
     ) -> nn.Module:
         """Create temporal model for time-series analysis."""
 
@@ -241,7 +241,7 @@ class ModelFactory:
         num_stars: int = 1024,
         radius: float = 0.1,
         scales: Optional[List[float]] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> nn.Module:
         """Create specialized model for 3D stellar data."""
 
@@ -257,7 +257,7 @@ class ModelFactory:
 
     @classmethod
     def create_tng_model(
-        cls, model_type: str = "cosmic_evolution", **kwargs
+        cls, model_type: str = "cosmic_evolution", **kwargs: Any
     ) -> nn.Module:
         """Create TNG simulation model."""
 
@@ -316,7 +316,7 @@ class ModelFactory:
         surveys: List[str],
         task: str = "stellar_classification",
         fusion_strategy: str = "attention",
-        **kwargs,
+        **kwargs: Any,
     ) -> nn.Module:
         """Create model that can handle multiple surveys."""
 
@@ -364,7 +364,7 @@ class ModelFactory:
         conv_type: str = "gcn",
         dropout: float = 0.1,
         device: Optional[str] = None,
-        **kwargs
+        **kwargs: Any
     ) -> nn.Module:
         """
         Create a general astronomical model using BaseTNGModel.
@@ -397,7 +397,7 @@ class ModelFactory:
 
 # Convenience functions for common use cases
 def create_gaia_classifier(
-    num_classes: int = 7, hidden_dim: int = 128, **kwargs
+    num_classes: int = 7, hidden_dim: int = 128, **kwargs: Any
 ) -> nn.Module:
     """Create Gaia stellar classifier."""
     return ModelFactory.create_survey_model(
@@ -409,24 +409,24 @@ def create_gaia_classifier(
     )
 
 def create_sdss_galaxy_model(
-    task: str = "galaxy_property_prediction", **kwargs
+    task: str = "galaxy_property_prediction", **kwargs: Any
 ) -> nn.Module:
     """Create SDSS galaxy model."""
     return ModelFactory.create_survey_model(survey="sdss", task=task, **kwargs)
 
-def create_lsst_transient_detector(**kwargs) -> nn.Module:
+def create_lsst_transient_detector(**kwargs: Any) -> nn.Module:
     """Create LSST transient detector."""
     return ModelFactory.create_survey_model(
         survey="lsst", task="transient_detection", **kwargs
     )
 
-def create_asteroid_period_detector(**kwargs) -> nn.Module:
+def create_asteroid_period_detector(**kwargs: Any) -> nn.Module:
     """Create asteroid period detection model."""
     return ModelFactory.create_temporal_model(
         model_type="alcdef", task="period_detection", **kwargs
     )
 
-def create_lightcurve_classifier(num_classes: int = 5, **kwargs) -> nn.Module:
+def create_lightcurve_classifier(num_classes: int = 5, **kwargs: Any) -> nn.Module:
     """Create lightcurve classification model."""
     return ModelFactory.create_temporal_model(
         model_type="lightcurve",
@@ -435,11 +435,11 @@ def create_lightcurve_classifier(num_classes: int = 5, **kwargs) -> nn.Module:
         **kwargs,
     )
 
-def create_stellar_cluster_analyzer(**kwargs) -> nn.Module:
+def create_stellar_cluster_analyzer(**kwargs: Any) -> nn.Module:
     """Create stellar cluster analysis model."""
     return ModelFactory.create_3d_stellar_model(model_type="cluster", **kwargs)
 
-def create_galactic_structure_model(**kwargs) -> nn.Module:
+def create_galactic_structure_model(**kwargs: Any) -> nn.Module:
     """Create galactic structure analysis model."""
     return ModelFactory.create_3d_stellar_model(model_type="galactic", **kwargs)
 

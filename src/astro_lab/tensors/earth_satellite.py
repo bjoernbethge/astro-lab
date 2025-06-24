@@ -3,7 +3,7 @@ Earth satellite tensor for Earth-specific satellite operations.
 """
 
 import math
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 import torch
 
@@ -73,7 +73,7 @@ class EarthSatelliteTensor(AstroTensorBase):
 
     def ground_track(
         self, time_span: torch.Tensor, earth_rotation_rate: float = 7.2921159e-5
-    ):
+    ) -> Spatial3DTensor:
         """
         Calculate ground track coordinates.
 
@@ -260,7 +260,7 @@ class EarthSatelliteTensor(AstroTensorBase):
 
     def pass_prediction(
         self,
-        ground_station_coords,  # Spatial3DTensor
+        ground_station_coords: Spatial3DTensor,
         time_span: torch.Tensor,
         min_elevation: float = 10.0,
     ) -> Dict[str, torch.Tensor]:

@@ -479,7 +479,7 @@ class LightcurveTensor(AstroTensorBase):
         mag_col: str = "magnitude",
         error_col: Optional[str] = None,
         object_id_col: Optional[str] = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> "LightcurveTensor":
         """
         Create LightcurveTensor from survey data dictionary.
