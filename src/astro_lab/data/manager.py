@@ -394,8 +394,8 @@ class AstroDataManager:
         """Process raw catalog for ML training and save as {survey}.parquet in processed/{survey}/"""
         raw_file = Path(raw_file)
         if survey is None:
-            # Survey muss explizit angegeben werden!
-            raise ValueError("survey muss für ML-Processing angegeben werden!")
+            # Survey must be specified explicitly!
+            raise ValueError("survey must be specified for ML-Processing")
         processed_dir = self.processed_dir / survey
         processed_dir.mkdir(parents=True, exist_ok=True)
         output_path = processed_dir / f"{survey}.parquet"
@@ -431,7 +431,7 @@ class AstroDataManager:
         return output_path
 
     def list_catalogs(self, data_type: str = "all") -> pl.DataFrame:
-        """List available catalogs, only survey-basiert für processed."""
+        """List available catalogs, only survey-based for processed."""
         catalogs = []
         if data_type in ["all", "raw"]:
             for parquet_file in self.raw_dir.rglob("*.parquet"):
@@ -450,7 +450,7 @@ class AstroDataManager:
                     "path": str(parquet_file),
                 })
         if data_type in ["all", "processed"]:
-            # Nur survey-basiert anzeigen
+            # Only show survey-based
             for survey_dir in (self.processed_dir).iterdir():
                 if survey_dir.is_dir():
                     parquet_file = survey_dir / f"{survey_dir.name}.parquet"

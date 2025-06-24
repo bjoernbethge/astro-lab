@@ -351,7 +351,7 @@ def create_cosmic_web_loader(
     max_samples: Optional[int] = None,
     scales_mpc: List[float] = [5.0, 10.0, 20.0, 50.0],
     device: Optional[torch.device] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> Dict[str, Any]:
     """
     Convenience function: Load survey and perform cosmic web analysis.
@@ -596,7 +596,7 @@ class AstroDataset(InMemoryDataset):
 def load_gaia_data(
     max_samples: Optional[int] = None,
     return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs,
+    **kwargs: Any,
 ) -> Union[AstroDataset, "SurveyTensor"]:
     """
     Load Gaia data as an AstroDataset or SurveyTensor.
@@ -624,7 +624,7 @@ def load_gaia_data(
 def load_sdss_data(
     max_samples: Optional[int] = None,
     return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs,
+    **kwargs: Any,
 ) -> Union[AstroDataset, "SurveyTensor"]:
     """
     Load SDSS DR17 galaxy catalog.
@@ -650,7 +650,7 @@ def load_sdss_data(
 def load_nsa_data(
     max_samples: Optional[int] = None,
     return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs,
+    **kwargs: Any,
 ) -> Union[AstroDataset, "SurveyTensor"]:
     """
     Load NSA data as an AstroDataset or SurveyTensor.
@@ -675,7 +675,7 @@ def load_nsa_data(
 def load_lightcurve_data(
     max_samples: int = 5000,
     return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs,
+    **kwargs: Any,
 ) -> Union[AstroDataset, "LightcurveTensor"]:
     """
     Load LINEAR lightcurve data.
