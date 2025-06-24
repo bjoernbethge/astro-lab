@@ -42,9 +42,6 @@ from .lightning_module import AstroLightningModule
 # Optional imports
 from .mlflow_logger import AstroMLflowLogger, setup_mlflow_experiment
 
-
-
-
 # Type aliases for clarity
 DeviceType = Union[int, List[int], Literal["auto"]]
 PrecisionType = Union[
@@ -70,6 +67,7 @@ logger = logging.getLogger(__name__)
 # Suppress warnings - import warnings was already done above
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
+
 
 class AstroTrainer(Trainer):
     """
@@ -109,13 +107,8 @@ class AstroTrainer(Trainer):
             )
             from astro_lab.training.config import TrainingConfig
 
-            # Create a minimal model config
-            model_config = ModelConfig(
-                name="default_model",
-                encoder=EncoderConfig(),
-                graph=GraphConfig(),
-                output=OutputConfig(),
-            )
+            # Only pass valid ModelConfig fields after refactoring.
+            model_config = ModelConfig(name="default_model")
 
             training_config = TrainingConfig(
                 name="default_training", model=model_config
@@ -175,7 +168,11 @@ class AstroTrainer(Trainer):
         )
 
         # Remove UI parameters from filtered_kwargs to avoid duplication - these are always set
-        ui_params = ['enable_progress_bar', 'enable_model_summary', 'enable_checkpointing']
+        ui_params = [
+            "enable_progress_bar",
+            "enable_model_summary",
+            "enable_checkpointing",
+        ]
         for param in ui_params:
             filtered_kwargs.pop(param, None)
 
@@ -368,35 +365,19 @@ class AstroTrainer(Trainer):
                 return
 
             # Class detection from data
-            targets = []
-
-            for i, batch in enumerate(target_dataloader):
-                t = None
-                if isinstance(batch, dict):
-                    t = batch.get("target") or batch.get("y")
-                elif isinstance(batch, (list, tuple)) and len(batch) > 1:
-                    t = batch[1]
-                elif hasattr(batch, "y"):  # PyTorch Geometric DataBatch
-                    t = batch.y
-                elif hasattr(batch, "target"):  # Alternative target attribute
-                    t = batch.target
-                else:
-                    # Try various possible target attributes
-                    for attr_name in ["y", "target", "labels", "class", "classes"]:
-                        if hasattr(batch, attr_name):
-                            attr_value = getattr(batch, attr_name)
-                            if attr_value is not None and hasattr(attr_value, "shape"):
-                                t = attr_value
-                                break
-                    else:
-                        t = None
-
-                if t is not None:
-                    targets.append(t.flatten())
-                if i > 5:  # Limit for efficiency
-                    break
-
-            if targets:
+            targets = None
+            if hasattr(target_dataloader, "y"):
+                targets = target_dataloader.y
+            elif (
+                isinstance(target_dataloader, (list, tuple))
+                and len(target_dataloader) > 1
+            ):
+                if hasattr(target_dataloader[1], "y"):
+                    targets = target_dataloader[1].y
+                elif hasattr(target_dataloader[1], "target"):
+                    targets = target_dataloader[1].target
+            # Only use targets if found
+            if targets is not None:
                 all_targets = torch.cat(targets)
                 num_classes = int(all_targets.max().item()) + 1
 
@@ -413,10 +394,7 @@ class AstroTrainer(Trainer):
                         and self.astro_module.model_config is not None
                     ):
                         # Update model config
-                        if hasattr(self.astro_module.model_config, "output"):
-                            self.astro_module.model_config.output.output_dim = (
-                                num_classes
-                            )
+                        self.astro_module.model_config.output_dim = num_classes
 
                         # Recreate model
                         try:
@@ -428,7 +406,40 @@ class AstroTrainer(Trainer):
                         except Exception as e:
                             logger.error(f"Error recreating model: {e}")
                             # Fallback
-                            from astro_lab.models.astro import AstroSurveyGNN
+                            from astro_lab.models.core.survey_gnn import AstroSurveyGNN
+
+                            # Defensive: ensure input_dim and output_dim are integers
+                            input_dim = getattr(
+                                self.astro_module.model, "input_dim", None
+                            )
+                            if (
+                                input_dim is not None
+                                and not isinstance(input_dim, int)
+                                and hasattr(input_dim, "item")
+                            ):
+                                input_dim = int(input_dim.item())
+                            output_dim = getattr(
+                                self.astro_module.model, "output_dim", 1
+                            )
+                            if (
+                                output_dim is not None
+                                and not isinstance(output_dim, int)
+                                and hasattr(output_dim, "item")
+                            ):
+                                output_dim = int(output_dim.item())
+                            model = AstroSurveyGNN(
+                                input_dim=input_dim,
+                                hidden_dim=128,  # Default
+                                output_dim=output_dim,
+                                conv_type="gcn",
+                                num_layers=3,
+                                dropout=0.1,
+                                task="stellar_classification",
+                            )
+                            self.astro_module.model = model
+                        else:
+                            # Create from scratch using new import path
+                            from astro_lab.models.core.survey_gnn import AstroSurveyGNN
 
                             self.astro_module.model = AstroSurveyGNN(
                                 input_dim=16,  # Default
@@ -440,8 +451,8 @@ class AstroTrainer(Trainer):
                                 task="stellar_classification",
                             )
                     else:
-                        # Fallback: Create new model directly
-                        from astro_lab.models.astro import AstroSurveyGNN
+                        # Create from scratch using new import path
+                        from astro_lab.models.core.survey_gnn import AstroSurveyGNN
 
                         self.astro_module.model = AstroSurveyGNN(
                             input_dim=16,  # Default
@@ -536,22 +547,30 @@ class AstroTrainer(Trainer):
 
     @property
     def best_model_path(self) -> Optional[str]:
-        """Get path to best model checkpoint."""
-        if (
-            hasattr(self, "checkpoint_callback")
-            and self.checkpoint_callback is not None
-        ):
-            return self.checkpoint_callback.best_model_path
+        # Return the best model path from the ModelCheckpoint callback if available
+        cb = getattr(self, "checkpoint_callback", None)
+        if cb is not None and hasattr(cb, "best_model_path"):
+            return getattr(cb, "best_model_path", None)
+        # Fallback: try to find latest .ckpt file in checkpoint_dir
+        if hasattr(self, "checkpoint_dir") and self.checkpoint_dir:
+            ckpts = list(self.checkpoint_dir.glob("*.ckpt"))
+            if ckpts:
+                return str(
+                    sorted(ckpts, key=lambda x: x.stat().st_mtime, reverse=True)[0]
+                )
         return None
 
     @property
     def last_model_path(self) -> Optional[str]:
-        """Get path to last model checkpoint."""
-        if (
-            hasattr(self, "checkpoint_callback")
-            and self.checkpoint_callback is not None
-        ):
-            return self.checkpoint_callback.last_model_path
+        # Return the last model path from the ModelCheckpoint callback if available
+        cb = getattr(self, "checkpoint_callback", None)
+        if cb is not None and hasattr(cb, "last_model_path"):
+            return getattr(cb, "last_model_path", None)
+        # Fallback: try to find last .ckpt file in checkpoint_dir
+        if hasattr(self, "checkpoint_dir") and self.checkpoint_dir:
+            ckpts = list(self.checkpoint_dir.glob("*.ckpt"))
+            if ckpts:
+                return str(sorted(ckpts, key=lambda x: x.stat().st_mtime)[-1])
         return None
 
     def load_best_model(self) -> AstroLightningModule:
@@ -599,16 +618,17 @@ class AstroTrainer(Trainer):
         """
         import optuna
         from optuna.integration.pytorch_lightning import PyTorchLightningPruningCallback
-        
-        # Create Optuna study with less aggressive pruning
-        study = optuna.create_study(
+
+        # Optuna direction and pruner are valid for create_study, but use kwargs to avoid linter errors
+        study_kwargs = dict(
             direction="minimize" if "loss" in monitor else "maximize",
             pruner=optuna.pruners.MedianPruner(
                 n_startup_trials=10,  # Let more trials complete first
-                n_warmup_steps=5      # Wait longer before pruning
-            )
+                n_warmup_steps=5,  # Wait longer before pruning
+            ),
         )
-        
+        study = optuna.create_study(**study_kwargs)
+
         def objective(trial):
             # Suggest hyperparameters
             if search_space:
@@ -616,50 +636,84 @@ class AstroTrainer(Trainer):
                 params = {}
                 for name, config in search_space.items():
                     if config["type"] == "float" or config["type"] == "uniform":
-                        params[name] = trial.suggest_float(name, config["low"], config["high"])
+                        params[name] = trial.suggest_float(
+                            name, config["low"], config["high"]
+                        )
                     elif config["type"] == "loguniform":
-                        params[name] = trial.suggest_float(name, config["low"], config["high"], log=True)
+                        params[name] = trial.suggest_float(
+                            name, config["low"], config["high"], log=True
+                        )
                     elif config["type"] == "int":
-                        params[name] = trial.suggest_int(name, config["low"], config["high"])
+                        params[name] = trial.suggest_int(
+                            name, config["low"], config["high"]
+                        )
                     elif config["type"] == "categorical":
-                        params[name] = trial.suggest_categorical(name, config["choices"])
+                        params[name] = trial.suggest_categorical(
+                            name, config["choices"]
+                        )
                     else:
-                        logger.warning(f"Unknown parameter type '{config['type']}' for {name}, skipping")
-                
+                        logger.warning(
+                            f"Unknown parameter type '{config['type']}' for {name}, skipping"
+                        )
+
                 logger.debug(f"Trial {trial.number} params from config: {params}")
             else:
                 # Default search space
                 params = {
-                    "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-2, log=True),
+                    "learning_rate": trial.suggest_float(
+                        "learning_rate", 1e-5, 1e-2, log=True
+                    ),
                     "hidden_dim": trial.suggest_int("hidden_dim", 64, 512),
                     "num_layers": trial.suggest_int("num_layers", 2, 6),
                     "dropout": trial.suggest_float("dropout", 0.1, 0.5),
-                    "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
+                    "weight_decay": trial.suggest_float(
+                        "weight_decay", 1e-6, 1e-3, log=True
+                    ),
                 }
-                
+
                 logger.debug(f"Trial {trial.number} params from default: {params}")
 
             # Create model with trial parameters
             model_config = self.astro_module.model_config
             if model_config:
                 # Update existing config
-                model_config.graph.hidden_dim = params.get("hidden_dim", model_config.graph.hidden_dim)
-                model_config.graph.num_layers = params.get("num_layers", model_config.graph.num_layers)
-                model_config.graph.dropout = params.get("dropout", model_config.graph.dropout)
-                
+                model_config.hidden_dim = params.get(
+                    "hidden_dim", model_config.hidden_dim
+                )
+                model_config.num_layers = params.get(
+                    "num_layers", model_config.num_layers
+                )
+                model_config.dropout = params.get("dropout", model_config.dropout)
+
                 # Create new model
                 model = self.astro_module._create_model_from_config(model_config)
             else:
-                # Create from scratch
-                from astro_lab.models.astro import AstroSurveyGNN
+                # Create from scratch using new import path
+                from astro_lab.models.core.survey_gnn import AstroSurveyGNN
+
+                # Defensive: ensure input_dim and output_dim are integers
+                input_dim = getattr(self.astro_module.model, "input_dim", None)
+                if (
+                    input_dim is not None
+                    and not isinstance(input_dim, int)
+                    and hasattr(input_dim, "item")
+                ):
+                    input_dim = int(input_dim.item())
+                output_dim = getattr(self.astro_module.model, "output_dim", 1)
+                if (
+                    output_dim is not None
+                    and not isinstance(output_dim, int)
+                    and hasattr(output_dim, "item")
+                ):
+                    output_dim = int(output_dim.item())
                 model = AstroSurveyGNN(
-                    input_dim=self.astro_module.model.input_dim,
+                    input_dim=input_dim,
                     hidden_dim=params.get("hidden_dim", 128),
-                    output_dim=self.astro_module.model.output_dim,
+                    output_dim=output_dim,
                     num_layers=params.get("num_layers", 3),
                     dropout=params.get("dropout", 0.2),
-                    conv_type="gcn"
-            )
+                    conv_type="gcn",
+                )
 
             # Create new Lightning module for this trial
             trial_module = AstroLightningModule(
@@ -669,7 +723,7 @@ class AstroTrainer(Trainer):
                 weight_decay=params.get("weight_decay", 1e-4),
                 num_classes=self.astro_module.num_classes,
             )
-            
+
             # Create trial trainer with minimal callbacks
             trial_trainer = Trainer(
                 max_epochs=50,  # Longer for better optimization
@@ -678,20 +732,29 @@ class AstroTrainer(Trainer):
                 enable_checkpointing=False,
                 enable_progress_bar=False,
                 callbacks=[
-                    EarlyStopping(monitor=monitor, patience=8, mode="min" if "loss" in monitor else "max"),
-                    PyTorchLightningPruningCallback(trial, monitor=monitor)
+                    EarlyStopping(
+                        monitor=monitor,
+                        patience=8,
+                        mode="min" if "loss" in monitor else "max",
+                    ),
+                    PyTorchLightningPruningCallback(trial, monitor=monitor),
                 ],
                 logger=False,  # Disable logging during optimization
             )
-            
+
             # Train and evaluate
             try:
                 trial_trainer.fit(trial_module, train_dataloader, val_dataloader)
-                
+
                 # Get validation metric
                 val_metric = trial_trainer.callback_metrics.get(monitor, float("inf"))
-                return float(val_metric) if hasattr(val_metric, "item") else val_metric
-                
+                # Always return a float for Optuna compatibility
+                if not isinstance(val_metric, (float, int)) and hasattr(
+                    val_metric, "item"
+                ):
+                    return float(val_metric.item())
+                return float(val_metric)
+
             except optuna.TrialPruned:
                 raise
             except Exception as e:
@@ -701,21 +764,21 @@ class AstroTrainer(Trainer):
         # Run optimization
         logger.info(f"Starting hyperparameter optimization with {n_trials} trials...")
         study.optimize(objective, n_trials=n_trials, timeout=timeout)
-        
+
         # Get best parameters
         best_params = study.best_params
         best_value = study.best_value
-        
+
         logger.info("Optimization complete!")
         logger.info(f"Best value: {best_value:.4f}")
         logger.info(f"Best parameters: {best_params}")
-        
+
         # Return results
         return {
             "best_params": best_params,
             "best_value": best_value,
             "n_trials": len(study.trials),
-            "study": study
+            "study": study,
         }
 
     def load_from_checkpoint(self, checkpoint_path: str) -> AstroLightningModule:
@@ -892,29 +955,6 @@ class AstroTrainer(Trainer):
                 "learning_rate": getattr(self.astro_module, "learning_rate", "N/A"),
             },
         }
-
-    @classmethod
-    def from_config(
-        cls, config: Dict[str, Any], lightning_module: AstroLightningModule
-    ) -> "AstroTrainer":
-        """
-        Create AstroTrainer from configuration dictionary.
-
-        Args:
-            config: Configuration dictionary
-            lightning_module: Pre-configured Lightning module
-
-        Returns:
-            AstroTrainer instance
-        """
-        # Extract trainer-specific parameters
-        trainer_params = config.get("trainer", {})
-
-        # Create trainer
-        return cls(
-            lightning_module=lightning_module,
-            **trainer_params,
-        )
 
     @property
     def lightning_module(self) -> Optional[AstroLightningModule]:

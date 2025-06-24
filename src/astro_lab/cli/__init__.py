@@ -10,12 +10,12 @@ import argparse
 import datetime
 import json
 import logging
+import platform
 import sys
 import traceback
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
-import platform
 
 import click
 import yaml
@@ -29,6 +29,7 @@ if not logger.handlers:  # Only configure if not already configured
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     logger.propagate = False  # Prevent propagation to root logger
+
 
 # Windows emoji handling 🖥️
 def safe_print(message: str) -> str:
@@ -83,26 +84,29 @@ def safe_print(message: str) -> str:
             message = message.replace(emoji, replacement)
     return message
 
+
 # Wrap logger methods for emoji safety
 def create_safe_logger(base_logger):
     """Create a logger with safe emoji handling."""
+
     class SafeLogger:
         def __init__(self, logger):
             self._logger = logger
-            
+
         def info(self, msg, *args, **kwargs):
             self._logger.info(safe_print(str(msg)), *args, **kwargs)
-            
+
         def error(self, msg, *args, **kwargs):
             self._logger.error(safe_print(str(msg)), *args, **kwargs)
-            
+
         def warning(self, msg, *args, **kwargs):
             self._logger.warning(safe_print(str(msg)), *args, **kwargs)
-            
+
         def debug(self, msg, *args, **kwargs):
             self._logger.debug(safe_print(str(msg)), *args, **kwargs)
-    
+
     return SafeLogger(base_logger)
+
 
 # Use the safe logger
 logger = create_safe_logger(logger)
@@ -112,8 +116,8 @@ import gc
 import os
 
 from astro_lab.data import (
-    AstroDataset,
     AstroDataManager,
+    AstroDataset,
     create_astro_datamodule,
     create_training_splits,
     data_config,
@@ -122,8 +126,22 @@ from astro_lab.data import (
     load_catalog,
     save_splits_to_parquet,
 )
-from astro_lab.data.preprocessing import preprocess_catalog, preprocess_catalog_lazy, find_or_create_catalog_file, create_graph_from_dataframe, get_survey_input_file
-from astro_lab.models.factory import ModelFactory
+from astro_lab.data.preprocessing import (
+    create_graph_from_dataframe,
+    find_or_create_catalog_file,
+    get_survey_input_file,
+    preprocess_catalog,
+    preprocess_catalog_lazy,
+)
+from astro_lab.models.factories import (
+    create_asteroid_period_detector,
+    create_gaia_classifier,
+    create_galaxy_modeler,
+    create_lightcurve_classifier,
+    create_lsst_transient_detector,
+    create_sdss_galaxy_model,
+    create_temporal_graph_model,
+)
 from astro_lab.training.trainer import AstroTrainer
 from astro_lab.utils.config.loader import ConfigLoader
 
@@ -140,7 +158,9 @@ def main():
         pass
     else:
         # Welcome message for other commands 🌟
-        logger.info("⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory! 🔬")
+        logger.info(
+            "⭐ Welcome to AstroLab - Astronomical Machine Learning Laboratory! 🔬"
+        )
         logger.info("")
 
     parser = argparse.ArgumentParser(
@@ -264,12 +284,16 @@ Use 'astro-lab <command> --help' for detailed options!
 
     # Large Gaia processing
     preprocess_parser.add_argument(
-        "--gaia-large", action="store_true", help="Process all 3M Gaia stars with GPU acceleration"
+        "--gaia-large",
+        action="store_true",
+        help="Process all 3M Gaia stars with GPU acceleration",
     )
-    
+
     # SurveyTensor processing
     preprocess_parser.add_argument(
-        "--gaia-tensor", action="store_true", help="Create complete SurveyTensor system from all 3M Gaia stars"
+        "--gaia-tensor",
+        action="store_true",
+        help="Create complete SurveyTensor system from all 3M Gaia stars",
     )
 
     # Control options
@@ -281,7 +305,11 @@ Use 'astro-lab <command> --help' for detailed options!
     )
 
     # New option
-    preprocess_parser.add_argument("--no-graph", action="store_true", help="Do not generate graph/PT file during preprocessing")
+    preprocess_parser.add_argument(
+        "--no-graph",
+        action="store_true",
+        help="Do not generate graph/PT file during preprocessing",
+    )
 
     # Download subcommand
     download_parser = subparsers.add_parser(
@@ -305,7 +333,9 @@ Use 'astro-lab <command> --help' for detailed options!
     train_parser = subparsers.add_parser("train", help="Train ML models")
     train_parser.add_argument("--config", "-c", help="Configuration file path")
     train_parser.add_argument(
-        "--dataset", choices=["gaia", "gaia_large", "sdss", "nsa"], help="Dataset to use"
+        "--dataset",
+        choices=["gaia", "gaia_large", "sdss", "nsa"],
+        help="Dataset to use",
     )
     train_parser.add_argument(
         "--model",
@@ -330,27 +360,22 @@ Use 'astro-lab <command> --help' for detailed options!
         "--devices", type=int, default=1, help="Number of GPUs to use"
     )
     train_parser.add_argument(
-        "--strategy", 
-        choices=["auto", "ddp", "fsdp"], 
-        default="auto", 
-        help="Training strategy"
+        "--strategy",
+        choices=["auto", "ddp", "fsdp"],
+        default="auto",
+        help="Training strategy",
     )
     train_parser.add_argument(
-        "--precision", 
-        choices=["32", "16-mixed", "bf16-mixed"], 
-        default="16-mixed", 
-        help="Training precision"
+        "--precision",
+        choices=["32", "16-mixed", "bf16-mixed"],
+        default="16-mixed",
+        help="Training precision",
     )
     train_parser.add_argument(
-        "--accumulate", 
-        type=int, 
-        default=1, 
-        help="Gradient accumulation steps"
+        "--accumulate", type=int, default=1, help="Gradient accumulation steps"
     )
     train_parser.add_argument(
-        "--compile", 
-        action="store_true", 
-        help="Use torch.compile for optimization"
+        "--compile", action="store_true", help="Use torch.compile for optimization"
     )
     train_parser.add_argument(
         "--experiment-name", default="quick_train", help="Experiment name"
@@ -530,23 +555,25 @@ def _show_catalog_stats(input_path: str):
 def _process_gaia_tensor(args):
     """Create complete SurveyTensor system from all 3M Gaia stars."""
     logger.info("🌟 Creating complete Gaia SurveyTensor system (3M stars)")
-    
+
     try:
         from astro_lab.data.preprocessing import create_gaia_survey_tensor
-        
+
         # Run the tensor system creation
         result = create_gaia_survey_tensor()
-        
+
         if result:
-            logger.info(f"✅ Gaia tensor system created successfully!")
+            logger.info("✅ Gaia tensor system created successfully!")
             logger.info(f"📊 SurveyTensor: {result['files']['survey']}")
             logger.info(f"🌍 Spatial3DTensor: {result['files']['spatial']}")
             logger.info(f"📸 PhotometricTensor: {result['files']['photometric']}")
             logger.info(f"📋 Metadata: {result['files']['metadata']}")
-            logger.info("🎯 Ready for training: uv run astro-lab train --dataset gaia --model gaia_classifier")
+            logger.info(
+                "🎯 Ready for training: uv run astro-lab train --dataset gaia --model gaia_classifier"
+            )
         else:
             logger.error("❌ Gaia tensor system creation failed")
-            
+
     except Exception as e:
         logger.error(f"❌ Gaia tensor system creation failed: {e}")
         raise
@@ -555,20 +582,22 @@ def _process_gaia_tensor(args):
 def _process_gaia_large(args):
     """Process all 3M Gaia stars with GPU acceleration."""
     logger.info("🚀 Processing large Gaia dataset (3M stars) with GPU acceleration")
-    
+
     try:
         from astro_lab.data.preprocessing import process_large_gaia_dataset
-        
+
         # Run the GPU-accelerated processing
         result = process_large_gaia_dataset()
-        
+
         if result:
-            logger.info(f"✅ Large Gaia processing completed successfully!")
+            logger.info("✅ Large Gaia processing completed successfully!")
             logger.info(f"📁 Dataset saved to: {result}")
-            logger.info("🎯 You can now use: astro-lab train --dataset gaia_large --model gaia_classifier")
+            logger.info(
+                "🎯 You can now use: astro-lab train --dataset gaia_large --model gaia_classifier"
+            )
         else:
             logger.error("❌ Large Gaia processing failed")
-            
+
     except Exception as e:
         logger.error(f"❌ Large Gaia processing failed: {e}")
         raise
@@ -613,6 +642,7 @@ def _process_single_file(args):
         from astro_lab.data import load_catalog
         from astro_lab.data.preprocessing import preprocess_catalog_lazy
         from astro_lab.utils.config.loader import ConfigLoader
+
         df = load_catalog(args.input)
         logger.info(f"📊 Loaded: {df.shape[0]:,} rows, {df.shape[1]} columns")
         survey_type = args.config or "generic"
@@ -645,20 +675,26 @@ def _process_single_file(args):
             df_clean = lf_clean.collect()
         # Zeige survey-basierten Output an
         from pathlib import Path
+
         output_dir = Path(args.output or "data/processed") / survey_type
         parquet_file = output_dir / f"{survey_type}.parquet"
         pt_file = output_dir / f"{survey_type}.pt"
         if parquet_file.exists():
             logger.info(f"✅ Parquet: {parquet_file.relative_to(output_dir.parent)}")
         else:
-            logger.warning(f"❌ Parquet file missing: {parquet_file.relative_to(output_dir.parent)}")
+            logger.warning(
+                f"❌ Parquet file missing: {parquet_file.relative_to(output_dir.parent)}"
+            )
         if pt_file.exists():
             logger.info(f"✅ Graph:   {pt_file.relative_to(output_dir.parent)}")
         elif not args.no_graph:
-            logger.warning(f"❌ Graph file missing: {pt_file.relative_to(output_dir.parent)}")
+            logger.warning(
+                f"❌ Graph file missing: {pt_file.relative_to(output_dir.parent)}"
+            )
     except Exception as e:
         logger.error(f"❌ Error processing file: {e}")
         import traceback
+
         traceback.print_exc()
 
 
@@ -668,20 +704,31 @@ def _process_all_surveys(args):
     try:
         import sys
         from pathlib import Path
-        from astro_lab.data.preprocessing import get_survey_input_file, preprocess_catalog_lazy
+
+        from astro_lab.data.preprocessing import (
+            get_survey_input_file,
+            preprocess_catalog_lazy,
+        )
+
         all_surveys = ["gaia", "nsa", "sdss", "linear", "exoplanet", "tng50"]
         surveys_to_process = args.surveys if args.surveys else all_surveys
         max_samples_display = {}
         for survey in surveys_to_process:
             if survey.lower() in ["tng50", "tng50-4"]:
-                max_samples_display[survey] = args.max_samples if args.max_samples is not None else 3_000_000
+                max_samples_display[survey] = (
+                    args.max_samples if args.max_samples is not None else 3_000_000
+                )
             else:
                 max_samples_display[survey] = args.max_samples or "all"
         logger.info(f"📊 Processing surveys: {', '.join(surveys_to_process)}")
         logger.info(
-            "🔧 Parameters: " + ", ".join([
-                f"{s}: k={args.k_neighbors}, max_samples={max_samples_display[s]}" for s in surveys_to_process
-            ])
+            "🔧 Parameters: "
+            + ", ".join(
+                [
+                    f"{s}: k={args.k_neighbors}, max_samples={max_samples_display[s]}"
+                    for s in surveys_to_process
+                ]
+            )
         )
         logger.info(f"📁 Output: {args.output_dir}")
         logger.info("")
@@ -725,14 +772,20 @@ def _process_all_surveys(args):
             if parquet_file.exists():
                 logger.info(f"     Parquet: {parquet_file.relative_to(output_dir)}")
             else:
-                logger.warning(f"     Parquet file missing: {parquet_file.relative_to(output_dir)}")
+                logger.warning(
+                    f"     Parquet file missing: {parquet_file.relative_to(output_dir)}"
+                )
             if pt_file.exists():
                 logger.info(f"     Graph:   {pt_file.relative_to(output_dir)}")
             elif not args.no_graph:
-                logger.warning(f"     Graph file missing: {pt_file.relative_to(output_dir)}")
+                logger.warning(
+                    f"     Graph file missing: {pt_file.relative_to(output_dir)}"
+                )
             successful += 1
         logger.info("")
-        logger.info(f"🎉 Batch processing completed! ({successful}/{len(surveys_to_process)} surveys successful)")
+        logger.info(
+            f"🎉 Batch processing completed! ({successful}/{len(surveys_to_process)} surveys successful)"
+        )
         logger.info(f"📁 Processed data in: {output_dir}")
     except Exception as e:
         logger.error(f"❌ Error during batch processing: {e}")
@@ -773,7 +826,7 @@ def handle_train(args):
     """Handle train command by delegating to train module."""
     # Simply pass args to train module
     from .train import train_from_config, train_quick
-    
+
     if args.config:
         # Config-based training
         if not Path(args.config).exists():
@@ -787,18 +840,21 @@ def handle_train(args):
             model=args.model,
             epochs=args.epochs,
             batch_size=args.batch_size,
-            max_samples=getattr(args, 'max_samples', 1000),
-            learning_rate=getattr(args, 'learning_rate', 0.001),
-            devices=getattr(args, 'devices', 1),
-            strategy=getattr(args, 'strategy', 'auto'),
-            precision=getattr(args, 'precision', '16-mixed'),
-            accumulate=getattr(args, 'accumulate', 1),
+            max_samples=getattr(args, "max_samples", 1000),
+            learning_rate=getattr(args, "learning_rate", 0.001),
+            devices=getattr(args, "devices", 1),
+            strategy=getattr(args, "strategy", "auto"),
+            precision=getattr(args, "precision", "16-mixed"),
+            accumulate=getattr(args, "accumulate", 1),
         )
     else:
         # Show help if insufficient arguments
         print("Usage:", file=sys.stderr)
         print("  astro-lab train --config <config.yaml>", file=sys.stderr)
-        print("  astro-lab train --dataset <dataset> --model <model> [--epochs N] [--batch-size N] [--learning-rate LR] [--devices N] [--strategy STRATEGY] [--precision PRECISION] [--accumulate N]", file=sys.stderr)
+        print(
+            "  astro-lab train --dataset <dataset> --model <model> [--epochs N] [--batch-size N] [--learning-rate LR] [--devices N] [--strategy STRATEGY] [--precision PRECISION] [--accumulate N]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
 
@@ -841,22 +897,25 @@ def handle_config(args):
         try:
             # Use ConfigLoader for robust config creation
             from astro_lab.utils.config.loader import ConfigLoader
-            
+
             # Create a temporary loader to get default config
             loader = ConfigLoader("configs/default.yaml")
             config = loader.load_config()
-            
+
             # Save the processed config
             loader.save_config(args.output)
-            
+
             logger.info(f"✅ Configuration created successfully: {args.output}")
-            logger.info("💡 The config has been processed with correct paths and MLflow settings")
-            
+            logger.info(
+                "💡 The config has been processed with correct paths and MLflow settings"
+            )
+
         except Exception as e:
             logger.error(f"❌ Failed to create config: {e}")
             # Fallback to simple config creation
             try:
                 from .optimize import create_default_config
+
                 create_default_config(args.output)
                 logger.info(f"✅ Fallback config created: {args.output}")
             except Exception as fallback_error:
@@ -904,7 +963,10 @@ def handle_config(args):
         logger.info("🔍 Validating config integration...")
         try:
             from astro_lab.utils.config.loader import validate_config_integration
-            success = validate_config_integration(args.config if hasattr(args, 'config') else "configs/default.yaml")
+
+            success = validate_config_integration(
+                args.config if hasattr(args, "config") else "configs/default.yaml"
+            )
             if success:
                 logger.info("✅ Config integration is working correctly!")
             else:
