@@ -600,24 +600,33 @@ class AstroTrainer(Trainer):
         import optuna
         from optuna.integration.pytorch_lightning import PyTorchLightningPruningCallback
         
-        # Create Optuna study
+        # Create Optuna study with less aggressive pruning
         study = optuna.create_study(
             direction="minimize" if "loss" in monitor else "maximize",
-            pruner=optuna.pruners.MedianPruner(n_startup_trials=5)
+            pruner=optuna.pruners.MedianPruner(
+                n_startup_trials=10,  # Let more trials complete first
+                n_warmup_steps=5      # Wait longer before pruning
+            )
         )
         
         def objective(trial):
             # Suggest hyperparameters
             if search_space:
-                # Use custom search space
+                # Use custom search space from config
                 params = {}
                 for name, config in search_space.items():
-                    if config["type"] == "float":
-                        params[name] = trial.suggest_float(name, config["low"], config["high"], log=config.get("log", False))
+                    if config["type"] == "float" or config["type"] == "uniform":
+                        params[name] = trial.suggest_float(name, config["low"], config["high"])
+                    elif config["type"] == "loguniform":
+                        params[name] = trial.suggest_float(name, config["low"], config["high"], log=True)
                     elif config["type"] == "int":
                         params[name] = trial.suggest_int(name, config["low"], config["high"])
                     elif config["type"] == "categorical":
                         params[name] = trial.suggest_categorical(name, config["choices"])
+                    else:
+                        logger.warning(f"Unknown parameter type '{config['type']}' for {name}, skipping")
+                
+                logger.debug(f"Trial {trial.number} params from config: {params}")
             else:
                 # Default search space
                 params = {
@@ -627,6 +636,8 @@ class AstroTrainer(Trainer):
                     "dropout": trial.suggest_float("dropout", 0.1, 0.5),
                     "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
                 }
+                
+                logger.debug(f"Trial {trial.number} params from default: {params}")
 
             # Create model with trial parameters
             model_config = self.astro_module.model_config
@@ -661,13 +672,13 @@ class AstroTrainer(Trainer):
             
             # Create trial trainer with minimal callbacks
             trial_trainer = Trainer(
-                max_epochs=20,  # Shorter for optimization
+                max_epochs=50,  # Longer for better optimization
                 accelerator=self.accelerator,
                 devices=1,  # Single device for optimization
                 enable_checkpointing=False,
                 enable_progress_bar=False,
                 callbacks=[
-                    EarlyStopping(monitor=monitor, patience=3, mode="min" if "loss" in monitor else "max"),
+                    EarlyStopping(monitor=monitor, patience=8, mode="min" if "loss" in monitor else "max"),
                     PyTorchLightningPruningCallback(trial, monitor=monitor)
                 ],
                 logger=False,  # Disable logging during optimization
