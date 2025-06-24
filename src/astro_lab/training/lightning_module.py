@@ -367,30 +367,14 @@ class AstroLightningModule(LightningModule):
             Model output tensor
         """
         try:
-            # Handle PyTorch Geometric Data objects
-            if hasattr(batch, "x") and hasattr(batch, "edge_index"):
-                # Standard PyTorch Geometric forward pass
-                return self.model(batch.x, batch.edge_index)
-            elif isinstance(batch, dict):
-                # Handle dictionary input
-                if "x" in batch and "edge_index" in batch:
-                    return self.model(batch["x"], batch["edge_index"])
-                elif "input" in batch:
-                    return self.model(batch["input"])
-                else:
-                    # Try to find the main input
-                    inputs = batch.get("features") or batch.get("data")
-                    return self.model(inputs)
-            elif isinstance(batch, (list, tuple)):
-                # Handle list/tuple input
-                if len(batch) >= 2:
-                    return self.model(batch[0], batch[1])  # Assume (x, edge_index)
-                else:
-                    return self.model(batch[0])
-            else:
-                # Handle tensor input
+            try:
                 return self.model(batch)
-
+            except TypeError as e:
+                # Fallback: call model.forward directly (for torch.compile/ScriptModule)
+                if hasattr(self.model, "forward"):
+                    return self.model.forward(batch)
+                else:
+                    raise e
         except Exception as e:
             logger.error(f"Forward pass failed: {e}")
             logger.error(f"Batch type: {type(batch)}")
@@ -615,9 +599,34 @@ class AstroLightningModule(LightningModule):
         - Warmup support
         - Gradient accumulation awareness
         """
+        # Get model parameters robustly (works with torch.compile)
+        try:
+            # Try to get parameters from the model directly
+            if hasattr(self.model, "parameters") and callable(self.model.parameters):
+                model_params = list(self.model.parameters())
+            else:
+                # Fallback to Lightning module parameters
+                model_params = list(self.parameters())
+        except Exception:
+            # Ultimate fallback
+            model_params = list(self.parameters())
+
+        if not model_params:
+            raise ValueError(
+                f"No parameters found in model. Model type: {type(self.model)}"
+            )
+
+        trainable_params = [p for p in model_params if p.requires_grad]
+        if not trainable_params:
+            raise ValueError(
+                "No trainable parameters found - all parameters are frozen"
+            )
+
+        logger.info(f"🎯 Found {len(trainable_params)} trainable parameter groups")
+
         # Configure optimizer
         optimizer = AdamW(
-            self.parameters(),
+            trainable_params,
             lr=self.learning_rate,
             weight_decay=self.weight_decay,
             betas=(0.9, 0.999),
