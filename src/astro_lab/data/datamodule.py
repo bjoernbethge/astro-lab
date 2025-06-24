@@ -9,16 +9,18 @@ Optimized for 2025 best practices including:
 - PIN memory for GPU transfer optimization
 - Proper distributed sampling
 - Mixed precision support
+- Fixed PyTorch Geometric batch handling
 """
 
 import logging
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 import multiprocessing as mp
 
 import lightning as L
 import torch
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Batch
 from torch.utils.data.distributed import DistributedSampler
 
 from .core import AstroDataset
@@ -42,6 +44,7 @@ class AstroDataModule(L.LightningDataModule):
     - Prefetch factor tuning
     - Drop last for consistent batch sizes
     - Better distributed sampling
+    - Fixed PyTorch Geometric batch handling
     """
 
     def __init__(
@@ -68,6 +71,7 @@ class AstroDataModule(L.LightningDataModule):
         self.save_hyperparameters()
 
         self.survey = survey
+        self.dataset_name = survey  # For results organization
         self.data_root = data_root or str(data_config.base_dir)
         self.k_neighbors = k_neighbors
         self.max_samples = max_samples
@@ -108,10 +112,12 @@ class AstroDataModule(L.LightningDataModule):
         # Dataset will be created in setup()
         self.dataset = None
         
-        # Cache for data splits
-        self._train_data = []
-        self._val_data = []
-        self._test_data = []
+        # Store the main data object
+        self._main_data = None
+        
+        # Class information for Lightning module
+        self.num_classes = None
+        self.num_features = None
 
     def prepare_data(self):
         """
@@ -130,24 +136,40 @@ class AstroDataModule(L.LightningDataModule):
                 k_neighbors=self.k_neighbors,
                 max_samples=self.max_samples,
             )
-        data = self.dataset[0]
-        if self.use_subgraph_sampling and data.num_nodes > self.max_nodes_per_graph:
-            num_subgraphs = min(100, max(10, data.num_nodes // self.max_nodes_per_graph))
-            self._train_data = []
-            for _ in range(num_subgraphs):
-                sub_data = self._create_subgraph_samples(data, self.max_nodes_per_graph)
-                split_data = self._split_graph_data(sub_data)
-                self._train_data.append(split_data)
-            self._val_data = self._train_data[:max(1, len(self._train_data)//10)]
-            self._test_data = self._train_data[-max(1, len(self._train_data)//10):]
+            
+        # Get the main data object
+        full_data = self.dataset[0]
+        
+        # Apply subgraph sampling if the graph is too large
+        if self.use_subgraph_sampling and full_data.num_nodes > self.max_nodes_per_graph:
+            logger.info(f"Graph too large ({full_data.num_nodes} nodes). Creating subgraph with {self.max_nodes_per_graph} nodes.")
+            self._main_data = self._create_subgraph_samples(full_data, self.max_nodes_per_graph)
         else:
-            split_data = self._split_graph_data(data)
-            self._train_data = [split_data]
-            self._val_data = [split_data]
-            self._test_data = [split_data]
+            self._main_data = full_data
+        
+        # Extract dataset information for Lightning module
+        self.num_features = self._main_data.x.size(1) if hasattr(self._main_data, 'x') else None
+        if hasattr(self._main_data, 'y'):
+            unique_labels = torch.unique(self._main_data.y)
+            self.num_classes = max(len(unique_labels), 2)  # Ensure at least 2 classes
+            
+            # If we only have one class, create synthetic binary labels for demonstration
+            if len(unique_labels) == 1:
+                logger.warning(f"Dataset has only 1 unique label ({unique_labels[0].item()}). Creating synthetic binary labels for training.")
+                # Create binary labels based on node features or random split
+                num_nodes = self._main_data.y.size(0)
+                # Use feature-based split: nodes with feature sum > median get label 1
+                feature_sums = self._main_data.x.sum(dim=1)
+                median_val = feature_sums.median()
+                self._main_data.y = (feature_sums > median_val).long()
+                self.num_classes = 2
+        
+        # Create train/val/test splits using masks
+        self._create_data_splits()
 
-    def _split_graph_data(self, data):
-        """Split graph data into train/val/test masks."""
+    def _create_data_splits(self):
+        """Create train/val/test masks for the graph data."""
+        data = self._main_data
         num_nodes = data.num_nodes
         
         # Create train/val/test masks
@@ -164,7 +186,9 @@ class AstroDataModule(L.LightningDataModule):
         data.val_mask[indices[train_size : train_size + val_size]] = True
         data.test_mask[indices[train_size + val_size :]] = True
         
-        return data
+        # Log split information
+        logger.info(f"Data splits - Train: {data.train_mask.sum()}, "
+                   f"Val: {data.val_mask.sum()}, Test: {data.test_mask.sum()}")
 
     def _create_subgraph_samples(self, data, max_nodes: int):
         """Create smaller subgraph samples for laptop training."""
@@ -245,55 +269,62 @@ class AstroDataModule(L.LightningDataModule):
 
     def train_dataloader(self):
         """Create training dataloader with optimizations."""
-        if self.dataset is None:
+        if self._main_data is None:
             self.setup()
 
-        if not self._train_data:
-            raise ValueError("Training data is empty")
-
-        kwargs = self._get_dataloader_kwargs()
-        kwargs["drop_last"] = True  # Always drop last for training
-        
-        # Add distributed sampler if needed
-        if self.use_distributed_sampler and torch.distributed.is_initialized():
-            # For graph data, we typically don't use DistributedSampler
-            # as we're working with multiple graphs
-            pass
-        
-        return DataLoader(self._train_data, **kwargs)
+        # Create a simple dataloader that yields the data object directly
+        class SingleGraphDataLoader:
+            def __init__(self, data):
+                self.data = data
+                
+            def __iter__(self):
+                yield self.data
+                
+            def __len__(self):
+                return 1
+                
+        return SingleGraphDataLoader(self._main_data)
 
     def val_dataloader(self):
         """Create validation dataloader."""
-        if self.dataset is None:
+        if self._main_data is None:
             self.setup()
 
-        if not self._val_data:
-            raise ValueError("Validation data is empty")
-
-        kwargs = self._get_dataloader_kwargs()
-        kwargs["drop_last"] = False  # Don't drop last for validation
-        
-        return DataLoader(self._val_data, **kwargs)
+        # Create a simple dataloader that yields the data object directly
+        class SingleGraphDataLoader:
+            def __init__(self, data):
+                self.data = data
+                
+            def __iter__(self):
+                yield self.data
+                
+            def __len__(self):
+                return 1
+                
+        return SingleGraphDataLoader(self._main_data)
 
     def test_dataloader(self):
         """Create test dataloader."""
-        if self.dataset is None:
+        if self._main_data is None:
             self.setup()
 
-        if not self._test_data:
-            raise ValueError("Test data is empty")
-
-        kwargs = self._get_dataloader_kwargs()
-        kwargs["drop_last"] = False  # Don't drop last for testing
-        
-        return DataLoader(self._test_data, **kwargs)
+        # Create a simple dataloader that yields the data object directly
+        class SingleGraphDataLoader:
+            def __init__(self, data):
+                self.data = data
+                
+            def __iter__(self):
+                yield self.data
+                
+            def __len__(self):
+                return 1
+                
+        return SingleGraphDataLoader(self._main_data)
 
     def teardown(self, stage: Optional[str] = None):
         """Clean up after training/testing."""
         # Clean up cached data
-        self._train_data = []
-        self._val_data = []
-        self._test_data = []
+        self._main_data = None
         
         # Force garbage collection
         import gc
@@ -318,7 +349,8 @@ class AstroDataModule(L.LightningDataModule):
             "persistent_workers": self.persistent_workers,
             "train_ratio": self.train_ratio,
             "val_ratio": self.val_ratio,
-            "num_graphs": len(self._train_data) if hasattr(self, '_train_data') else 0,
+            "num_classes": self.num_classes,
+            "num_features": self.num_features,
         })
         
         return info

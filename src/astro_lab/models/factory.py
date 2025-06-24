@@ -86,13 +86,13 @@ class ModelFactory:
     }
 
     @classmethod
-    def infer_num_classes_from_data(cls, data_loader: Any, target_key: str = "target") -> int:
+    def infer_num_classes_from_data(cls, data_loader: Any, target_key: str = "y") -> int:
         """
         Automatically infer the number of classes from the dataset.
         
         Args:
             data_loader: PyTorch DataLoader or similar iterable
-            target_key: Key for target tensor in batch dict
+            target_key: Key for target tensor in batch dict (default: "y" for PyG)
             
         Returns:
             Number of unique classes found in the data
@@ -102,11 +102,13 @@ class ModelFactory:
             
             # Sample a few batches to determine class count
             for i, batch in enumerate(data_loader):
-                if i >= 10:  # Limit to first 10 batches for efficiency
+                if i >= 5:  # Limit to first 5 batches for efficiency
                     break
                     
                 if isinstance(batch, dict):
                     targets = batch.get(target_key)
+                elif hasattr(batch, target_key):  # PyTorch Geometric Data objects
+                    targets = getattr(batch, target_key)
                 elif isinstance(batch, (list, tuple)) and len(batch) >= 2:
                     targets = batch[1]  # Assume (data, target) format
                 else:
@@ -133,13 +135,13 @@ class ModelFactory:
             if min_class != 0:
                 print(f"⚠️  Warning: Classes start from {min_class}, not 0")
             
-            print(f"🔍 Automatically detected {num_classes} classes: {unique_classes.tolist()}")
+            print(f"Auto-detected {num_classes} classes from data")
             return num_classes
             
         except Exception as e:
             print(f"❌ Error inferring classes from data: {e}")
             # Fallback to default
-            return 7
+            return 4
 
     @classmethod
     def create_survey_model(

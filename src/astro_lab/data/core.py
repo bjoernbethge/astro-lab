@@ -560,8 +560,13 @@ class AstroDataset(InMemoryDataset):
 
     def get_info(self) -> Dict[str, Any]:
         if len(self) == 0:
-            return {"error": "Dataset empty"}
+            return {"error": "Dataset empty", "columns": []}
+        
         sample = self[0]
+        
+        # Get standard survey columns based on survey type
+        standard_columns = self._get_standard_columns_for_survey()
+        
         return {
             "survey": self.survey,
             "num_samples": len(self),
@@ -569,7 +574,23 @@ class AstroDataset(InMemoryDataset):
             "num_edges": sample.edge_index.shape[1] if hasattr(sample, "edge_index") else 0,
             "num_features": sample.x.shape[1] if hasattr(sample, "x") else 0,
             "k_neighbors": self.k_neighbors,
+            "columns": standard_columns,  # Add columns info
         }
+    
+    def _get_standard_columns_for_survey(self) -> List[str]:
+        """Get standard column names for the survey type."""
+        try:
+            from astro_lab.utils.config.surveys import get_survey_config
+            config = get_survey_config(self.survey)
+            # Combine coordinate, magnitude, and extra columns
+            columns = []
+            columns.extend(config.get("coord_cols", ["ra", "dec"]))
+            columns.extend(config.get("mag_cols", []))
+            columns.extend(config.get("extra_cols", []))
+            return columns
+        except Exception:
+            # Fallback for unknown surveys
+            return ["ra", "dec", "mag"] if self.survey in ["gaia", "nsa", "exoplanet"] else []
 
 
 def load_gaia_data(
