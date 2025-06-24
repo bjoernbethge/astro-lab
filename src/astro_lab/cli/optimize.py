@@ -333,12 +333,21 @@ def optimize_from_config(
             precision="16-mixed",
         )
 
+        # Get optimization config and search space
+        opt_config = config.get("optimization", {})
+        search_space = opt_config.get("search_space")
+        n_trials_config = opt_config.get("n_trials", n_trials or 50)
+        
         # Run optimization
         logger.info("🔍 Starting hyperparameter optimization...")
+        logger.info(f"   Using search space: {search_space is not None}")
+        logger.info(f"   Number of trials: {n_trials_config}")
+        
         results = trainer.optimize_hyperparameters(
             train_dataloader=datamodule.train_dataloader(),
             val_dataloader=datamodule.val_dataloader(),
-            n_trials=n_trials or 50,
+            n_trials=n_trials_config,
+            search_space=search_space,
         )
         
         logger.info("🎉 Hyperparameter optimization completed!")
@@ -589,11 +598,20 @@ def run_optimization(loader: ConfigLoader, config: Dict[str, Any], n_trials: int
             precision="16-mixed",
         )
         
+        # Get optimization config and search space
+        opt_config = config.get("optimization", {})
+        search_space = opt_config.get("search_space")
+        n_trials_config = opt_config.get("n_trials", n_trials)
+        
         # Run optimization
+        logger.info(f"   Using search space: {search_space is not None}")
+        logger.info(f"   Number of trials: {n_trials_config}")
+        
         results = trainer.optimize_hyperparameters(
             train_dataloader=datamodule.train_dataloader(),
             val_dataloader=datamodule.val_dataloader(),
-            n_trials=n_trials,
+            n_trials=n_trials_config,
+            search_space=search_space,
         )
         
         logger.info("🎉 Optimization completed!")
