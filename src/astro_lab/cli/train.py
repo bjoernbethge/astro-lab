@@ -122,6 +122,9 @@ def train_from_config(config_path: str) -> None:
             use_subgraph_sampling=data_config_section.get("use_subgraph_sampling", True),
         )
         
+        # Setup datamodule to extract metadata
+        datamodule.setup()
+        
         # Extract model config
         model_config = config.get("model", {})
         model_type = model_config.get("type", "gaia_classifier")
@@ -130,41 +133,27 @@ def train_from_config(config_path: str) -> None:
         # Auto-detect classes if needed (silently)
         if "output_dim" not in model_params or model_params["output_dim"] is None:
             try:
-                train_loader = datamodule.train_dataloader()
-                targets = []
-                
-                for i, batch in enumerate(train_loader):
-                    # Handle PyTorch Geometric Data objects
-                    if hasattr(batch, 'y'):
-                        t = batch.y
-                    elif isinstance(batch, list) and len(batch) > 0 and hasattr(batch[0], 'y'):
-                        t = batch[0].y
-                    elif isinstance(batch, dict):
-                        t = batch.get("target") or batch.get("y")
-                    elif isinstance(batch, (list, tuple)) and len(batch) > 1:
-                        t = batch[1]
-                    else:
-                        t = None
-                        
-                    if t is not None:
-                        targets.append(t.flatten())
-                    if i > 5:
-                        break
-                
-                if targets:
-                    import torch
-                    all_targets = torch.cat(targets)
-                    num_classes = int(all_targets.max().item()) + 1
-                    # Ensure at least 2 classes for classification
-                    num_classes = max(num_classes, 2)
+                # Use datamodule metadata if available
+                if hasattr(datamodule, 'num_classes') and datamodule.num_classes:
+                    num_classes = max(datamodule.num_classes, 2)
                     model_params["output_dim"] = num_classes
                     print(f"Auto-detected {num_classes} classes from data")
                 else:
-                    model_params["output_dim"] = 4
-                    print("Using default 4 classes")
-            except:
+                    # Fallback: sample from dataloader
+                    train_data = datamodule._main_data
+                    if hasattr(train_data, 'y'):
+                        targets = train_data.y
+                        num_classes = int(targets.max().item()) + 1
+                        # Ensure at least 2 classes for classification
+                        num_classes = max(num_classes, 2)
+                        model_params["output_dim"] = num_classes
+                        print(f"Auto-detected {num_classes} classes from data")
+                    else:
+                        model_params["output_dim"] = 4
+                        print("Using default 4 classes")
+            except Exception as e:
                 model_params["output_dim"] = 4
-                print("Using default 4 classes")
+                print(f"Using default 4 classes (error: {e})")
         
         # Create model
         if model_type == "gaia_classifier":
@@ -187,6 +176,37 @@ def train_from_config(config_path: str) -> None:
         
         print(f"Created model: {type(model).__name__}")
         
+        # Apply torch.compile with robust error handling BEFORE creating LightningModule
+        if config.get("training", {}).get("use_compile", True):
+            try:
+                print("🔄 Attempting to compile model with torch.compile...")
+                model = torch.compile(
+                    model,
+                    mode="reduce-overhead",  # More stable than "max-autotune"
+                    backend="inductor",  # Use inductor backend for best performance
+                    fullgraph=False,  # Allow fallback for unsupported operations
+                    dynamic=True,  # Enable dynamic shapes
+                )
+                print("✅ Model compiled successfully with torch.compile")
+            except Exception as e:
+                print(f"⚠️ torch.compile failed: {e}")
+                print("🔄 Falling back to eager mode (no compilation)")
+                try:
+                    # Fallback to eager backend (no compilation, just Python)
+                    model = torch.compile(
+                        model,
+                        backend="eager",
+                        fullgraph=False,
+                    )
+                    print("✅ Model using eager backend (no compilation)")
+                except Exception as fallback_error:
+                    print(f"⚠️ Even eager compilation failed: {fallback_error}")
+                    print("🔄 Using uncompiled model")
+                    # Keep the original model without compilation
+                    pass
+        else:
+            print("📝 Model training without torch.compile")
+        
         # Extract training config
         training_config = config.get("training", {})
         
@@ -201,7 +221,7 @@ def train_from_config(config_path: str) -> None:
             gradient_clip_algorithm=training_config.get("gradient_clip_algorithm", "norm"),
             scheduler_type=training_config.get("scheduler_type", "cosine"),
             warmup_steps=training_config.get("warmup_steps", 0),
-            use_compile=training_config.get("use_compile", False),
+            use_compile=True,  # Always enable torch.compile
             use_ema=training_config.get("use_ema", False),
             ema_decay=training_config.get("ema_decay", 0.999),
             label_smoothing=training_config.get("label_smoothing", 0.0),
@@ -209,31 +229,46 @@ def train_from_config(config_path: str) -> None:
         
         # Setup callbacks
         callbacks = []
+
+        # Setup results structure in project root parallel to data/
+        dataset_name = datamodule.dataset_name if hasattr(datamodule, 'dataset_name') else 'unknown'
         
-        # Early stopping
+        # Project root results structure: results/survey/models/, results/survey/statistics/, results/survey/visuals/
+        project_root = Path.cwd()  # astro-lab/
+        results_base = project_root / "results" / dataset_name
+        models_dir = results_base / "models"
+        statistics_dir = results_base / "statistics"  
+        visuals_dir = results_base / "visuals"
+        
+        # Create directories
+        for dir_path in [models_dir, statistics_dir, visuals_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+        
+        # ModelCheckpoint: speichert in results/survey/models/
+        # Format: results/gaia/models/gaia_gcn.ckpt
+        model_base_name = f"{dataset_name}_{model_params.get('conv_type', 'gcn')}"
+        callbacks.append(ModelCheckpoint(
+            dirpath=str(models_dir),
+            filename=f"{model_base_name}",  # gaia_gcn.ckpt
+            monitor="val_loss",
+            mode="min",
+            save_top_k=1,  # Nur das beste
+            save_last=False,  # Kein last model
+            verbose=True
+        ))
+
+        # EarlyStopping: stoppt, wenn sich val_loss nicht verbessert
         callbacks.append(EarlyStopping(
             monitor="val_loss",
             patience=training_config.get("patience", 10),
             mode="min",
-            verbose=False  # Disable verbose
+            verbose=True
         ))
-        
-        # Model checkpointing
-        checkpoint_dir = data_config.checkpoints_dir / experiment_name
-        callbacks.append(ModelCheckpoint(
-            dirpath=str(checkpoint_dir),
-            monitor="val_loss",
-            mode="min",
-            save_top_k=3,
-            save_last=True,
-            filename=f"{experiment_name}_{{epoch:02d}}_{{val_loss:.4f}}",
-            verbose=False  # Disable verbose
-        ))
-        
-        # Learning rate monitoring
+
+        # LearningRateMonitor: loggt den Lernratenverlauf
         callbacks.append(LearningRateMonitor(logging_interval="step"))
-        
-        # Stochastic Weight Averaging (if enabled)
+
+        # Stochastic Weight Averaging (optional)
         if training_config.get("use_swa", False):
             callbacks.append(StochasticWeightAveraging(
                 swa_lrs=training_config.get("swa_lr", 0.001),
@@ -295,7 +330,7 @@ def train_from_config(config_path: str) -> None:
             logger=logger_instance,
             gradient_clip_val=None,  # Handled in LightningModule
             enable_progress_bar=True,
-            enable_model_summary=True,
+            enable_model_summary=True,  # Re-enable for debugging
             enable_checkpointing=True,
             log_every_n_steps=training_config.get("log_every_n_steps", 50),
             # Don't set accumulate_grad_batches here since we use manual optimization
@@ -318,29 +353,60 @@ def train_from_config(config_path: str) -> None:
         # Test
         trainer.test(lightning_module, datamodule=datamodule)
         
-        # Save results
-        results_dir = data_config.results_dir / experiment_name
-        results_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Get best checkpoint path from callback
+        # Collect training statistics
         checkpoint_callback = None
         for callback in callbacks:
             if isinstance(callback, ModelCheckpoint):
                 checkpoint_callback = callback
                 break
         
-        model_info = {
-            "experiment_name": experiment_name,
-            "model_type": type(model).__name__,
-            "model_params": model_params,
-            "training_config": training_config,
-            "best_model_path": str(checkpoint_callback.best_model_path) if checkpoint_callback else None,
+        # Get trainer metrics
+        train_metrics = trainer.logged_metrics if hasattr(trainer, 'logged_metrics') else {}
+        
+        # Create focused training summary with statistics
+        training_summary = {
+            "model": f"{dataset_name}_{model_params.get('conv_type', 'gcn')}",
+            "dataset": dataset_name,
+            "model_path": str(checkpoint_callback.best_model_path) if checkpoint_callback else None,
+            
+            # Training Statistics
+            "training_stats": {
+                "epochs_trained": training_config.get("max_epochs", 20),
+                "best_val_loss": float(train_metrics.get("val_loss", 0.0)),
+                "best_val_acc": float(train_metrics.get("val_acc", 0.0)),
+                "final_train_loss": float(train_metrics.get("train_loss_epoch", 0.0)),
+                "test_acc": float(train_metrics.get("test_acc", 0.0)),
+                "test_loss": float(train_metrics.get("test_loss", 0.0)),
+            },
+            
+            # Model Architecture
+            "architecture": {
+                "conv_type": model_params.get("conv_type", "gcn"),
+                "hidden_dim": model_params.get("hidden_dim", 128),
+                "num_layers": model_params.get("num_layers", 3),
+                "dropout": model_params.get("dropout", 0.2),
+                "activation": model_params.get("activation", "relu"),
+            },
+            
+            # Key Training Parameters  
+            "hyperparameters": {
+                "learning_rate": training_config.get("learning_rate", 0.001),
+                "batch_size": training_config.get("batch_size", 1),
+                "precision": training_config.get("precision", "16-mixed"),
+                "max_samples": training_config.get("max_samples"),
+                "gradient_accumulation": training_config.get("gradient_accumulation_steps", 1),
+            }
         }
         
-        with open(results_dir / "training_summary.yaml", "w") as f:
-            yaml.dump(model_info, f, default_flow_style=False, indent=2)
+        # Save training summary in statistics directory
+        summary_path = statistics_dir / f"{model_base_name}_summary.yaml"
+        with open(summary_path, "w") as f:
+            yaml.dump(training_summary, f, default_flow_style=False, indent=2)
         
-        print(f"Results saved to: {results_dir}")
+        print(f"🏆 Model saved: {models_dir / f'{model_base_name}.ckpt'}")
+        print(f"📊 Statistics saved: {summary_path}")
+        print(f"📈 Visuals directory: {visuals_dir}")
+        print(f"📁 Results structure: {results_base}")
         
         # Cleanup
         import torch
@@ -370,7 +436,6 @@ def train_quick(
     strategy: str = "auto",
     precision: str = "16-mixed",
     accumulate: int = 1,
-    compile: bool = False,
 ) -> None:
     """
     Quick training without config file.
@@ -387,7 +452,6 @@ def train_quick(
         strategy: Training strategy (auto/ddp/fsdp)
         precision: Training precision
         accumulate: Gradient accumulation steps
-        compile: Use torch.compile
     """
     from astro_lab.data.config import data_config
     
@@ -400,7 +464,13 @@ def train_quick(
     temp_config = {
         "mlflow": {
             "experiment_name": f"quick_{model}_{dataset}",
-            "tracking_uri": "file:./data/experiments/mlruns"
+            "tracking_uri": "file:./data/experiments/mlruns",
+            "tags": {
+                "mode": "quick_training",
+                "dataset": dataset,
+                "model": model,
+                "version": "v1.0"
+            }
         },
         "model": {
             "type": model,
@@ -445,7 +515,7 @@ def train_quick(
             "gradient_clip_algorithm": "norm",
             "scheduler_type": "cosine",
             "warmup_steps": 0,
-            "use_compile": compile,
+            "use_compile": True,
             "use_ema": False,
             "ema_decay": 0.999,
             "label_smoothing": 0.0,
@@ -487,7 +557,6 @@ def train_quick(
         print(f"   Strategy: {strategy}")
         print(f"   Precision: {precision}")
         print(f"   Gradient accumulation: {accumulate}")
-        print(f"   Compile: {compile}")
         
         # Run training
         train_from_config(str(temp_config_path))
@@ -528,7 +597,6 @@ Examples:
     parser.add_argument("--strategy", default="auto", help="Training strategy (auto/ddp/fsdp)")
     parser.add_argument("--precision", default="16-mixed", help="Training precision (32/16-mixed/bf16-mixed)")
     parser.add_argument("--accumulate", type=int, default=1, help="Gradient accumulation steps")
-    parser.add_argument("--compile", action="store_true", help="Use torch.compile for optimization")
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     
     args = parser.parse_args()
@@ -547,7 +615,6 @@ Examples:
             args.strategy,
             args.precision,
             args.accumulate,
-            args.compile,
         )
     else:
         parser.print_help()

@@ -147,15 +147,15 @@ def main():
         description="AstroLab - Astronomical Machine Learning Laboratory",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=safe_print("""
-🚀 Available Commands:
+Available Commands:
 
-astro-lab preprocess     🔄 Easy preprocessing - process all surveys or specific files
-astro-lab download      📡 Download astronomical datasets  
-astro-lab train         🧠 ML-Model Training with Lightning + MLflow
-astro-lab optimize      🎯 Hyperparameter optimization with Optuna
-astro-lab config        🔧 Configuration management
+astro-lab preprocess     Easy preprocessing - process all surveys or specific files
+astro-lab download      Download astronomical datasets  
+astro-lab train         ML-Model Training with Lightning + MLflow
+astro-lab optimize      Hyperparameter optimization with Optuna
+astro-lab config        Configuration management
 
-📖 Examples:
+Examples:
 
 # Easy: Process all surveys with defaults
 astro-lab preprocess
@@ -182,7 +182,7 @@ astro-lab download gaia --magnitude-limit 12.0
 astro-lab train --config my_config.yaml
 astro-lab train --dataset gaia --model gaia_classifier --epochs 50
 
-💡 Use 'astro-lab <command> --help' for detailed options!
+Use 'astro-lab <command> --help' for detailed options!
         """),
     )
 
@@ -793,13 +793,12 @@ def handle_train(args):
             strategy=getattr(args, 'strategy', 'auto'),
             precision=getattr(args, 'precision', '16-mixed'),
             accumulate=getattr(args, 'accumulate', 1),
-            compile=getattr(args, 'compile', False),
         )
     else:
         # Show help if insufficient arguments
         print("Usage:", file=sys.stderr)
         print("  astro-lab train --config <config.yaml>", file=sys.stderr)
-        print("  astro-lab train --dataset <dataset> --model <model> [--epochs N] [--batch-size N] [--learning-rate LR] [--devices N] [--strategy STRATEGY] [--precision PRECISION] [--accumulate N] [--compile]", file=sys.stderr)
+        print("  astro-lab train --dataset <dataset> --model <model> [--epochs N] [--batch-size N] [--learning-rate LR] [--devices N] [--strategy STRATEGY] [--precision PRECISION] [--accumulate N]", file=sys.stderr)
         sys.exit(1)
 
 
