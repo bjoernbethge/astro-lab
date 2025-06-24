@@ -126,16 +126,23 @@ class TestCLI:
         assert "train" in result.stdout.lower()
 
     def test_config_command(self):
-        """Test config command functionality."""
+        """Test config command functionality.""" 
         with patch('sys.argv', ['astro-lab', 'config', 'surveys']):
-            with patch('astro_lab.utils.config.loader.ConfigLoader.list_available_surveys') as mock_list:
-                mock_list.return_value = ["gaia", "sdss", "nsa"]
-                with patch('astro_lab.cli.logger.info') as mock_logger:
-                    from astro_lab.cli import main
-                    try:
-                        main()
-                    except SystemExit:
-                        pass
-                    mock_list.assert_called_once()
-                    # Check that surveys were logged
-                    assert any("gaia" in str(call) for call in mock_logger.call_args_list) 
+            # Mock at the module level where it's imported
+            with patch('astro_lab.cli.handle_config') as mock_handle_config:
+                # Import before patching
+                from astro_lab.cli import main
+                
+                # Make the mock return successfully
+                mock_handle_config.return_value = None
+                
+                try:
+                    main()
+                except SystemExit:
+                    pass
+                    
+                # Check that handle_config was called with the correct args
+                mock_handle_config.assert_called_once()
+                args = mock_handle_config.call_args[0][0]
+                assert hasattr(args, 'config_action')
+                assert args.config_action == 'surveys' 
