@@ -33,7 +33,7 @@ class AstroLabWidget:
     Provides Blender API attributes and delegates to specialized modules.
     """
     
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any):
         """
         Initialize the widget and set up Blender API attributes if available.
         """
@@ -76,7 +76,7 @@ class AstroLabWidget:
             self.scene = None
             logger.error(f"Failed to connect Blender API: {e}")
 
-    def plot(self, data: Any, plot_type: str = "scatter_3d", backend: str = "auto", max_points: int = 100_000, **config) -> Any:
+    def plot(self, data: Any, plot_type: str = "scatter_3d", backend: str = "auto", max_points: int = 100_000, **config: Any) -> Any:
         """
         Visualize astronomical data using the optimal backend.
 

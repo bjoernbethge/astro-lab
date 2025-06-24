@@ -253,7 +253,7 @@ def create_spatial_graph(
     method: str = "knn",
     k: int = 5,
     radius: float = 1.0,
-    **kwargs,
+    **kwargs: Any,
 ) -> Data:
     """
     Create a spatial graph from Spatial3DTensor.
@@ -429,17 +429,17 @@ def cluster_and_analyze(
     **kwargs,
 ) -> Dict[str, Any]:
     """
-    Führt Clustering und Statistikberechnung auf den gegebenen Koordinaten durch.
+    Performs clustering and statistics calculation on the given coordinates.
     Args:
-        coords: Koordinaten als Tensor [N, D]
+        coords: Coordinates as tensor [N, D]
         algorithm: 'dbscan', 'agglomerative', 'kmeans', 'fof'
-        eps: Radius für DBSCAN/Agglomerative/FoF
-        min_samples: Minimum für DBSCAN
-        n_clusters: Clusteranzahl für KMeans/Agglomerative
-        use_gpu: GPU für Nachbarschaftssuche (nicht für Clustering selbst)
-        **kwargs: Zusätzliche Parameter
+        eps: Radius for DBSCAN/Agglomerative/FoF
+        min_samples: Minimum for DBSCAN
+        n_clusters: Number of clusters for KMeans/Agglomerative
+        use_gpu: GPU for neighborhood search (not for clustering itself)
+        **kwargs: Additional parameters
     Returns:
-        Dict mit Labels, Statistiken, n_clusters, n_noise, etc.
+        Dict with labels, statistics, n_clusters, n_noise, etc.
     """
     coords_np = coords.detach().cpu().numpy()
     labels = None
@@ -458,16 +458,16 @@ def cluster_and_analyze(
         clusterer = KMeans(n_clusters=n_clusters, **kwargs)
         labels = clusterer.fit_predict(coords_np)
     elif algorithm == "fof":
-        # Friends-of-Friends als DBSCAN mit nur eps
+        # Friends-of-Friends as DBSCAN with only eps
         clusterer = DBSCAN(eps=eps, min_samples=1, **kwargs)
         labels = clusterer.fit_predict(coords_np)
     else:
-        raise ValueError(f"Unbekannter Algorithmus: {algorithm}")
+        raise ValueError(f"Unknown algorithm: {algorithm}")
     labels_tensor = torch.from_numpy(labels).to(coords.device)
     unique_labels = set(labels)
     n_clusters = len(unique_labels) - (1 if -1 in unique_labels else 0)
     n_noise = sum(1 for label in labels if label == -1)
-    # Statistiken berechnen
+    # Calculate statistics
     cluster_stats = {}
     for cluster_id in unique_labels:
         if cluster_id == -1:

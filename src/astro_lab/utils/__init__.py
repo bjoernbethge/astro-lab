@@ -66,7 +66,7 @@ def get_utils_info() -> Dict[str, Any]:
 
 
 def calculate_volume(coords: "np.ndarray | torch.Tensor") -> float:
-    """Berechnet das Volumen des 3D-Quaders, der alle Punkte umfasst."""
+    """Calculates the volume of the 3D cuboid enclosing all points."""
     if hasattr(coords, "detach"):
         coords = coords.detach().cpu().numpy()
     x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
@@ -76,7 +76,7 @@ def calculate_volume(coords: "np.ndarray | torch.Tensor") -> float:
 
 
 def calculate_mean_density(coords: "np.ndarray | torch.Tensor") -> float:
-    """Berechnet die mittlere Dichte der Objekte im Volumen."""
+    """Calculates the mean density of objects in the volume."""
     n = coords.shape[0]
     vol = calculate_volume(coords)
     return n / vol if vol > 0 else float("nan")

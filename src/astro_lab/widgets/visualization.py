@@ -28,7 +28,7 @@ class VisualizationModule:
     def __init__(self):
         self.plotter = None
     
-    def plot_to_open3d(self, survey_tensor: SurveyTensor, plot_type: str = "scatter_3d", **config) -> Any:
+    def plot_to_open3d(self, survey_tensor: SurveyTensor, plot_type: str = "scatter_3d", **config: Any) -> Any:
         """
         Visualize data using Open3D backend.
         
@@ -70,7 +70,7 @@ class VisualizationModule:
         o3d.visualization.draw_geometries([pcd], window_name=f"AstroLab - {survey_tensor.survey_name}")
         return pcd
     
-    def plot_to_pyvista(self, survey_tensor: SurveyTensor, plot_type: str = "scatter_3d", **config) -> Any:
+    def plot_to_pyvista(self, survey_tensor: SurveyTensor, plot_type: str = "scatter_3d", **config: Any) -> Any:
         """
         Visualize data using PyVista backend.
         
@@ -114,7 +114,7 @@ class VisualizationModule:
         
         return self.plotter
     
-    def plot_to_blender(self, survey_tensor: SurveyTensor, plot_type: str = "scatter_3d", **config) -> Any:
+    def plot_to_blender(self, survey_tensor: SurveyTensor, plot_type: str = "scatter_3d", **config: Any) -> Any:
         """
         Visualize data using Blender backend.
         
@@ -135,7 +135,7 @@ class VisualizationModule:
         logger.info(f"Would send {coords_3d.shape[0]} points to Blender.")
         return coords_3d
     
-    def show(self, *args, **kwargs):
+    def show(self, *args, **kwargs: Any):
         """
         Show the last created interactive visualization.
         """

@@ -24,7 +24,7 @@ class GraphModule:
     PyTorch Geometric integration and model preparation.
     """
     
-    def create_graph(self, survey_tensor: SurveyTensor, k: int = 10, radius: Optional[float] = None, use_gpu: bool = True) -> Data:
+    def create_graph(self, survey_tensor: SurveyTensor, k: int = 10, radius: Optional[float] = None, use_gpu: bool = True, **kwargs: Any) -> Data:
         """
         Create PyTorch Geometric Data object for model training.
         
@@ -33,6 +33,7 @@ class GraphModule:
             k: Number of nearest neighbors
             radius: Radius for neighbor search
             use_gpu: Whether to use GPU acceleration
+            **kwargs: Additional parameters
             
         Returns:
             PyTorch Geometric Data object
@@ -115,7 +116,7 @@ class GraphModule:
             "distances": distances.cpu()
         }
 
-    def prepare_for_model(self, survey_tensor: SurveyTensor, model_type: str = "gnn", **kwargs) -> Any:
+    def prepare_for_model(self, survey_tensor: SurveyTensor, model_type: str = "gnn", **kwargs: Any) -> Any:
         """
         Prepare data for specific model types from the models module.
         
