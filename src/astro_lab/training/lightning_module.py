@@ -15,21 +15,29 @@ import torch
 import torch.nn.functional as F
 from lightning import LightningModule
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, ReduceLROnPlateau, CosineAnnealingWarmRestarts
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    CosineAnnealingWarmRestarts,
+    OneCycleLR,
+    ReduceLROnPlateau,
+)
 from torchmetrics import Accuracy, F1Score, Precision, Recall
 from torchmetrics.classification import MulticlassAccuracy
 
 # Import real model classes
-from astro_lab.models.astro import AstroSurveyGNN
-from astro_lab.models.astrophot_models import AstroPhotGNN
-from astro_lab.models.config import ModelConfig
-from astro_lab.models.factory import create_gaia_classifier
-from astro_lab.models.tgnn import ALCDEFTemporalGNN
+from astro_lab.models import (
+    ALCDEFTemporalGNN,
+    AstroPhotGNN,
+    AstroSurveyGNN,
+    ModelConfig,
+    create_gaia_classifier,
+)
 from astro_lab.training.config import TrainingConfig
 
 # Setup logging - only errors
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
+
 
 class AstroLightningModule(LightningModule):
     """
@@ -84,7 +92,7 @@ class AstroLightningModule(LightningModule):
         self.num_classes = num_classes  # Will be set automatically if None
         self.model_config = model_config
         self.training_config = training_config
-        
+
         # Advanced training options
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.gradient_clip_val = gradient_clip_val
@@ -95,13 +103,13 @@ class AstroLightningModule(LightningModule):
         self.use_ema = use_ema
         self.ema_decay = ema_decay
         self.label_smoothing = label_smoothing
-        
+
         # Use automatic optimization (default) instead of manual
         self.automatic_optimization = True
 
         # Initialize model with robust error handling
         self._initialize_model(model)
-        
+
         # Initialize EMA if requested
         if self.use_ema:
             self._init_ema()
@@ -140,13 +148,14 @@ class AstroLightningModule(LightningModule):
         """Initialize model with compile support and error handling."""
         if model is None:
             model = self._create_default_model()
-        
+
         self.model = model
-        
+
         # Skip torch.compile on Windows due to cl.exe and triton issues
         import platform
+
         skip_compile_windows = platform.system() == "Windows"
-        
+
         # Apply torch.compile with robust error handling
         if self.use_compile and not skip_compile_windows:
             try:
@@ -166,7 +175,9 @@ class AstroLightningModule(LightningModule):
                 pass
         else:
             if skip_compile_windows:
-                logger.info("🔄 Skipping torch.compile on Windows (cl.exe/triton compatibility)")
+                logger.info(
+                    "🔄 Skipping torch.compile on Windows (cl.exe/triton compatibility)"
+                )
             else:
                 logger.info("📝 Model training without torch.compile")
 
@@ -179,29 +190,29 @@ class AstroLightningModule(LightningModule):
                 "data/processed/gaia/gaia_metadata.json",
                 "data/processed/gaia_metadata.json",
             ]
-            
+
             import json
             from pathlib import Path
-            
+
             for metadata_path in metadata_paths:
                 path = Path(metadata_path)
                 if path.exists():
-                    with open(path, 'r') as f:
+                    with open(path, "r") as f:
                         metadata = json.load(f)
-                    
+
                     # Check for classification info
                     if "classification" in metadata:
                         num_classes = metadata["classification"].get("num_classes")
                         if num_classes:
                             return int(num_classes)
-                    
+
                     # Fallback: check for direct num_classes field
                     if "num_classes" in metadata:
                         num_classes = metadata["num_classes"]
                         return int(num_classes)
-            
+
             return None
-            
+
         except Exception:
             return None
 
@@ -220,16 +231,20 @@ class AstroLightningModule(LightningModule):
         if self.task_type == "classification" and not self.metrics_initialized:
             # Ensure we have at least 2 classes
             num_classes = max(num_classes, 2)
-            device = self.device if hasattr(self, 'device') else 'cpu'
-            
+            device = self.device if hasattr(self, "device") else "cpu"
+
             # Always use multiclass metrics for consistency
             self.train_acc = MulticlassAccuracy(num_classes=num_classes).to(device)
             self.val_acc = MulticlassAccuracy(num_classes=num_classes).to(device)
             self.test_acc = MulticlassAccuracy(num_classes=num_classes).to(device)
-            self.train_f1 = F1Score(task="multiclass", num_classes=num_classes).to(device)
+            self.train_f1 = F1Score(task="multiclass", num_classes=num_classes).to(
+                device
+            )
             self.val_f1 = F1Score(task="multiclass", num_classes=num_classes).to(device)
-            self.test_f1 = F1Score(task="multiclass", num_classes=num_classes).to(device)
-            
+            self.test_f1 = F1Score(task="multiclass", num_classes=num_classes).to(
+                device
+            )
+
             self.metrics_initialized = True
             logger.info(f"✅ Metrics initialized for {num_classes} classes")
 
@@ -237,11 +252,11 @@ class AstroLightningModule(LightningModule):
         """Detect number of classes from a batch of data."""
         try:
             # Handle PyTorch Geometric Data objects
-            if hasattr(batch, 'y'):
+            if hasattr(batch, "y"):
                 targets = batch.y
             elif isinstance(batch, list) and len(batch) > 0:
                 # Handle list of data objects
-                if hasattr(batch[0], 'y'):
+                if hasattr(batch[0], "y"):
                     targets = batch[0].y
                 else:
                     targets = batch[1] if len(batch) > 1 else None
@@ -251,7 +266,7 @@ class AstroLightningModule(LightningModule):
                 targets = batch[1]
             else:
                 targets = None
-                
+
             if targets is not None:
                 if targets.dim() > 1:
                     targets = targets.flatten()
@@ -260,7 +275,7 @@ class AstroLightningModule(LightningModule):
                 return max(num_classes, 2)
             else:
                 return 4  # Default fallback
-                
+
         except Exception as e:
             logger.warning(f"Could not detect classes from data: {e}")
             return 4  # Default fallback
@@ -272,7 +287,6 @@ class AstroLightningModule(LightningModule):
                 return self._create_model_from_config(self.model_config)
             else:
                 # Create a simple default model
-                from astro_lab.models.astro import AstroSurveyGNN
                 return AstroSurveyGNN(
                     input_dim=16,  # Default input dimension
                     hidden_dim=64,
@@ -287,45 +301,43 @@ class AstroLightningModule(LightningModule):
                 torch.nn.Linear(16, 64),
                 torch.nn.ReLU(),
                 torch.nn.Dropout(0.1),
-                torch.nn.Linear(64, self.num_classes or 4)
+                torch.nn.Linear(64, self.num_classes or 4),
             )
 
     def _create_model_from_config(self, config: ModelConfig) -> torch.nn.Module:
         """Create model from configuration."""
         try:
-            model_type = config.model_type.lower()
-            
-            if "gaia" in model_type:
-                from astro_lab.models.factory import create_gaia_classifier
+            # Use the simplified ModelConfig fields
+            if (
+                config.task == "classification"
+                and config.name
+                and "gaia" in config.name.lower()
+            ):
                 return create_gaia_classifier(
-                    input_dim=config.encoder.input_dim,
-                    hidden_dim=config.encoder.hidden_dim,
-                    output_dim=config.output.output_dim,
-                    num_layers=config.encoder.num_layers,
-                    dropout=config.training.dropout if config.training else 0.1,
+                    hidden_dim=config.hidden_dim,
+                    num_classes=config.output_dim or 7,
                 )
-            elif "astrophot" in model_type:
+            elif config.name and "astrophot" in config.name.lower():
                 return AstroPhotGNN(
-                    input_dim=config.encoder.input_dim,
-                    hidden_dim=config.encoder.hidden_dim,
-                    output_dim=config.output.output_dim,
-                    num_layers=config.encoder.num_layers,
+                    hidden_dim=config.hidden_dim,
+                    output_dim=config.output_dim or 12,
                 )
-            elif "temporal" in model_type:
+            elif config.name and "temporal" in config.name.lower():
                 return ALCDEFTemporalGNN(
-                    input_dim=config.encoder.input_dim,
-                    hidden_dim=config.encoder.hidden_dim,
-                    output_dim=config.output.output_dim,
-                    num_layers=config.encoder.num_layers,
+                    hidden_dim=config.hidden_dim,
+                    task=config.task or "period_detection",
                 )
             else:
+                # Default survey GNN
                 return AstroSurveyGNN(
-                    input_dim=config.encoder.input_dim,
-                    hidden_dim=config.encoder.hidden_dim,
-                    output_dim=config.output.output_dim,
-                    num_layers=config.encoder.num_layers,
+                    hidden_dim=config.hidden_dim,
+                    output_dim=config.output_dim or 4,
+                    num_layers=config.num_layers,
+                    conv_type=config.conv_type,
+                    task=config.task or "classification",
+                    dropout=config.dropout,
                 )
-                
+
         except Exception as e:
             logger.error(f"Failed to create model from config: {e}")
             return self._create_default_model()
@@ -347,27 +359,27 @@ class AstroLightningModule(LightningModule):
     ) -> torch.Tensor:
         """
         Forward pass - handles different input formats.
-        
+
         Args:
             batch: Input batch (can be PyTorch Geometric Data, tensor, or dict)
-            
+
         Returns:
             Model output tensor
         """
         try:
             # Handle PyTorch Geometric Data objects
-            if hasattr(batch, 'x') and hasattr(batch, 'edge_index'):
+            if hasattr(batch, "x") and hasattr(batch, "edge_index"):
                 # Standard PyTorch Geometric forward pass
                 return self.model(batch.x, batch.edge_index)
             elif isinstance(batch, dict):
                 # Handle dictionary input
-                if 'x' in batch and 'edge_index' in batch:
-                    return self.model(batch['x'], batch['edge_index'])
-                elif 'input' in batch:
-                    return self.model(batch['input'])
+                if "x" in batch and "edge_index" in batch:
+                    return self.model(batch["x"], batch["edge_index"])
+                elif "input" in batch:
+                    return self.model(batch["input"])
                 else:
                     # Try to find the main input
-                    inputs = batch.get('features') or batch.get('data')
+                    inputs = batch.get("features") or batch.get("data")
                     return self.model(inputs)
             elif isinstance(batch, (list, tuple)):
                 # Handle list/tuple input
@@ -378,7 +390,7 @@ class AstroLightningModule(LightningModule):
             else:
                 # Handle tensor input
                 return self.model(batch)
-                
+
         except Exception as e:
             logger.error(f"Forward pass failed: {e}")
             logger.error(f"Batch type: {type(batch)}")
@@ -392,14 +404,14 @@ class AstroLightningModule(LightningModule):
             # Ensure both tensors are on the same device
             if outputs.device != targets.device:
                 targets = targets.to(outputs.device)
-            
+
             if self.task_type == "classification":
                 # Ensure targets are the right type and shape
                 if targets.dtype != torch.long:
                     targets = targets.long()
                 if targets.dim() > 1:
                     targets = targets.squeeze(-1)
-                
+
                 # Handle shape mismatch for classification
                 if outputs.dim() > 1 and outputs.size(-1) == 1:
                     # Binary classification with single output
@@ -409,7 +421,9 @@ class AstroLightningModule(LightningModule):
                 else:
                     # Multi-class classification
                     if self.label_smoothing > 0:
-                        return F.cross_entropy(outputs, targets, label_smoothing=self.label_smoothing)
+                        return F.cross_entropy(
+                            outputs, targets, label_smoothing=self.label_smoothing
+                        )
                     else:
                         return F.cross_entropy(outputs, targets)
             elif self.task_type == "regression":
@@ -432,38 +446,40 @@ class AstroLightningModule(LightningModule):
     def _compute_step(self, batch: Any, stage: str) -> Dict[str, torch.Tensor]:
         """
         Unified step computation for train/val/test.
-        
+
         Args:
             batch: Input batch (PyTorch Geometric Data object or list)
             stage: One of 'train', 'val', 'test'
-            
+
         Returns:
             Dictionary with loss and other metrics
         """
         try:
             # Ensure we have a PyTorch Geometric Data object
-            if not hasattr(batch, 'x') or not hasattr(batch, 'edge_index'):
-                raise ValueError(f"Expected PyTorch Geometric Data object, got {type(batch)}")
-            
+            if not hasattr(batch, "x") or not hasattr(batch, "edge_index"):
+                raise ValueError(
+                    f"Expected PyTorch Geometric Data object, got {type(batch)}"
+                )
+
             # Initialize metrics if not done yet
-            if not self.metrics_initialized and hasattr(batch, 'y'):
+            if not self.metrics_initialized and hasattr(batch, "y"):
                 num_classes = self._detect_num_classes_from_data(batch)
                 self.num_classes = num_classes
                 self._create_metrics_for_classes(num_classes)
-            
+
             # Get the appropriate mask for this stage
-            if stage == "train" and hasattr(batch, 'train_mask'):
+            if stage == "train" and hasattr(batch, "train_mask"):
                 mask = batch.train_mask
-            elif stage == "val" and hasattr(batch, 'val_mask'):
+            elif stage == "val" and hasattr(batch, "val_mask"):
                 mask = batch.val_mask
-            elif stage == "test" and hasattr(batch, 'test_mask'):
+            elif stage == "test" and hasattr(batch, "test_mask"):
                 mask = batch.test_mask
             else:
                 mask = None
-            
+
             # Forward pass
             outputs = self.forward(batch)
-            
+
             # Apply mask if available
             if mask is not None and mask.sum() > 0:
                 outputs_masked = outputs[mask]
@@ -471,21 +487,21 @@ class AstroLightningModule(LightningModule):
             else:
                 outputs_masked = outputs
                 targets_masked = batch.y
-            
+
             # Ensure we have valid targets
             if targets_masked.numel() == 0:
                 logger.warning(f"No valid targets for stage {stage}, using full batch")
                 outputs_masked = outputs
                 targets_masked = batch.y
-            
+
             # Compute loss
             loss = self._compute_loss(outputs_masked, targets_masked)
-            
+
             # Log metrics
             self._log_step_metrics(outputs_masked, targets_masked, loss, stage)
-            
+
             return {"loss": loss, "outputs": outputs_masked, "targets": targets_masked}
-            
+
         except Exception as e:
             logger.error(f"Step computation failed for stage {stage}: {e}")
             logger.error(f"Batch type: {type(batch)}")
@@ -503,18 +519,24 @@ class AstroLightningModule(LightningModule):
         """Log metrics for the current step."""
         try:
             # Log loss
-            self.log(f"{stage}_loss", loss, on_step=(stage=="train"), on_epoch=True, prog_bar=True)
-            
+            self.log(
+                f"{stage}_loss",
+                loss,
+                on_step=(stage == "train"),
+                on_epoch=True,
+                prog_bar=True,
+            )
+
             # Log accuracy for classification
             if self.task_type == "classification" and self.metrics_initialized:
                 # Ensure targets and outputs are on the same device and correct shape
                 if outputs.device != targets.device:
                     targets = targets.to(outputs.device)
-                
+
                 # Always use logits for multiclass metrics
                 preds = outputs
                 targets = targets.long()
-                
+
                 # Ensure metrics are on the correct device
                 if stage == "train" and self.train_acc is not None:
                     self.train_acc = self.train_acc.to(preds.device)
@@ -523,32 +545,34 @@ class AstroLightningModule(LightningModule):
                 elif stage == "val" and self.val_acc is not None:
                     self.val_acc = self.val_acc.to(preds.device)
                     acc = self.val_acc(preds, targets)
-                    self.log("val_acc", acc, on_step=False, on_epoch=True, prog_bar=True)
+                    self.log(
+                        "val_acc", acc, on_step=False, on_epoch=True, prog_bar=True
+                    )
                 elif stage == "test" and self.test_acc is not None:
                     self.test_acc = self.test_acc.to(preds.device)
                     acc = self.test_acc(preds, targets)
                     self.log("test_acc", acc, on_step=False, on_epoch=True)
-                    
+
         except Exception as e:
             logger.error(f"Metric logging failed for stage {stage}: {e}")
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """
         Training step with automatic optimization.
-        
+
         Updated for 2025 best practices with proper PyTorch Geometric handling.
         """
         try:
             # Compute step
             result = self._compute_step(batch, "train")
             loss = result["loss"]
-            
+
             # Update EMA if enabled
             if self.use_ema:
                 self._update_ema()
-            
+
             return loss
-            
+
         except Exception as e:
             logger.error(f"Training step {batch_idx} failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
@@ -561,7 +585,7 @@ class AstroLightningModule(LightningModule):
         try:
             result = self._compute_step(batch, "val")
             return result["loss"]
-            
+
         except Exception as e:
             logger.error(f"❌ Validation step failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
@@ -575,7 +599,7 @@ class AstroLightningModule(LightningModule):
         try:
             result = self._compute_step(batch, "test")
             return result["loss"]
-            
+
         except Exception as e:
             logger.error(f"❌ Test step failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
@@ -584,7 +608,7 @@ class AstroLightningModule(LightningModule):
     def configure_optimizers(self) -> Dict[str, Any]:
         """
         Configure optimizers and schedulers with 2025 best practices.
-        
+
         Includes:
         - AdamW with decoupled weight decay
         - Multiple scheduler options
@@ -599,25 +623,25 @@ class AstroLightningModule(LightningModule):
             betas=(0.9, 0.999),
             eps=1e-8,
         )
-        
+
         # Configure scheduler
         config = {"optimizer": optimizer}
-        
+
         if self.scheduler_type == "cosine":
             # Safe trainer access - use default if trainer not attached yet
             max_epochs = 100
             try:
-                if self.trainer and hasattr(self.trainer, 'max_epochs') and self.trainer.max_epochs:
+                if (
+                    self.trainer
+                    and hasattr(self.trainer, "max_epochs")
+                    and self.trainer.max_epochs
+                ):
                     max_epochs = self.trainer.max_epochs
             except RuntimeError:
                 # Trainer not attached yet - use default
                 pass
-            
-            scheduler = CosineAnnealingLR(
-                optimizer,
-                T_max=max_epochs,
-                eta_min=1e-6
-            )
+
+            scheduler = CosineAnnealingLR(optimizer, T_max=max_epochs, eta_min=1e-6)
             config["lr_scheduler"] = {
                 "scheduler": scheduler,
                 "interval": "epoch",
@@ -627,18 +651,22 @@ class AstroLightningModule(LightningModule):
             # Safe trainer access for stepping batches
             total_steps = 1000
             try:
-                if self.trainer and hasattr(self.trainer, 'estimated_stepping_batches') and self.trainer.estimated_stepping_batches:
+                if (
+                    self.trainer
+                    and hasattr(self.trainer, "estimated_stepping_batches")
+                    and self.trainer.estimated_stepping_batches
+                ):
                     total_steps = self.trainer.estimated_stepping_batches
             except RuntimeError:
                 # Trainer not attached yet - use default
                 pass
-                
+
             scheduler = OneCycleLR(
                 optimizer,
                 max_lr=self.learning_rate,
                 total_steps=total_steps,
                 pct_start=0.3,
-                anneal_strategy='cos'
+                anneal_strategy="cos",
             )
             config["lr_scheduler"] = {
                 "scheduler": scheduler,
@@ -647,11 +675,7 @@ class AstroLightningModule(LightningModule):
             }
         elif self.scheduler_type == "plateau":
             scheduler = ReduceLROnPlateau(
-                optimizer,
-                mode='min',
-                factor=0.5,
-                patience=10,
-                min_lr=1e-6
+                optimizer, mode="min", factor=0.5, patience=10, min_lr=1e-6
             )
             config["lr_scheduler"] = {
                 "scheduler": scheduler,
@@ -661,30 +685,27 @@ class AstroLightningModule(LightningModule):
             }
         elif self.scheduler_type == "cosine_warm_restarts":
             scheduler = CosineAnnealingWarmRestarts(
-                optimizer,
-                T_0=10,
-                T_mult=2,
-                eta_min=1e-6
+                optimizer, T_0=10, T_mult=2, eta_min=1e-6
             )
             config["lr_scheduler"] = {
                 "scheduler": scheduler,
                 "interval": "epoch",
                 "frequency": 1,
             }
-        
+
         return config
 
     def predict_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Prediction step for inference."""
         try:
             outputs = self.forward(batch)
-            
+
             # Apply softmax for classification
             if self.task_type == "classification":
                 outputs = F.softmax(outputs, dim=-1)
-                
+
             return outputs
-            
+
         except Exception as e:
             logger.error(f"Prediction step failed: {e}")
             raise
@@ -693,22 +714,28 @@ class AstroLightningModule(LightningModule):
         """Called at the start of training."""
         try:
             # Get datamodule info if available
-            if hasattr(self.trainer, 'datamodule') and self.trainer.datamodule:
+            if hasattr(self.trainer, "datamodule") and self.trainer.datamodule:
                 dm = self.trainer.datamodule
-                if hasattr(dm, 'num_classes') and dm.num_classes and not self.metrics_initialized:
+                if (
+                    hasattr(dm, "num_classes")
+                    and dm.num_classes
+                    and not self.metrics_initialized
+                ):
                     self.num_classes = dm.num_classes
                     self._create_metrics_for_classes(dm.num_classes)
-                    
+
             # Log model info
             total_params = sum(p.numel() for p in self.parameters())
-            trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
-            
-            logger.info(f"🚀 Training started")
+            trainable_params = sum(
+                p.numel() for p in self.parameters() if p.requires_grad
+            )
+
+            logger.info("🚀 Training started")
             logger.info(f"📊 Total parameters: {total_params:,}")
             logger.info(f"🎯 Trainable parameters: {trainable_params:,}")
             logger.info(f"🎨 Task type: {self.task_type}")
             logger.info(f"🔢 Number of classes: {self.num_classes}")
-            
+
         except Exception as e:
             logger.error(f"Error in on_train_start: {e}")
 
@@ -723,5 +750,6 @@ class AstroLightningModule(LightningModule):
     def on_test_start(self) -> None:
         """Called at the start of testing."""
         pass
+
 
 __all__ = ["AstroLightningModule"]

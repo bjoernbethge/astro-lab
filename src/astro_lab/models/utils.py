@@ -1,319 +1,157 @@
-"""
-Utility functions for GNN models - consolidated from multiple files.
-"""
-
-from typing import Any, Callable, List, Optional, Union
+"""Pure utility functions - no factories or classes."""
 
 import torch
 import torch.nn as nn
+from typing import Optional, Union
+
 
 def get_activation(name: str) -> nn.Module:
-    """
-    Get activation function by name.
-
-    Args:
-        name: Activation function name
-
-    Returns:
-        PyTorch activation module
-    """
+    """Get activation function by name."""
     activations = {
-        "relu": nn.ReLU(),
-        "leaky_relu": nn.LeakyReLU(0.2),
-        "elu": nn.ELU(),
-        "gelu": nn.GELU(),
-        "swish": nn.SiLU(),
-        "tanh": nn.Tanh(),
-        "sigmoid": nn.Sigmoid(),
+        'relu': nn.ReLU(),
+        'gelu': nn.GELU(),
+        'swish': nn.SiLU(),
+        'tanh': nn.Tanh(),
+        'leaky_relu': nn.LeakyReLU(0.2),
+        'elu': nn.ELU(),
+        'mish': nn.Mish(),
     }
+    
+    name = name.lower()
+    if name not in activations:
+        raise ValueError(f"Unknown activation: {name}. Available: {list(activations.keys())}")
+        
+    return activations[name]
 
-    return activations.get(name.lower(), nn.ReLU())
 
-class AttentionPooling(nn.Module):
-    """Attention-based global pooling layer for graphs."""
+def get_pooling(pooling_type: str) -> str:
+    """Get pooling type string (for compatibility)."""
+    valid_types = ['mean', 'max', 'add', 'attention']
+    pooling_type = pooling_type.lower()
+    
+    if pooling_type not in valid_types:
+        raise ValueError(f"Unknown pooling: {pooling_type}. Available: {valid_types}")
+        
+    return pooling_type
 
-    def __init__(self, hidden_dim: int):
-        super().__init__()
-        self.attention = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.Tanh(),
-            nn.Linear(hidden_dim // 2, 1),
-        )
 
-    def forward(
-        self, x: torch.Tensor, batch: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """
-        Apply attention pooling.
-
-        Args:
-            x: Node features [num_nodes, hidden_dim]
-            batch: Batch assignment [num_nodes]
-
-        Returns:
-            Pooled features [batch_size, hidden_dim]
-        """
-        # Compute attention weights
-        attn_weights = self.attention(x)  # [num_nodes, 1]
-
-        if batch is None:
-            # Single graph case
-            attn_weights = torch.softmax(attn_weights, dim=0)
-            pooled = torch.sum(attn_weights * x, dim=0, keepdim=True)
-        else:
-            # Batch case
-            attn_weights = torch.softmax(attn_weights, dim=0)
-            try:
-                from torch_geometric.nn import global_add_pool
-
-                pooled = global_add_pool(attn_weights * x, batch)
-            except ImportError:
-                # Fallback
-                pooled = torch.sum(attn_weights * x, dim=0, keepdim=True)
-
-        return pooled
-
-def get_pooling(name: str, hidden_dim: Optional[int] = None) -> Callable:
-    """
-    Get pooling function by name.
-
-    Args:
-        name: Pooling function name
-        hidden_dim: Hidden dimension (needed for attention pooling)
-
-    Returns:
-        Pooling function
-    """
-    try:
-        from torch_geometric.nn import (
-            global_add_pool,
-            global_max_pool,
-            global_mean_pool,
-        )
-
-        if name == "mean":
-            return global_mean_pool
-        elif name == "max":
-            return global_max_pool
-        elif name == "add":
-            return global_add_pool
-        elif name == "attention" and hidden_dim is not None:
-            return _create_attention_pooling(hidden_dim)
-        else:
-            return global_mean_pool
-    except ImportError:
-        # Fallback if PyG not available
-        return lambda x, batch: torch.mean(x, dim=0, keepdim=True)
-
-def _create_attention_pooling(hidden_dim: int):
-    """Create attention pooling function."""
-    attention_layer = AttentionPooling(hidden_dim)
-
-    def attention_pool(x: torch.Tensor, batch: Optional[torch.Tensor] = None):
-        return attention_layer(x, batch)
-
-    return attention_pool
-
-def initialize_weights(module: nn.Module):
-    """
-    Initialize model weights using Xavier/Kaiming initialization.
-
-    Args:
-        module: PyTorch module to initialize
-    """
+def initialize_weights(module: nn.Module) -> None:
+    """Initialize model weights using Xavier/Kaiming initialization."""
     for name, param in module.named_parameters():
-        if "weight" in name:
+        if 'weight' in name:
             if len(param.shape) >= 2:
-                if "conv" in name.lower():
-                    nn.init.kaiming_uniform_(param, nonlinearity="relu")
+                # Use Kaiming for ReLU networks, Xavier otherwise
+                if hasattr(module, 'activation') and 'relu' in str(module.activation).lower():
+                    nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
                 else:
                     nn.init.xavier_uniform_(param)
-            else:
-                nn.init.uniform_(param, -0.1, 0.1)
-        elif "bias" in name:
+        elif 'bias' in name:
             nn.init.zeros_(param)
 
+
 def count_parameters(model: nn.Module) -> int:
-    """
-    Count trainable parameters in a model.
-
-    Args:
-        model: PyTorch model
-
-    Returns:
-        Number of trainable parameters
-    """
+    """Count trainable parameters in a model."""
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-def model_summary(model: nn.Module) -> dict:
-    """
-    Get model summary information.
 
-    Args:
-        model: PyTorch model
+def get_device(device: Optional[Union[str, torch.device]] = None) -> torch.device:
+    """Get torch device, with automatic CUDA detection."""
+    if device is None:
+        return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return torch.device(device)
 
-    Returns:
-        Dictionary with model information
-    """
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    return {
-        "total_parameters": total_params,
-        "trainable_parameters": trainable_params,
-        "model_size_mb": total_params * 4 / (1024 * 1024),  # Assuming float32
-        "num_layers": len([m for m in model.modules() if len(list(m.children())) == 0]),
-    }
+def move_batch_to_device(batch: dict, device: torch.device) -> dict:
+    """Move all tensors in a batch dict to device."""
+    moved_batch = {}
+    for key, value in batch.items():
+        if isinstance(value, torch.Tensor):
+            moved_batch[key] = value.to(device)
+        elif isinstance(value, (list, tuple)) and len(value) > 0 and isinstance(value[0], torch.Tensor):
+            moved_batch[key] = [v.to(device) for v in value]
+        else:
+            moved_batch[key] = value
+    return moved_batch
 
-# Factory functions for astronomical models
-def create_gaia_classifier(
-    hidden_dim: int = 128, num_classes: int = 7, conv_type: str = "gat", **kwargs
-) -> Any:
-    """Create Gaia stellar classifier."""
-    from astro_lab.models.astro import AstroSurveyGNN
 
-    return AstroSurveyGNN(
-        hidden_dim=hidden_dim,
-        output_dim=num_classes,
-        use_astrometry=True,
-        use_photometry=True,
-        use_spectroscopy=False,
-        conv_type=conv_type,  # Allow override from config
-        task="node_classification",
-        **kwargs,
-    )
+def get_model_summary(model: nn.Module, input_shape: Optional[tuple] = None) -> str:
+    """Get a simple model summary string."""
+    total_params = count_parameters(model)
+    
+    summary = f"{model.__class__.__name__}\n"
+    summary += f"Total trainable parameters: {total_params:,}\n"
+    
+    if input_shape is not None:
+        summary += f"Expected input shape: {input_shape}\n"
+        
+    # Count layers by type
+    layer_counts = {}
+    for name, module in model.named_modules():
+        module_type = module.__class__.__name__
+        if module_type in ['Module', 'Sequential', 'ModuleList', 'ModuleDict']:
+            continue
+        layer_counts[module_type] = layer_counts.get(module_type, 0) + 1
+        
+    summary += "\nLayer counts:\n"
+    for layer_type, count in sorted(layer_counts.items()):
+        summary += f"  {layer_type}: {count}\n"
+        
+    return summary
 
-def create_sdss_galaxy_classifier(
-    hidden_dim: int = 128, output_dim: int = 1, **kwargs
-) -> Any:
-    """Create SDSS galaxy property predictor."""
-    from astro_lab.models.astro import AstroSurveyGNN
 
-    return AstroSurveyGNN(
-        hidden_dim=hidden_dim,
-        output_dim=output_dim,
-        use_astrometry=False,
-        use_photometry=True,
-        use_spectroscopy=True,
-        conv_type="transformer",  # Multi-modal integration
-        task="node_regression",
-        **kwargs,
-    )
+def set_dropout_rate(model: nn.Module, dropout_rate: float) -> None:
+    """Set dropout rate for all dropout layers in model."""
+    for module in model.modules():
+        if isinstance(module, nn.Dropout):
+            module.p = dropout_rate
 
-def create_lsst_transient_detector(hidden_dim: int = 96, **kwargs) -> Any:
-    """Create LSST transient detection model."""
-    from astro_lab.models.astro import AstroSurveyGNN
 
-    return AstroSurveyGNN(
-        hidden_dim=hidden_dim,
-        output_dim=1,
-        use_astrometry=True,
-        use_photometry=True,
-        use_spectroscopy=False,
-        conv_type="sage",  # Good for time-domain analysis
-        task="node_classification",
-        **kwargs,
-    )
+def freeze_layers(model: nn.Module, layer_names: Optional[list[str]] = None) -> None:
+    """Freeze specific layers or all layers if layer_names is None."""
+    if layer_names is None:
+        # Freeze all parameters
+        for param in model.parameters():
+            param.requires_grad = False
+    else:
+        # Freeze specific layers
+        for name, param in model.named_parameters():
+            if any(layer_name in name for layer_name in layer_names):
+                param.requires_grad = False
 
-def create_multi_survey_model(
-    surveys: List[str], hidden_dim: int = 256, output_dim: int = 1, **kwargs
-) -> Any:
-    """Create model for multiple surveys."""
-    from astro_lab.models.astro import AstroSurveyGNN
 
-    return AstroSurveyGNN(
-        hidden_dim=hidden_dim,
-        output_dim=output_dim,
-        use_astrometry=True,
-        use_photometry=True,
-        use_spectroscopy=True,  # Support all modalities
-        conv_type="transformer",  # Most flexible
-        task="node_classification",
-        **kwargs,
-    )
+def unfreeze_layers(model: nn.Module, layer_names: Optional[list[str]] = None) -> None:
+    """Unfreeze specific layers or all layers if layer_names is None."""
+    if layer_names is None:
+        # Unfreeze all parameters
+        for param in model.parameters():
+            param.requires_grad = True
+    else:
+        # Unfreeze specific layers
+        for name, param in model.named_parameters():
+            if any(layer_name in name for layer_name in layer_names):
+                param.requires_grad = True
 
-def compile_astro_model(
-    model: Any,
-    mode: str = "default",
-    dynamic: bool = True,
-) -> Any:
-    """
-    Compile astronomical model for PyTorch 2.x.
 
-    Args:
-        model: Model to compile
-        mode: Compilation mode
-        dynamic: Enable dynamic shapes
-
-    Returns:
-        Compiled model
-    """
-    try:
-        return torch.compile(model, mode=mode, dynamic=dynamic)
-    except Exception:
-        # Fallback if compilation fails
-        return model
-
-def create_lightcurve_classifier(
-    hidden_dim: int = 128, output_dim: int = 1, **kwargs
-) -> Any:
-    """Create lightcurve/ALCDEF classifier with LightcurveEncoder."""
-    from astro_lab.models.astro import AstroSurveyGNN
-
-    return AstroSurveyGNN(
-        hidden_dim=hidden_dim,
-        output_dim=output_dim,
-        use_astrometry=False,
-        use_photometry=False,
-        use_spectroscopy=False,
-        # Note: Would need to add use_lightcurve=True to AstroSurveyGNN
-        conv_type="gat",  # Good for temporal relationships
-        task="node_classification",
-        **kwargs,
-    )
-
-def create_asteroid_period_detector(hidden_dim: int = 96, **kwargs) -> Any:
-    """Create asteroid rotation period detector using lightcurve data."""
-    from astro_lab.models.astro import AstroSurveyGNN
-
-    return AstroSurveyGNN(
-        hidden_dim=hidden_dim,
-        output_dim=1,  # Period output
-        use_astrometry=False,
-        use_photometry=False,
-        use_spectroscopy=False,
-        conv_type="transformer",  # Good for temporal modeling
-        task="node_regression",
-        **kwargs,
-    )
-
-def create_astrophot_model(
-    model_type: str = "sersic+disk",
-    hidden_dim: int = 128,
-    **kwargs,
-) -> Any:
-    """Create AstroPhot-integrated model for galaxy modeling."""
-    from astro_lab.models.astrophot_models import AstroPhotGNN
-
-    components = {
-        "sersic": ["sersic"],
-        "disk": ["disk"],
-        "sersic+disk": ["sersic", "disk"],
-        "bulge+disk": ["bulge", "disk"],
-        "full": ["sersic", "disk", "bulge"],
-    }
-
-    return AstroPhotGNN(
-        model_components=components.get(model_type, ["sersic"]),
-        hidden_dim=hidden_dim,
-        **kwargs,
-    )
-
-def create_nsa_galaxy_modeler(hidden_dim: int = 128, **kwargs) -> Any:
-    """Create NSA galaxy modeler with full component set."""
-    from astro_lab.models.astrophot_models import NSAGalaxyModeler
-
-    return NSAGalaxyModeler(
-        hidden_dim=hidden_dim,
-        **kwargs,
-    )
+# Keep AttentionPooling for backward compatibility
+class AttentionPooling(nn.Module):
+    """Simple attention pooling module."""
+    
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.attention = nn.Linear(hidden_dim, 1)
+        
+    def forward(self, x: torch.Tensor, batch: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Apply attention pooling."""
+        # Compute attention scores
+        scores = self.attention(x)
+        
+        if batch is not None:
+            # Masked softmax for batched graphs
+            from torch_geometric.utils import softmax
+            alpha = softmax(scores, batch, dim=0)
+        else:
+            # Simple softmax for single graph
+            alpha = torch.softmax(scores, dim=0)
+            
+        # Weighted sum
+        return (x * alpha).sum(dim=0, keepdim=True)

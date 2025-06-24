@@ -9,8 +9,8 @@ Updated for 2025 best practices including FSDP and modern optimization technique
 """
 
 import argparse
-import sys
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -21,10 +21,12 @@ os.environ["PL_DISABLE_FORK"] = "1"
 
 # Suppress all rank_zero logs
 import warnings
+
 warnings.filterwarnings("ignore")
 
 # Suppress Lightning's rank_zero logging
 import logging
+
 logging.getLogger("lightning.pytorch.utilities.rank_zero").setLevel(logging.ERROR)
 logging.getLogger("lightning.pytorch.accelerators").setLevel(logging.ERROR)
 logging.getLogger("lightning.pytorch").setLevel(logging.ERROR)
@@ -32,28 +34,29 @@ logging.getLogger("lightning").setLevel(logging.ERROR)
 logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
 
 # Redirect stderr during imports to suppress duplicate messages
-import io
 import contextlib
+import io
 
 # Suppress import-time messages
 with contextlib.redirect_stderr(io.StringIO()):
+    import torch
     import yaml
     from lightning.pytorch import Trainer
     from lightning.pytorch.callbacks import (
-        EarlyStopping, 
-        ModelCheckpoint, 
-        LearningRateMonitor,
-        StochasticWeightAveraging,
+        EarlyStopping,
         GradientAccumulationScheduler,
+        LearningRateMonitor,
+        ModelCheckpoint,
+        StochasticWeightAveraging,
     )
     from lightning.pytorch.strategies import DDPStrategy, FSDPStrategy
-    import torch
+
 
 def train_from_config(config_path: str) -> None:
     """
     Train from configuration file - delegates to AstroTrainer.
     Updated with 2025 best practices.
-    
+
     Args:
         config_path: Path to YAML configuration file
     """
@@ -66,47 +69,65 @@ def train_from_config(config_path: str) -> None:
     except Exception as e:
         print(f"Failed to load config: {e}", file=sys.stderr)
         sys.exit(1)
-    
+
     # Import modules after logging setup
-    from astro_lab.data.datamodule import AstroDataModule
-    from astro_lab.models.factory import ModelFactory
-    from astro_lab.training.lightning_module import AstroLightningModule
     from astro_lab.data.config import data_config
-    
+    from astro_lab.data.datamodule import AstroDataModule
+    from astro_lab.models.factories import (
+        create_asteroid_period_detector,
+        create_gaia_classifier,
+        create_galaxy_modeler,
+        create_lightcurve_classifier,
+        create_lsst_transient_detector,
+        create_sdss_galaxy_model,
+        create_temporal_graph_model,
+    )
+    from astro_lab.training.lightning_module import AstroLightningModule
+
     # Create a custom stderr that filters duplicate messages
     class FilteredStderr:
         def __init__(self):
             self.seen_messages = set()
             self.original_stderr = sys.stderr
-            
+
         def write(self, msg):
             # Filter duplicate Lightning messages
             if msg.strip() and msg not in self.seen_messages:
-                if any(x in msg for x in ["GPU available", "TPU available", "HPU available", "Using 16bit"]):
+                if any(
+                    x in msg
+                    for x in [
+                        "GPU available",
+                        "TPU available",
+                        "HPU available",
+                        "Using 16bit",
+                    ]
+                ):
                     self.seen_messages.add(msg)
                     return  # Don't print first occurrence either
                 self.original_stderr.write(msg)
-                
+
         def flush(self):
             self.original_stderr.flush()
-    
+
     # Replace stderr temporarily
     filtered_stderr = FilteredStderr()
     old_stderr = sys.stderr
     sys.stderr = filtered_stderr
-    
+
     try:
         # Setup experiment directories silently
-        experiment_name = config.get("mlflow", {}).get("experiment_name", "astro_training")
+        experiment_name = config.get("mlflow", {}).get(
+            "experiment_name", "astro_training"
+        )
         data_config.ensure_experiment_directories(experiment_name)
-        
+
         # Extract data config
         data_config_section = config.get("data", {})
         dataset_name = data_config_section.get("dataset", "gaia")
         batch_size = data_config_section.get("batch_size", 32)
         max_samples = data_config_section.get("max_samples", 1000)
         k_neighbors = data_config_section.get("k_neighbors", 8)
-        
+
         # Create datamodule with optimizations
         datamodule = AstroDataModule(
             survey=dataset_name,
@@ -119,30 +140,32 @@ def train_from_config(config_path: str) -> None:
             prefetch_factor=data_config_section.get("prefetch_factor", 2),
             # Laptop optimization parameters
             max_nodes_per_graph=data_config_section.get("max_nodes_per_graph", 1000),
-            use_subgraph_sampling=data_config_section.get("use_subgraph_sampling", True),
+            use_subgraph_sampling=data_config_section.get(
+                "use_subgraph_sampling", True
+            ),
         )
-        
+
         # Setup datamodule to extract metadata
         datamodule.setup()
-        
+
         # Extract model config
         model_config = config.get("model", {})
         model_type = model_config.get("type", "gaia_classifier")
         model_params = model_config.get("params", {})
-        
+
         # Auto-detect classes if needed (silently)
         if "output_dim" not in model_params or model_params["output_dim"] is None:
             try:
                 # Use datamodule metadata if available
-                if hasattr(datamodule, 'num_classes') and datamodule.num_classes:
+                if hasattr(datamodule, "num_classes") and datamodule.num_classes:
                     num_classes = max(datamodule.num_classes, 2)
                     model_params["output_dim"] = num_classes
                     print(f"Auto-detected {num_classes} classes from data")
                 else:
                     # Fallback: sample from dataloader
                     train_data = datamodule._main_data
-                    if hasattr(train_data, 'y'):
-                        targets = train_data.y
+                    if hasattr(train_data, "y"):
+                        targets = train_data.y  # type: ignore[attr-defined]
                         num_classes = int(targets.max().item()) + 1
                         # Ensure at least 2 classes for classification
                         num_classes = max(num_classes, 2)
@@ -154,28 +177,28 @@ def train_from_config(config_path: str) -> None:
             except Exception as e:
                 model_params["output_dim"] = 4
                 print(f"Using default 4 classes (error: {e})")
-        
+
         # Create model
         if model_type == "gaia_classifier":
-            model = ModelFactory.create_survey_model(
-                survey="gaia",
-                task="stellar_classification",
-                data_loader=datamodule.train_dataloader(),
-                **model_params
+            model = create_gaia_classifier(
+                num_classes=model_params.get("output_dim", 7),
+                hidden_dim=model_params.get("hidden_dim", 128),
+                device=model_params.get("device", None),
+                **model_params,
             )
         elif model_type == "sdss_galaxy_classifier":
-            model = ModelFactory.create_survey_model(
-                survey="sdss",
-                task="galaxy_classification",
-                data_loader=datamodule.train_dataloader(),
-                **model_params
+            model = create_sdss_galaxy_model(
+                output_dim=model_params.get("output_dim", 5),
+                hidden_dim=model_params.get("hidden_dim", 256),
+                device=model_params.get("device", None),
+                **model_params,
             )
         else:
-            from astro_lab.models.astro import AstroSurveyGNN
-            model = AstroSurveyGNN(**model_params)
-        
+            # Fallback: nutze create_gaia_classifier als Default
+            model = create_gaia_classifier(**model_params)
+
         print(f"Created model: {type(model).__name__}")
-        
+
         # Apply torch.compile with robust error handling BEFORE creating LightningModule
         if config.get("training", {}).get("use_compile", True):
             try:
@@ -206,19 +229,25 @@ def train_from_config(config_path: str) -> None:
                     pass
         else:
             print("📝 Model training without torch.compile")
-        
+
         # Extract training config
         training_config = config.get("training", {})
-        
-        # Create Lightning module with advanced features
+
+        # Stelle sicher, dass model eine Instanz von torch.nn.Module ist
+        if callable(model):
+            model = model()
         lightning_module = AstroLightningModule(
             model=model,
             task_type="classification",
             learning_rate=training_config.get("learning_rate", 0.001),
             weight_decay=training_config.get("weight_decay", 0.0001),
-            gradient_accumulation_steps=training_config.get("gradient_accumulation_steps", 1),
+            gradient_accumulation_steps=training_config.get(
+                "gradient_accumulation_steps", 1
+            ),
             gradient_clip_val=training_config.get("gradient_clip_val", 1.0),
-            gradient_clip_algorithm=training_config.get("gradient_clip_algorithm", "norm"),
+            gradient_clip_algorithm=training_config.get(
+                "gradient_clip_algorithm", "norm"
+            ),
             scheduler_type=training_config.get("scheduler_type", "cosine"),
             warmup_steps=training_config.get("warmup_steps", 0),
             use_compile=True,  # Always enable torch.compile
@@ -226,81 +255,99 @@ def train_from_config(config_path: str) -> None:
             ema_decay=training_config.get("ema_decay", 0.999),
             label_smoothing=training_config.get("label_smoothing", 0.0),
         )
-        
+
         # Setup callbacks
         callbacks = []
 
         # Setup results structure in project root parallel to data/
-        dataset_name = datamodule.dataset_name if hasattr(datamodule, 'dataset_name') else 'unknown'
-        
+        dataset_name = (
+            datamodule.dataset_name
+            if hasattr(datamodule, "dataset_name")
+            else "unknown"
+        )
+
         # Project root results structure: results/survey/models/, results/survey/statistics/, results/survey/visuals/
         project_root = Path.cwd()  # astro-lab/
         results_base = project_root / "results" / dataset_name
         models_dir = results_base / "models"
-        statistics_dir = results_base / "statistics"  
+        statistics_dir = results_base / "statistics"
         visuals_dir = results_base / "visuals"
-        
+
         # Create directories
         for dir_path in [models_dir, statistics_dir, visuals_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
-        
+
         # ModelCheckpoint: speichert in results/survey/models/
         # Format: results/gaia/models/gaia_gcn.ckpt
         model_base_name = f"{dataset_name}_{model_params.get('conv_type', 'gcn')}"
-        callbacks.append(ModelCheckpoint(
-            dirpath=str(models_dir),
-            filename=f"{model_base_name}",  # gaia_gcn.ckpt
-            monitor="val_loss",
-            mode="min",
-            save_top_k=1,  # Nur das beste
-            save_last=False,  # Kein last model
-            verbose=True
-        ))
+        callbacks.append(
+            ModelCheckpoint(
+                dirpath=str(models_dir),
+                filename=f"{model_base_name}",  # gaia_gcn.ckpt
+                monitor="val_loss",
+                mode="min",
+                save_top_k=1,  # Nur das beste
+                save_last=False,  # Kein last model
+                verbose=True,
+            )
+        )
 
         # EarlyStopping: stoppt, wenn sich val_loss nicht verbessert
-        callbacks.append(EarlyStopping(
-            monitor="val_loss",
-            patience=training_config.get("patience", 10),
-            mode="min",
-            verbose=True
-        ))
+        callbacks.append(
+            EarlyStopping(
+                monitor="val_loss",
+                patience=training_config.get("patience", 10),
+                mode="min",
+                verbose=True,
+            )
+        )
 
         # LearningRateMonitor: loggt den Lernratenverlauf
         callbacks.append(LearningRateMonitor(logging_interval="step"))
 
         # Stochastic Weight Averaging (optional)
         if training_config.get("use_swa", False):
-            callbacks.append(StochasticWeightAveraging(
-                swa_lrs=training_config.get("swa_lr", 0.001),
-                swa_epoch_start=training_config.get("swa_epoch_start", 0.8),
-            ))
-        
+            callbacks.append(
+                StochasticWeightAveraging(
+                    swa_lrs=training_config.get("swa_lr", 0.001),
+                    swa_epoch_start=training_config.get("swa_epoch_start", 0.8),
+                )
+            )
+
         # Gradient accumulation scheduler (if needed)
-        gradient_accumulation_schedule = training_config.get("gradient_accumulation_schedule", None)
+        gradient_accumulation_schedule = training_config.get(
+            "gradient_accumulation_schedule", None
+        )
         # Also check in advanced section for backward compatibility
         if not gradient_accumulation_schedule and "advanced" in config:
-            gradient_accumulation_schedule = config.get("advanced", {}).get("gradient_accumulation_schedule", None)
+            gradient_accumulation_schedule = config.get("advanced", {}).get(
+                "gradient_accumulation_schedule", None
+            )
         if gradient_accumulation_schedule:
-            callbacks.append(GradientAccumulationScheduler(scheduling=gradient_accumulation_schedule))
-        
+            callbacks.append(
+                GradientAccumulationScheduler(scheduling=gradient_accumulation_schedule)
+            )
+
         # Setup MLflow logger if configured
         logger_instance = None
         if config.get("mlflow", {}).get("tracking_uri"):
             try:
                 from lightning.pytorch.loggers import MLFlowLogger
+
                 logger_instance = MLFlowLogger(
                     experiment_name=experiment_name,
                     tracking_uri=config["mlflow"]["tracking_uri"],
-                    log_model=False  # Disable model logging to reduce clutter
+                    log_model=False,  # Disable model logging to reduce clutter
                 )
             except:
                 pass
-        
+
         # Setup strategy (DDP, FSDP, etc.)
         strategy = training_config.get("strategy", "auto")
         if strategy == "fsdp":
             # FSDP strategy for large models
             from torch.distributed.fsdp import ShardingStrategy
+
             strategy = FSDPStrategy(
                 sharding_strategy=ShardingStrategy.FULL_SHARD,
                 cpu_offload=training_config.get("fsdp_cpu_offload", False),
@@ -313,12 +360,12 @@ def train_from_config(config_path: str) -> None:
                 gradient_as_bucket_view=True,
                 static_graph=True,
             )
-        
+
         # Determine precision
         precision = training_config.get("precision", "16-mixed")
         if precision == "bf16":
             precision = "bf16-mixed"
-        
+
         # Create and run trainer with minimal logging
         trainer = Trainer(
             max_epochs=training_config.get("max_epochs", 20),
@@ -339,36 +386,45 @@ def train_from_config(config_path: str) -> None:
             profiler=training_config.get("profiler", None),
             val_check_interval=training_config.get("val_check_interval", 1.0),
         )
-        
-        print(f"Starting training for {training_config.get('max_epochs', 20)} epochs...")
-        print(f"Strategy: {type(strategy).__name__ if hasattr(strategy, '__name__') else strategy}")
+
+        print(
+            f"Starting training for {training_config.get('max_epochs', 20)} epochs..."
+        )
+        print(
+            f"Strategy: {type(strategy).__name__ if hasattr(strategy, '__name__') else strategy}"
+        )
         print(f"Precision: {precision}")
-        print(f"Gradient accumulation: {training_config.get('gradient_accumulation_steps', 1)} steps")
-        
+        print(
+            f"Gradient accumulation: {training_config.get('gradient_accumulation_steps', 1)} steps"
+        )
+
         # Train
         trainer.fit(lightning_module, datamodule=datamodule)
-        
+
         print("Training completed!")
-        
+
         # Test
         trainer.test(lightning_module, datamodule=datamodule)
-        
+
         # Collect training statistics
         checkpoint_callback = None
         for callback in callbacks:
             if isinstance(callback, ModelCheckpoint):
                 checkpoint_callback = callback
                 break
-        
+
         # Get trainer metrics
-        train_metrics = trainer.logged_metrics if hasattr(trainer, 'logged_metrics') else {}
-        
+        train_metrics = (
+            trainer.logged_metrics if hasattr(trainer, "logged_metrics") else {}
+        )
+
         # Create focused training summary with statistics
         training_summary = {
             "model": f"{dataset_name}_{model_params.get('conv_type', 'gcn')}",
             "dataset": dataset_name,
-            "model_path": str(checkpoint_callback.best_model_path) if checkpoint_callback else None,
-            
+            "model_path": str(checkpoint_callback.best_model_path)
+            if checkpoint_callback
+            else None,
             # Training Statistics
             "training_stats": {
                 "epochs_trained": training_config.get("max_epochs", 20),
@@ -378,7 +434,6 @@ def train_from_config(config_path: str) -> None:
                 "test_acc": float(train_metrics.get("test_acc", 0.0)),
                 "test_loss": float(train_metrics.get("test_loss", 0.0)),
             },
-            
             # Model Architecture
             "architecture": {
                 "conv_type": model_params.get("conv_type", "gcn"),
@@ -387,48 +442,51 @@ def train_from_config(config_path: str) -> None:
                 "dropout": model_params.get("dropout", 0.2),
                 "activation": model_params.get("activation", "relu"),
             },
-            
-            # Key Training Parameters  
+            # Key Training Parameters
             "hyperparameters": {
                 "learning_rate": training_config.get("learning_rate", 0.001),
                 "batch_size": training_config.get("batch_size", 1),
                 "precision": training_config.get("precision", "16-mixed"),
                 "max_samples": training_config.get("max_samples"),
-                "gradient_accumulation": training_config.get("gradient_accumulation_steps", 1),
-            }
+                "gradient_accumulation": training_config.get(
+                    "gradient_accumulation_steps", 1
+                ),
+            },
         }
-        
+
         # Save training summary in statistics directory
         summary_path = statistics_dir / f"{model_base_name}_summary.yaml"
         with open(summary_path, "w") as f:
             yaml.dump(training_summary, f, default_flow_style=False, indent=2)
-        
+
         print(f"🏆 Model saved: {models_dir / f'{model_base_name}.ckpt'}")
         print(f"📊 Statistics saved: {summary_path}")
         print(f"📈 Visuals directory: {visuals_dir}")
         print(f"📁 Results structure: {results_base}")
-        
+
         # Cleanup
-        import torch
         import gc
+
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         gc.collect()
-        
+
     except Exception as e:
         print(f"Training failed: {e}", file=sys.stderr)
         if "--verbose" in sys.argv:
             import traceback
+
             traceback.print_exc()
         sys.exit(1)
     finally:
         # Restore stderr
         sys.stderr = old_stderr
 
+
 def train_quick(
-    dataset: str, 
-    model: str, 
-    epochs: int = 10, 
+    dataset: str,
+    model: str,
+    epochs: int = 10,
     batch_size: int = 32,
     max_samples: int = 1000,
     learning_rate: float = 0.001,
@@ -440,7 +498,7 @@ def train_quick(
     """
     Quick training without config file.
     Updated with 2025 best practices and advanced options.
-    
+
     Args:
         dataset: Dataset name (gaia, sdss, nsa)
         model: Model type (gaia_classifier, etc.)
@@ -454,12 +512,12 @@ def train_quick(
         accumulate: Gradient accumulation steps
     """
     from astro_lab.data.config import data_config
-    
+
     # Create temporary config in proper temp directory
     temp_dir = data_config.cache_dir / "temp"
     temp_dir.mkdir(parents=True, exist_ok=True)
     temp_config_path = temp_dir / "quick_train_config.yaml"
-    
+
     # Create comprehensive config with all parameters
     temp_config = {
         "mlflow": {
@@ -469,8 +527,8 @@ def train_quick(
                 "mode": "quick_training",
                 "dataset": dataset,
                 "model": model,
-                "version": "v1.0"
-            }
+                "version": "v1.0",
+            },
         },
         "model": {
             "type": model,
@@ -481,8 +539,8 @@ def train_quick(
                 "conv_type": "gcn",
                 "use_batch_norm": True,
                 "activation": "relu",
-                "pooling": "mean"
-            }
+                "pooling": "mean",
+            },
         },
         "data": {
             "dataset": dataset,
@@ -522,31 +580,21 @@ def train_quick(
             "deterministic": True,
             "benchmark": False,
             "log_every_n_steps": 50,
-            "val_check_interval": 1.0
+            "val_check_interval": 1.0,
         },
         "callbacks": {
-            "early_stopping": {
-                "monitor": "val_loss",
-                "patience": 10,
-                "mode": "min"
-            },
-            "model_checkpoint": {
-                "monitor": "val_loss",
-                "save_top_k": 3,
-                "mode": "min"
-            },
-            "lr_monitor": {
-                "logging_interval": "step"
-            }
-        }
+            "early_stopping": {"monitor": "val_loss", "patience": 10, "mode": "min"},
+            "model_checkpoint": {"monitor": "val_loss", "save_top_k": 3, "mode": "min"},
+            "lr_monitor": {"logging_interval": "step"},
+        },
     }
-    
+
     # Save temporary config
     with open(temp_config_path, "w") as f:
         yaml.dump(temp_config, f, default_flow_style=False, indent=2)
-    
+
     try:
-        print(f"🚀 Starting quick training:")
+        print("🚀 Starting quick training:")
         print(f"   Dataset: {dataset}")
         print(f"   Model: {model}")
         print(f"   Epochs: {epochs}")
@@ -557,13 +605,14 @@ def train_quick(
         print(f"   Strategy: {strategy}")
         print(f"   Precision: {precision}")
         print(f"   Gradient accumulation: {accumulate}")
-        
+
         # Run training
         train_from_config(str(temp_config_path))
     finally:
         # Always clean up temp file
         if temp_config_path.exists():
             temp_config_path.unlink()
+
 
 def main():
     """Main entry point for CLI."""
@@ -583,31 +632,43 @@ Examples:
   
   # Train with gradient accumulation
   astro-lab train --dataset gaia --model gaia_classifier --accumulate 4
-"""
+""",
     )
-    
+
     parser.add_argument("--config", "-c", help="Configuration file path")
     parser.add_argument("--dataset", help="Dataset for quick training")
-    parser.add_argument("--model", help="Model for quick training") 
+    parser.add_argument("--model", help="Model for quick training")
     parser.add_argument("--epochs", type=int, default=10, help="Number of epochs")
     parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--max-samples", type=int, default=1000, help="Maximum number of samples")
-    parser.add_argument("--learning-rate", "--lr", type=float, default=0.001, help="Learning rate")
+    parser.add_argument(
+        "--max-samples", type=int, default=1000, help="Maximum number of samples"
+    )
+    parser.add_argument(
+        "--learning-rate", "--lr", type=float, default=0.001, help="Learning rate"
+    )
     parser.add_argument("--devices", type=int, default=1, help="Number of GPUs to use")
-    parser.add_argument("--strategy", default="auto", help="Training strategy (auto/ddp/fsdp)")
-    parser.add_argument("--precision", default="16-mixed", help="Training precision (32/16-mixed/bf16-mixed)")
-    parser.add_argument("--accumulate", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument(
+        "--strategy", default="auto", help="Training strategy (auto/ddp/fsdp)"
+    )
+    parser.add_argument(
+        "--precision",
+        default="16-mixed",
+        help="Training precision (32/16-mixed/bf16-mixed)",
+    )
+    parser.add_argument(
+        "--accumulate", type=int, default=1, help="Gradient accumulation steps"
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-    
+
     args = parser.parse_args()
-    
+
     if args.config:
         train_from_config(args.config)
     elif args.dataset and args.model:
         train_quick(
-            args.dataset, 
-            args.model, 
-            args.epochs, 
+            args.dataset,
+            args.model,
+            args.epochs,
             args.batch_size,
             args.max_samples,
             args.learning_rate,
@@ -620,5 +681,6 @@ Examples:
         parser.print_help()
         sys.exit(1)
 
+
 if __name__ == "__main__":
-    main() 
+    main()

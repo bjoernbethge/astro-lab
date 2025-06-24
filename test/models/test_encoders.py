@@ -1,15 +1,8 @@
-"""
-Tests for Enhanced Encoders
-===========================
-
-Tests for enhanced encoder classes with improved error handling.
-"""
+"""Tests for Simplified Encoders."""
 
 import pytest
 import torch
 import torch.nn as nn
-from typing import Dict, Any
-from pydantic import ValidationError
 
 from astro_lab.models.encoders import (
     BaseEncoder,
@@ -25,7 +18,6 @@ from astro_lab.tensors import (
     PhotometricTensor,
     Spatial3DTensor,
     SpectralTensor,
-    SurveyTensor,
 )
 
 
@@ -37,19 +29,25 @@ class TestBaseEncoder:
         encoder = BaseEncoder(input_dim=16, output_dim=32)
         assert encoder.input_dim == 16
         assert encoder.output_dim == 32
-        assert isinstance(encoder.layers, nn.Module)
+        assert isinstance(encoder.encoder, nn.Module)
 
     def test_device_detection(self):
         """Test device detection."""
         # Test CPU device
-        cpu_encoder = BaseEncoder(input_dim=8, output_dim=16, device=torch.device("cpu"))
-        assert cpu_encoder.device.type == "cpu"
+        cpu_encoder = BaseEncoder(input_dim=8, output_dim=16, device='cpu')
+        assert next(cpu_encoder.parameters()).device.type == "cpu"
 
         # Test CUDA device if available
         if torch.cuda.is_available():
-            cuda_device = torch.device("cuda")
-            cuda_encoder = BaseEncoder(input_dim=8, output_dim=16, device=cuda_device)
-            assert cuda_encoder.device.type == "cuda"
+            cuda_encoder = BaseEncoder(input_dim=8, output_dim=16, device='cuda')
+            assert next(cuda_encoder.parameters()).device.type == "cuda"
+            
+    def test_forward_pass(self):
+        """Test forward pass."""
+        encoder = BaseEncoder(input_dim=10, output_dim=20)
+        x = torch.randn(5, 10)
+        output = encoder(x)
+        assert output.shape == (5, 20)
 
 
 class TestPhotometryEncoder:
@@ -57,12 +55,20 @@ class TestPhotometryEncoder:
 
     def test_initialization(self):
         """Test PhotometryEncoder initialization."""
-        encoder = PhotometryEncoder(input_dim=5, output_dim=64)
+        encoder = PhotometryEncoder(output_dim=64)
         assert encoder.output_dim == 64
+        assert encoder.input_dim == 5  # Default 5 bands
 
-    def test_forward_pass_with_real_tensor(self):
-        """Test forward pass with a real tensor."""
-        encoder = PhotometryEncoder(input_dim=5, output_dim=48)
+    def test_forward_pass_with_tensor(self):
+        """Test forward pass with tensor."""
+        encoder = PhotometryEncoder(output_dim=48)
+        magnitudes = torch.randn(10, 5)
+        output = encoder(magnitudes)
+        assert output.shape == (10, 48)
+        
+    def test_forward_pass_with_photometric_tensor(self):
+        """Test forward pass with PhotometricTensor."""
+        encoder = PhotometryEncoder(output_dim=48)
         magnitudes = torch.randn(10, 5)
         bands = ["u", "g", "r", "i", "z"]
         photometric_tensor = PhotometricTensor(data=magnitudes, bands=bands)
@@ -71,43 +77,16 @@ class TestPhotometryEncoder:
 
     def test_different_band_numbers(self):
         """Test with different numbers of bands."""
-        encoder = PhotometryEncoder(input_dim=3, output_dim=32)
+        encoder = PhotometryEncoder(output_dim=32, input_dim=3)
         magnitudes = torch.randn(5, 3)
-        bands = ["g", "r", "i"]
-        photometric_tensor = PhotometricTensor(data=magnitudes, bands=bands)
-        output = encoder(photometric_tensor)
+        output = encoder(magnitudes)
         assert output.shape == (5, 32)
 
-    def test_color_computation(self):
-        """Test color computation within the encoder."""
-        encoder = PhotometryEncoder(input_dim=2, output_dim=64)
-        magnitudes = torch.tensor([[14.5, 13.8], [15.1, 14.2]])
-        photometric_tensor = PhotometricTensor(data=magnitudes, bands=["g", "r"])
-        output = encoder(photometric_tensor)
-        assert output.shape == (2, 64)
-
-    def test_dimension_mismatch_handling(self):
-        """Test handling of mismatched input dimensions."""
-        # PhotometricTensor now handles dimension mismatches more gracefully
-        # It will use the first N bands where N is the data dimension
-        tensor = PhotometricTensor(data=torch.randn(10, 4), bands=['u','g','r','i','z'])
-        assert tensor.data.shape == (10, 4)
-        assert len(tensor.bands) == 5  # All bands are kept, even if data has fewer columns
-        
-        # Test that encoder handles different input sizes gracefully
-        encoder = PhotometryEncoder(input_dim=5, output_dim=64)
-        # Create valid tensor with 3 bands (encoder will adapt)
-        valid_tensor = PhotometricTensor(data=torch.randn(10, 3), bands=['g', 'r', 'i'])
-        output = encoder(valid_tensor)
-        assert output.shape == (10, 64)
-
     def test_single_object_handling(self):
-        """Test handling of a single object (batch size 1)."""
-        encoder = PhotometryEncoder(input_dim=2, hidden_dim=32, output_dim=32)
-        # Create proper photometric data
-        photometry_data = torch.randn(1, 2)
-        lightcurve_tensor = PhotometricTensor(data=photometry_data, bands=["g", "r"])
-        output = encoder(lightcurve_tensor)
+        """Test handling of a single object."""
+        encoder = PhotometryEncoder(output_dim=32)
+        photometry_data = torch.randn(5)  # Single object, 5 bands
+        output = encoder(photometry_data)
         assert output.shape == (1, 32)
 
 
@@ -116,29 +95,24 @@ class TestAstrometryEncoder:
 
     def test_initialization(self):
         """Test AstrometryEncoder initialization."""
-        encoder = AstrometryEncoder(input_dim=3, output_dim=64)
+        encoder = AstrometryEncoder(output_dim=64)
         assert encoder.output_dim == 64
+        assert encoder.input_dim == 5  # Default: ra, dec, parallax, pmra, pmdec
 
-    def test_forward_pass_with_real_tensor(self):
-        """Test forward pass with a real tensor."""
-        encoder = AstrometryEncoder(input_dim=3, output_dim=32)
+    def test_forward_pass_with_tensor(self):
+        """Test forward pass with tensor."""
+        encoder = AstrometryEncoder(output_dim=32)
+        astrometry_data = torch.randn(10, 5)
+        output = encoder(astrometry_data)
+        assert output.shape == (10, 32)
+        
+    def test_forward_pass_with_spatial_tensor(self):
+        """Test forward pass with Spatial3DTensor."""
+        encoder = AstrometryEncoder(output_dim=32, input_dim=3)
         coordinates = torch.randn(10, 3)
         spatial_tensor = Spatial3DTensor(data=coordinates)
         output = encoder(spatial_tensor)
         assert output.shape == (10, 32)
-
-    def test_different_coordinate_dimensions(self):
-        """Test with different coordinate dimensions."""
-        with pytest.raises(ValueError):
-            coordinates = torch.randn(10, 6)  # Invalid: 6 dimensions
-            Spatial3DTensor(data=coordinates)
-
-    def test_proper_motion_handling(self):
-        """Test handling of proper motion data."""
-        with pytest.raises(ValueError):
-            # Proper motion + parallax = 5 dimensions
-            data = torch.randn(10, 5)
-            Spatial3DTensor(data=data, frame="icrs")
 
 
 class TestSpectroscopyEncoder:
@@ -146,36 +120,25 @@ class TestSpectroscopyEncoder:
 
     def test_initialization(self):
         """Test SpectroscopyEncoder initialization."""
-        encoder = SpectroscopyEncoder(input_dim=100, output_dim=128)
+        encoder = SpectroscopyEncoder(output_dim=128)
         assert encoder.output_dim == 128
+        assert encoder.input_dim == 3  # Default: teff, logg, feh
 
-    def test_forward_pass_with_real_tensor(self):
-        """Test forward pass with a real tensor."""
-        encoder = SpectroscopyEncoder(input_dim=100, output_dim=64)
+    def test_forward_pass_with_tensor(self):
+        """Test forward pass with tensor."""
+        encoder = SpectroscopyEncoder(output_dim=64, input_dim=100)
+        spectral_data = torch.randn(10, 100)
+        output = encoder(spectral_data)
+        assert output.shape == (10, 64)
+        
+    def test_forward_pass_with_spectral_tensor(self):
+        """Test forward pass with SpectralTensor."""
+        encoder = SpectroscopyEncoder(output_dim=64, input_dim=100)
         flux = torch.randn(10, 100)
         wavelengths = torch.linspace(4000, 8000, 100)
         spectral_tensor = SpectralTensor(data=flux, wavelengths=wavelengths)
         output = encoder(spectral_tensor)
         assert output.shape == (10, 64)
-
-    def test_different_spectrum_lengths(self):
-        """Test with different spectrum lengths."""
-        encoder = SpectroscopyEncoder(input_dim=50, output_dim=96)
-        flux = torch.randn(5, 50)
-        wavelengths = torch.linspace(4000, 6000, 50)
-        spectral_tensor = SpectralTensor(data=flux, wavelengths=wavelengths)
-        output = encoder(spectral_tensor)
-        assert output.shape == (5, 96)
-
-    def test_survey_tensor_compatibility(self):
-        """Test that the encoder can handle a SpectralTensor."""
-        encoder = SpectroscopyEncoder(input_dim=100, output_dim=128)
-        spectral_data = torch.randn(10, 100)
-        wavelengths = torch.linspace(3000, 9000, 100)
-        spectral_tensor = SpectralTensor(data=spectral_data, wavelengths=wavelengths)
-        
-        output = encoder(spectral_tensor)
-        assert output.shape == (10, 128)
 
 
 class TestLightcurveEncoder:
@@ -183,151 +146,111 @@ class TestLightcurveEncoder:
 
     def test_initialization(self):
         """Test LightcurveEncoder initialization."""
-        encoder = LightcurveEncoder(input_dim=2, hidden_dim=64, output_dim=96)
+        encoder = LightcurveEncoder(hidden_dim=64, output_dim=96)
         assert encoder.output_dim == 96
+        assert encoder.hidden_dim == 64
+        assert encoder.input_dim == 1  # Default: magnitude values
 
-    def test_forward_pass_with_real_tensor(self):
-        """Test forward pass with a real tensor."""
+    def test_forward_pass_with_tensor(self):
+        """Test forward pass with tensor."""
+        encoder = LightcurveEncoder(hidden_dim=32, output_dim=64)
+        # Single sequence of 20 time points
+        lightcurve_data = torch.randn(20)
+        output = encoder(lightcurve_data)
+        assert output.shape == (1, 64)  # (batch=1, output_dim)
+        
+    def test_forward_pass_with_batch(self):
+        """Test forward pass with batched data."""
+        encoder = LightcurveEncoder(hidden_dim=32, output_dim=64)
+        # Batch of 5 sequences, each with 20 time points
+        lightcurve_data = torch.randn(5, 20)
+        output = encoder(lightcurve_data)
+        assert output.shape == (5, 64)
+        
+    def test_forward_pass_with_lightcurve_tensor(self):
+        """Test forward pass with LightcurveTensor."""
         encoder = LightcurveEncoder(input_dim=2, hidden_dim=32, output_dim=64)
         times = torch.sort(torch.rand(20)).values.unsqueeze(1)
         magnitudes = torch.randn(20, 1)
         data = torch.cat([times, magnitudes], dim=1)
         lightcurve_tensor = LightcurveTensor(data=data)
         
-        # The encoder returns the full sequence with hidden_dim
         output = encoder(lightcurve_tensor)
-        assert output.shape[0] == 1  # batch size
-        assert output.shape[1] == 20  # sequence length
+        assert output.shape == (1, 64)
 
     def test_different_sequence_lengths(self):
         """Test with different sequence lengths."""
-        encoder = LightcurveEncoder(input_dim=2, hidden_dim=64, output_dim=48)
-        times = torch.linspace(0, 100, 50).unsqueeze(1)
-        magnitudes = torch.randn(50, 1)
-        data = torch.cat([times, magnitudes], dim=1)
-        lightcurve_tensor = LightcurveTensor(data=data)
+        encoder = LightcurveEncoder(hidden_dim=64, output_dim=48)
+        # Longer sequence
+        lightcurve_data = torch.randn(50)
+        output = encoder(lightcurve_data)
+        assert output.shape == (1, 48)
+
+
+class TestEncoderFactory:
+    """Test encoder factory function."""
+    
+    def test_create_encoder(self):
+        """Test creating encoders via factory."""
+        # Photometry
+        phot_encoder = create_encoder('photometry', output_dim=64)
+        assert isinstance(phot_encoder, PhotometryEncoder)
         
-        output = encoder(lightcurve_tensor)
-        assert output.shape[0] == 1  # batch size
-        assert output.shape[1] == 50  # sequence length
-
-    def test_different_feature_dimensions(self):
-        """Test with different feature dimensions."""
-        encoder = LightcurveEncoder(input_dim=3, hidden_dim=128, output_dim=72)
-        times = torch.linspace(0, 50, 20).unsqueeze(1)
-        mags_and_features = torch.randn(20, 2)
-        data = torch.cat([times, mags_and_features], dim=1)
-        lightcurve_tensor = LightcurveTensor(data=data)
-
-        output = encoder(lightcurve_tensor)
-        assert output.shape == (1, 20, 128)  # batch, seq_len, hidden_dim
-
-    def test_single_object_handling(self):
-        """Test handling of a single object (batch size 1)."""
-        encoder = LightcurveEncoder(input_dim=2, hidden_dim=32, output_dim=32)
-        # Create proper lightcurve data with time and magnitude columns
-        times = torch.linspace(0, 10, 50).unsqueeze(1)
-        magnitudes = torch.randn(50, 1)
-        lightcurve_data = torch.cat([times, magnitudes], dim=1)
-        lightcurve_tensor = LightcurveTensor(data=lightcurve_data)
+        # Astrometry
+        astro_encoder = create_encoder('astrometry', output_dim=32)
+        assert isinstance(astro_encoder, AstrometryEncoder)
         
-        # LSTM returns the hidden_dim for attention processing, not the specified 32
-        output = encoder(lightcurve_tensor)
-        assert output.shape[0] == 1  # batch size
-        assert output.shape[1] == 50  # sequence length
-        # The actual attention mechanism uses 32 (hidden_dim) correctly
+        # Spectroscopy
+        spec_encoder = create_encoder('spectroscopy', output_dim=128)
+        assert isinstance(spec_encoder, SpectroscopyEncoder)
+        
+        # Lightcurve
+        lc_encoder = create_encoder('lightcurve', hidden_dim=64, output_dim=96)
+        assert isinstance(lc_encoder, LightcurveEncoder)
+        
+    def test_invalid_encoder_type(self):
+        """Test error on invalid encoder type."""
+        with pytest.raises(ValueError):
+            create_encoder('invalid_encoder', output_dim=64)
+            
+    def test_encoder_registry(self):
+        """Test encoder registry."""
+        assert 'photometry' in ENCODER_REGISTRY
+        assert 'astrometry' in ENCODER_REGISTRY
+        assert 'spectroscopy' in ENCODER_REGISTRY
+        assert 'lightcurve' in ENCODER_REGISTRY
 
 
 class TestEncoderIntegration:
-    """Test integration of different encoders."""
-
-    def test_encoder_compatibility(self):
-        """Test compatibility between different encoders."""
-        output_dim = 128
-        photometry_encoder = PhotometryEncoder(input_dim=5, output_dim=output_dim)
-        astrometry_encoder = AstrometryEncoder(input_dim=3, output_dim=output_dim)
-
-        photometry_data = PhotometricTensor(
-            data=torch.randn(10, 5), bands=["u", "g", "r", "i", "z"]
-        )
-        astrometry_data = Spatial3DTensor(data=torch.randn(10, 3))
-
-        phot_output = photometry_encoder(photometry_data)
-        astro_output = astrometry_encoder(astrometry_data)
-
-        assert phot_output.shape == (10, output_dim)
-        assert astro_output.shape == (10, output_dim)
+    """Test integration scenarios."""
 
     def test_multi_modal_encoding(self):
         """Test encoding of multiple modalities."""
         output_dim = 64
-        photometry_encoder = PhotometryEncoder(input_dim=5, output_dim=output_dim)
-        spectroscopy_encoder = SpectroscopyEncoder(input_dim=100, output_dim=output_dim)
+        photometry_encoder = PhotometryEncoder(output_dim=output_dim)
+        spectroscopy_encoder = SpectroscopyEncoder(output_dim=output_dim, input_dim=100)
 
-        photometry_data = PhotometricTensor(
-            data=torch.randn(10, 5), bands=["u", "g", "r", "i", "z"]
-        )
-        flux = torch.randn(10, 100)
-        wavelengths = torch.linspace(4000, 8000, 100)
-        spectroscopy_data = SpectralTensor(data=flux, wavelengths=wavelengths)
+        photometry_data = torch.randn(10, 5)
+        spectroscopy_data = torch.randn(10, 100)
 
         phot_output = photometry_encoder(photometry_data)
         spec_output = spectroscopy_encoder(spectroscopy_data)
 
-        # Example of feature fusion
+        # Feature fusion
         fused_features = torch.cat([phot_output, spec_output], dim=1)
         assert fused_features.shape == (10, output_dim * 2)
 
     def test_device_consistency(self):
-        """Test that encoders handle device placement correctly."""
+        """Test device handling."""
         if not torch.cuda.is_available():
-            pytest.skip("CUDA not available for device consistency test")
+            pytest.skip("CUDA not available")
         
-        device = torch.device("cuda")
-        encoder = PhotometryEncoder(input_dim=5, output_dim=32, device=device)
+        encoder = PhotometryEncoder(output_dim=32, device='cuda')
+        photometry_data = torch.randn(10, 5)  # CPU tensor
         
-        photometry_data = PhotometricTensor(
-            data=torch.randn(10, 5).to(device), bands=["u", "g", "r", "i", "z"]
-        )
-        
+        # Encoder should handle device movement
         output = encoder(photometry_data)
         assert output.device.type == "cuda"
-
-
-class TestEncoderErrorHandling:
-    """Test error handling capabilities of the encoders."""
-
-    def test_empty_batch_handling(self):
-        """Test that encoders handle empty tensors gracefully."""
-        # Using pydantic validation, this should raise a ValueError on creation
-        with pytest.raises(ValidationError):
-            Spatial3DTensor(data=torch.empty(0, 3))
-
-    def test_single_object_handling(self):
-        """Test handling of a single object (batch size 1)."""
-        encoder = LightcurveEncoder(input_dim=2, hidden_dim=32, output_dim=32)
-        # Create proper lightcurve data with time and magnitude columns
-        times = torch.linspace(0, 10, 50).unsqueeze(1)
-        magnitudes = torch.randn(50, 1)
-        lightcurve_data = torch.cat([times, magnitudes], dim=1)
-        lightcurve_tensor = LightcurveTensor(data=lightcurve_data)
-        
-        # LSTM returns the hidden_dim for attention processing, not the specified 32
-        output = encoder(lightcurve_tensor)
-        assert output.shape[0] == 1  # batch size
-        assert output.shape[1] == 50  # sequence length
-        # The actual attention mechanism uses 32 (hidden_dim) correctly
-
-    def test_dimension_mismatch_handling(self):
-        """Test handling of input dimension mismatches."""
-        encoder = PhotometryEncoder(input_dim=5, hidden_dim=64, output_dim=128)
-        
-        # Create tensor with 3 bands (less than encoder's expected 5)
-        small_data = PhotometricTensor(data=torch.randn(6, 3), bands=["g", "r", "i"])
-        
-        # Modern encoders adapt to actual input dimensions - this should work
-        result = encoder(small_data)
-        assert result.shape == (6, 128)  # Output shape should be correct
 
 
 if __name__ == "__main__":

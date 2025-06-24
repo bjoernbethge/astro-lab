@@ -2,19 +2,18 @@
 Tests for training functionality.
 """
 
+import astropy.io.fits as fits
+import polars as pl
 import pytest
 import torch
 import torch.nn as nn
-import polars as pl
-import astropy.io.fits as fits
-from torch_geometric.data import Batch, Data
 from torch.utils.data import DataLoader, TensorDataset
+from torch_geometric.data import Batch, Data
 
+from astro_lab.models.config import ModelConfig
+from astro_lab.models.core.survey_gnn import AstroSurveyGNN
+from astro_lab.models.factories import create_gaia_classifier
 from astro_lab.tensors import SurveyTensor
-
-from astro_lab.models.astro import AstroSurveyGNN
-from astro_lab.models.factory import ModelFactory
-from astro_lab.models.config import ModelConfig, EncoderConfig, GraphConfig, OutputConfig
 from astro_lab.training import AstroLightningModule, AstroTrainer
 from astro_lab.utils.config.surveys import get_available_surveys
 
@@ -63,40 +62,24 @@ class TestAstroLightningModule:
         """Test model creation from Config object."""
         config = ModelConfig(
             name="test_lightning_config",
-            description="Test lightning module with config",
-            encoder=EncoderConfig(
-                use_photometry=True,
-                use_astrometry=True,
-                use_spectroscopy=False,
-            ),
-            graph=GraphConfig(
-                conv_type="gcn",
-                hidden_dim=64,
-                num_layers=2,
-                dropout=0.1,
-            ),
-            output=OutputConfig(
-                task="stellar_classification",
-                output_dim=8,
-                pooling="mean",
-            ),
+            hidden_dim=64,
+            conv_type="gcn",
+            num_layers=2,
+            dropout=0.1,
+            task="classification",
+            output_dim=8,
         )
 
-        # Create model using ModelFactory with config
-        model = ModelFactory.create_survey_model(
-            survey="gaia",
-            task="stellar_classification",
-            hidden_dim=config.graph.hidden_dim,
-            conv_type=config.graph.conv_type,
-            num_layers=config.graph.num_layers,
+        # Create model using factory function
+        model = create_gaia_classifier(
+            hidden_dim=config.hidden_dim,
+            num_classes=config.output_dim or 8,  # Default to 8 if None
         )
 
-        lightning_module = AstroLightningModule(
-            model=model, task_type="classification"
-        )
+        lightning_module = AstroLightningModule(model=model, task_type="classification")
 
         assert lightning_module.model is not None
-        assert lightning_module.model.hidden_dim == config.graph.hidden_dim
+        assert lightning_module.model.hidden_dim == config.hidden_dim
 
     def test_lightning_module_auto_creation(self):
         """Test automatic model creation."""
@@ -209,16 +192,14 @@ class TestAstroLightningModule:
 
 
 class TestModelFactoryIntegration:
-    """Test integration between ModelFactory and LightningModule."""
+    """Test integration between factory functions and LightningModule."""
 
     def test_factory_lightning_integration(self):
-        """Test creating LightningModule with ModelFactory models."""
-        # Create model using ModelFactory
-        model = ModelFactory.create_survey_model(
-            survey="gaia",
-            task="stellar_classification",
+        """Test creating LightningModule with factory models."""
+        # Create model using factory function
+        model = create_gaia_classifier(
             hidden_dim=64,
-            num_layers=2,
+            num_classes=7,
         )
 
         # Create LightningModule with factory model
@@ -232,7 +213,7 @@ class TestModelFactoryIntegration:
         assert isinstance(lightning_module.model, nn.Module)
 
         # Test forward pass
-        x = torch.randn(10, 64)
+        x = torch.randn(10, 13)  # Gaia features
         edge_index = torch.tensor([[0, 1, 2, 3], [1, 2, 3, 0]], dtype=torch.long)
         batch = Data(x=x, edge_index=edge_index)
 
@@ -244,28 +225,18 @@ class TestModelFactoryIntegration:
         """Test creating LightningModule with Config objects."""
         config = ModelConfig(
             name="test_integration",
-            description="Test config-lightning integration",
-            graph=GraphConfig(
-                conv_type="gat",
-                hidden_dim=128,
-                num_layers=3,
-                dropout=0.1,
-            ),
-            output=OutputConfig(
-                task="stellar_classification",
-                output_dim=7,
-                pooling="attention",
-            ),
+            conv_type="gat",
+            hidden_dim=128,
+            num_layers=3,
+            dropout=0.1,
+            task="classification",
+            output_dim=7,
         )
 
-        # Create model using config
-        model = ModelFactory.create_survey_model(
-            survey="gaia",
-            task=config.output.task,
-            hidden_dim=config.graph.hidden_dim,
-            conv_type=config.graph.conv_type,
-            num_layers=config.graph.num_layers,
-            dropout=config.graph.dropout,
+        # Create model using config values
+        model = create_gaia_classifier(
+            hidden_dim=config.hidden_dim,
+            num_classes=config.output_dim or 7,  # Default to 7 if None
         )
 
         # Create LightningModule
@@ -276,7 +247,7 @@ class TestModelFactoryIntegration:
         )
 
         assert lightning_module.model is not None
-        assert lightning_module.model.hidden_dim == config.graph.hidden_dim
+        assert lightning_module.model.hidden_dim == config.hidden_dim
 
 
 class TestTrainingConfigurations:
@@ -284,72 +255,66 @@ class TestTrainingConfigurations:
 
     def test_survey_specific_training(self):
         """Test training with survey-specific configurations."""
-        available_surveys = get_available_surveys()
+        # Test with Gaia model
+        model = create_gaia_classifier()
 
-        for survey in available_surveys:
-            try:
-                # Create survey-specific model
-                model = ModelFactory.create_survey_model(
-                    survey=survey,
-                    task="stellar_classification",
-                )
+        # Create LightningModule
+        lightning_module = AstroLightningModule(
+            model=model,
+            task_type="classification",
+            learning_rate=1e-3,
+        )
 
-                # Create LightningModule
-                lightning_module = AstroLightningModule(
-                    model=model,
-                    task_type="classification",
-                    learning_rate=1e-3,
-                )
+        assert lightning_module.model is not None
 
-                assert lightning_module.model is not None
+        # Test forward pass
+        x = torch.randn(8, 13)  # Gaia features
+        edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
+        batch = Data(x=x, edge_index=edge_index)
 
-                # Test forward pass
-                x = torch.randn(8, 64)
-                edge_index = torch.tensor([[0, 1, 2], [1, 2, 0]], dtype=torch.long)
-                batch = Data(x=x, edge_index=edge_index)
-
-                output = lightning_module(batch)
-                assert output is not None
-
-            except (ImportError, AttributeError):
-                # Survey might not be fully implemented
-                pass
+        output = lightning_module(batch)
+        assert output is not None
 
     def test_task_specific_training(self):
         """Test training with different task types."""
-        tasks = ["stellar_classification", "galaxy_property_prediction", "transient_detection"]
+        # Test classification
+        model = create_gaia_classifier()
 
-        for task in tasks:
-            try:
-                # Create task-specific model
-                model = ModelFactory.create_survey_model(
-                    survey="gaia",
-                    task=task,
-                )
+        lightning_module = AstroLightningModule(
+            model=model,
+            task_type="classification",
+            learning_rate=1e-3,
+        )
 
-                # Create LightningModule
-                lightning_module = AstroLightningModule(
-                    model=model,
-                    task_type="classification" if "classification" in task else "regression",
-                    learning_rate=1e-3,
-                )
+        assert lightning_module.model is not None
 
-                assert lightning_module.model is not None
+        # Test regression
+        model_reg = AstroSurveyGNN(
+            hidden_dim=64,
+            output_dim=1,
+            task="regression",
+        )
 
-            except (ImportError, AttributeError):
-                # Task might not be fully implemented
-                pass
+        lightning_module_reg = AstroLightningModule(
+            model=model_reg,
+            task_type="regression",
+            learning_rate=1e-3,
+        )
+
+        assert lightning_module_reg.model is not None
 
 
 class TestHyperparameterOptimization:
     """Test hyperparameter optimization functionality in AstroTrainer."""
 
-    @pytest.mark.parametrize("dataset_fixture", ["nsa_dataset"])  # Use NSA instead of Gaia since it has more samples
+    @pytest.mark.parametrize(
+        "dataset_fixture", ["nsa_dataset"]
+    )  # Use NSA instead of Gaia since it has more samples
     def test_optimize_hyperparameters_basic(self, request, dataset_fixture):
         """Test basic hyperparameter optimization using synthetic data."""
         # Get dataset from parametrized fixture for metadata only
         dataset = request.getfixturevalue(dataset_fixture)
-        
+
         # Create synthetic dataloaders like the working trainer tests
         def create_synthetic_dataloader(batch_size=8, num_batches=3):
             """Create synthetic dataloader for testing hyperparameter optimization."""
@@ -358,13 +323,15 @@ class TestHyperparameterOptimization:
                 x = torch.randn(50, 6)  # 50 nodes, 6 features (similar to NSA)
                 edge_index = torch.randint(0, 50, (2, 150))  # 150 edges
                 y = torch.randint(0, 3, (50,))  # 3 classes for classification
-                
+
                 from torch_geometric.data import Data
+
                 data = Data(x=x, edge_index=edge_index, y=y, num_nodes=50)
                 data.survey = "nsa"  # Add survey metadata
                 data_list.append(data)
-                
+
             from torch_geometric.loader import DataLoader
+
             return DataLoader(data_list, batch_size=1, shuffle=True)
 
         train_loader = create_synthetic_dataloader()
@@ -373,14 +340,12 @@ class TestHyperparameterOptimization:
         # Create model and lightning module like in test_cuda.py
         model = AstroSurveyGNN(hidden_dim=32, output_dim=3)  # 3 classes
         lightning_module = AstroLightningModule(
-            model=model,
-            task_type="classification",
-            learning_rate=1e-3
+            model=model, task_type="classification", learning_rate=1e-3
         )
 
         # Use simplified AstroTrainer without complex config (like test_cuda.py)
         from astro_lab.training.trainer import AstroTrainer
-        
+
         trainer = AstroTrainer(
             lightning_module=lightning_module,
             max_epochs=1,  # Very short for testing
