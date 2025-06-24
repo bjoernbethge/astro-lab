@@ -78,7 +78,7 @@ def preprocess_catalog(
     write_graph: bool = False,
     k_neighbors: int = 8,
     distance_threshold: float = 50.0,
-    **kwargs,
+    **kwargs: Any,
 ) -> pl.DataFrame:
     """
     Preprocess astronomical catalog data. 📊
@@ -145,7 +145,7 @@ def preprocess_catalog_lazy(
     write_graph: bool = False,
     k_neighbors: int = 8,
     distance_threshold: float = 50.0,
-    **kwargs,
+    **kwargs: Any,
 ) -> pl.LazyFrame:
     """
     OPTIMIZED: Lazy preprocessing for large astronomical catalogs. ⚡
@@ -227,7 +227,7 @@ def create_graph_from_dataframe(
     k_neighbors: int = 8,
     distance_threshold: float = 50.0,
     output_path: Optional[Path] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> Optional[Data]:
     """
     Create PyTorch Geometric graph from Polars DataFrame. 🕸️
@@ -282,7 +282,7 @@ def create_graph_datasets_from_splits(
     dataset_name: str,
     k_neighbors: int = 8,
     distance_threshold: float = 50.0,
-    **kwargs,
+    **kwargs: Any,
 ) -> Dict[str, Optional[Data]]:
     """
     Create graph datasets from train/val/test splits. 📊
@@ -537,7 +537,7 @@ def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
 
 
 def _create_gaia_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs: Any
 ) -> Data:
     """Create Gaia stellar graph. 🌟"""
     # Extract coordinates
@@ -588,7 +588,7 @@ def _create_gaia_graph(
 
 
 def _create_sdss_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs: Any
 ) -> Data:
     """Create SDSS galaxy graph. 🌌"""
     # Extract coordinates
@@ -629,7 +629,7 @@ def _create_sdss_graph(
 
 
 def _create_nsa_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs: Any
 ) -> Data:
     """Create NSA galaxy graph. 🪐"""
     # Robust coordinate extraction
@@ -681,9 +681,9 @@ def _create_nsa_graph(
 
 
 def _create_tng50_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs: Any
 ) -> Data:
-    """Create TNG50 simulation graph. ��"""
+    """Create TNG50 simulation graph. """
     # Extract 3D coordinates
     coords = df.select(["x", "y", "z"]).to_numpy()
 
@@ -722,7 +722,7 @@ def _create_tng50_graph(
 
 
 def _create_generic_graph(
-    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs
+    df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs: Any
 ) -> Data:
     """Create generic astronomical graph. 🕸️"""
     # Find coordinate columns with flexible naming
