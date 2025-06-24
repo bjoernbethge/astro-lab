@@ -218,12 +218,17 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "gputil" },
+    { name = "graphviz" },
+    { name = "griffe-pydantic" },
     { name = "mkdocs" },
     { name = "mkdocs-material" },
+    { name = "mkdocs-mermaid2-plugin" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "mypy" },
     { name = "pre-commit" },
     { name = "psutil" },
+    { name = "pydot" },
+    { name = "pymdown-extensions" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pytest-rerunfailures" },
@@ -267,12 +272,17 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "gputil", specifier = ">=1.4.0" },
+    { name = "graphviz", specifier = ">=0.21" },
+    { name = "griffe-pydantic", specifier = ">=1.1.4" },
     { name = "mkdocs", specifier = ">=1.5.0" },
     { name = "mkdocs-material", specifier = ">=9.0.0" },
+    { name = "mkdocs-mermaid2-plugin", specifier = ">=1.2.1" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.20.0" },
     { name = "mypy", specifier = ">=1.0.0" },
     { name = "pre-commit", specifier = ">=3.0.0" },
     { name = "psutil", specifier = ">=6.1.0" },
+    { name = "pydot", specifier = ">=4.0.1" },
+    { name = "pymdown-extensions", specifier = ">=10.15" },
     { name = "pytest", specifier = ">=7.0.0" },
     { name = "pytest-cov", specifier = ">=4.0.0" },
     { name = "pytest-rerunfailures", specifier = ">=12.0" },
@@ -1092,6 +1102,15 @@ wheels = [
 ]
 
 [[package]]
+name = "editorconfig"
+version = "0.17.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/88/3a/a61d9a1f319a186b05d14df17daea42fcddea63c213bcd61a929fb3a6796/editorconfig-0.17.1.tar.gz", hash = "sha256:23c08b00e8e08cc3adcddb825251c497478df1dada6aefeb01e626ad37303745", size = 14695, upload-time = "2025-06-09T08:21:37.097Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/96/fd/a40c621ff207f3ce8e484aa0fc8ba4eb6e3ecf52e15b42ba764b457a9550/editorconfig-0.17.1-py3-none-any.whl", hash = "sha256:1eda9c2c0db8c16dbd50111b710572a5e6de934e39772de1959d41f64fc17c82", size = 16360, upload-time = "2025-06-09T08:21:35.654Z" },
+]
+
+[[package]]
 name = "execnet"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1409,6 +1428,15 @@ wheels = [
 ]
 
 [[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
+]
+
+[[package]]
 name = "greenlet"
 version = "3.2.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1460,6 +1488,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a9/3e/5aa9a61f7c3c47b0b52a1d930302992229d191bf4bc76447b324b731510a/griffe-1.7.3.tar.gz", hash = "sha256:52ee893c6a3a968b639ace8015bec9d36594961e156e23315c8e8e51401fa50b", size = 395137, upload-time = "2025-04-23T11:29:09.147Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/58/c6/5c20af38c2a57c15d87f7f38bee77d63c1d2a3689f74fefaf35915dd12b2/griffe-1.7.3-py3-none-any.whl", hash = "sha256:c6b3ee30c2f0f17f30bcdef5068d6ab7a2a4f1b8bf1a3e74b56fffd21e1c5f75", size = 129303, upload-time = "2025-04-23T11:29:07.145Z" },
+]
+
+[[package]]
+name = "griffe-pydantic"
+version = "1.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "griffe" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ad/88/f7b8558568eb11369383b4fdf91cf9f2ecf375e57193dd69673d553dc4d8/griffe_pydantic-1.1.4.tar.gz", hash = "sha256:3ce97cedb2c15b696e0c1c4bb901411f5b83b8e4d57b1fc0f2becde678ab4870", size = 42359, upload-time = "2025-03-26T12:55:08.405Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0b/a0/496e4f4f3af322171913b77f1789f479535abedf9f08359f1918219e03c8/griffe_pydantic-1.1.4-py3-none-any.whl", hash = "sha256:a4b9933579e14a8296cae90e71dace2742d91cb6792e5cd583047a6079f94e78", size = 12614, upload-time = "2025-03-26T12:55:07.229Z" },
 ]
 
 [[package]]
@@ -1845,6 +1885,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6d/e5/046f96d8699d2961fb71e28a81b25474d83ed54c5c1fb02033acf994b230/jplephem-2.22.tar.gz", hash = "sha256:0d9acc7217b4806feba93e72974ceead5611104bce6789af38d4f27dcf7a592c", size = 43113, upload-time = "2024-04-24T14:26:56.516Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/29/b29df8198777badb21d11a0fdb32b7f3afd765390dd1e8b99c86354489b6/jplephem-2.22-py3-none-any.whl", hash = "sha256:efe4b3590f3eef1a5dfcf7078e8e93803f8ce3276c3306e93bfd20b3536b2c60", size = 47243, upload-time = "2024-04-24T14:26:54.798Z" },
+]
+
+[[package]]
+name = "jsbeautifier"
+version = "1.15.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "editorconfig" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ea/98/d6cadf4d5a1c03b2136837a435682418c29fdeb66be137128544cecc5b7a/jsbeautifier-1.15.4.tar.gz", hash = "sha256:5bb18d9efb9331d825735fbc5360ee8f1aac5e52780042803943aa7f854f7592", size = 75257, upload-time = "2025-02-27T17:53:53.252Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2d/14/1c65fccf8413d5f5c6e8425f84675169654395098000d8bddc4e9d3390e1/jsbeautifier-1.15.4-py3-none-any.whl", hash = "sha256:72f65de312a3f10900d7685557f84cb61a9733c50dcc27271a39f5b0051bf528", size = 94707, upload-time = "2025-02-27T17:53:46.152Z" },
 ]
 
 [[package]]
@@ -2432,6 +2485,23 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/79/9b/9b4c96d6593b2a541e1cb8b34899a6d021d208bb357042823d4d2cabdbe7/mkdocs_material_extensions-1.3.1.tar.gz", hash = "sha256:10c9511cea88f568257f960358a467d12b970e1f7b2c0e5fb2bb48cab1928443", size = 11847, upload-time = "2023-11-22T19:09:45.208Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5b/54/662a4743aa81d9582ee9339d4ffa3c8fd40a4965e033d77b9da9774d3960/mkdocs_material_extensions-1.3.1-py3-none-any.whl", hash = "sha256:adff8b62700b25cb77b53358dad940f3ef973dd6db797907c49e3c2ef3ab4e31", size = 8728, upload-time = "2023-11-22T19:09:43.465Z" },
+]
+
+[[package]]
+name = "mkdocs-mermaid2-plugin"
+version = "1.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "jsbeautifier" },
+    { name = "mkdocs" },
+    { name = "pymdown-extensions" },
+    { name = "requests" },
+    { name = "setuptools" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/1a/f580733da1924ebc9b4bb04a34ca63ae62a50b0e62eeb016e78d9dee6d69/mkdocs_mermaid2_plugin-1.2.1.tar.gz", hash = "sha256:9c7694c73a65905ac1578f966e5c193325c4d5a5bc1836727e74ac9f99d0e921", size = 16104, upload-time = "2024-11-02T06:27:36.302Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/ce/c8a41cb0f3044990c8afbdc20c853845a9e940995d4e0cffecafbb5e927b/mkdocs_mermaid2_plugin-1.2.1-py3-none-any.whl", hash = "sha256:22d2cf2c6867d4959a5e0903da2dde78d74581fc0b107b791bc4c7ceb9ce9741", size = 17260, upload-time = "2024-11-02T06:27:34.652Z" },
 ]
 
 [[package]]
@@ -3556,6 +3626,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/b8/e9/1f7efbe20d0b2b10f6718944b5d8ece9152390904f29a78e68d4e7961159/pydantic_core-2.33.2-pp311-pypy311_pp73-musllinux_1_1_armv7l.whl", hash = "sha256:de4b83bb311557e439b9e186f733f6c645b9417c84e2eb8203f3f820a4b988bf", size = 2239013, upload-time = "2025-04-23T18:33:26.621Z" },
     { url = "https://files.pythonhosted.org/packages/3c/b2/5309c905a93811524a49b4e031e9851a6b00ff0fb668794472ea7746b448/pydantic_core-2.33.2-pp311-pypy311_pp73-musllinux_1_1_x86_64.whl", hash = "sha256:82f68293f055f51b51ea42fafc74b6aad03e70e191799430b90c13d643059ebb", size = 2238715, upload-time = "2025-04-23T18:33:28.656Z" },
     { url = "https://files.pythonhosted.org/packages/32/56/8a7ca5d2cd2cda1d245d34b1c9a942920a718082ae8e54e5f3e5a58b7add/pydantic_core-2.33.2-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:329467cecfb529c925cf2bbd4d60d2c509bc2fb52a20c1045bf09bb70971a9c1", size = 2066757, upload-time = "2025-04-23T18:33:30.645Z" },
+]
+
+[[package]]
+name = "pydot"
+version = "4.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pyparsing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/50/35/b17cb89ff865484c6a20ef46bf9d95a5f07328292578de0b295f4a6beec2/pydot-4.0.1.tar.gz", hash = "sha256:c2148f681c4a33e08bf0e26a9e5f8e4099a82e0e2a068098f32ce86577364ad5", size = 162594, upload-time = "2025-06-17T20:09:56.454Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7e/32/a7125fb28c4261a627f999d5fb4afff25b523800faed2c30979949d6facd/pydot-4.0.1-py3-none-any.whl", hash = "sha256:869c0efadd2708c0be1f916eb669f3d664ca684bc57ffb7ecc08e70d5e93fee6", size = 37087, upload-time = "2025-06-17T20:09:55.25Z" },
 ]
 
 [[package]]

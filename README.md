@@ -50,22 +50,16 @@ marimo edit
 - **Real-time physics**: Gravity and repulsion simulation
 - **Blender Integration**: Advanced 3D rendering capabilities
 
-## 📚 Documentation & Examples
+## 📚 Documentation & API Reference
 
-### Core Documentation
-- **[Data Loaders](docs/DATA_LOADERS.md)** - Comprehensive guide to loading and processing astronomical data
-- **[Development Guide](docs/DEVGUIDE.md)** - Contributing guidelines and development setup
-- **[Cosmograph Integration](docs/COSMOGRAPH_INTEGRATION.md)** - Interactive 3D visualization guide
+The complete, up-to-date documentation (including all modules, classes, and functions) is available as a modern website:
 
-### Survey-Specific Guides
-- **[Gaia Cosmic Web Analysis](docs/GAIA_COSMIC_WEB.md)** - Stellar structure analysis with Gaia DR3
-- **[SDSS/NSA Analysis](docs/NSA_COSMIC_WEB.md)** - Galaxy survey analysis
-- **[Exoplanet Pipeline](docs/EXOPLANET_PIPELINE.md)** - Exoplanet detection and analysis
-- **[Exoplanet Cosmic Web](docs/EXOPLANET_COSMIC_WEB.md)** - Exoplanet spatial distribution analysis
+- **[API Reference](./api/astro_lab/)**
+- **[User Guide & Examples](./examples/README.md)**
 
-### Interactive Widgets
-- **[AstroLab Widget](README_astrolab_widget.md)** - Interactive 3D visualization with Polars, Astropy, and PyVista
-- **[Examples](examples/README.md)** - Ready-to-run examples and tutorials
+All code is fully documented with mkdocstrings and includes automatic class inheritance diagrams, usage examples, and configuration options.
+
+> **Note:** All previous Markdown guides have been replaced by the new API documentation and modular navigation.
 
 ## 🛠️ CLI Reference
 
@@ -230,4 +224,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ---
 
-**Ready to explore the cosmos?** Start with `astro-lab process` or jump into [Interactive Visualization](docs/COSMOGRAPH_INTEGRATION.md)! 
+**Ready to explore the cosmos?** Start with `astro-lab process` or jump into the [API Reference](./api/astro_lab/)! 

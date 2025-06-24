@@ -71,6 +71,11 @@ dev = [
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
     "mkdocstrings[python]>=0.20.0",
+    "griffe-pydantic>=1.1.4",
+    "pymdown-extensions>=10.15",
+    "mkdocs-mermaid2-plugin>=1.2.1",
+    "graphviz>=0.21",
+    "pydot>=4.0.1",
 ]
 
 
