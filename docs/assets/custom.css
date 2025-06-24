@@ -1,0 +1,16 @@
+/* Toolbar background color */
+.md-header {
+    background-color: #1e2129 !important;
+}
+
+/* Toolbar text color */
+.md-header__title,
+.md-header__button,
+.md-header__topic {
+    color: #fff !important;
+}
+
+/* Optional: Hamburger menu icon */
+.md-header__button.md-icon {
+    color: #fff !important;
+}

@@ -1,0 +1,275 @@
+site_name: AstroLab
+site_description: Astronomical Machine Learning Laboratory
+site_author: Bjoern Bethge
+site_url: https://bjoernbethge.github.io/astro-lab/
+repo_url: https://github.com/bjoernbethge/astro-lab
+repo_name: astro-lab
+
+nav:
+  - Home: index.md
+  - API Reference:
+      - Übersicht: api.md
+      - astro_lab: api/astro_lab.md
+      - astro_lab.data: api/astro_lab.data.md
+      - astro_lab.models: api/astro_lab.models.md
+      - astro_lab.tensors: api/astro_lab.tensors.md
+      - astro_lab.training: api/astro_lab.training.md
+      - astro_lab.utils: api/astro_lab.utils.md
+      - astro_lab.widgets: api/astro_lab.widgets.md
+      - astro_lab.cli: api/astro_lab.cli.md
+
+theme:
+  name: material
+  language: en
+  logo: assets/logo.svg # Optional: custom logo
+  favicon: assets/favicon.ico # Optional
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.top
+    - content.code.annotate
+    - content.action.edit
+    - content.action.view
+    - search.suggest
+    - search.highlight
+    - toc.integrate
+    - navigation.instant
+    - navigation.sections
+    - navigation.expand
+    - navigation.footer
+    - content.tabs.link
+    - content.code.copy
+    - content.code.select
+    - content.code.fold
+    - content.code.annotate
+    - content.code.highlight
+    - content.code.line_numbers
+    - content.code.language
+    - content.code.title
+    - content.code.wrap
+    - content.code.expand
+    - content.code.collapse
+    - content.code.show
+    - content.code.hide
+    - content.code.toggle
+    - content.code.download
+    - content.code.upload
+    - content.code.run
+    - content.code.execute
+    - content.code.terminal
+    - content.code.shell
+    - content.code.python
+    - content.code.javascript
+    - content.code.typescript
+    - content.code.rust
+    - content.code.go
+    - content.code.cpp
+    - content.code.c
+    - content.code.java
+    - content.code.kotlin
+    - content.code.swift
+    - content.code.php
+    - content.code.ruby
+    - content.code.perl
+    - content.code.lua
+    - content.code.haskell
+    - content.code.elixir
+    - content.code.erlang
+    - content.code.ocaml
+    - content.code.scala
+    - content.code.clojure
+    - content.code.fsharp
+    - content.code.d
+    - content.code.nim
+    - content.code.crystal
+    - content.code.zig
+    - content.code.dart
+    - content.code.solidity
+    - content.code.v
+    - content.code.julia
+    - content.code.r
+    - content.code.matlab
+    - content.code.octave
+    - content.code.sas
+    - content.code.stata
+    - content.code.spss
+    - content.code.sql
+    - content.code.plsql
+    - content.code.tsql
+    - content.code.mysql
+    - content.code.postgresql
+    - content.code.sqlite
+    - content.code.mariadb
+    - content.code.oracle
+    - content.code.mongodb
+    - content.code.redis
+    - content.code.couchdb
+    - content.code.cassandra
+    - content.code.neo4j
+    - content.code.graphql
+    - content.code.apollo
+    - content.code.prisma
+    - content.code.firebase
+    - content.code.aws
+    - content.code.gcp
+    - content.code.azure
+    - content.code.heroku
+    - content.code.netlify
+    - content.code.vercel
+    - content.code.digitalocean
+    - content.code.linode
+    - content.code.vultr
+    - content.code.scaleway
+    - content.code.ovh
+    - content.code.hetzner
+    - content.code.rackspace
+    - content.code.cloudflare
+    - content.code.fastly
+    - content.code.cloudflare-workers
+    - content.code.cloudflare-pages
+    - content.code.cloudflare-stream
+    - content.code.cloudflare-images
+    - content.code.cloudflare-analytics
+    - content.code.cloudflare-logs
+    - content.code.cloudflare-security
+    - content.code.cloudflare-performance
+    - content.code.cloudflare-dns
+    - content.code.cloudflare-cdn
+    - content.code.cloudflare-ssl
+    - content.code.cloudflare-firewall
+    - content.code.cloudflare-access
+    - content.code.cloudflare-zero-trust
+    - content.code.cloudflare-tunnels
+    - content.code.cloudflare-waf
+    - content.code.cloudflare-bot-management
+    - content.code.cloudflare-workers-kv
+    - content.code.cloudflare-workers-durable-objects
+    - content.code.cloudflare-workers-queues
+    - content.code.cloudflare-workers-r2
+    - content.code.cloudflare-workers-d1
+    - content.code.cloudflare-workers-pages
+    - content.code.cloudflare-workers-images
+    - content.code.cloudflare-workers-stream
+    - content.code.cloudflare-workers-analytics
+    - content.code.cloudflare-workers-logs
+    - content.code.cloudflare-workers-security
+    - content.code.cloudflare-workers-performance
+    - content.code.cloudflare-workers-dns
+    - content.code.cloudflare-workers-cdn
+    - content.code.cloudflare-workers-ssl
+    - content.code.cloudflare-workers-firewall
+    - content.code.cloudflare-workers-access
+    - content.code.cloudflare-workers-zero-trust
+    - content.code.cloudflare-workers-tunnels
+    - content.code.cloudflare-workers-waf
+    - content.code.cloudflare-workers-bot-management
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.tabbed
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji
+  - pymdownx.highlight
+  - pymdownx.keys
+  - pymdownx.tasklist
+  - pymdownx.magiclink
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.smartsymbols
+  - pymdownx.progressbar
+  - pymdownx.arithmatex
+  - pymdownx.saneheaders
+  - pymdownx.striphtml
+  - pymdownx.escapeall
+  - pymdownx.extra
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: true
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            show_inheritance_diagram: true
+            modernize_annotations: true
+            group_by_category: true
+            show_docstring_examples: true
+            show_docstring_attributes: true
+            show_docstring_parameters: true
+            show_docstring_returns: true
+            show_docstring_raises: true
+            show_docstring_warns: true
+            show_docstring_yields: true
+            show_docstring_classes: true
+            show_docstring_functions: true
+            show_docstring_modules: true
+            show_docstring_other_parameters: true
+            show_if_no_docstring: false
+            show_labels: true
+            show_object_full_path: false
+            show_root_full_path: false
+            show_root_heading: true
+            show_root_members_full_path: false
+            show_root_toc_entry: true
+            members_order: alphabetical
+            summary:
+              attributes: true
+              classes: true
+              functions: true
+              modules: true
+            docstring_style: google
+            docstring_section_style: table
+            line_length: 88
+            unwrap_annotated: true
+            signature_crossrefs: true
+            show_overloads: true
+            show_bases: true
+            backlinks: tree
+  - mermaid2
+
+extra_css:
+  - assets/custom.css
+
+watch:
+  - src/astro_lab
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/bjoernbethge/astro-lab
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/astro-lab/
+# Hint for local build and deployment:
+#
+# Local build:
+#   uv run mkdocs serve
+#
+# Deployment to GitHub Pages:
+#   uv run mkdocs gh-deploy --force
