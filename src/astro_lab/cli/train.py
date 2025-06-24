@@ -73,16 +73,10 @@ def train_from_config(config_path: str) -> None:
     # Import modules after logging setup
     from astro_lab.data.config import data_config
     from astro_lab.data.datamodule import AstroDataModule
-    from astro_lab.models.factories import (
-        create_asteroid_period_detector,
-        create_gaia_classifier,
-        create_galaxy_modeler,
-        create_lightcurve_classifier,
-        create_lsst_transient_detector,
-        create_sdss_galaxy_model,
-        create_temporal_graph_model,
-    )
     from astro_lab.training.lightning_module import AstroLightningModule
+
+    # Setup logger for this function
+    logger = logging.getLogger(__name__)
 
     # Create a custom stderr that filters duplicate messages
     class FilteredStderr:
@@ -160,7 +154,7 @@ def train_from_config(config_path: str) -> None:
                 if hasattr(datamodule, "num_classes") and datamodule.num_classes:
                     num_classes = max(datamodule.num_classes, 2)
                     model_params["output_dim"] = num_classes
-                    print(f"Auto-detected {num_classes} classes from data")
+                    logger.info(f"Auto-detected {num_classes} classes from data")
                 else:
                     # Fallback: sample from dataloader
                     train_data = datamodule._main_data
@@ -170,72 +164,91 @@ def train_from_config(config_path: str) -> None:
                         # Ensure at least 2 classes for classification
                         num_classes = max(num_classes, 2)
                         model_params["output_dim"] = num_classes
-                        print(f"Auto-detected {num_classes} classes from data")
+                        logger.info(f"Auto-detected {num_classes} classes from data")
                     else:
                         model_params["output_dim"] = 4
-                        print("Using default 4 classes")
+                        logger.info("Using default 4 classes")
             except Exception as e:
                 model_params["output_dim"] = 4
-                print(f"Using default 4 classes (error: {e})")
+                logger.warning(f"Using default 4 classes (error: {e})")
 
-        # Create model
-        if model_type == "gaia_classifier":
-            model = create_gaia_classifier(
-                num_classes=model_params.get("output_dim", 7),
-                hidden_dim=model_params.get("hidden_dim", 128),
-                device=model_params.get("device", None),
-                **model_params,
-            )
-        elif model_type == "sdss_galaxy_classifier":
-            model = create_sdss_galaxy_model(
-                output_dim=model_params.get("output_dim", 5),
-                hidden_dim=model_params.get("hidden_dim", 256),
-                device=model_params.get("device", None),
-                **model_params,
-            )
-        else:
-            # Fallback: nutze create_gaia_classifier als Default
-            model = create_gaia_classifier(**model_params)
+        # Use robust factory function with parameter filtering
+        model_params.setdefault("num_classes", 7)
+        model_params.setdefault("hidden_dim", 128)
+        model_params.setdefault("device", None)
 
-        print(f"Created model: {type(model).__name__}")
+        # Import the robust factory function
+        from astro_lab.models.factories import create_model
+
+        try:
+            logger.info(f"🔧 Creating model with params: {model_params}")
+            model = create_model(model_type, **model_params)
+            logger.info(f"✅ Model created successfully: {type(model)}")
+
+            # Verify model is proper nn.Module
+            if not isinstance(model, torch.nn.Module):
+                logger.error(f"❌ Factory returned invalid type: {type(model)}")
+                raise ValueError(
+                    f"Factory function returned {type(model)} instead of nn.Module"
+                )
+
+        except ValueError:
+            logger.warning(
+                f"⚠️ Unknown model type '{model_type}', using 'gaia_classifier' as fallback"
+            )
+            model = create_model("gaia_classifier", **model_params)
+            logger.info(f"✅ Fallback model created: {type(model)}")
+
+        logger.info(f"Created model: {type(model).__name__}")
 
         # Apply torch.compile with robust error handling BEFORE creating LightningModule
+        model_compiled = False
         if config.get("training", {}).get("use_compile", True):
             try:
-                print("🔄 Attempting to compile model with torch.compile...")
-                model = torch.compile(
-                    model,
-                    mode="reduce-overhead",  # More stable than "max-autotune"
-                    backend="inductor",  # Use inductor backend for best performance
-                    fullgraph=False,  # Allow fallback for unsupported operations
-                    dynamic=True,  # Enable dynamic shapes
-                )
-                print("✅ Model compiled successfully with torch.compile")
-            except Exception as e:
-                print(f"⚠️ torch.compile failed: {e}")
-                print("🔄 Falling back to eager mode (no compilation)")
-                try:
-                    # Fallback to eager backend (no compilation, just Python)
+                logger.info("🔄 Attempting to compile model with torch.compile...")
+
+                # Use different backends based on platform and GPU availability
+                import platform
+
+                is_windows = platform.system() == "Windows"
+
+                if is_windows:
+                    # On Windows, skip torch.compile due to triton issues
+                    logger.info(
+                        "🪟 Windows detected - skipping torch.compile for compatibility"
+                    )
+                    model_compiled = False
+                else:
+                    # On Linux/Mac, try inductor first
                     model = torch.compile(
                         model,
-                        backend="eager",
+                        mode="reduce-overhead",
+                        backend="inductor",
                         fullgraph=False,
+                        dynamic=True,
                     )
-                    print("✅ Model using eager backend (no compilation)")
-                except Exception as fallback_error:
-                    print(f"⚠️ Even eager compilation failed: {fallback_error}")
-                    print("🔄 Using uncompiled model")
-                    # Keep the original model without compilation
-                    pass
+                    logger.info("✅ Model compiled successfully with inductor backend")
+                    model_compiled = True
+
+            except Exception as e:
+                logger.warning(f"⚠️ torch.compile failed: {e}")
+                logger.info("🔄 Falling back to uncompiled model")
+                model_compiled = False
         else:
-            print("📝 Model training without torch.compile")
+            logger.info("📝 Model training without torch.compile")
 
         # Extract training config
         training_config = config.get("training", {})
 
-        # Stelle sicher, dass model eine Instanz von torch.nn.Module ist
-        if callable(model):
-            model = model()
+        # Verify model is a proper nn.Module (should already be one)
+        if not isinstance(model, torch.nn.Module):
+            logger.error(f"❌ Model is not nn.Module: {type(model)}")
+            raise ValueError(
+                f"Model creation failed - got {type(model)} instead of nn.Module"
+            )
+
+        logger.info(f"🔍 Model type before Lightning: {type(model)}")
+
         lightning_module = AstroLightningModule(
             model=model,
             task_type="classification",
@@ -250,7 +263,7 @@ def train_from_config(config_path: str) -> None:
             ),
             scheduler_type=training_config.get("scheduler_type", "cosine"),
             warmup_steps=training_config.get("warmup_steps", 0),
-            use_compile=True,  # Always enable torch.compile
+            use_compile=False,  # Don't compile again in Lightning
             use_ema=training_config.get("use_ema", False),
             ema_decay=training_config.get("ema_decay", 0.999),
             label_smoothing=training_config.get("label_smoothing", 0.0),
@@ -387,21 +400,21 @@ def train_from_config(config_path: str) -> None:
             val_check_interval=training_config.get("val_check_interval", 1.0),
         )
 
-        print(
+        logger.info(
             f"Starting training for {training_config.get('max_epochs', 20)} epochs..."
         )
-        print(
+        logger.info(
             f"Strategy: {type(strategy).__name__ if hasattr(strategy, '__name__') else strategy}"
         )
-        print(f"Precision: {precision}")
-        print(
+        logger.info(f"Precision: {precision}")
+        logger.info(
             f"Gradient accumulation: {training_config.get('gradient_accumulation_steps', 1)} steps"
         )
 
         # Train
         trainer.fit(lightning_module, datamodule=datamodule)
 
-        print("Training completed!")
+        logger.info("Training completed!")
 
         # Test
         trainer.test(lightning_module, datamodule=datamodule)
