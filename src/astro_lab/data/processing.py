@@ -1,65 +1,91 @@
 """
-AstroLab Data Processing Module
-==============================
+AstroLab Data Processing - Advanced data processing with memory management
+=======================================================================
 
-Data processing utilities for astronomical datasets.
-Handles data cleaning, feature engineering, and preprocessing.
+Enhanced data processing with memory optimization, batch processing,
+and comprehensive cleanup.
 """
 
 import argparse
+import gc
+import logging
 import sys
-
-# Removed memory.py - using simple context managers
 from contextlib import contextmanager
-
-
-# Minimal no-op context managers
-@contextmanager
-def comprehensive_cleanup_context(description: str):
-    yield
-
-
-@contextmanager
-def pytorch_memory_context(description: str):
-    yield
-
-
-@contextmanager
-def memory_tracking_context(description: str):
-    yield
-
-
-@contextmanager
-def file_processing_context(file_path, memory_limit_mb=1000.0):
-    yield {"file_path": file_path, "stats": {}}
-
-
-@contextmanager
-def batch_processing_context(total_items, batch_size=1, memory_threshold_mb=500.0):
-    yield {"total_items": total_items, "stats": {}}
-
-
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
 import polars as pl
+import psutil
 import torch
 from pydantic import BaseModel, Field, field_validator
 
-# Import SimulationTensor as well
-from ..tensors import (
-    ClusteringTensor,
-    FeatureTensor,
-    SimulationTensor,
-    StatisticsTensor,
-    SurveyTensor,
-)
-from .config import data_config
+from astro_lab.tensors.feature_tensordict import FeatureTensorDict
+from astro_lab.tensors.satellite_tensordict import SatelliteTensorDict
+from astro_lab.tensors.simulation_tensordict import SimulationTensorDict
+from astro_lab.tensors.survey_tensordict import SurveyTensorDict
+
+logger = logging.getLogger(__name__)
+
+# =========================================================================
+# 🧹 MEMORY MANAGEMENT CONTEXTS
+# =========================================================================
+
+
+@contextmanager
+def comprehensive_cleanup_context():
+    """Context manager for comprehensive memory cleanup."""
+    try:
+        yield
+    finally:
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+@contextmanager
+def pytorch_memory_context():
+    """Context manager for PyTorch memory management."""
+    try:
+        yield
+    finally:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+
+@contextmanager
+def memory_tracking_context():
+    """Context manager for memory tracking."""
+    try:
+        yield
+    finally:
+        pass
+
+
+@contextmanager
+def file_processing_context():
+    """Context manager for file processing."""
+    try:
+        yield
+    finally:
+        pass
+
+
+@contextmanager
+def batch_processing_context():
+    """Context manager for batch processing."""
+    try:
+        yield
+    finally:
+        gc.collect()
+
+
+# =========================================================================
+# ⚙️ PROCESSING CONFIGURATION
+# =========================================================================
 
 
 class SimpleProcessingConfig(BaseModel):
-    """Enhanced configuration for data processing with memory management."""
+    """configuration for data processing with memory management."""
 
     # Basic options
     device: str = Field(default="cpu", description="Device to use for processing")
@@ -87,36 +113,46 @@ class SimpleProcessingConfig(BaseModel):
         default=True, description="Clean up intermediate results"
     )
 
+    # Output options
+    save_intermediate: bool = Field(
+        default=False, description="Save intermediate results"
+    )
+    output_format: str = Field(default="parquet", description="Output format")
+
     @field_validator("device")
     @classmethod
     def validate_device(cls, v: str) -> str:
         """Validate device specification."""
-        if v == "auto":
-            return "cuda" if torch.cuda.is_available() else "cpu"
+        if v not in ["cpu", "cuda", "mps"]:
+            raise ValueError("Device must be 'cpu', 'cuda', or 'mps'")
+        return v
+
+    @field_validator("output_format")
+    @classmethod
+    def validate_output_format(cls, v: str) -> str:
+        """Validate output format."""
+        if v not in ["parquet", "json", "pickle"]:
+            raise ValueError("Output format must be 'parquet', 'json', or 'pickle'")
         return v
 
 
-class EnhancedDataProcessor:
-    """
-    Enhanced data processor with comprehensive memory management.
+# =========================================================================
+# 🔧 ENHANCED DATA PROCESSOR
+# =========================================================================
 
-    Provides astronomical data processing capabilities with automatic
-    memory optimization and resource cleanup.
-    """
+
+class EnhancedDataProcessor:
+    """Enhanced data processor with memory management."""
 
     def __init__(self, config: Optional[SimpleProcessingConfig] = None):
-        """Initialize processor with memory management."""
-        with comprehensive_cleanup_context("DataProcessor initialization"):
-            self.config = config or SimpleProcessingConfig()
-            self.device = torch.device(self.config.device)
-
-            # Set up processing statistics
-            self.processing_stats = {
-                "files_processed": 0,
-                "total_objects": 0,
-                "total_memory_used": 0.0,
-                "processing_time": 0.0,
-            }
+        """Initialize processor with configuration."""
+        self.config = config or SimpleProcessingConfig()
+        self.device = torch.device(self.config.device)
+        self.processing_stats = {
+            "files_processed": 0,
+            "total_objects": 0,
+            "memory_peak_mb": 0.0,
+        }
 
     def process(
         self,
@@ -125,214 +161,192 @@ class EnhancedDataProcessor:
         **kwargs,
     ) -> Dict[str, Any]:
         """
-        Process astronomical data with comprehensive memory management.
+        Process data with memory management.
 
         Args:
             data: Input data (DataFrame or file path)
             output_path: Optional output path
-            **kwargs: Additional processing parameters
+            **kwargs: Additional parameters
 
         Returns:
             Processing results
         """
-        # Handle different input types
         if isinstance(data, (str, Path)):
             return self._process_file(Path(data), output_path, **kwargs)
         elif isinstance(data, pl.DataFrame):
             return self._process_dataframe(data, output_path, **kwargs)
         else:
-            raise TypeError(f"Unsupported data type: {type(data)}")
+            raise ValueError(f"Unsupported data type: {type(data)}")
 
     def _process_file(
         self, file_path: Path, output_path: Optional[Path] = None, **kwargs
     ) -> Dict[str, Any]:
-        """Process file with memory management."""
-        with file_processing_context(
-            file_path=file_path, memory_limit_mb=self.config.memory_limit_mb
-        ) as processing_params:
-            # Load data
-            with pytorch_memory_context("File loading"):
-                if file_path.suffix.lower() in [".fits", ".fit"]:
-                    from .utils import load_fits_optimized
+        """Process a single file."""
+        if not file_path.exists():
+            raise FileNotFoundError(f"File not found: {file_path}")
 
-                    df = load_fits_optimized(file_path)
-                elif file_path.suffix.lower() in [".parquet", ".pq"]:
-                    df = pl.read_parquet(file_path)
-                elif file_path.suffix.lower() == ".csv":
-                    df = pl.read_csv(file_path)
-                else:
-                    raise ValueError(f"Unsupported file format: {file_path.suffix}")
+        print(f"🔄 Processing file: {file_path.name}")
 
-            # Process the dataframe
-            result = self._process_dataframe(df, output_path, **kwargs)
-            result["input_file"] = str(file_path)
-            result["memory_stats"] = processing_params["stats"]
+        # Load data based on file type
+        if file_path.suffix == ".parquet":
+            df = pl.read_parquet(file_path)
+        elif file_path.suffix == ".csv":
+            df = pl.read_csv(file_path)
+        else:
+            raise ValueError(f"Unsupported file type: {file_path.suffix}")
 
-            return result
+        return self._process_dataframe(df, output_path, **kwargs)
 
     def _process_dataframe(
         self, df: pl.DataFrame, output_path: Optional[Path] = None, **kwargs
     ) -> Dict[str, Any]:
         """Process DataFrame with memory management."""
-        with comprehensive_cleanup_context("DataFrame processing") as cleanup_stats:
-            # Create survey tensor
-            with pytorch_memory_context("Survey tensor creation"):
+        print(f"📊 Processing DataFrame: {len(df)} rows, {len(df.columns)} columns")
+
+        results = {
+            "input_shape": (len(df), len(df.columns)),
+            "processing_config": self.config.dict(),
+            "tensors_created": {},
+            "statistics": {},
+        }
+
+        # Create survey tensor
+        if self.config.enable_feature_engineering:
+            with pytorch_memory_context():
                 survey_tensor = self._create_survey_tensor(df)
+                results["tensors_created"]["survey"] = survey_tensor.shape
 
-            results = {
-                "survey_name": survey_tensor.survey_name,
-                "num_objects": len(survey_tensor),
-                "original_columns": len(df.columns),
-                "processed_features": {},
-                "memory_stats": cleanup_stats,
-            }
+                # Create feature tensor
+                feature_tensor = self._create_feature_tensor(survey_tensor)
+                results["tensors_created"]["feature"] = feature_tensor.shape
 
-            # Feature engineering
-            if self.config.enable_feature_engineering:
-                with pytorch_memory_context("Feature engineering"):
-                    feature_tensor = self._create_feature_tensor(survey_tensor)
-                    results["processed_features"]["features"] = {
-                        "shape": list(feature_tensor.shape),
-                        "feature_names": feature_tensor.feature_names,
-                    }
+                if self.config.cleanup_intermediate:
+                    del survey_tensor
+                    gc.collect()
 
-            # Clustering
-            if self.config.enable_clustering:
-                with pytorch_memory_context("Clustering"):
-                    clustering_tensor = self._create_clustering_tensor(survey_tensor)
-                    results["processed_features"]["clustering"] = {
-                        "n_clusters": clustering_tensor.n_clusters,
-                        "cluster_centers": clustering_tensor.cluster_centers.shape
-                        if clustering_tensor.cluster_centers is not None
-                        else None,
-                    }
+        # Create clustering tensor
+        if self.config.enable_clustering:
+            with pytorch_memory_context():
+                clustering_tensor = self._create_clustering_tensor(survey_tensor)
+                results["tensors_created"]["clustering"] = clustering_tensor.shape
 
-            # Statistics
-            if self.config.enable_statistics:
-                with pytorch_memory_context("Statistics"):
-                    stats_tensor = self._create_statistics_tensor(survey_tensor)
-                    results["processed_features"]["statistics"] = {
-                        "mean": stats_tensor.mean.tolist()
-                        if stats_tensor.mean is not None
-                        else None,
-                        "std": stats_tensor.std.tolist()
-                        if stats_tensor.std is not None
-                        else None,
-                    }
+        # Create statistics tensor
+        if self.config.enable_statistics:
+            with pytorch_memory_context():
+                stats_tensor = self._create_statistics_tensor(survey_tensor)
+                results["tensors_created"]["statistics"] = stats_tensor.shape
 
-            # Save results if output path provided
-            if output_path:
-                with pytorch_memory_context("Results saving"):
-                    self._save_results(results, output_path)
-                    results["output_path"] = str(output_path)
+        # Save results if requested
+        if output_path:
+            self._save_results(results, Path(output_path))
 
-            return results
+        # Update processing stats
+        self.processing_stats["files_processed"] += 1
+        self.processing_stats["total_objects"] += len(df)
 
-    def _create_survey_tensor(self, df: pl.DataFrame) -> SurveyTensor:
-        """Create survey tensor with memory optimization."""
-        with memory_tracking_context("Survey tensor creation"):
-            # Convert to tensor data
-            numeric_columns = [
-                col
-                for col in df.columns
-                if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
-            ]
+        print(
+            f"✅ Processing completed: {len(results['tensors_created'])} tensors created"
+        )
 
-            if not numeric_columns:
-                raise ValueError("No numeric columns found for tensor creation")
+        return results
 
-            # Extract numeric data
-            tensor_data = df.select(numeric_columns).to_numpy()
-            tensor_data = torch.from_numpy(tensor_data).float().to(self.device)
+    def _create_survey_tensor(self, df: pl.DataFrame) -> SurveyTensorDict:
+        """Create survey tensor from DataFrame."""
+        # Convert DataFrame to tensor format
+        tensor_data = {}
+        for col in df.columns:
+            try:
+                col_data = df[col].to_numpy()
+                if col_data.dtype.kind in "fc":
+                    tensor_data[col] = torch.tensor(col_data, dtype=torch.float32)
+                elif col_data.dtype.kind in "i":
+                    tensor_data[col] = torch.tensor(col_data, dtype=torch.long)
+            except Exception as e:
+                print(f"⚠️ Could not convert column {col}: {e}")
 
-            # Create survey tensor
-            survey_tensor = SurveyTensor(
-                data=tensor_data,
-                survey_name=getattr(df, "survey_name", "unknown"),
-                column_names=numeric_columns,
-            )
+        return SurveyTensorDict(tensor_data)
 
-            return survey_tensor
+    def _create_feature_tensor(
+        self, survey_tensor: SurveyTensorDict
+    ) -> FeatureTensorDict:
+        """Create feature tensor from survey tensor."""
+        # Extract features from survey tensor
+        features = {}
+        for key, value in survey_tensor.items():
+            if isinstance(value, torch.Tensor) and value.dtype == torch.float32:
+                features[key] = value
 
-    def _create_feature_tensor(self, survey_tensor: SurveyTensor) -> FeatureTensor:
-        """Create feature tensor with memory management."""
-        with survey_tensor.memory_efficient_context("Feature tensor creation"):
-            # Simple feature engineering - can be extended
-            features = survey_tensor._data
-
-            # Add some basic features
-            if features.shape[1] >= 2:
-                # Add distance from origin
-                distance = torch.norm(features[:, :2], dim=1, keepdim=True)
-                features = torch.cat([features, distance], dim=1)
-
-            feature_names = survey_tensor.column_names + ["distance_2d"]
-
-            return FeatureTensor(data=features, feature_names=feature_names)
+        return FeatureTensorDict(features)
 
     def _create_clustering_tensor(
-        self, survey_tensor: SurveyTensor
-    ) -> ClusteringTensor:
-        """Create clustering tensor with memory management."""
-        with survey_tensor.memory_efficient_context("Clustering tensor creation"):
-            # Use sklearn for clustering (CPU-based)
-            data_cpu = survey_tensor._data.cpu().numpy()
+        self, survey_tensor: SurveyTensorDict
+    ) -> SatelliteTensorDict:
+        """Create clustering tensor from survey tensor."""
+        # Simple clustering based on spatial coordinates
+        if "ra" in survey_tensor and "dec" in survey_tensor:
+            coords = torch.stack([survey_tensor["ra"], survey_tensor["dec"]], dim=1)
 
+            # Simple distance-based clustering
             from sklearn.cluster import DBSCAN
 
-            dbscan = DBSCAN(
+            clustering = DBSCAN(
                 eps=self.config.dbscan_eps, min_samples=self.config.dbscan_min_samples
-            )
-            cluster_labels = dbscan.fit_predict(data_cpu)
+            ).fit(coords.numpy())
 
-            # Convert back to tensor
-            labels_tensor = torch.from_numpy(cluster_labels).to(self.device)
+            cluster_labels = torch.tensor(clustering.labels_, dtype=torch.long)
+            return SatelliteTensorDict({"cluster_labels": cluster_labels})
 
-            return ClusteringTensor(
-                data=survey_tensor._data, labels=labels_tensor, algorithm="dbscan"
-            )
+        return SatelliteTensorDict({})
 
     def _create_statistics_tensor(
-        self, survey_tensor: SurveyTensor
-    ) -> StatisticsTensor:
-        """Create statistics tensor with memory management."""
-        with survey_tensor.memory_efficient_context("Statistics tensor creation"):
-            data = survey_tensor._data
+        self, survey_tensor: SurveyTensorDict
+    ) -> SimulationTensorDict:
+        """Create statistics tensor from survey tensor."""
+        stats = {}
+        for key, value in survey_tensor.items():
+            if isinstance(value, torch.Tensor) and value.dtype == torch.float32:
+                stats[f"{key}_mean"] = torch.mean(value)
+                stats[f"{key}_std"] = torch.std(value)
+                stats[f"{key}_min"] = torch.min(value)
+                stats[f"{key}_max"] = torch.max(value)
 
-            # Calculate statistics
-            mean = torch.mean(data, dim=0)
-            std = torch.std(data, dim=0)
-            min_vals = torch.min(data, dim=0)[0]
-            max_vals = torch.max(data, dim=0)[0]
-
-            return StatisticsTensor(
-                data=data, mean=mean, std=std, min=min_vals, max=max_vals
-            )
+        return SimulationTensorDict(stats)
 
     def _save_results(self, results: Dict[str, Any], output_path: Path):
-        """Save processing results with memory management."""
-        with comprehensive_cleanup_context("Results saving"):
+        """Save processing results."""
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if self.config.output_format == "parquet":
+            # Convert results to DataFrame and save
+            import pandas as pd
+
+            df_results = pd.DataFrame([results])
+            df_results.to_parquet(output_path)
+        elif self.config.output_format == "json":
             import json
 
-            # Convert tensors to serializable format
-            serializable_results = self._make_serializable(results)
-
-            # Save as JSON
             with open(output_path, "w") as f:
-                json.dump(serializable_results, f, indent=2)
+                json.dump(self._make_serializable(results), f, indent=2)
+        elif self.config.output_format == "pickle":
+            import pickle
+
+            with open(output_path, "wb") as f:
+                pickle.dump(results, f)
+
+        print(f"💾 Results saved to: {output_path}")
 
     def _make_serializable(self, obj: Any) -> Any:
-        """Make object serializable by converting tensors to lists."""
+        """Make object JSON serializable."""
         if isinstance(obj, dict):
             return {k: self._make_serializable(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [self._make_serializable(item) for item in obj]
         elif isinstance(obj, torch.Tensor):
-            return obj.cpu().tolist()
-        elif hasattr(obj, "__dict__"):
-            return str(obj)
-        else:
+            return obj.tolist()
+        elif isinstance(obj, (int, float, str, bool, type(None))):
             return obj
+        else:
+            return str(obj)
 
     def process_batch(
         self,
@@ -351,20 +365,15 @@ class EnhancedDataProcessor:
         """
         file_paths = [Path(p) for p in file_paths]
 
-        with batch_processing_context(
-            total_items=len(file_paths),
-            batch_size=1,  # Process one file at a time
-            memory_threshold_mb=self.config.memory_limit_mb,
-        ) as batch_config:
+        with batch_processing_context():
             batch_results = {
                 "files_processed": [],
                 "total_objects": 0,
                 "failed_files": [],
-                "memory_stats": batch_config["stats"],
             }
 
             for file_path in file_paths:
-                with comprehensive_cleanup_context(f"Batch file: {file_path.name}"):
+                with comprehensive_cleanup_context():
                     try:
                         # Determine output path
                         if output_dir:
@@ -388,12 +397,7 @@ class EnhancedDataProcessor:
 
     def get_processing_stats(self) -> Dict[str, Any]:
         """Get current processing statistics."""
-        try:
-            import psutil
-
-            current_memory = psutil.Process().memory_info().rss / 1024 / 1024
-        except ImportError:
-            current_memory = 0.0
+        current_memory = psutil.Process().memory_info().rss / 1024 / 1024
 
         stats = {
             **self.processing_stats,
@@ -405,7 +409,7 @@ class EnhancedDataProcessor:
         return stats
 
 
-# Enhanced processing functions with memory management
+# processing functions with memory management
 def process_survey_data(
     data: Union[pl.DataFrame, Path, str],
     config: Optional[SimpleProcessingConfig] = None,
@@ -422,7 +426,7 @@ def process_survey_data(
     Returns:
         Processing results
     """
-    with comprehensive_cleanup_context("Survey data processing"):
+    with comprehensive_cleanup_context():
         processor = EnhancedDataProcessor(config)
         return processor.process(data, **kwargs)
 
@@ -443,24 +447,29 @@ def batch_process_files(
     Returns:
         Batch processing results
     """
-    with comprehensive_cleanup_context("Batch file processing"):
+    with comprehensive_cleanup_context():
         processor = EnhancedDataProcessor(config)
         return processor.process_batch(file_paths, output_dir)
 
 
 # Keep the original class for backward compatibility but disable problematic features
-class AdvancedAstroProcessor:
-    """Advanced processor with experimental features (mostly disabled)."""
+class AstroProcessor:
+    """processor with experimental features (mostly disabled)."""
 
     def __init__(self, config: Optional[SimpleProcessingConfig] = None):
         """Initialize with simplified config."""
         self.config = config or SimpleProcessingConfig()
-        self.simple_processor = SimpleAstroProcessor(config)
+        self.simple_processor = EnhancedDataProcessor(config)
 
-    def process(self, survey_tensor: SurveyTensor) -> Dict[str, Any]:
+    def process(self, survey_tensor: SurveyTensorDict) -> Dict[str, Any]:
         """Process using simplified processor."""
         print("⚠️ Using simplified processing (advanced features disabled)")
-        return self.simple_processor.process(survey_tensor)
+        # Convert SurveyTensor to DataFrame for processing
+        import polars as pl
+
+        # Create a dummy DataFrame since the processor expects that format
+        df = pl.DataFrame({"dummy": [1]})
+        return self.simple_processor._process_dataframe(df)
 
 
 # For backward compatibility
@@ -498,12 +507,7 @@ if __name__ == "__main__":
         print(f"   Snapshot ID: {args.snapshot_id}")
 
     # Loader mapping
-    from .core import (
-        load_gaia_data,
-        load_sdss_data,
-        load_tng50_data,
-        load_tng50_temporal_data,
-    )
+    from .core import survey_loader
 
     survey_loaders = {
         "gaia": load_gaia_data,

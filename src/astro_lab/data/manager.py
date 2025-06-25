@@ -4,6 +4,7 @@ AstroLab Data Manager - Data Management
 
 Data management system for astronomical datasets.
 Handles data loading, processing, and catalog management.
+Updated for TensorDict architecture.
 """
 
 import datetime
@@ -17,9 +18,24 @@ from typing import Any, Dict, List, Optional, Union
 import h5py
 import numpy as np
 import polars as pl
+import psutil
 import torch
+from astropy.io import fits
+from astropy.table import Table
 from astroquery.gaia import Gaia
 from pydantic import BaseModel, Field
+
+# Use TensorDict classes instead of old tensor classes
+from ..tensors import (
+    ClusteringTensorDict,
+    FeatureTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SimulationTensorDict,
+    SpatialTensorDict,
+    StatisticsTensorDict,
+    SurveyTensorDict,
+)
 
 # Removed memory.py - using simple gc instead
 from .config import DataConfig, data_config
@@ -29,9 +45,10 @@ from .utils import load_fits_optimized
 
 logger = logging.getLogger(__name__)
 
+
 class AstroDataManager:
     """
-    Enhanced data manager with comprehensive memory management.
+    data manager with comprehensive memory management.
 
     Handles loading, preprocessing, and managing astronomical survey data
     with automatic memory cleanup and optimization.
@@ -41,7 +58,8 @@ class AstroDataManager:
         """Initialize data manager with memory management."""
         # Load configuration
         if isinstance(config, str):
-            self.config = DataConfig.from_yaml(config)
+            # Simple config loading without from_yaml
+            self.config = DataConfig(config)
         elif isinstance(config, DataConfig):
             self.config = config
         else:
@@ -239,9 +257,6 @@ class AstroDataManager:
         print(f"📥 Importing FITS: {fits_file.name} -> {catalog_name}")
 
         try:
-            from astropy.io import fits
-            from astropy.table import Table
-
             # Read FITS table
             with fits.open(fits_file) as hdul:
                 table = Table(hdul[hdu_index].data)  # type: ignore
@@ -399,7 +414,7 @@ class AstroDataManager:
         processed_dir = self.processed_dir / survey
         processed_dir.mkdir(parents=True, exist_ok=True)
         output_path = processed_dir / f"{survey}.parquet"
-        print(f"\U0001F504 Processing {raw_file.name} for ML as {output_path} ...")
+        print(f"\U0001f504 Processing {raw_file.name} for ML as {output_path} ...")
         df = pl.read_parquet(raw_file)
         if filters:
             for col, (min_val, max_val) in filters.items():
@@ -411,10 +426,12 @@ class AstroDataManager:
         elif "psfMag_r" in df.columns:
             critical_cols.append("psfMag_r")
         df = df.drop_nulls(subset=critical_cols)
-        df = df.with_columns([
-            (pl.col("ra") / 360.0).alias("ra_norm"),
-            ((pl.col("dec") + 90) / 180.0).alias("dec_norm"),
-        ])
+        df = df.with_columns(
+            [
+                (pl.col("ra") / 360.0).alias("ra_norm"),
+                ((pl.col("dec") + 90) / 180.0).alias("dec_norm"),
+            ]
+        )
         df.write_parquet(output_path)
         metadata = {
             "source_file": str(raw_file),
@@ -441,14 +458,16 @@ class AstroDataManager:
                         metadata = json.load(f)
                 else:
                     metadata = {"source": "Unknown", "n_sources": 0}
-                catalogs.append({
-                    "name": parquet_file.name,
-                    "type": "raw",
-                    "source": metadata.get("source", "Unknown"),
-                    "n_sources": metadata.get("n_sources", 0),
-                    "size_mb": parquet_file.stat().st_size / 1024**2,
-                    "path": str(parquet_file),
-                })
+                catalogs.append(
+                    {
+                        "name": parquet_file.name,
+                        "type": "raw",
+                        "source": metadata.get("source", "Unknown"),
+                        "n_sources": metadata.get("n_sources", 0),
+                        "size_mb": parquet_file.stat().st_size / 1024**2,
+                        "path": str(parquet_file),
+                    }
+                )
         if data_type in ["all", "processed"]:
             # Only show survey-based
             for survey_dir in (self.processed_dir).iterdir():
@@ -461,23 +480,27 @@ class AstroDataManager:
                                 metadata = json.load(f)
                         else:
                             metadata = {"source": "Unknown", "n_sources": 0}
-                        catalogs.append({
-                            "name": parquet_file.name,
-                            "type": "processed",
-                            "source": metadata.get("source_file", "Unknown"),
-                            "n_sources": metadata.get("n_sources_output", 0),
-                            "size_mb": parquet_file.stat().st_size / 1024**2,
-                            "path": str(parquet_file),
-                        })
+                        catalogs.append(
+                            {
+                                "name": parquet_file.name,
+                                "type": "processed",
+                                "source": metadata.get("source_file", "Unknown"),
+                                "n_sources": metadata.get("n_sources_output", 0),
+                                "size_mb": parquet_file.stat().st_size / 1024**2,
+                                "path": str(parquet_file),
+                            }
+                        )
         if not catalogs:
-            return pl.DataFrame({
-                "name": [],
-                "type": [],
-                "source": [],
-                "n_sources": [],
-                "size_mb": [],
-                "path": [],
-            })
+            return pl.DataFrame(
+                {
+                    "name": [],
+                    "type": [],
+                    "source": [],
+                    "n_sources": [],
+                    "size_mb": [],
+                    "path": [],
+                }
+            )
         return pl.DataFrame(catalogs).sort("size_mb", descending=True)
 
     def load_catalog(self, catalog_path: Union[str, Path]) -> pl.DataFrame:
@@ -488,6 +511,26 @@ class AstroDataManager:
 
         if catalog_path.suffix.lower() in [".fits", ".fit"]:
             data = load_fits_optimized(catalog_path)
+            # Ensure we return a Polars DataFrame
+            if data is None:
+                raise ValueError(f"Could not load FITS file: {catalog_path}")
+            if isinstance(data, pl.DataFrame):
+                return data
+            else:
+                # Convert to Polars DataFrame
+                import pandas as pd
+
+                # Handle different data types
+                if hasattr(data, "__array__"):
+                    # numpy arrays and similar
+                    df_pandas = pd.DataFrame(data)
+                elif hasattr(data, "to_pandas"):
+                    # astropy tables and similar
+                    df_pandas = data.to_pandas()
+                else:
+                    # fallback
+                    df_pandas = pd.DataFrame([data])
+                return pl.from_pandas(df_pandas)
         elif catalog_path.suffix.lower() in [".parquet", ".pq"]:
             data = pl.read_parquet(catalog_path)
         elif catalog_path.suffix.lower() == ".csv":
@@ -604,7 +647,22 @@ class AstroDataManager:
             raise ValueError(f"Unsupported file format: {file_path.suffix}")
 
         # Preprocess data
-        lf_processed = preprocess_catalog_lazy(data, use_streaming=True)
+        # Detect survey type from filename or use generic
+        survey_type = "generic"
+        if "gaia" in file_path.name.lower():
+            survey_type = "gaia"
+        elif "sdss" in file_path.name.lower():
+            survey_type = "sdss"
+        elif "nsa" in file_path.name.lower():
+            survey_type = "nsa"
+        elif "linear" in file_path.name.lower():
+            survey_type = "linear"
+        elif "tng" in file_path.name.lower():
+            survey_type = "tng50"
+
+        lf_processed = preprocess_catalog_lazy(
+            data, survey_type=survey_type, use_streaming=True
+        )
         processed_data = lf_processed.collect()
 
         # Save processed data
@@ -631,7 +689,9 @@ class AstroDataManager:
         Returns:
             Batch processing results
         """
-        surveys = surveys or self.config.surveys
+        # Default surveys if none specified
+        if surveys is None:
+            surveys = ["gaia", "sdss", "nsa", "linear", "tng50"]
 
         logger.info(f"📊 Processing {len(surveys)} surveys")
 
@@ -702,7 +762,6 @@ class AstroDataManager:
         dataset = AstroDataset(
             root=str(self.processed_dir),
             survey=survey_name,
-            force_reload=force_reload,
         )
 
         logger.info(f"✅ Dataset created: {len(dataset)} samples")
@@ -710,15 +769,10 @@ class AstroDataManager:
 
     def get_memory_stats(self) -> Dict[str, Any]:
         """Get current memory statistics."""
-        try:
-            import psutil
-
-            system_memory = psutil.Process().memory_info().rss / 1024 / 1024
-        except ImportError:
-            system_memory = 0.0
+        current_memory = psutil.Process().memory_info().rss / 1024 / 1024
 
         stats = {
-            "system_memory_mb": system_memory,
+            "system_memory_mb": current_memory,
             "data_dir": str(self.data_dir),
             "processed_dir": str(self.processed_dir),
         }
@@ -740,33 +794,146 @@ class AstroDataManager:
 
         logger.info(f"🧹 Cleaned up {cleaned_files} temporary files")
 
+    def download_survey_catalog(
+        self,
+        survey: str,
+        magnitude_limit: float = 15.0,
+        region: str = "all_sky",
+        max_sources: int = 1000000,
+    ) -> Path:
+        """Download survey catalog to raw storage. Generic function for all surveys."""
+
+        # Get survey configuration
+        from astro_lab.utils.config.surveys import get_survey_config
+
+        survey_config = get_survey_config(survey)
+
+        # Ensure survey directories exist
+        self.config.ensure_survey_directories(survey)
+
+        output_file = (
+            self.config.get_survey_raw_dir(survey)
+            / f"{survey}_{region}_mag{magnitude_limit:.1f}.parquet"
+        )
+
+        if output_file.exists():
+            print(f"📂 {survey} catalog exists: {output_file.name}")
+            return output_file
+
+        print(f"🌟 Downloading {survey}: {region}, magnitude limit < {magnitude_limit}")
+
+        # Survey-specific download logic
+        if survey.lower() == "gaia":
+            return self.download_gaia_catalog(magnitude_limit, region, max_sources)
+        elif survey.lower() == "sdss":
+            return self._download_sdss_catalog(magnitude_limit, region, max_sources)
+        elif survey.lower() == "2mass":
+            return self._download_2mass_catalog(magnitude_limit, region, max_sources)
+        elif survey.lower() == "wise":
+            return self._download_wise_catalog(magnitude_limit, region, max_sources)
+        elif survey.lower() == "pan_starrs":
+            return self._download_pan_starrs_catalog(
+                magnitude_limit, region, max_sources
+            )
+        else:
+            raise ValueError(f"Download not implemented for survey: {survey}")
+
+    def _download_sdss_catalog(
+        self,
+        magnitude_limit: float = 15.0,
+        region: str = "all_sky",
+        max_sources: int = 1000000,
+    ) -> Path:
+        """Download SDSS catalog."""
+        # Placeholder for SDSS download
+        print("⚠️ SDSS download not yet implemented")
+        raise NotImplementedError("SDSS download not yet implemented")
+
+    def _download_2mass_catalog(
+        self,
+        magnitude_limit: float = 15.0,
+        region: str = "all_sky",
+        max_sources: int = 1000000,
+    ) -> Path:
+        """Download 2MASS catalog."""
+        # Placeholder for 2MASS download
+        print("⚠️ 2MASS download not yet implemented")
+        raise NotImplementedError("2MASS download not yet implemented")
+
+    def _download_wise_catalog(
+        self,
+        magnitude_limit: float = 15.0,
+        region: str = "all_sky",
+        max_sources: int = 1000000,
+    ) -> Path:
+        """Download WISE catalog."""
+        # Placeholder for WISE download
+        print("⚠️ WISE download not yet implemented")
+        raise NotImplementedError("WISE download not yet implemented")
+
+    def _download_pan_starrs_catalog(
+        self,
+        magnitude_limit: float = 15.0,
+        region: str = "all_sky",
+        max_sources: int = 1000000,
+    ) -> Path:
+        """Download Pan-STARRS catalog."""
+        # Placeholder for Pan-STARRS download
+        print("⚠️ Pan-STARRS download not yet implemented")
+        raise NotImplementedError("Pan-STARRS download not yet implemented")
+
+
 # Global data manager instance
 data_manager = AstroDataManager()
 
-# Convenience functions
-def download_gaia(region: str = "lmc", magnitude_limit: float = 15.0) -> Path:
-    """Download Gaia catalog."""
-    return data_manager.download_gaia_catalog(magnitude_limit, region)
 
-def download_bright_all_sky(magnitude_limit: float = 12.0) -> Path:
-    """Download bright all-sky Gaia catalog (~1 GB)."""
-    return data_manager.download_gaia_catalog(magnitude_limit, "bright_all_sky")
+# Convenience functions
+def download_survey(
+    survey: str, region: str = "all_sky", magnitude_limit: float = 15.0
+) -> Path:
+    """Download any survey catalog."""
+    return data_manager.download_survey_catalog(survey, magnitude_limit, region)
+
+
+def download_sdss(region: str = "all_sky", magnitude_limit: float = 15.0) -> Path:
+    """Download SDSS catalog."""
+    return data_manager.download_survey_catalog("sdss", magnitude_limit, region)
+
+
+def download_2mass(region: str = "all_sky", magnitude_limit: float = 15.0) -> Path:
+    """Download 2MASS catalog."""
+    return data_manager.download_survey_catalog("2mass", magnitude_limit, region)
+
+
+def download_wise(region: str = "all_sky", magnitude_limit: float = 15.0) -> Path:
+    """Download WISE catalog."""
+    return data_manager.download_survey_catalog("wise", magnitude_limit, region)
+
+
+def download_pan_starrs(region: str = "all_sky", magnitude_limit: float = 15.0) -> Path:
+    """Download Pan-STARRS catalog."""
+    return data_manager.download_survey_catalog("pan_starrs", magnitude_limit, region)
+
 
 def import_fits(fits_file: Union[str, Path], catalog_name: str) -> Path:
     """Import FITS catalog."""
     return data_manager.import_fits_catalog(fits_file, catalog_name)
 
+
 def import_tng50(hdf5_file: Union[str, Path], dataset_name: str = "PartType0") -> Path:
     """Convenience function to import a TNG50 HDF5 file."""
     return data_manager.import_tng50_hdf5(hdf5_file, dataset_name)
+
 
 def list_catalogs() -> pl.DataFrame:
     """Convenience function to list available catalogs."""
     return data_manager.list_catalogs()
 
+
 def load_catalog(catalog_path: Union[str, Path]) -> pl.DataFrame:
     """Convenience function to load a catalog."""
     return data_manager.load_catalog(catalog_path)
+
 
 def list_catalog_names() -> list:
     """Convenience function to list available catalog names."""
@@ -775,61 +942,23 @@ def list_catalog_names() -> list:
         return []
     return df["name"].to_list()
 
+
 def process_for_ml(raw_file: Union[str, Path], **kwargs) -> Path:
     """Convenience function to process a raw file for ML."""
     return data_manager.process_for_ml(raw_file, **kwargs)
 
-def load_gaia_bright_stars(magnitude_limit: float = 12.0) -> pl.DataFrame:
-    """
-    Load bright Gaia DR3 stars from our real catalogs.
-
-    Parameters
-    ----------
-    magnitude_limit : float, default 12.0
-        Magnitude limit (10.0 or 12.0 available)
-
-    Returns
-    -------
-    pl.DataFrame
-        Gaia star catalog
-    """
-    try:
-        manager = AstroDataManager()
-
-        # Choose appropriate catalog file
-        if magnitude_limit <= 10.0:
-            catalog_file = Path("data/raw/gaia/gaia_dr3_bright_all_sky_mag10.0.parquet")
-        else:
-            catalog_file = Path("data/raw/gaia/gaia_dr3_bright_all_sky_mag12.0.parquet")
-
-        if catalog_file.exists():
-            print(f"📊 Loading {catalog_file.name}...")
-            return manager.load_catalog(catalog_file)
-        else:
-            print(f"❌ Catalog file not found: {catalog_file}")
-            return pl.DataFrame()
-
-    except Exception as e:
-        print(f"❌ Error loading Gaia catalog: {e}")
-        return pl.DataFrame()
-
-def load_bright_stars(limit: Optional[int] = None) -> pl.DataFrame:
-    """Load bright stars (alias for load_gaia_bright_stars)"""
-    data = load_gaia_bright_stars(12.0)
-    if limit and not data.is_empty():
-        return data.head(limit)
-    return data
 
 __all__ = [
     "AstroDataManager",
     "data_manager",
-    "download_gaia",
-    "download_bright_all_sky",
+    "download_survey",
+    "download_sdss",
+    "download_2mass",
+    "download_wise",
+    "download_pan_starrs",
     "import_fits",
     "import_tng50",
     "list_catalogs",
     "list_catalog_names",
     "process_for_ml",
-    "load_gaia_bright_stars",
-    "load_bright_stars",
 ]

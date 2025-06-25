@@ -1,43 +1,48 @@
 """
-AstroLab Data Utilities
-=======================
+AstroLab Data Utilities - Utility functions for data processing
+==============================================================
 
-Utility functions for data loading, processing, and analysis.
-Includes FITS handling, statistics, and data validation.
+Utility functions for data loading, processing, and visualization.
+Updated for TensorDict architecture.
 """
 
+import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import astroquery
 import numpy as np
 import polars as pl
 import torch
-import torch_geometric
-from astropy.io import fits
-from astropy.table import Table
-from astropy.wcs import WCS
 
-from .config import data_config
+try:
+    from astropy.table import Table
+except ImportError:
+    Table = Any
 
-# Try to import astropy for FITS handling
-# Import astropy for FITS data
+logger = logging.getLogger(__name__)
 
-# Import astroquery for external data
+# =========================================================================
+# 🛠️ UTILITY FUNCTIONS - Data Loading and Processing
+# =========================================================================
 
 
 def check_astroquery_available() -> bool:
-    """Check if astroquery is available for data downloads."""
-    return True
+    """Check if astroquery is available."""
+    try:
+        import astroquery
+
+        return True
+    except ImportError:
+        return False
 
 
 def get_data_statistics(df: pl.DataFrame) -> Dict[str, Any]:
     """
-    Get comprehensive statistics for astronomical DataFrame.
+    Get comprehensive statistics for a DataFrame.
 
     Args:
-        df: Input Polars DataFrame
+        df: Polars DataFrame
 
     Returns:
         Dictionary with statistics
@@ -45,51 +50,57 @@ def get_data_statistics(df: pl.DataFrame) -> Dict[str, Any]:
     stats = {
         "n_rows": len(df),
         "n_columns": len(df.columns),
-        "columns": df.columns,
-        "dtypes": {col: str(df[col].dtype) for col in df.columns},
         "memory_usage_mb": df.estimated_size() / (1024 * 1024),
-        "numeric_columns": [],
-        "missing_data": {},
+        "columns": df.columns,
+        "dtypes": {col: str(dtype) for col, dtype in df.schema.items()},
     }
 
-    # Analyze each column
-    for col in df.columns:
-        if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
-            stats["numeric_columns"].append(col)
+    # Detect magnitude columns
+    mag_cols = _detect_magnitude_columns(df)
+    if mag_cols:
+        stats["magnitude_columns"] = mag_cols
+        # Calculate magnitude statistics
+        for col in mag_cols:
+            if col in df.columns:
+                col_stats = df[col].describe()
+                stats[f"{col}_stats"] = {
+                    "mean": col_stats["mean"],
+                    "std": col_stats["std"],
+                    "min": col_stats["min"],
+                    "max": col_stats["max"],
+                    "null_count": df[col].null_count(),
+                }
 
-        # Count missing values
-        null_count = df[col].null_count()
-        if null_count > 0:
-            stats["missing_data"][col] = {
-                "null_count": null_count,
-                "null_percentage": (null_count / len(df)) * 100,
-            }
+    # Detect coordinate columns
+    coord_cols = [
+        col for col in df.columns if col.lower() in ["ra", "dec", "x", "y", "z"]
+    ]
+    if coord_cols:
+        stats["coordinate_columns"] = coord_cols
 
     return stats
 
 
 def _detect_magnitude_columns(df: pl.DataFrame) -> List[str]:
-    """Detect likely magnitude columns in a DataFrame."""
+    """Detect magnitude columns in DataFrame."""
     mag_patterns = [
         "mag",
         "magnitude",
-        "petromag",
-        "fibermag",
-        "modelmag",
-        "psfmag",
-        "phot_",
-        "_mag",
+        "phot",
+        "psf",
+        "model",
+        "petro",
+        "fiber",
+        "aper",
     ]
 
-    magnitude_cols = []
+    mag_cols = []
     for col in df.columns:
         col_lower = col.lower()
         if any(pattern in col_lower for pattern in mag_patterns):
-            # Check if it's actually numeric
-            if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
-                magnitude_cols.append(col)
+            mag_cols.append(col)
 
-    return magnitude_cols
+    return mag_cols
 
 
 def load_fits_optimized(
@@ -99,57 +110,72 @@ def load_fits_optimized(
     do_not_scale: bool = False,
     section: Optional[Tuple[slice, ...]] = None,
     max_memory_mb: float = 1000.0,
-) -> Optional[Union[np.ndarray, Table]]:
+) -> Optional[Union[np.ndarray, Any]]:
     """
-    Load FITS data with optimizations for large files.
+    Load FITS file with memory optimization.
 
     Args:
         fits_path: Path to FITS file
         hdu_index: HDU index to load
-        memmap: Use memory mapping
-        do_not_scale: Disable automatic scaling
-        section: Data section to load
-        max_memory_mb: Memory limit for automatic memmap
+        memmap: Use memory mapping for large files
+        do_not_scale: Don't scale data
+        section: Section to load (for partial loading)
+        max_memory_mb: Maximum memory usage in MB
 
     Returns:
-        Loaded data as ndarray or Table
+        FITS data as numpy array or astropy Table
     """
-    fits_path = Path(fits_path)
-    if not fits_path.exists():
-        print(f"FITS file not found: {fits_path}")
-        return None
-
     try:
-        # Check file size for auto-memmap
+        from astropy.io import fits
+        from astropy.table import Table
+
+        fits_path = Path(fits_path)
+        if not fits_path.exists():
+            raise FileNotFoundError(f"FITS file not found: {fits_path}")
+
+        # Check file size
         file_size_mb = fits_path.stat().st_size / (1024 * 1024)
-        auto_memmap = memmap or (file_size_mb > max_memory_mb)
+        if file_size_mb > max_memory_mb:
+            print(f"⚠️ Large FITS file: {file_size_mb:.1f} MB")
+            if not memmap:
+                print("   Consider using memmap=True for large files")
 
-        print(f"Loading FITS file: {fits_path.name} ({file_size_mb:.1f} MB)")
-        if auto_memmap:
-            print("Using memory mapping for efficient loading")
+        # Load FITS file
+        with fits.open(fits_path, memmap=memmap, do_not_scale=do_not_scale) as hdul:
+            hdu = hdul[hdu_index]
 
-        with fits.open(
-            fits_path, memmap=auto_memmap, do_not_scale_image_data=do_not_scale
-        ) as hdul:
-            if hdu_index >= len(hdul):
-                print(f"HDU index {hdu_index} not available (max: {len(hdul) - 1})")
-                return None
-
-            hdu = hdul[hdu_index]  # type: ignore
-
-            # Type-safe HDU data access
-            if hasattr(hdu, "data") and getattr(hdu, "data", None) is not None:
-                data = getattr(hdu, "data")  # type: ignore
-
-                # Apply section if specified
+            # Check if it's a table or image
+            is_image = hasattr(hdu, "is_image") and hdu.is_image
+            if is_image:
+                # Image data
                 if section is not None:
-                    data = data[section]  # type: ignore
-
+                    data = hdu.data[section] if hasattr(hdu, "data") else None
+                else:
+                    data = hdu.data if hasattr(hdu, "data") else None
                 return data
             else:
-                # Header-only HDU - return None for now
-                print("No data in HDU - header-only HDUs not supported")
-                return None
+                # Table data
+                try:
+                    table = Table(hdu.data)
+                except Exception:
+                    return None
+                try:
+                    names = [
+                        name
+                        for name in table.colnames
+                        if hasattr(table[name], "shape") and len(table[name].shape) <= 1
+                    ]
+                    if len(names) < len(table.colnames):
+                        filtered_cols = set(table.colnames) - set(names)
+                        print(
+                            f"📋 Filtered out {len(filtered_cols)} multidimensional columns: {list(filtered_cols)[:5]}{'...' if len(filtered_cols) > 5 else ''}"
+                        )
+                    filtered_table = table[names]
+                    df_pandas = filtered_table.to_pandas()  # type: ignore
+                    return pl.from_pandas(df_pandas)
+                except Exception as e:
+                    print(f"⚠️ Error converting table: {e}")
+                    return table
 
     except Exception as e:
         print(f"Error loading FITS file: {e}")
@@ -162,63 +188,66 @@ def load_fits_table_optimized(
     columns: Optional[List[str]] = None,
     max_rows: Optional[int] = None,
     as_polars: bool = True,
-) -> Optional[Union[pl.DataFrame, Table]]:
+) -> Optional[Union[pl.DataFrame, Any]]:
     """
-    Load FITS table data with optimizations.
+    Load FITS table with optimization.
 
     Args:
         fits_path: Path to FITS file
-        hdu_index: HDU index (typically 1 for tables)
+        hdu_index: HDU index (usually 1 for tables)
         columns: Specific columns to load
-        max_rows: Maximum rows to load
+        max_rows: Maximum number of rows to load
         as_polars: Return as Polars DataFrame
 
     Returns:
-        Loaded table as DataFrame or Table
+        FITS table as Polars DataFrame or astropy Table
     """
-    fits_path = Path(fits_path)
-    if not fits_path.exists():
-        print(f"FITS file not found: {fits_path}")
-        return None
-
     try:
-        with fits.open(fits_path, memmap=True) as hdul:
-            if hdu_index >= len(hdul):
-                print(f"HDU index {hdu_index} not available")
+        from astropy.io import fits
+        from astropy.table import Table
+
+        fits_path = Path(fits_path)
+        if not fits_path.exists():
+            raise FileNotFoundError(f"FITS file not found: {fits_path}")
+
+        # Load FITS table
+        with fits.open(fits_path) as hdul:
+            hdu = hdul[hdu_index]
+
+            is_table = hasattr(hdu, "is_table") and hdu.is_table
+            if not is_table:
+                raise ValueError(f"HDU {hdu_index} is not a table")
+
+            # Load table
+            try:
+                table = Table(hdu.data)
+            except Exception:
                 return None
 
-            hdu = hdul[hdu_index]  # type: ignore
-
-            # Type-safe HDU data access
-            if not hasattr(hdu, "data") or getattr(hdu, "data", None) is None:
-                print(f"No table data in HDU {hdu_index}")
-                return None
-
-            # Convert to astropy Table
-            table = Table(getattr(hdu, "data"))  # type: ignore
-
-            # Select columns if specified
+            # Filter columns if specified
             if columns:
-                available_cols = [col for col in columns if col in table.colnames]
+                available_cols = [
+                    col for col in columns if col in getattr(table, "colnames", [])
+                ]
                 if available_cols:
                     table = table[available_cols]
                 else:
-                    print(f"None of the requested columns found: {columns}")
-                    return None
+                    raise ValueError(f"No specified columns found: {columns}")
 
-            # Limit rows if specified
+            # Filter rows if specified
             if max_rows and len(table) > max_rows:
                 table = table[:max_rows]
 
+            # Convert to Polars if requested
             if as_polars:
-                # Convert to Polars DataFrame with proper type handling
                 try:
-                    # Filter out multidimensional columns as suggested by astropy
-                    # This handles the NSA catalog issue with NMGY, ABSMAG, etc.
+                    # Handle multidimensional columns
                     names = [
-                        name for name in table.colnames if len(table[name].shape) <= 1
+                        name
+                        for name in getattr(table, "colnames", [])
+                        if hasattr(table[name], "shape") and len(table[name].shape) <= 1
                     ]
-                    if len(names) < len(table.colnames):
+                    if len(names) < len(getattr(table, "colnames", [])):
                         filtered_cols = set(table.colnames) - set(names)
                         print(
                             f"📋 Filtered out {len(filtered_cols)} multidimensional columns: {list(filtered_cols)[:5]}{'...' if len(filtered_cols) > 5 else ''}"
@@ -229,8 +258,8 @@ def load_fits_table_optimized(
                     df_pandas = filtered_table.to_pandas()  # type: ignore
                     return pl.from_pandas(df_pandas)
                 except Exception as e:
-                    print(f"Error converting to Polars: {e}")
-                    return None
+                    print(f"⚠️ Error converting to Polars: {e}")
+                    return table
             else:
                 return table
 
@@ -241,22 +270,23 @@ def load_fits_table_optimized(
 
 def get_fits_info(fits_path: Union[str, Path]) -> Dict[str, Any]:
     """
-    Get comprehensive information about a FITS file.
+    Get information about FITS file.
 
     Args:
         fits_path: Path to FITS file
 
     Returns:
-        Dictionary with file information
+        Dictionary with FITS information
     """
-
-    fits_path = Path(fits_path)
-    if not fits_path.exists():
-        return {"error": f"File not found: {fits_path}"}
-
     try:
+        from astropy.io import fits
+
+        fits_path = Path(fits_path)
+        if not fits_path.exists():
+            raise FileNotFoundError(f"FITS file not found: {fits_path}")
+
         info = {
-            "file_path": str(fits_path),
+            "filename": fits_path.name,
             "file_size_mb": fits_path.stat().st_size / (1024 * 1024),
             "hdus": [],
         }
@@ -266,45 +296,37 @@ def get_fits_info(fits_path: Union[str, Path]) -> Dict[str, Any]:
                 hdu_info = {
                     "index": i,
                     "name": hdu.name,
-                    "type": type(hdu).__name__,
+                    "type": hdu.header.get("XTENSION", "IMAGE"),
                 }
 
-                if hasattr(hdu, "data") and hdu.data is not None:
-                    data = hdu.data
+                if hdu.is_image:
                     hdu_info.update(
                         {
-                            "shape": data.shape,
-                            "dtype": str(data.dtype),
-                            "data_size_mb": data.nbytes / (1024 * 1024),
+                            "shape": hdu.data.shape if hdu.data is not None else None,
+                            "dtype": str(hdu.data.dtype)
+                            if hdu.data is not None
+                            else None,
                         }
                     )
-
-                    # Check for scaling
-                    if hasattr(hdu, "header"):
-                        header = hdu.header
-                        if "BSCALE" in header or "BZERO" in header:
-                            hdu_info["scaled"] = True
-                            hdu_info["bscale"] = header.get("BSCALE", 1.0)
-                            hdu_info["bzero"] = header.get("BZERO", 0.0)
-                        else:
-                            hdu_info["scaled"] = False
-
-                    # Table information
-                    if (
-                        hasattr(data, "dtype")
-                        and hasattr(data.dtype, "names")
-                        and data.dtype.names
-                    ):
-                        hdu_info["table_rows"] = len(data)
-                        hdu_info["table_columns"] = len(data.dtype.names)
-                        hdu_info["column_names"] = list(data.dtype.names)
+                elif hdu.is_table:
+                    hdu_info.update(
+                        {
+                            "n_rows": len(hdu.data),
+                            "n_cols": len(hdu.data.dtype.names)
+                            if hdu.data.dtype.names
+                            else 0,
+                            "columns": list(hdu.data.dtype.names)
+                            if hdu.data.dtype.names
+                            else [],
+                        }
+                    )
 
                 info["hdus"].append(hdu_info)
 
         return info
 
     except Exception as e:
-        return {"error": f"Error reading FITS file: {e}"}
+        return {"error": str(e)}
 
 
 def create_training_splits(
@@ -316,77 +338,84 @@ def create_training_splits(
     shuffle: bool = True,
 ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    Create train/validation/test splits using native Polars operations.
+    Create train/validation/test splits from DataFrame.
 
-    Parameters
-    ----------
-    df : pl.DataFrame
-        Input DataFrame to split
-    test_size : float, default 0.2
-        Proportion of data for test set
-    val_size : float, default 0.1
-        Proportion of data for validation set
-    stratify_column : str, optional
-        Column to use for stratified splitting (basic implementation)
-    random_state : int, optional
-        Random seed for reproducibility
-    shuffle : bool, default True
-        Whether to shuffle before splitting
+    Args:
+        df: Input DataFrame
+        test_size: Fraction for test set
+        val_size: Fraction for validation set
+        stratify_column: Column to stratify on
+        random_state: Random seed
+        shuffle: Whether to shuffle data
 
-    Returns
-    -------
-    Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
-        Training, validation, and test DataFrames
-
-    Raises
-    ------
-    ValueError
-        If split sizes are invalid
+    Returns:
+        Tuple of (train_df, val_df, test_df)
     """
-    # Validate split sizes
-    if not 0 < test_size < 1:
-        raise ValueError(f"test_size must be between 0 and 1, got {test_size}")
-    if not 0 < val_size < 1:
-        raise ValueError(f"val_size must be between 0 and 1, got {val_size}")
-    if test_size + val_size >= 1:
-        raise ValueError(
-            f"test_size + val_size must be < 1, got {test_size + val_size}"
-        )
-
-    print(
-        f"🔄 Creating splits: train={1 - test_size - val_size:.1%}, val={val_size:.1%}, test={test_size:.1%}"
-    )
-
-    # Set random seed if provided
     if random_state is not None:
         np.random.seed(random_state)
 
-    n_total = len(df)
-    n_test = int(n_total * test_size)
-    n_val = int(n_total * val_size)
-    n_train = n_total - n_test - n_val
+    n_samples = len(df)
 
-    if shuffle:
-        # Create random indices
-        indices = np.random.permutation(n_total)
+    if stratify_column and stratify_column in df.columns:
+        # Stratified split
+        unique_values = df[stratify_column].unique()
+        train_dfs = []
+        val_dfs = []
+        test_dfs = []
+
+        for value in unique_values:
+            subset = df.filter(pl.col(stratify_column) == value)
+            n_subset = len(subset)
+
+            if n_subset < 3:
+                # Too few samples for stratification, add to train
+                train_dfs.append(subset)
+                continue
+
+            # Calculate split sizes
+            n_test = max(1, int(n_subset * test_size))
+            n_val = max(1, int(n_subset * val_size))
+            n_train = n_subset - n_test - n_val
+
+            # Create indices
+            indices = np.arange(n_subset)
+            if shuffle:
+                np.random.shuffle(indices)
+
+            # Split indices
+            train_indices = indices[:n_train]
+            val_indices = indices[n_train : n_train + n_val]
+            test_indices = indices[n_train + n_val :]
+
+            # Create splits
+            train_dfs.append(subset.take(train_indices))
+            val_dfs.append(subset.take(val_indices))
+            test_dfs.append(subset.take(test_indices))
+
+        # Combine splits
+        train_df = pl.concat(train_dfs) if train_dfs else pl.DataFrame()
+        val_df = pl.concat(val_dfs) if val_dfs else pl.DataFrame()
+        test_df = pl.concat(test_dfs) if test_dfs else pl.DataFrame()
+
     else:
-        indices = np.arange(n_total)
+        # Simple random split
+        indices = np.arange(n_samples)
+        if shuffle:
+            np.random.shuffle(indices)
 
-    # Split indices
-    train_indices = indices[:n_train]
-    val_indices = indices[n_train : n_train + n_val]
-    test_indices = indices[n_train + n_val :]
+        n_test = int(n_samples * test_size)
+        n_val = int(n_samples * val_size)
+        n_train = n_samples - n_test - n_val
 
-    # Create splits using the indices
-    df_train = df[train_indices.tolist()]
-    df_val = df[val_indices.tolist()]
-    df_test = df[test_indices.tolist()]
+        train_indices = indices[:n_train]
+        val_indices = indices[n_train : n_train + n_val]
+        test_indices = indices[n_train + n_val :]
 
-    print(
-        f"✅ Created splits - Train: {len(df_train)}, Val: {len(df_val)}, Test: {len(df_test)}"
-    )
+        train_df = df.take(train_indices)
+        val_df = df.take(val_indices)
+        test_df = df.take(test_indices)
 
-    return df_train, df_val, df_test
+    return train_df, val_df, test_df
 
 
 def save_splits_to_parquet(
@@ -397,34 +426,47 @@ def save_splits_to_parquet(
     dataset_name: str,
 ) -> Dict[str, Path]:
     """
-    Save train/validation/test splits to Parquet files.
+    Save train/val/test splits to parquet files.
 
-    Parameters
-    ----------
-    df_train, df_val, df_test : pl.DataFrame
-        DataFrames to save
-    base_path : Union[str, Path]
-        Base directory for saving
-    dataset_name : str
-        Name of the dataset for file naming
+    Args:
+        df_train: Training DataFrame
+        df_val: Validation DataFrame
+        df_test: Test DataFrame
+        base_path: Base directory for saving
+        dataset_name: Name of dataset
 
-    Returns
-    -------
-    Dict[str, Path]
-        Dictionary mapping split names to file paths
+    Returns:
+        Dictionary with paths to saved files
     """
     base_path = Path(base_path)
     base_path.mkdir(parents=True, exist_ok=True)
 
     paths = {}
+
+    # Save splits
     for split_name, df in [("train", df_train), ("val", df_val), ("test", df_test)]:
-        filename = f"{dataset_name}_{split_name}.parquet"
-        filepath = base_path / filename
+        file_path = base_path / f"{dataset_name}_{split_name}.parquet"
+        df.write_parquet(file_path)
+        paths[split_name] = file_path
 
-        df.write_parquet(filepath)
-        paths[split_name] = filepath
-        print(f"💾 Saved {split_name} split to {filepath}")
+    # Save metadata
+    metadata = {
+        "dataset_name": dataset_name,
+        "n_train": len(df_train),
+        "n_val": len(df_val),
+        "n_test": len(df_test),
+        "n_total": len(df_train) + len(df_val) + len(df_test),
+        "columns": df_train.columns,
+        "created_at": str(pl.datetime.now()),
+    }
 
+    metadata_path = base_path / f"{dataset_name}_metadata.json"
+    import json
+
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2)
+
+    paths["metadata"] = metadata_path
     return paths
 
 
@@ -432,29 +474,27 @@ def load_splits_from_parquet(
     base_path: Union[str, Path], dataset_name: str
 ) -> Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
     """
-    Load train/validation/test splits from Parquet files.
+    Load train/val/test splits from parquet files.
 
-    Parameters
-    ----------
-    base_path : Union[str, Path]
-        Base directory containing the split files
-    dataset_name : str
-        Name of the dataset for file naming
+    Args:
+        base_path: Base directory containing splits
+        dataset_name: Name of dataset
 
-    Returns
-    -------
-    Tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]
-        Training, validation, and test DataFrames
+    Returns:
+        Tuple of (train_df, val_df, test_df)
     """
     base_path = Path(base_path)
 
-    df_train = pl.read_parquet(base_path / f"{dataset_name}_train.parquet")
-    df_val = pl.read_parquet(base_path / f"{dataset_name}_val.parquet")
-    df_test = pl.read_parquet(base_path / f"{dataset_name}_test.parquet")
+    train_path = base_path / f"{dataset_name}_train.parquet"
+    val_path = base_path / f"{dataset_name}_val.parquet"
+    test_path = base_path / f"{dataset_name}_test.parquet"
 
-    print(
-        f"📂 Loaded splits - Train: {df_train.height}, Val: {df_val.height}, Test: {df_test.height}"
-    )
+    if not all(p.exists() for p in [train_path, val_path, test_path]):
+        raise FileNotFoundError(f"Split files not found in {base_path}")
+
+    df_train = pl.read_parquet(train_path)
+    df_val = pl.read_parquet(val_path)
+    df_test = pl.read_parquet(test_path)
 
     return df_train, df_val, df_test
 
@@ -465,91 +505,64 @@ def load_nsa_as_tensors(
     max_samples: Optional[int] = None,
 ) -> Dict[str, torch.Tensor]:
     """
-    Load NSA data and convert to tensor format for point cloud models.
+    Load NSA data as tensors for training.
 
     Args:
-        data_path: Path to NSA processed data directory
-        split: Which split to load ('train', 'val', 'test')
-        max_samples: Limit number of samples
+        data_path: Path to NSA data directory
+        split: Data split ('train', 'val', 'test')
+        max_samples: Maximum number of samples
 
     Returns:
-        Dictionary with 'pos', 'x', and 'edge_index' tensors
+        Dictionary with tensors
     """
+    from astro_lab.tensors import SurveyTensorDict
+
     data_path = Path(data_path)
-
-    # Load parquet data
     parquet_file = data_path / f"nsa_v1_0_1_{split}.parquet"
-    if not parquet_file.exists():
-        raise FileNotFoundError(f"NSA {split} data not found: {parquet_file}")
 
+    if not parquet_file.exists():
+        raise FileNotFoundError(f"NSA data file not found: {parquet_file}")
+
+    # Load data
     df = pl.read_parquet(parquet_file)
 
-    if max_samples:
-        df = df.head(max_samples)
+    # Apply sampling if requested
+    if max_samples and len(df) > max_samples:
+        df = df.sample(max_samples, seed=42)
 
-    # Extract coordinates (RA, DEC, Z) -> 3D positions
-    ra = df["RA"].to_numpy()
-    dec = df["DEC"].to_numpy()
-    z = df["Z"].to_numpy()
+    # Convert to tensors
+    tensors = {}
 
-    # Convert to 3D Cartesian coordinates (simplified)
-    c = 299792.458  # km/s
-    H0 = 70.0  # km/s/Mpc
-    distance = c * z / H0  # Mpc
+    # Coordinates
+    if "ra" in df.columns and "dec" in df.columns:
+        coords = torch.tensor(df.select(["ra", "dec"]).to_numpy(), dtype=torch.float32)
+        tensors["coordinates"] = coords
 
-    ra_rad = np.radians(ra)
-    dec_rad = np.radians(dec)
+    # Magnitudes
+    mag_cols = [col for col in df.columns if "mag" in col.lower()]
+    if mag_cols:
+        mags = torch.tensor(df.select(mag_cols).to_numpy(), dtype=torch.float32)
+        tensors["magnitudes"] = mags
 
-    x = distance * np.cos(dec_rad) * np.cos(ra_rad)
-    y = distance * np.cos(dec_rad) * np.sin(ra_rad)
-    z_coord = distance * np.sin(dec_rad)
+    # Redshift
+    if "z" in df.columns:
+        redshifts = torch.tensor(df["z"].to_numpy(), dtype=torch.float32)
+        tensors["redshifts"] = redshifts
 
-    pos = torch.tensor(np.column_stack([x, y, z_coord]), dtype=torch.float32)
+    # Create SurveyTensor
+    survey_tensor = SurveyTensorDict(
+        data=df.to_numpy(),
+        survey_name="nsa",
+        data_release="v1_0_1",
+        filter_system="sdss",
+        coordinate_system="icrs",
+        photometric_bands=mag_cols,
+        n_objects=len(df),
+    )
 
-    # Extract features
-    feature_cols = ["RA", "DEC", "Z"]
+    tensors["survey_tensor"] = survey_tensor
 
-    # Add photometric features if available
-    photo_cols = ["ELPETRO_MASS", "SERSIC_MASS", "MAG"]
-    available_photo = [col for col in photo_cols if col in df.columns]
-    feature_cols.extend(available_photo)
-
-    features = df.select(feature_cols).to_numpy()
-    features = np.nan_to_num(features, nan=0.0)
-    x = torch.tensor(features, dtype=torch.float32)
-
-    # Load graph structure if available
-    graph_file = data_path / f"graphs_{split}" / f"nsa_v1_0_1_{split}.pt"
-    edge_index = None
-
-    if graph_file.exists():
-        try:
-            # Load with weights_only=False for PyTorch Geometric compatibility
-            import torch_geometric
-
-            # Add safe globals for PyTorch Geometric
-            torch.serialization.add_safe_globals(
-                [
-                    torch_geometric.data.Data,
-                    torch_geometric.data.data.DataEdgeAttr,
-                    torch_geometric.data.data.DataNodeAttr,
-                ]
-            )
-
-            graph_data = torch.load(graph_file, map_location="cpu", weights_only=False)
-            edge_index = graph_data.edge_index
-        except Exception as e:
-            print(f"Warning: Could not load graph structure: {e}")
-
-    result = {
-        "pos": pos,
-        "x": x,
-    }
-
-    if edge_index is not None:
-        result["edge_index"] = edge_index
-
-    return result
+    return tensors
 
 
 def create_nsa_survey_tensor(
@@ -558,82 +571,60 @@ def create_nsa_survey_tensor(
     max_samples: Optional[int] = None,
 ):
     """
-    Create SurveyTensor from NSA data.
+    Create NSA SurveyTensor for training.
 
     Args:
-        data_path: Path to NSA processed data
-        split: Which split to load
-        max_samples: Limit number of samples
+        data_path: Path to NSA data directory
+        split: Data split ('train', 'val', 'test')
+        max_samples: Maximum number of samples
 
     Returns:
         SurveyTensor instance
     """
-    from astro_lab.tensors import SurveyTensor
+    from astro_lab.tensors import SurveyTensorDict
 
     data_path = Path(data_path)
     parquet_file = data_path / f"nsa_v1_0_1_{split}.parquet"
 
     if not parquet_file.exists():
-        raise FileNotFoundError(f"NSA {split} data not found: {parquet_file}")
+        raise FileNotFoundError(f"NSA data file not found: {parquet_file}")
 
+    # Load data
     df = pl.read_parquet(parquet_file)
 
-    if max_samples:
-        df = df.head(max_samples)
+    # Apply sampling if requested
+    if max_samples and len(df) > max_samples:
+        df = df.sample(max_samples, seed=42)
 
-    # Convert to tensor - handle mixed data types
-    numeric_df = df.select(
-        [
-            col
-            for col in df.columns
-            if df[col].dtype in [pl.Float64, pl.Float32, pl.Int64, pl.Int32]
-        ]
-    )
-    data_tensor = torch.tensor(numeric_df.to_numpy(), dtype=torch.float32)
-
-    # Create column mapping for numeric columns only
-    column_mapping = {col: i for i, col in enumerate(numeric_df.columns)}
-
-    # Create survey tensor
-    survey_tensor = SurveyTensor(
-        data_tensor,
+    # Create SurveyTensor
+    survey_tensor = SurveyTensorDict(
+        data=df.to_numpy(),
         survey_name="nsa",
         data_release="v1_0_1",
-        filter_system="galex_sdss",
-        column_mapping=column_mapping,
-        survey_metadata={
-            "num_galaxies": len(df),
-            "redshift_range": [df["Z"].min(), df["Z"].max()],
-            "split": split,
-        },
+        filter_system="sdss",
+        coordinate_system="icrs",
+        photometric_bands=[col for col in df.columns if "mag" in col.lower()],
+        n_objects=len(df),
     )
 
     return survey_tensor
 
 
 def test_nsa_tensor_compatibility():
-    """Test NSA data compatibility with tensor system."""
+    """Test NSA tensor compatibility."""
     try:
-        # Test loading
-        data = load_nsa_as_tensors("data/processed/nsa", "train", max_samples=100)
-        print("✅ NSA tensor loading successful")
-        print(f"   Positions: {data['pos'].shape}")
-        print(f"   Features: {data['x'].shape}")
-        if "edge_index" in data:
-            print(f"   Edges: {data['edge_index'].shape}")
-
-        # Test survey tensor
-        survey_tensor = create_nsa_survey_tensor(
-            "data/processed/nsa", "train", max_samples=100
-        )
-        print("✅ NSA SurveyTensor creation successful")
-        print(f"   Survey: {survey_tensor.survey_name}")
-        print(f"   Shape: {survey_tensor.shape}")
-
-        return True
-
+        # Test loading NSA data
+        data_path = Path("data/processed/nsa")
+        if data_path.exists():
+            tensors = load_nsa_as_tensors(data_path, "train", max_samples=100)
+            print("✅ NSA tensor loading successful")
+            print(f"   Tensors: {list(tensors.keys())}")
+            return True
+        else:
+            print("⚠️ NSA data not found, skipping test")
+            return False
     except Exception as e:
-        print(f"❌ NSA tensor compatibility test failed: {e}")
+        print(f"❌ NSA tensor test failed: {e}")
         return False
 
 
@@ -644,211 +635,213 @@ def convert_nsa_fits_to_parquet(
     max_memory_mb: float = 2000.0,
 ) -> Path:
     """
-    Convert large NSA FITS catalog to a memory-efficient Parquet file.
-    This version now directly uses the robust `load_fits_table_optimized`.
+    Convert NSA FITS file to Parquet format.
+
+    Args:
+        fits_path: Path to NSA FITS file
+        parquet_path: Output parquet path
+        features: List of features to include
+        max_memory_mb: Maximum memory usage
+
+    Returns:
+        Path to created parquet file
     """
+    from astro_lab.utils.config.surveys import get_survey_config
+
     fits_path = Path(fits_path)
     parquet_path = Path(parquet_path)
 
-    if parquet_path.exists():
-        print(f"✅ Parquet file already exists: {parquet_path.name}")
-        return parquet_path
+    if not fits_path.exists():
+        raise FileNotFoundError(f"FITS file not found: {fits_path}")
 
     print(f"🔄 Converting NSA FITS to Parquet: {fits_path.name}")
 
-    try:
-        # Use the optimized FITS table loader directly to get a Polars DataFrame
-        df = load_fits_table_optimized(
-            fits_path, as_polars=True, max_rows=None, hdu_index=1
-        )
+    # Load FITS table
+    table = load_fits_table_optimized(fits_path, hdu_index=1, as_polars=False)
 
-        if df is None:
-            raise ValueError("Failed to load NSA FITS table as Polars DataFrame")
+    if table is None:
+        raise ValueError("Could not load FITS table")
 
-        print(f"📊 Loaded {len(df)} rows, {len(df.columns)} columns")
+    # Convert to Polars DataFrame
+    df = pl.from_pandas(table.to_pandas())
 
-        # Select features if specified
-        if features:
-            available_features = [f for f in features if f in df.columns]
-            df = df.select(available_features)
+    # Filter features if specified
+    if features:
+        available_features = [f for f in features if f in df.columns]
+        df = df.select(available_features)
 
-        # Write to Parquet with compression
-        df.write_parquet(parquet_path, compression="zstd")
-        
-        file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
-        print(f"✅ Successfully converted to {parquet_path.name} ({file_size_mb:.1f} MB)")
-        return parquet_path
+    # Write to Parquet with compression
+    df.write_parquet(parquet_path, compression="zstd")
 
-    except Exception as e:
-        print(f"❌ Failed to convert NSA FITS: {e}")
-        raise
+    file_size_mb = parquet_path.stat().st_size / (1024 * 1024)
+    print(f"✅ Successfully converted to {parquet_path.name} ({file_size_mb:.1f} MB)")
+
+    return parquet_path
 
 
-def extract_fits_image_data(fits_path: Union[str, Path], hdu_index: int = 0) -> Dict[str, Any]:
+def extract_fits_image_data(
+    fits_path: Union[str, Path], hdu_index: int = 0
+) -> Dict[str, Any]:
     """
-    Extract image data and metadata from FITS file.
-    
+    Extract image data from FITS file.
+
     Args:
         fits_path: Path to FITS file
-        hdu_index: HDU index to extract (default: 0)
-        
+        hdu_index: HDU index to extract
+
     Returns:
-        Dictionary containing:
-        - image_data: 2D numpy array of image data
-        - header: FITS header information
-        - wcs: World Coordinate System info (if available)
-        - metadata: Extracted metadata
+        Dictionary with image data and metadata
     """
     try:
         from astropy.io import fits
         from astropy.wcs import WCS
-        import numpy as np
-        
+
+        fits_path = Path(fits_path)
+        if not fits_path.exists():
+            raise FileNotFoundError(f"FITS file not found: {fits_path}")
+
         with fits.open(fits_path) as hdul:
             hdu = hdul[hdu_index]
-            
+
             # Extract image data
             image_data = hdu.data
             if image_data is None:
                 raise ValueError(f"No image data found in HDU {hdu_index}")
-            
+
             # Extract header
             header = hdu.header
-            
+
             # Try to extract WCS information
             wcs = None
             try:
                 wcs = WCS(header)
             except Exception as e:
                 logger.warning(f"Could not extract WCS: {e}")
-            
+
             # Extract useful metadata
             metadata = {
-                'filename': str(fits_path),
-                'hdu_index': hdu_index,
-                'shape': image_data.shape,
-                'dtype': str(image_data.dtype),
-                'min_value': float(np.min(image_data)),
-                'max_value': float(np.max(image_data)),
-                'mean_value': float(np.mean(image_data)),
-                'std_value': float(np.std(image_data)),
+                "filename": fits_path.name,
+                "hdu_index": hdu_index,
+                "shape": image_data.shape,
+                "dtype": str(image_data.dtype),
+                "bunit": header.get("BUNIT", "Unknown"),
+                "object": header.get("OBJECT", "Unknown"),
+                "telescope": header.get("TELESCOP", "Unknown"),
+                "instrument": header.get("INSTRUME", "Unknown"),
+                "exposure_time": header.get("EXPTIME", None),
+                "filter": header.get("FILTER", None),
+                "date_obs": header.get("DATE-OBS", None),
             }
-            
-            # Extract common FITS keywords
-            common_keys = ['OBJECT', 'TELESCOP', 'INSTRUME', 'FILTER', 'EXPTIME', 
-                          'DATE-OBS', 'RA', 'DEC', 'EQUINOX', 'CRVAL1', 'CRVAL2']
-            
-            for key in common_keys:
-                if key in header:
-                    try:
-                        metadata[key] = header[key]
-                    except:
-                        pass
-            
+
             return {
-                'image_data': image_data,
-                'header': header,
-                'wcs': wcs,
-                'metadata': metadata
+                "image_data": image_data,
+                "header": header,
+                "wcs": wcs,
+                "metadata": metadata,
             }
-            
+
     except Exception as e:
         logger.error(f"Failed to extract FITS image data: {e}")
         raise
 
 
-def create_image_tensor_from_fits(fits_path: Union[str, Path], 
-                                 normalize: bool = True,
-                                 **kwargs) -> torch.Tensor:
+def create_image_tensor_from_fits(
+    fits_path: Union[str, Path], normalize: bool = True, **kwargs
+) -> torch.Tensor:
     """
-    Create a tensor from FITS image data.
-    
+    Create PyTorch tensor from FITS image.
+
     Args:
         fits_path: Path to FITS file
-        normalize: Whether to normalize the image data
+        normalize: Whether to normalize the data
         **kwargs: Additional arguments for extract_fits_image_data
-        
+
     Returns:
-        torch.Tensor with image data
+        PyTorch tensor with image data
     """
     try:
-        import torch
-        
         # Extract image data
         fits_data = extract_fits_image_data(fits_path, **kwargs)
-        image_data = fits_data['image_data']
-        
+        image_data = fits_data["image_data"]
+
         # Convert to tensor
         tensor = torch.tensor(image_data, dtype=torch.float32)
-        
+
         # Normalize if requested
         if normalize:
             tensor = (tensor - tensor.min()) / (tensor.max() - tensor.min())
-        
+
         return tensor
-        
+
     except Exception as e:
         logger.error(f"Failed to create image tensor from FITS: {e}")
         raise
 
 
-def visualize_fits_image(fits_path: Union[str, Path], 
-                        backend: str = 'matplotlib',
-                        **kwargs) -> Any:
+def visualize_fits_image(
+    fits_path: Union[str, Path], backend: str = "matplotlib", **kwargs
+) -> Any:
     """
     Visualize FITS image using different backends.
-    
+
     Args:
         fits_path: Path to FITS file
         backend: Visualization backend ('matplotlib', 'plotly', 'bpy')
         **kwargs: Additional arguments
-        
+
     Returns:
         Visualization object
     """
     try:
         fits_data = extract_fits_image_data(fits_path)
-        image_data = fits_data['image_data']
-        
-        if backend == 'matplotlib':
+        image_data = fits_data["image_data"]
+
+        if backend == "matplotlib":
             import matplotlib.pyplot as plt
             from matplotlib.colors import LogNorm
-            
+
             plt.figure(figsize=(10, 8))
-            plt.imshow(image_data, cmap='viridis', norm=LogNorm())
-            plt.colorbar(label='Intensity')
+            plt.imshow(image_data, cmap="viridis", norm=LogNorm())
+            plt.colorbar(label="Intensity")
             plt.title(f"FITS Image: {fits_data['metadata']['filename']}")
-            plt.xlabel('X')
-            plt.ylabel('Y')
+            plt.xlabel("X")
+            plt.ylabel("Y")
             plt.show()
             return plt.gcf()
-            
-        elif backend == 'plotly':
+
+        elif backend == "plotly":
             import plotly.graph_objects as go
-            
-            fig = go.Figure(data=go.Heatmap(
-                z=image_data,
-                colorscale='Viridis',
-                zmin=image_data.min(),
-                zmax=image_data.max()
-            ))
-            
+
+            fig = go.Figure(
+                data=go.Heatmap(
+                    z=image_data,
+                    colorscale="Viridis",
+                    zmid=np.median(image_data),
+                )
+            )
+
             fig.update_layout(
                 title=f"FITS Image: {fits_data['metadata']['filename']}",
-                xaxis_title='X',
-                yaxis_title='Y'
+                xaxis_title="X",
+                yaxis_title="Y",
             )
-            
+
             fig.show()
             return fig
-            
+
+        elif backend == "bpy":
+            # Blender visualization (if available)
+            try:
+                from astro_lab.utils.bpy import create_image_mesh
+
+                return create_image_mesh(image_data, **kwargs)
+            except ImportError:
+                logger.warning("Blender visualization not available")
+                return None
+
         else:
-            raise ValueError(f"Unsupported backend: {backend}")
-            
+            raise ValueError(f"Unknown backend: {backend}")
+
     except Exception as e:
         logger.error(f"Failed to visualize FITS image: {e}")
         raise
-
-
-if __name__ == "__main__":
-    test_nsa_tensor_compatibility()

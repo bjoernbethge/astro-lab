@@ -1,34 +1,38 @@
 """
-AstroDataModule - Lightning DataModule Implementation
-====================================================
+AstroLab DataModule - Lightning DataModule for Astronomical Data
+===============================================================
 
-Clean Lightning DataModule for astronomical data.
-Uses the unified AstroDataset from core.py.
-Optimized for 2025 best practices including:
-- Efficient data loading with persistent workers
-- PIN memory for GPU transfer optimization
-- Proper distributed sampling
-- Mixed precision support
-- Fixed PyTorch Geometric batch handling
+Lightning DataModule for astronomical datasets with TensorDict integration.
+Updated for TensorDict architecture.
 """
 
 import logging
 import os
-from typing import Optional, Dict, Any, List
-import multiprocessing as mp
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
 
 import lightning as L
+import numpy as np
+import polars as pl
 import torch
+from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import Batch
-from torch.utils.data.distributed import DistributedSampler
 
-from .core import AstroDataset
+# Use TensorDict classes instead of old tensor classes
+from ..tensors import (
+    ClusteringTensorDict,
+    FeatureTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SimulationTensorDict,
+    SpatialTensorDict,
+    StatisticsTensorDict,
+    SurveyTensorDict,
+)
 from .config import data_config
+from .core import AstroDataset
 
-# Configure logging to avoid duplicates
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.WARNING)
 
 
 class AstroDataModule(L.LightningDataModule):
@@ -37,7 +41,7 @@ class AstroDataModule(L.LightningDataModule):
 
     Handles train/val/test splits and data loading.
     Uses unified AstroDataset from core.py.
-    
+
     2025 Optimizations:
     - PIN memory for faster GPU transfer
     - Persistent workers to avoid recreation overhead
@@ -56,7 +60,7 @@ class AstroDataModule(L.LightningDataModule):
         batch_size: int = 1,  # Graph datasets typically use batch_size=1
         train_ratio: float = 0.7,
         val_ratio: float = 0.15,
-        num_workers: int = None,  # Auto-detect optimal workers
+        num_workers: Optional[int] = None,  # Auto-detect optimal workers
         pin_memory: bool = True,
         persistent_workers: bool = True,
         prefetch_factor: int = 2,
@@ -80,23 +84,23 @@ class AstroDataModule(L.LightningDataModule):
         self.val_ratio = val_ratio
         self.drop_last = drop_last
         self.use_distributed_sampler = use_distributed_sampler
-        
+
         # Laptop optimization parameters
         self.max_nodes_per_graph = max_nodes_per_graph
         self.use_subgraph_sampling = use_subgraph_sampling
-        
+
         # Optimize num_workers for laptop
         if num_workers is None:
             # Conservative settings for laptop
             try:
-                cpu_count = mp.cpu_count()
+                cpu_count = os.cpu_count()
                 # Use fewer workers on laptop to avoid memory pressure
                 self.num_workers = max(0, min(cpu_count // 2, 4))
-            except:
+            except (OSError, AttributeError):
                 self.num_workers = 2
         else:
             self.num_workers = num_workers
-            
+
         # Conservative settings for laptop GPUs
         if batch_size == 1:
             self.pin_memory = False
@@ -111,10 +115,10 @@ class AstroDataModule(L.LightningDataModule):
 
         # Dataset will be created in setup()
         self.dataset = None
-        
+
         # Store the main data object
         self._main_data = None
-        
+
         # Class information for Lightning module
         self.num_classes = None
         self.num_features = None
@@ -136,34 +140,44 @@ class AstroDataModule(L.LightningDataModule):
                 k_neighbors=self.k_neighbors,
                 max_samples=self.max_samples,
             )
-            
+
         # Get the main data object
         full_data = self.dataset[0]
-        
+
         # Apply subgraph sampling if the graph is too large
-        if self.use_subgraph_sampling and full_data.num_nodes > self.max_nodes_per_graph:
-            logger.info(f"Graph too large ({full_data.num_nodes} nodes). Creating subgraph with {self.max_nodes_per_graph} nodes.")
-            self._main_data = self._create_subgraph_samples(full_data, self.max_nodes_per_graph)
+        if (
+            self.use_subgraph_sampling
+            and full_data.num_nodes > self.max_nodes_per_graph
+        ):
+            logger.info(
+                f"Graph too large ({full_data.num_nodes} nodes). Creating subgraph with {self.max_nodes_per_graph} nodes."
+            )
+            self._main_data = self._create_subgraph_samples(
+                full_data, self.max_nodes_per_graph
+            )
         else:
             self._main_data = full_data
-        
+
         # Extract dataset information for Lightning module
-        self.num_features = self._main_data.x.size(1) if hasattr(self._main_data, 'x') else None
-        if hasattr(self._main_data, 'y'):
+        self.num_features = (
+            self._main_data.x.size(1) if hasattr(self._main_data, "x") else None
+        )
+        if hasattr(self._main_data, "y"):
             unique_labels = torch.unique(self._main_data.y)
             self.num_classes = max(len(unique_labels), 2)  # Ensure at least 2 classes
-            
+
             # If we only have one class, create synthetic binary labels for demonstration
             if len(unique_labels) == 1:
-                logger.warning(f"Dataset has only 1 unique label ({unique_labels[0].item()}). Creating synthetic binary labels for training.")
+                logger.warning(
+                    f"Dataset has only 1 unique label ({unique_labels[0].item()}). Creating synthetic binary labels for training."
+                )
                 # Create binary labels based on node features or random split
-                num_nodes = self._main_data.y.size(0)
                 # Use feature-based split: nodes with feature sum > median get label 1
                 feature_sums = self._main_data.x.sum(dim=1)
                 median_val = feature_sums.median()
                 self._main_data.y = (feature_sums > median_val).long()
                 self.num_classes = 2
-        
+
         # Create train/val/test splits using masks
         self._create_data_splits()
 
@@ -171,84 +185,86 @@ class AstroDataModule(L.LightningDataModule):
         """Create train/val/test masks for the graph data."""
         data = self._main_data
         num_nodes = data.num_nodes
-        
+
         # Create train/val/test masks
         data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
         data.val_mask = torch.zeros(num_nodes, dtype=torch.bool)
         data.test_mask = torch.zeros(num_nodes, dtype=torch.bool)
-        
+
         # Random split
         indices = torch.randperm(num_nodes)
         train_size = int(num_nodes * self.train_ratio)
         val_size = int(num_nodes * self.val_ratio)
-        
+
         data.train_mask[indices[:train_size]] = True
         data.val_mask[indices[train_size : train_size + val_size]] = True
         data.test_mask[indices[train_size + val_size :]] = True
-        
+
         # Log split information
-        logger.info(f"Data splits - Train: {data.train_mask.sum()}, "
-                   f"Val: {data.val_mask.sum()}, Test: {data.test_mask.sum()}")
+        logger.info(
+            f"Data splits - Train: {data.train_mask.sum()}, "
+            f"Val: {data.val_mask.sum()}, Test: {data.test_mask.sum()}"
+        )
 
     def _create_subgraph_samples(self, data, max_nodes: int):
         """Create smaller subgraph samples for laptop training."""
         from torch_geometric.utils import subgraph
-        
+
         # Randomly sample nodes
         num_nodes = data.num_nodes
         if num_nodes <= max_nodes:
             return data
-            
+
         # Sample nodes randomly
         indices = torch.randperm(num_nodes)[:max_nodes]
-        
+
         # Create subgraph
         edge_index, edge_attr = subgraph(
-            indices, 
-            data.edge_index, 
-            edge_attr=data.edge_attr if hasattr(data, 'edge_attr') else None,
+            indices,
+            data.edge_index,
+            edge_attr=data.edge_attr if hasattr(data, "edge_attr") else None,
             relabel_nodes=True,
-            num_nodes=num_nodes
+            num_nodes=num_nodes,
         )
-        
+
         # Create new data object with subgraph
         sub_data = data.__class__()
         sub_data.num_nodes = len(indices)
         sub_data.x = data.x[indices]
         sub_data.edge_index = edge_index
-        if hasattr(data, 'pos'):
+        if hasattr(data, "pos"):
             sub_data.pos = data.pos[indices]
-        if hasattr(data, 'y'):
+        if hasattr(data, "y"):
             sub_data.y = data.y[indices]
         if edge_attr is not None:
             sub_data.edge_attr = edge_attr
-            
+
         return sub_data
-        
+
     def _estimate_memory_usage(self, data) -> float:
         """Estimate memory usage of graph data in MB."""
         total_memory = 0
-        
+
         # Node features
-        if hasattr(data, 'x'):
+        if hasattr(data, "x"):
             total_memory += data.x.numel() * data.x.element_size()
-            
+
         # Edge indices
-        if hasattr(data, 'edge_index'):
+        if hasattr(data, "edge_index"):
             total_memory += data.edge_index.numel() * data.edge_index.element_size()
-            
+
         # Positions
-        if hasattr(data, 'pos'):
+        if hasattr(data, "pos"):
             total_memory += data.pos.numel() * data.pos.element_size()
-            
+
         # Labels
-        if hasattr(data, 'y'):
+        if hasattr(data, "y"):
             total_memory += data.y.numel() * data.y.element_size()
-            
+
         # Masks
-        if hasattr(data, 'train_mask'):
+        if hasattr(data, "train_mask"):
             total_memory += data.train_mask.numel() * data.train_mask.element_size()
-            
+
         return total_memory / (1024 * 1024)  # Convert to MB
 
     def _get_dataloader_kwargs(self) -> Dict[str, Any]:
@@ -260,11 +276,11 @@ class AstroDataModule(L.LightningDataModule):
             "pin_memory": self.pin_memory,
             "drop_last": self.drop_last,
         }
-        
+
         # Add prefetch_factor only if using workers
         if self.num_workers > 0 and self.prefetch_factor is not None:
             kwargs["prefetch_factor"] = self.prefetch_factor
-            
+
         return kwargs
 
     def train_dataloader(self):
@@ -276,13 +292,13 @@ class AstroDataModule(L.LightningDataModule):
         class SingleGraphDataLoader:
             def __init__(self, data):
                 self.data = data
-                
+
             def __iter__(self):
                 yield self.data
-                
+
             def __len__(self):
                 return 1
-                
+
         return SingleGraphDataLoader(self._main_data)
 
     def val_dataloader(self):
@@ -294,13 +310,13 @@ class AstroDataModule(L.LightningDataModule):
         class SingleGraphDataLoader:
             def __init__(self, data):
                 self.data = data
-                
+
             def __iter__(self):
                 yield self.data
-                
+
             def __len__(self):
                 return 1
-                
+
         return SingleGraphDataLoader(self._main_data)
 
     def test_dataloader(self):
@@ -312,24 +328,25 @@ class AstroDataModule(L.LightningDataModule):
         class SingleGraphDataLoader:
             def __init__(self, data):
                 self.data = data
-                
+
             def __iter__(self):
                 yield self.data
-                
+
             def __len__(self):
                 return 1
-                
+
         return SingleGraphDataLoader(self._main_data)
 
     def teardown(self, stage: Optional[str] = None):
         """Clean up after training/testing."""
         # Clean up cached data
         self._main_data = None
-        
+
         # Force garbage collection
         import gc
+
         gc.collect()
-        
+
         # Clear CUDA cache if available
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -338,21 +355,23 @@ class AstroDataModule(L.LightningDataModule):
         """Get dataset information."""
         if self.dataset is None:
             return {"error": "Dataset not initialized"}
-        
+
         info = self.dataset.get_info()
-        
+
         # Add datamodule-specific info
-        info.update({
-            "batch_size": self.batch_size,
-            "num_workers": self.num_workers,
-            "pin_memory": self.pin_memory,
-            "persistent_workers": self.persistent_workers,
-            "train_ratio": self.train_ratio,
-            "val_ratio": self.val_ratio,
-            "num_classes": self.num_classes,
-            "num_features": self.num_features,
-        })
-        
+        info.update(
+            {
+                "batch_size": self.batch_size,
+                "num_workers": self.num_workers,
+                "pin_memory": self.pin_memory,
+                "persistent_workers": self.persistent_workers,
+                "train_ratio": self.train_ratio,
+                "val_ratio": self.val_ratio,
+                "num_classes": self.num_classes,
+                "num_features": self.num_features,
+            }
+        )
+
         return info
 
     def state_dict(self) -> Dict[str, Any]:

@@ -4,6 +4,7 @@ AstroLab Data Core Module
 
 Core data handling and processing for astronomical datasets.
 Clean PyTorch Geometric dataset implementation with Polars support.
+Updated for TensorDict architecture.
 """
 
 import logging
@@ -23,27 +24,26 @@ import torch_geometric
 import torch_geometric.transforms as T
 from astropy.coordinates import SkyCoord
 from torch_geometric.data import Data, InMemoryDataset
-from torch_geometric.loader import DataLoader
 from torch_geometric.data.data import DataEdgeAttr
+from torch_geometric.loader import DataLoader
 
-from .config import data_config
+# Import TensorDict classes directly - no fallbacks needed
+from ..tensors import (
+    ClusteringTensorDict,
+    CrossMatchTensorDict,
+    EarthSatelliteTensorDict,
+    FeatureTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SimulationTensorDict,
+    SpatialTensorDict,
+    StatisticsTensorDict,
+    SurveyTensorDict,
+)
 
 # Import survey configurations from centralized location
 from ..utils.config.surveys import get_survey_config
-
-# Import tensor classes directly - no fallbacks needed
-from ..tensors import (
-    ClusteringTensor,
-    CrossMatchTensor,
-    EarthSatelliteTensor,
-    FeatureTensor,
-    LightcurveTensor,
-    PhotometricTensor,
-    SimulationTensor,
-    Spatial3DTensor,
-    SpectralTensor,
-    SurveyTensor,
-)
+from .config import data_config
 
 logger = logging.getLogger(__name__)
 
@@ -54,20 +54,22 @@ os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
 logger = logging.getLogger(__name__)
 
 # Add PyG classes to safe globals for torch.load
-torch.serialization.add_safe_globals([
-    torch_geometric.data.data.DataEdgeAttr,
-    torch_geometric.data.data.Data,
-    torch_geometric.data.batch.Batch,
-    torch_geometric.data.data.DataTensorAttr,
-    torch_geometric.data.data.DataEdgeAttr,
-    torch_geometric.data.data.Data,
-    torch_geometric.data.batch.Batch,
-    torch_geometric.data.hetero_data.HeteroData,
-    torch_geometric.data.storage.BaseStorage,
-    torch_geometric.data.storage.NodeStorage,
-    torch_geometric.data.storage.EdgeStorage,
-    torch_geometric.data.storage.GlobalStorage,
-])
+torch.serialization.add_safe_globals(
+    [
+        torch_geometric.data.data.DataEdgeAttr,
+        torch_geometric.data.data.Data,
+        torch_geometric.data.batch.Batch,
+        torch_geometric.data.data.DataTensorAttr,
+        torch_geometric.data.data.DataEdgeAttr,
+        torch_geometric.data.data.Data,
+        torch_geometric.data.batch.Batch,
+        torch_geometric.data.hetero_data.HeteroData,
+        torch_geometric.data.storage.BaseStorage,
+        torch_geometric.data.storage.NodeStorage,
+        torch_geometric.data.storage.EdgeStorage,
+        torch_geometric.data.storage.GlobalStorage,
+    ]
+)
 
 # =========================================================================
 # 🚀 PERFORMANCE OPTIMIZATION - CUDA, Polars, PyTorch 2025 Best Practices
@@ -165,17 +167,14 @@ def calculate_local_density(
     positions_pc = positions * 1e6  # Mpc to pc
 
     # Use GPU-accelerated radius search
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     positions_tensor = torch.tensor(positions_pc, dtype=torch.float32, device=device)
-    
+
     # Create radius graph
     edge_index = torch_cluster.radius_graph(
-        x=positions_tensor,
-        r=radius_pc,
-        loop=False,
-        flow='source_to_target'
+        x=positions_tensor, r=radius_pc, loop=False, flow="source_to_target"
     )
-    
+
     # Count neighbors for each point
     neighbor_counts = []
     for i in range(len(positions_pc)):
@@ -237,7 +236,13 @@ def adaptive_cosmic_web_clustering(
         algorithm="dbscan",
     )
 
-    return results, local_density
+    # Ensure local_density is a numpy array
+    if isinstance(local_density, torch.Tensor):
+        local_density_np = local_density.detach().cpu().numpy()
+    else:
+        local_density_np = np.asarray(local_density)
+
+    return results, local_density_np
 
 
 def analyze_cosmic_web(
@@ -377,16 +382,16 @@ def create_cosmic_web_loader(
 
     # Use survey-specific loaders
     if survey == "gaia":
-        survey_tensor = load_gaia_data(
-            max_samples=max_samples, return_tensor=True, **kwargs
+        survey_tensor = load_survey_data(
+            survey="gaia", max_samples=max_samples, return_tensor=True, **kwargs
         )
     elif survey == "sdss":
-        survey_tensor = load_sdss_data(
-            max_samples=max_samples, return_tensor=True, **kwargs
+        survey_tensor = load_survey_data(
+            survey="sdss", max_samples=max_samples, return_tensor=True, **kwargs
         )
     elif survey == "nsa":
-        survey_tensor = load_nsa_data(
-            max_samples=max_samples, return_tensor=True, **kwargs
+        survey_tensor = load_survey_data(
+            survey="nsa", max_samples=max_samples, return_tensor=True, **kwargs
         )
     elif survey == "linear":
         # Create SurveyTensor directly for LINEAR
@@ -405,7 +410,7 @@ def create_cosmic_web_loader(
         if not hasattr(survey_tensor, "get_spatial_tensor"):
             # Create SurveyTensor from TNG data
             coords = survey_tensor[0].pos.detach().cpu().numpy()
-            survey_tensor = Spatial3DTensor(data=coords, unit="Mpc")
+            survey_tensor = SpatialTensorDict(coordinates=coords, unit="Mpc")
     elif survey == "exoplanet":
         # Load exoplanet data
         data_path = Path(
@@ -422,7 +427,10 @@ def create_cosmic_web_loader(
 
         survey_tensor = _polars_to_survey_tensor(df, "exoplanet")
     else:
-        raise ValueError(f"Unknown survey: {survey}")
+        # Use generic loader for any other survey
+        survey_tensor = load_survey_data(
+            survey=survey, max_samples=max_samples, return_tensor=True, **kwargs
+        )
 
     # Move to optimal device if possible
     if hasattr(survey_tensor, "to") and device.type == "cuda":
@@ -479,7 +487,7 @@ def _polars_to_survey_tensor(
     if survey_metadata:
         metadata["survey_metadata"].update(survey_metadata)
 
-    return SurveyTensor(data=tensor_data, **metadata)
+    return SurveyTensorDict(data=tensor_data, **metadata)
 
 
 class AstroDataset(InMemoryDataset):
@@ -487,6 +495,7 @@ class AstroDataset(InMemoryDataset):
     Minimal PyTorch Geometric dataset für astronomische Daten.
     Lädt Daten einmal beim Init und hält sie im Speicher.
     """
+
     def __init__(
         self,
         root: str,
@@ -533,7 +542,11 @@ class AstroDataset(InMemoryDataset):
         coord_cols = self.survey_config.get("coordinates", ["ra", "dec"])
         feature_cols = self.survey_config.get("features", coord_cols)
         coords = df.select([c for c in coord_cols if c in df.columns]).to_numpy()
-        features = df.select([c for c in feature_cols if c in df.columns]).to_numpy() if feature_cols else coords
+        features = (
+            df.select([c for c in feature_cols if c in df.columns]).to_numpy()
+            if feature_cols
+            else coords
+        )
         if features.shape[1] == 0:
             features = coords
         pos = torch.tensor(coords, dtype=torch.float32)
@@ -561,26 +574,29 @@ class AstroDataset(InMemoryDataset):
     def get_info(self) -> Dict[str, Any]:
         if len(self) == 0:
             return {"error": "Dataset empty", "columns": []}
-        
+
         sample = self[0]
-        
+
         # Get standard survey columns based on survey type
         standard_columns = self._get_standard_columns_for_survey()
-        
+
         return {
             "survey": self.survey,
             "num_samples": len(self),
             "num_nodes": sample.num_nodes if hasattr(sample, "num_nodes") else 0,
-            "num_edges": sample.edge_index.shape[1] if hasattr(sample, "edge_index") else 0,
+            "num_edges": sample.edge_index.shape[1]
+            if hasattr(sample, "edge_index")
+            else 0,
             "num_features": sample.x.shape[1] if hasattr(sample, "x") else 0,
             "k_neighbors": self.k_neighbors,
             "columns": standard_columns,  # Add columns info
         }
-    
+
     def _get_standard_columns_for_survey(self) -> List[str]:
         """Get standard column names for the survey type."""
         try:
             from astro_lab.utils.config.surveys import get_survey_config
+
             config = get_survey_config(self.survey)
             # Combine coordinate, magnitude, and extra columns
             columns = []
@@ -590,131 +606,42 @@ class AstroDataset(InMemoryDataset):
             return columns
         except Exception:
             # Fallback for unknown surveys
-            return ["ra", "dec", "mag"] if self.survey in ["gaia", "nsa", "exoplanet"] else []
+            return (
+                ["ra", "dec", "mag"]
+                if self.survey in ["gaia", "nsa", "exoplanet"]
+                else []
+            )
 
 
-def load_gaia_data(
+def load_survey_data(
+    survey: str,
     max_samples: Optional[int] = None,
-    return_tensor: bool = True,  # 🌟 Default to tensor!
+    return_tensor: bool = True,
     **kwargs: Any,
-) -> Union[AstroDataset, "SurveyTensor"]:
+) -> Union[AstroDataset, "SurveyTensorDict"]:
     """
-    Load Gaia data as an AstroDataset or SurveyTensor.
+    Load survey data as an AstroDataset or SurveyTensor.
+    Generic function for all surveys.
     """
     from .manager import data_manager
-    from .config import data_config
-    
+
     # Ensure root is passed to AstroDataset
     if "root" not in kwargs:
         kwargs["root"] = str(data_config.base_dir)
 
-    dataset = AstroDataset(survey="gaia", max_samples=max_samples, **kwargs)
+    dataset = AstroDataset(survey=survey, max_samples=max_samples, **kwargs)
 
     if return_tensor:
         # Assumes process() creates a tensor accessible via dataset
         # This part needs to be aligned with AstroDataset implementation
-        if hasattr(dataset, 'to_tensor'):
+        if hasattr(dataset, "to_tensor"):
             return dataset.to_tensor()
         else:
             # Fallback or error
-            raise NotImplementedError("AstroDataset must have a method to convert to SurveyTensor")
+            raise NotImplementedError(
+                "AstroDataset must have a method to convert to SurveyTensor"
+            )
     return dataset
-
-
-def load_sdss_data(
-    max_samples: Optional[int] = None,
-    return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs: Any,
-) -> Union[AstroDataset, "SurveyTensor"]:
-    """
-    Load SDSS DR17 galaxy catalog.
-
-    Args:
-        max_samples: Maximum number of samples (optional)
-        return_tensor: Return SurveyTensor instead of dataset (recommended!)
-        **kwargs: Additional arguments
-
-    Returns:
-        SurveyTensor with SDSS data or AstroDataset
-    """
-    if return_tensor:
-        temp_dataset = AstroDataset(survey="sdss", **kwargs)
-        temp_dataset.download()  # Check if data exists
-        return temp_dataset
-
-    dataset = AstroDataset(survey="sdss", **kwargs)
-    dataset.download()  # Check if data exists
-    return dataset
-
-
-def load_nsa_data(
-    max_samples: Optional[int] = None,
-    return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs: Any,
-) -> Union[AstroDataset, "SurveyTensor"]:
-    """
-    Load NSA data as an AstroDataset or SurveyTensor.
-    """
-    from .manager import data_manager
-    from .config import data_config
-
-    # Ensure root is passed to AstroDataset
-    if "root" not in kwargs:
-        kwargs["root"] = str(data_config.base_dir)
-
-    dataset = AstroDataset(survey="nsa", max_samples=max_samples, **kwargs)
-
-    if return_tensor:
-        if hasattr(dataset, 'to_tensor'):
-            return dataset.to_tensor()
-        else:
-            raise NotImplementedError("AstroDataset must have a method to convert to SurveyTensor")
-    return dataset
-
-
-def load_lightcurve_data(
-    max_samples: int = 5000,
-    return_tensor: bool = True,  # 🌟 Default to tensor!
-    **kwargs: Any,
-) -> Union[AstroDataset, "LightcurveTensor"]:
-    """
-    Load LINEAR lightcurve data.
-
-    Args:
-        max_samples: Maximum number of samples
-        return_tensor: Return LightcurveTensor instead of dataset (recommended!)
-        **kwargs: Additional arguments
-
-    Returns:
-        LightcurveTensor with lightcurve data or AstroDataset
-    """
-    if return_tensor:
-        dataset = AstroDataset(
-            survey="linear", max_samples=max_samples, return_tensor=False, **kwargs
-        )
-        dataset.download()
-        df = dataset._load_polars_dataframe()
-
-        # Convert to LightcurveTensor for time series data
-        n_samples = len(df)
-        times = torch.arange(n_samples, dtype=torch.float32)  # Demo time array
-        magnitudes = torch.tensor(df["mag_mean"].to_numpy(), dtype=torch.float32)
-
-        return LightcurveTensor(
-            data=torch.stack([times, magnitudes], dim=1),
-            bands=["V"],
-            time_format="sequential",
-            coordinate_system="icrs",
-            survey_name="linear",
-        )
-
-    return AstroDataset(
-        survey="linear",
-        k_neighbors=8,
-        max_samples=max_samples,
-        return_tensor=return_tensor,
-        **kwargs,
-    )
 
 
 def load_tng50_data(
@@ -778,16 +705,12 @@ def load_tng50_data(
 def load_tng50_temporal_data(
     max_samples: Optional[int] = None, snapshot_id: Optional[int] = None
 ) -> AstroDataset:
-    """Load TNG50 temporal simulation data as a survey-like dataset.
-
-    Args:
-        max_samples: Maximum number of particles to load (None = all)
-        snapshot_id: Specific snapshot to load (None = all snapshots)
+    """
+    Load TNG50 temporal simulation data.
 
     Returns:
         AstroDataset with TNG50 temporal simulation data
     """
-    config = get_survey_config("tng50_temporal")
 
     # Load TNG50 temporal data from processed files
     data_path = Path(
@@ -1179,18 +1102,18 @@ def detect_survey_type(dataset_name: str, df: Optional[pl.DataFrame]) -> str:
         return "linear"
     elif "exoplanet" in name_lower:
         return "exoplanet"
-    elif "tng" in name_lower: # More general for TNG50, TNG100 etc.
+    elif "tng" in name_lower:  # More general for TNG50, TNG100 etc.
         return "tng"
     elif "rrlyrae" in name_lower:
         return "rrlyrae"
     # Fallback based on columns if name is not indicative
     if df is not None:
         cols = {c.lower() for c in df.columns}
-        if 'phot_g_mean_mag' in cols and 'parallax' in cols:
+        if "phot_g_mean_mag" in cols and "parallax" in cols:
             return "gaia"
-        if 'specobjid' in cols and 'z' in cols:
+        if "specobjid" in cols and "z" in cols:
             return "sdss"
-        if 'iauname' in cols and 'nsa_version' in cols:
+        if "iauname" in cols and "nsa_version" in cols:
             return "nsa"
 
     return "generic"

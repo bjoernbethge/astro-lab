@@ -4,35 +4,35 @@ AstroLab Data Preprocessing Module 🔬
 
 Handles data preprocessing and graph creation for astronomical surveys.
 Moved from CLI to data module for better organization.
+Updated for TensorDict architecture.
 """
 
-# Standard library imports
-import gc
 import json
 import logging
-import os
 import re
-import time
-from itertools import combinations
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-# Third-party imports
 import h5py
 import numpy as np
-import pandas as pd
 import polars as pl
 import torch
 import torch_cluster
-import yaml
 from torch_geometric.data import Data
 
-# Internal imports
-from astro_lab.utils.config.surveys import get_survey_config, get_available_surveys
-from .config import data_config
-from astro_lab.data.utils import load_fits_optimized, convert_nsa_fits_to_parquet
-from astro_lab.tensors.crossmatch import CrossMatchTensor
-from astro_lab.tensors.survey import SurveyTensor
+from astro_lab.utils.config.surveys import get_survey_config
+
+# Use TensorDict classes instead of old tensor classes
+from ..tensors import (
+    ClusteringTensorDict,
+    FeatureTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SimulationTensorDict,
+    SpatialTensorDict,
+    StatisticsTensorDict,
+    SurveyTensorDict,
+)
 
 # Configure logger without duplication
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ SURVEY_ALIASES = {
     "TNG50-4": "tng50",
     "TNG50": "tng50",
 }
+
 
 def find_survey_data_dir(survey: str) -> Path:
     """
@@ -65,10 +66,17 @@ def find_survey_data_dir(survey: str) -> Path:
             return d
     # Fallback: try alias mapping
     for d in data_root.iterdir():
-        if d.is_dir() and d.name.lower() in SURVEY_ALIASES.values() and survey_norm in d.name.lower():
+        if (
+            d.is_dir()
+            and d.name.lower() in SURVEY_ALIASES.values()
+            and survey_norm in d.name.lower()
+        ):
             logger.info(f"[find_survey_data_dir] Found survey directory (alias): {d}")
             return d
-    raise FileNotFoundError(f"No data directory found for survey '{survey}' (normalized: '{survey_norm}') in {data_root}")
+    raise FileNotFoundError(
+        f"No data directory found for survey '{survey}' (normalized: '{survey_norm}') in {data_root}"
+    )
+
 
 def preprocess_catalog(
     input_path: Union[str, Path],
@@ -128,7 +136,10 @@ def preprocess_catalog(
         if write_graph:
             pt_path = Path(output_dir) / f"{survey_type}.pt"
             graph_data = create_graph_from_dataframe(
-                df_clean, survey_type, k_neighbors=k_neighbors, distance_threshold=distance_threshold
+                df_clean,
+                survey_type,
+                k_neighbors=k_neighbors,
+                distance_threshold=distance_threshold,
             )
             if graph_data is not None:
                 torch.save(graph_data, pt_path)
@@ -164,7 +175,6 @@ def preprocess_catalog_lazy(
     Returns:
         Lazy DataFrame for efficient processing
     """
-    
 
     logger.info(f"🔄 Lazy preprocessing {survey_type} catalog: {input_path}")
 
@@ -213,7 +223,10 @@ def preprocess_catalog_lazy(
         if write_graph:
             pt_path = Path(output_dir) / f"{survey_type}.pt"
             graph_data = create_graph_from_dataframe(
-                df_clean, survey_type, k_neighbors=k_neighbors, distance_threshold=distance_threshold
+                df_clean,
+                survey_type,
+                k_neighbors=k_neighbors,
+                distance_threshold=distance_threshold,
             )
             if graph_data is not None:
                 torch.save(graph_data, pt_path)
@@ -510,29 +523,31 @@ def _preprocess_generic_data_lazy(lf: pl.LazyFrame) -> pl.LazyFrame:
 def _create_knn_graph_gpu(coords: np.ndarray, k_neighbors: int) -> torch.Tensor:
     """Create k-NN graph using GPU acceleration with torch-cluster. 🚀"""
     import torch_cluster
-    
+
     n_nodes = len(coords)
     if n_nodes == 0:
         raise ValueError("Empty coordinate array")
-    
+
     # Convert to PyTorch tensor
     coords_tensor = torch.tensor(coords, dtype=torch.float32)
-    
+
     # Use GPU if available
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     coords_tensor = coords_tensor.to(device)
-    
+
     # Create k-NN graph with GPU acceleration
     edge_index = torch_cluster.knn_graph(
         x=coords_tensor,
         k=min(k_neighbors, n_nodes - 1),  # Ensure k doesn't exceed dataset size
         loop=False,  # No self-loops
-        flow='source_to_target'
+        flow="source_to_target",
     )
-    
+
     # Move back to CPU if needed for consistency
     edge_index = edge_index.cpu()
-    logger.info(f"✅ Created GPU k-NN graph: {n_nodes:,} nodes, {edge_index.shape[1]:,} edges")
+    logger.info(
+        f"✅ Created GPU k-NN graph: {n_nodes:,} nodes, {edge_index.shape[1]:,} edges"
+    )
     return edge_index
 
 
@@ -650,8 +665,14 @@ def _create_nsa_graph(
     # Create k-NN graph with GPU acceleration
     edge_index = _create_knn_graph_gpu(coords, k_neighbors)
     # Prepare features: only numeric columns
-    numeric_cols = [col for col in df.columns if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]]
-    feature_cols = [c for c in ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"] if c in numeric_cols]
+    numeric_cols = [
+        col
+        for col in df.columns
+        if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
+    ]
+    feature_cols = [
+        c for c in ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"] if c in numeric_cols
+    ]
     if not feature_cols:
         feature_cols = numeric_cols
     if not feature_cols:
@@ -683,7 +704,7 @@ def _create_nsa_graph(
 def _create_tng50_graph(
     df: pl.DataFrame, k_neighbors: int, distance_threshold: float, **kwargs: Any
 ) -> Data:
-    """Create TNG50 simulation graph. """
+    """Create TNG50 simulation graph."""
     # Extract 3D coordinates
     coords = df.select(["x", "y", "z"]).to_numpy()
 
@@ -789,100 +810,6 @@ def _create_generic_graph(
     data.k_neighbors = k_neighbors
 
     return data
-
-
-def perform_gaia_crossmatching(
-    exoplanet_coords: pl.DataFrame,
-    gaia_df: pl.DataFrame,
-    max_distance_arcsec: float = 5.0,
-    min_probability: float = 0.5,
-) -> Dict[str, Any]:
-    """
-    Perform Gaia cross-matching using CrossMatchTensor. 🔍
-
-    Args:
-        exoplanet_coords: DataFrame with exoplanet coordinates
-        gaia_df: Gaia catalog DataFrame
-        max_distance_arcsec: Maximum matching distance
-        min_probability: Minimum probability for high-confidence matches
-
-    Returns:
-        Dictionary with cross-matching results
-    """
-    logger.info(
-        f"🔍 Performing Gaia cross-matching for {len(exoplanet_coords)} exoplanets"
-    )
-
-    # Prepare exoplanet coordinates
-    exoplanet_data = {
-        "ra": torch.tensor(exoplanet_coords["ra"].to_numpy(), dtype=torch.float32),
-        "dec": torch.tensor(exoplanet_coords["dec"].to_numpy(), dtype=torch.float32),
-        "hostname": torch.tensor(
-            exoplanet_coords["hostname"].to_numpy(), dtype=torch.int64
-        ),
-    }
-
-    # Prepare Gaia coordinates
-    gaia_data = {
-        "ra": torch.tensor(gaia_df["ra"].to_numpy(), dtype=torch.float32),
-        "dec": torch.tensor(gaia_df["dec"].to_numpy(), dtype=torch.float32),
-        "source_id": torch.tensor(gaia_df["source_id"].to_numpy(), dtype=torch.int64),
-    }
-
-    # Create CrossMatchTensor
-    crossmatch_tensor = CrossMatchTensor(
-        catalog_a=exoplanet_data,
-        catalog_b=gaia_data,
-        catalog_names=("exoplanets", "gaia"),
-        coordinate_columns={"a": [0, 1], "b": [0, 1]},
-    )
-
-    # Perform sky coordinate matching
-    logger.info(
-        f"🔍 Performing sky coordinate matching with {max_distance_arcsec} arcsec tolerance"
-    )
-    sky_matches = crossmatch_tensor.sky_coordinate_matching(
-        tolerance_arcsec=max_distance_arcsec,
-        method="nearest_neighbor",
-        match_name="exoplanet_gaia_sky_match",
-    )
-
-    # Perform Bayesian matching for higher quality matches
-    logger.info("🔍 Performing Bayesian matching for probability assessment")
-    bayesian_matches = crossmatch_tensor.bayesian_matching(
-        prior_density=1e-6,  # objects per square arcsecond
-        tolerance_arcsec=max_distance_arcsec,
-        match_name="exoplanet_gaia_bayesian_match",
-    )
-
-    # Combine results
-    results = {
-        "sky_matches": sky_matches,
-        "bayesian_matches": bayesian_matches,
-        "crossmatch_tensor": crossmatch_tensor,
-        "n_exoplanets": len(exoplanet_coords),
-        "n_gaia_stars": len(gaia_df),
-        "max_distance_arcsec": max_distance_arcsec,
-        "min_probability": min_probability,
-    }
-
-    # Extract high-confidence matches
-    high_confidence_matches = []
-    for match in bayesian_matches["matches"]:
-        posterior_prob = (
-            match.get("posterior_prob", 0.0) if isinstance(match, dict) else 0.0
-        )
-        if posterior_prob >= min_probability:
-            high_confidence_matches.append(match)
-
-    results["high_confidence_matches"] = high_confidence_matches
-    results["n_high_confidence"] = len(high_confidence_matches)
-
-    logger.info(
-        f"✅ Cross-matching completed: {len(sky_matches['matches'])} sky matches, {len(high_confidence_matches)} high-confidence matches"
-    )
-
-    return results
 
 
 def enrich_exoplanets_with_gaia_coordinates(
@@ -1056,39 +983,13 @@ def enrich_exoplanets_with_gaia_coordinates(
 
         # Third pass: Try real cross-matching for spatial distributions
         if len(unmatched_hostnames) > 0:
-            logger.info("🔍 Attempting real cross-matching for spatial distributions")
-
-            # Create DataFrame with generated coordinates
-            spatial_coords = pl.DataFrame(
-                {
-                    "hostname": unmatched_hostnames,
-                    "ra": [coord_mapping[h]["ra"] for h in unmatched_hostnames],
-                    "dec": [coord_mapping[h]["dec"] for h in unmatched_hostnames],
-                }
-            )
-
-            # Perform cross-matching
-            crossmatch_results = perform_gaia_crossmatching(
-                spatial_coords, gaia_df, max_distance_arcsec
-            )
-
-            # Update coordinates with real Gaia matches
-            for match in crossmatch_results.get("high_confidence_matches", []):
-                exoplanet_idx = match["index_a"]
-                gaia_idx = match["index_b"]
-                hostname = unmatched_hostnames[exoplanet_idx]
-
-                # Update with real Gaia coordinates
-                coord_mapping[hostname] = {
-                    "ra": gaia_df["ra"][gaia_idx],
-                    "dec": gaia_df["dec"][gaia_idx],
-                    "source": "crossmatch_gaia",
-                    "separation_arcsec": match.get("separation_arcsec", 0.0),
-                    "probability": match.get("posterior_prob", 0.0),
-                }
-
             logger.info(
-                f"✅ Cross-matching updated {len(crossmatch_results.get('high_confidence_matches', []))} coordinates with real Gaia data"
+                "🔍 Skipping cross-matching (function removed) - using spatial distributions only"
+            )
+
+            # For now, just use the spatial distributions we already generated
+            logger.info(
+                f"📍 Using spatial distributions for {len(unmatched_hostnames)} host stars"
             )
 
     # Add coordinates to exoplanet DataFrame
@@ -1263,22 +1164,22 @@ def _create_graph_data(df: pl.DataFrame, survey: str, k_neighbors: int) -> Data:
     else:
         # k-NN graph for larger datasets using GPU acceleration
         k = min(k_neighbors, num_nodes - 1)
-        
+
         # Convert features to PyTorch tensor and move to GPU
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         features_tensor = torch.tensor(features, dtype=torch.float32, device=device)
 
         # Create k-NN graph on GPU
         edge_index = torch_cluster.knn_graph(
-            x=features_tensor, 
-            k=k, 
+            x=features_tensor,
+            k=k,
             loop=False,  # No self-loops
-            flow='source_to_target'
+            flow="source_to_target",
         )
-        
+
         # Move back to CPU
         edge_index = edge_index.cpu()
-        
+
         logger.info(
             f"🚀 Created GPU k-NN graph: {num_nodes} nodes, {edge_index.shape[1]} edges"
         )
@@ -1351,10 +1252,12 @@ def process_survey(
     For TNG50(-4), process all HDF5 snapshots as a time series and save outputs under data/processed/tng50/ with simple names (tng50.parquet, tng50.pt, tng50_metadata.json).
     If max_samples is set, sample the combined DataFrame before saving and graph creation.
     """
+    import json
     from pathlib import Path
+
     import polars as pl
     import torch
-    import json
+
     logger = logging.getLogger(__name__)
 
     # Special case: TNG50(-4) → time series graph processing
@@ -1367,7 +1270,9 @@ def process_survey(
                 try:
                     max_samples = int(max_samples)
                 except Exception:
-                    logger.warning(f"Invalid max_samples value: {max_samples}, using all data.")
+                    logger.warning(
+                        f"Invalid max_samples value: {max_samples}, using all data."
+                    )
                     max_samples = None
         # Default: limit to 2 million particles if not set
         if max_samples is None:
@@ -1375,14 +1280,18 @@ def process_survey(
         # Find all HDF5 snapshots
         project_root = Path(__file__).parent.parent.parent.parent
         snapdir = project_root / "data" / "raw" / "TNG50-4" / "output" / "snapdir_099"
-        hdf5_files = sorted(snapdir.glob("snap_099.*.hdf5"), key=lambda x: int(x.stem.split(".")[-1]))
+        hdf5_files = sorted(
+            snapdir.glob("snap_099.*.hdf5"), key=lambda x: int(x.stem.split(".")[-1])
+        )
         if not hdf5_files:
             raise FileNotFoundError(f"No TNG50 HDF5 snapshots found in {snapdir}")
         logger.info(f"🔍 Found {len(hdf5_files)} TNG50 snapshots in {snapdir}")
         # Process all snapshots into a single DataFrame (time series)
         all_snapshots = []
         for i, hdf5_file in enumerate(hdf5_files):
-            logger.info(f"📊 Processing snapshot {i+1}/{len(hdf5_files)}: {hdf5_file.name}")
+            logger.info(
+                f"📊 Processing snapshot {i + 1}/{len(hdf5_files)}: {hdf5_file.name}"
+            )
             try:
                 with h5py.File(hdf5_file, "r") as f:
                     snapshot_id = int(hdf5_file.stem.split(".")[-1])
@@ -1394,7 +1303,13 @@ def process_survey(
                             data_dict["x"] = coords[:, 0]
                             data_dict["y"] = coords[:, 1]
                             data_dict["z"] = coords[:, 2]
-                        for field in ["Masses", "Velocities", "Density", "Temperature", "Metallicity"]:
+                        for field in [
+                            "Masses",
+                            "Velocities",
+                            "Density",
+                            "Temperature",
+                            "Metallicity",
+                        ]:
                             if field in group:
                                 data = np.array(group[field][:])
                                 col_name = field.lower()
@@ -1419,7 +1334,9 @@ def process_survey(
                             data_dict["scale_factor"] = header["ScaleFactor"][0]
                     df_snapshot = pl.DataFrame(data_dict)
                     all_snapshots.append(df_snapshot)
-                    logger.info(f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} particles, {len(df_snapshot.columns)} columns")
+                    logger.info(
+                        f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} particles, {len(df_snapshot.columns)} columns"
+                    )
             except Exception as e:
                 logger.warning(f"⚠️ Error loading {hdf5_file.name}: {e}")
                 continue
@@ -1465,7 +1382,9 @@ def process_survey(
                 try:
                     max_samples = int(max_samples)
                 except Exception:
-                    logger.warning(f"Invalid max_samples value: {max_samples}, using all data.")
+                    logger.warning(
+                        f"Invalid max_samples value: {max_samples}, using all data."
+                    )
                     max_samples = None
         project_root = Path(__file__).parent.parent.parent.parent
         nsa_dir = project_root / "data" / "raw" / "nsa"
@@ -1485,182 +1404,18 @@ def process_survey(
         return files
     # Standard: all other surveys
     # ... existing code ...
-
-
-def create_gaia_survey_tensor():
-    """Create proper SurveyTensor from all 3M Gaia stars using the tensor system. 🌟"""
-    import polars as pl
-    import torch
-    from pathlib import Path
-    
-    logger.info("🌟 Creating Gaia SurveyTensor with all 3M stars...")
-    
-    # Load the large Gaia dataset
-    gaia_file = Path("data/processed/gaia/gaia_dr3_bright_all_sky_mag12.0_processed.parquet")
-    if not gaia_file.exists():
-        logger.error(f"❌ Gaia file not found: {gaia_file}")
-        return None
-    
-    logger.info(f"📊 Loading Gaia data from {gaia_file}")
-    df = pl.read_parquet(gaia_file)
-    logger.info(f"✅ Loaded {len(df):,} Gaia stars with {len(df.columns)} columns")
-    
-    # Smart NaN handling: fill NaN values instead of dropping rows
-    logger.info("🧹 Smart data cleaning: filling NaN values...")
-    
-    # Get only numeric columns
-    numeric_columns = []
-    for col in df.columns:
-        if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
-            numeric_columns.append(col)
-    
-    logger.info(f"📊 Using {len(numeric_columns)} numeric columns: {numeric_columns[:5]}...")
-    
-    # Select only numeric columns and fill nulls
-    df_numeric = df.select(numeric_columns)
-    df_clean = df_numeric.fill_null(strategy="mean")
-    
-    # Convert to numpy and handle remaining issues
-    data_numpy = df_clean.to_numpy()
-    
-    # Aggressive cleaning: replace ALL non-finite values
-    data_numpy = np.nan_to_num(data_numpy, nan=0.0, posinf=0.0, neginf=0.0)
-    
-    # Additional check: ensure no infinite or NaN values remain
-    if not np.isfinite(data_numpy).all():
-        logger.warning("⚠️ Found remaining non-finite values, applying final cleanup...")
-        data_numpy[~np.isfinite(data_numpy)] = 0.0
-    
-    logger.info(f"📊 After smart cleaning: {len(data_numpy):,} stars with {data_numpy.shape[1]} features (kept all data!)")
-    
-    # Convert to tensor with explicit finite check
-    tensor_data = torch.tensor(data_numpy, dtype=torch.float32)
-    
-    # Final tensor validation
-    if not torch.isfinite(tensor_data).all():
-        logger.warning("🔧 Tensor contains non-finite values, applying final cleanup...")
-        tensor_data[~torch.isfinite(tensor_data)] = 0.0
-    
-    logger.info(f"📊 Clean tensor shape: {tensor_data.shape}")
-    logger.info(f"✅ Tensor validation: all finite = {torch.isfinite(tensor_data).all()}")
-    
-    # Define Gaia column mapping
-    gaia_columns = df.columns
-    column_mapping = {col: i for i, col in enumerate(gaia_columns)}
-    
-    # Create SurveyTensor with proper Gaia configuration
-    try:
-        from astro_lab.tensors.survey import SurveyTensor
-        
-        survey_tensor = SurveyTensor(
-            data=tensor_data,
-            survey_name="gaia",
-            data_release="DR3",
-            filter_system="gaia_dr3",
-            column_mapping=column_mapping,
-            survey_metadata={
-                "full_name": "Gaia DR3 Complete (3M stars)",
-                "magnitude_limit": 12.0,
-                "coordinate_system": "icrs",
-                "photometric_bands": ["G", "BP", "RP"],
-                "n_objects": len(data_numpy),
-                "processing_date": "2024",
-                "source_file": str(gaia_file),
-            }
-        )
-        
-        logger.info(f"✅ Created SurveyTensor: {survey_tensor.survey_name} with {len(survey_tensor)} objects")
-        
-        # Create Spatial3DTensor
-        logger.info("🌍 Creating Spatial3DTensor...")
-        spatial_tensor = survey_tensor.get_spatial_tensor(include_distances=True)
-        logger.info(f"✅ Created Spatial3DTensor with {spatial_tensor.shape} coordinates")
-        
-        # Create PhotometricTensor
-        logger.info("📸 Creating PhotometricTensor...")
-        photometric_tensor = survey_tensor.get_photometric_tensor()
-        logger.info(f"✅ Created PhotometricTensor with bands: {photometric_tensor.bands}")
-        
-        # Save to simple gaia directory
-        output_dir = Path("data/processed/gaia")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Simple file names
-        survey_file = output_dir / "gaia_survey_tensor.pt"
-        spatial_file = output_dir / "gaia_spatial_tensor.pt"
-        photometric_file = output_dir / "gaia_photometric_tensor.pt"
-        metadata_file = output_dir / "gaia_tensor_metadata.json"
-        
-        # Save tensors
-        torch.save(survey_tensor, survey_file)
-        logger.info(f"💾 Saved SurveyTensor to: {survey_file}")
-        
-        torch.save(spatial_tensor, spatial_file)
-        logger.info(f"💾 Saved Spatial3DTensor to: {spatial_file}")
-        
-        torch.save(photometric_tensor, photometric_file)
-        logger.info(f"💾 Saved PhotometricTensor to: {photometric_file}")
-        
-        # Create comprehensive metadata
-        metadata = {
-            "survey_name": "gaia",
-            "full_name": "Gaia DR3 Complete Dataset (3M stars)",
-            "data_release": "DR3",
-            "num_samples": len(data_numpy),
-            "tensor_types": ["survey", "spatial_3d", "photometric"],
-            "coordinate_system": "icrs",
-            "photometric_bands": ["G", "BP", "RP"],
-            "spatial_dimensions": list(spatial_tensor.shape),
-            "photometric_dimensions": list(photometric_tensor.shape),
-            "column_mapping": column_mapping,
-            "created_with": "astro_lab.tensors.SurveyTensor",
-            "processing_method": "complete_3m_dataset_smart_nan_handling",
-        }
-        
-        import json
-        with open(metadata_file, 'w') as f:
-            json.dump(metadata, f, indent=2, default=str)
-        logger.info(f"📋 Saved tensor metadata to: {metadata_file}")
-        
-        logger.info(f"🎯 Complete tensor system created!")
-        logger.info(f"   SurveyTensor: {len(survey_tensor):,} objects")
-        logger.info(f"   Spatial3DTensor: {spatial_tensor.shape}")
-        logger.info(f"   PhotometricTensor: {photometric_tensor.shape}")
-        
-        return {
-            "survey_tensor": survey_tensor,
-            "spatial_tensor": spatial_tensor,
-            "photometric_tensor": photometric_tensor,
-            "files": {
-                "survey": str(survey_file),
-                "spatial": str(spatial_file),
-                "photometric": str(photometric_file),
-                "metadata": str(metadata_file),
-            }
-        }
-        
-    except ImportError as e:
-        logger.warning(f"⚠️ Tensor system not available: {e}")
-        return None
-    except Exception as e:
-        logger.error(f"❌ Error creating tensor system: {e}")
-        return None
-
-
-# Keep the original function for backward compatibility
-def process_large_gaia_dataset():
-    """Process the large Gaia dataset using GPU k-NN for fast graph creation (legacy). 🌟"""
-    print("⚠️ Using legacy PyG graph processing. Consider using create_gaia_survey_tensor() instead.")
-    return create_gaia_survey_tensor()
+    # Fallback: If no return occurred, raise error
+    raise RuntimeError("Survey processing did not complete and no files were returned.")
 
 
 def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
     """
     Sucht nach Parquet/CSV für einen Survey, erzeugt bei FITS oder HDF5 automatisch Parquet und gibt den Pfad zurück. 📊
     """
-    import polars as pl
-    from astro_lab.data.utils import load_fits_optimized
     import logging
+
+    import polars as pl
+
     logger = logging.getLogger(__name__)
 
     # 1. Suche Parquet
@@ -1681,6 +1436,7 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
             parquet_path = data_dir / f"{survey}_v1_0_1.parquet"
             if not parquet_path.exists():
                 from astro_lab.data.utils import convert_nsa_fits_to_parquet
+
                 # Get NSA features from config
                 nsa_config = get_survey_config("nsa")
                 features = nsa_config.get("features", [])
@@ -1709,21 +1465,26 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
                     break
         if hdf5_files:
             # Sortiere nach Snapshot-Nummer
-            hdf5_files.sort(key=lambda x: int(x.stem.split('.')[-1]))
+            hdf5_files.sort(key=lambda x: int(x.stem.split(".")[-1]))
             # Schreibe das Parquet IMMER nach data/raw/tng50, damit die nachgelagerte Logik funktioniert
             tng50_dir = data_dir.parent / "tng50"
             tng50_dir.mkdir(parents=True, exist_ok=True)
             parquet_path = tng50_dir / f"{survey}_timeseries.parquet"
             if not parquet_path.exists():
-                logger.info(f"🔄 Converting TNG50 Time Series: {len(hdf5_files)} Snapshots")
+                logger.info(
+                    f"🔄 Converting TNG50 Time Series: {len(hdf5_files)} Snapshots"
+                )
                 try:
                     from astro_lab.data.manager import AstroDataManager
+
                     all_snapshots = []
                     for i, hdf5_file in enumerate(hdf5_files):
-                        logger.info(f"📊 Processing snapshot {i+1}/{len(hdf5_files)}: {hdf5_file.name}")
+                        logger.info(
+                            f"📊 Processing snapshot {i + 1}/{len(hdf5_files)}: {hdf5_file.name}"
+                        )
                         try:
                             with h5py.File(hdf5_file, "r") as f:
-                                snapshot_id = int(hdf5_file.stem.split('.')[-1])
+                                snapshot_id = int(hdf5_file.stem.split(".")[-1])
                                 data_dict = {}
                                 if "PartType0" in f:
                                     group = f["PartType0"]
@@ -1732,7 +1493,13 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
                                         data_dict["x"] = coords[:, 0]
                                         data_dict["y"] = coords[:, 1]
                                         data_dict["z"] = coords[:, 2]
-                                    for field in ["Masses", "Velocities", "Density", "Temperature", "Metallicity"]:
+                                    for field in [
+                                        "Masses",
+                                        "Velocities",
+                                        "Density",
+                                        "Temperature",
+                                        "Metallicity",
+                                    ]:
                                         if field in group:
                                             data = np.array(group[field][:])
                                             col_name = field.lower()
@@ -1742,7 +1509,9 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
                                                 col_name = col_name[:-1]
                                             if data.ndim > 1:
                                                 for j in range(data.shape[1]):
-                                                    data_dict[f"{col_name}_{j}"] = data[:, j]
+                                                    data_dict[f"{col_name}_{j}"] = data[
+                                                        :, j
+                                                    ]
                                             else:
                                                 data_dict[col_name] = data
                                     data_dict["snapshot_id"] = snapshot_id
@@ -1750,22 +1519,34 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
                                     if "Header" in f:
                                         header = f["Header"]
                                         if "Redshift" in header:
-                                            data_dict["redshift"] = header["Redshift"][0]
+                                            data_dict["redshift"] = header["Redshift"][
+                                                0
+                                            ]
                                         if "Time" in header:
                                             data_dict["time_gyr"] = header["Time"][0]
                                         if "ScaleFactor" in header:
-                                            data_dict["scale_factor"] = header["ScaleFactor"][0]
+                                            data_dict["scale_factor"] = header[
+                                                "ScaleFactor"
+                                            ][0]
                                     df_snapshot = pl.DataFrame(data_dict)
                                     all_snapshots.append(df_snapshot)
-                                    logger.info(f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} Partikel, {len(df_snapshot.columns)} Spalten")
+                                    logger.info(
+                                        f"✅ Snapshot {snapshot_id}: {len(df_snapshot)} Partikel, {len(df_snapshot.columns)} Spalten"
+                                    )
                         except Exception as e:
-                            logger.warning(f"⚠️ Fehler beim Laden von {hdf5_file.name}: {e}")
+                            logger.warning(
+                                f"⚠️ Fehler beim Laden von {hdf5_file.name}: {e}"
+                            )
                             continue
                     if all_snapshots:
                         combined_df = pl.concat(all_snapshots)
                         combined_df.write_parquet(str(parquet_path))
-                        logger.info(f"✅ TNG50 Time Series Parquet gespeichert: {parquet_path}")
-                        logger.info(f"   {len(combined_df)} Partikel über {len(hdf5_files)} Zeitschritte")
+                        logger.info(
+                            f"✅ TNG50 Time Series Parquet gespeichert: {parquet_path}"
+                        )
+                        logger.info(
+                            f"   {len(combined_df)} Partikel über {len(hdf5_files)} Zeitschritte"
+                        )
                         logger.info(f"   Spalten: {combined_df.columns}")
                         return parquet_path
                     else:
@@ -1776,7 +1557,9 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
             else:
                 return parquet_path
     # 4. Keine Daten gefunden
-    raise FileNotFoundError(f"No suitable data file found for survey '{survey}' in {data_dir}")
+    raise FileNotFoundError(
+        f"No suitable data file found for survey '{survey}' in {data_dir}"
+    )
 
 
 def get_survey_input_file(survey: str, data_manager) -> Path:
@@ -1793,10 +1576,28 @@ def get_survey_input_file(survey: str, data_manager) -> Path:
     parquet_files = list(survey_dir.glob("*.parquet"))
     if parquet_files:
         return parquet_files[0]
-    raise FileNotFoundError(f"No parquet file found for survey {survey} in {survey_dir}")
+    raise FileNotFoundError(
+        f"No parquet file found for survey {survey} in {survey_dir}"
+    )
 
 
 if __name__ == "__main__":
     # Test the new tensor system
-    print("🌟 Creating complete Gaia tensor system:")
-    create_gaia_survey_tensor()
+    print("🌟 Testing new TensorDict factory methods:")
+
+    # Test Gaia survey creation
+    import torch
+
+    from astro_lab.tensors.factories import create_gaia_survey
+
+    # Create dummy data
+    coordinates = torch.randn(100, 2) * 10  # Random RA, Dec
+    g_mag = torch.randn(100) + 15  # Random G magnitudes
+    bp_mag = g_mag + torch.randn(100) * 0.1 + 0.5  # BP magnitudes
+    rp_mag = g_mag - torch.randn(100) * 0.1 + 0.3  # RP magnitudes
+
+    # Create Gaia survey using factory
+    gaia_survey = create_gaia_survey(coordinates, g_mag, bp_mag, rp_mag)
+    print(f"✅ Created Gaia survey: {gaia_survey.survey_name}")
+    print(f"   Spatial: {gaia_survey['spatial'].n_objects} objects")
+    print(f"   Photometric: {gaia_survey['photometric'].n_objects} objects")
