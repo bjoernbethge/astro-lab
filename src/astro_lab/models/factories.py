@@ -1,26 +1,39 @@
-"""Simple factory functions for common models."""
+"""
+Model factory functions for creating pre-configured astronomical models.
+"""
 
 import inspect
 import logging
-from typing import Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import torch
 
-from .config import get_predefined_config
-from .core import ALCDEFTemporalGNN, AstroPhotGNN, AstroSurveyGNN, TemporalGCN
-from .utils import filter_kwargs
+from astro_lab.models.config import get_predefined_config
+from astro_lab.models.core import (
+    ALCDEFTemporalGNN,
+    AstroPhotGNN,
+    AstroSurveyGNN,
+    TemporalGCN,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def filter_kwargs(cls, **kwargs: Any) -> Dict[str, Any]:
+    """Filter kwargs to only those accepted by the class."""
+    sig = inspect.signature(cls.__init__)
+    valid = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    return valid
 
 
 def create_gaia_classifier(
     num_classes: Optional[int] = None,
     hidden_dim: int = 128,
     device: Optional[Union[str, torch.device]] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> AstroSurveyGNN:
     """
-    Create Gaia stellar classifier (robust to all kwargs).
+    Create Gaia classifier (robust to all kwargs).
 
     Args:
         num_classes: Number of output classes (required for classification)
@@ -34,26 +47,25 @@ def create_gaia_classifier(
     Raises:
         ValueError: If num_classes is not provided or invalid
     """
-    # Validate num_classes
     if num_classes is None:
         raise ValueError(
             "num_classes must be specified for classification models. "
-            "It should be determined from your data (e.g., datamodule.num_classes)"
+            "It should be determined from your data."
         )
     if num_classes < 2:
         raise ValueError(f"num_classes must be at least 2, got {num_classes}")
 
     config = get_predefined_config("gaia_classifier").to_dict()
     config.update(kwargs)
-    config["output_dim"] = num_classes  # Force the correct number of classes
+    config["output_dim"] = num_classes
     config["hidden_dim"] = hidden_dim
-    config["device"] = device
+    if device is not None:
+        config["device"] = device
     config["task"] = "classification"
 
     logger.info(f"Creating Gaia classifier with {num_classes} classes")
 
-    # Filter to only valid AstroSurveyGNN parameters
-    filtered = filter_kwargs(AstroSurveyGNN, **config)
+    filtered = filter_kwargs_strict(AstroSurveyGNN, **config)
     return AstroSurveyGNN(**filtered)
 
 
@@ -61,10 +73,10 @@ def create_sdss_galaxy_model(
     output_dim: Optional[int] = None,
     hidden_dim: int = 256,
     device: Optional[Union[str, torch.device]] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> AstroSurveyGNN:
     """
-    Create SDSS galaxy property predictor (robust to all kwargs).
+    Create SDSS galaxy model (robust to all kwargs).
 
     Args:
         output_dim: Output dimension (required)
@@ -86,13 +98,14 @@ def create_sdss_galaxy_model(
 
     config = get_predefined_config("sdss_galaxy").to_dict()
     config.update(kwargs)
-    config["output_dim"] = output_dim
+    if output_dim is not None:
+        config["output_dim"] = output_dim
     config["hidden_dim"] = hidden_dim
-    config["device"] = device
+    if device is not None:
+        config["device"] = device
     config["task"] = "regression"
 
-    # Filter to only valid AstroSurveyGNN parameters
-    filtered = filter_kwargs(AstroSurveyGNN, **config)
+    filtered = filter_kwargs_strict(AstroSurveyGNN, **config)
     return AstroSurveyGNN(**filtered)
 
 
@@ -100,7 +113,7 @@ def create_lsst_transient_detector(
     num_classes: Optional[int] = None,
     hidden_dim: int = 128,
     device: Optional[Union[str, torch.device]] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> AstroSurveyGNN:
     """
     Create LSST transient detector (robust to all kwargs).
@@ -136,7 +149,9 @@ def create_lsst_transient_detector(
 
 
 def create_asteroid_period_detector(
-    hidden_dim: int = 128, device: Optional[Union[str, torch.device]] = None, **kwargs
+    hidden_dim: int = 128,
+    device: Optional[Union[str, torch.device]] = None,
+    **kwargs: Any,
 ) -> ALCDEFTemporalGNN:
     """
     Create asteroid period detector (robust to all kwargs).
@@ -164,7 +179,7 @@ def create_lightcurve_classifier(
     num_classes: int = 2,
     hidden_dim: int = 128,
     device: Optional[Union[str, torch.device]] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> ALCDEFTemporalGNN:
     """
     Create lightcurve classifier (robust to all kwargs).
@@ -192,12 +207,19 @@ def create_lightcurve_classifier(
     return ALCDEFTemporalGNN(**filtered)
 
 
+def filter_kwargs_strict(cls, **kwargs: Any) -> Dict[str, Any]:
+    """Filter kwargs to only those accepted by the class, und entferne None-Parameter wie device/dtype."""
+    sig = inspect.signature(cls.__init__)
+    valid = {k: v for k, v in kwargs.items() if k in sig.parameters and v is not None}
+    return valid
+
+
 def create_galaxy_modeler(
     model_components: Optional[list] = None,
     hidden_dim: int = 128,
     output_dim: int = 12,
     device: Optional[Union[str, torch.device]] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> AstroPhotGNN:
     """
     Create galaxy modeler (robust to all kwargs).
@@ -217,11 +239,12 @@ def create_galaxy_modeler(
     config.setdefault("model_components", model_components or ["sersic", "disk"])
     config.setdefault("output_dim", output_dim)
     config.setdefault("hidden_dim", hidden_dim)
-    config.setdefault("device", device)
+    if device is not None:
+        config["device"] = device
     config.setdefault("task", "regression")
 
-    # Filter to only valid AstroPhotGNN parameters
-    filtered = filter_kwargs(AstroPhotGNN, **config)
+    # Filter to only valid AstroPhotGNN parameters, ohne None-Parameter
+    filtered = filter_kwargs_strict(AstroPhotGNN, **config)
     return AstroPhotGNN(**filtered)
 
 
@@ -236,7 +259,7 @@ def create_temporal_graph_model(
     task: str = "regression",
     dropout: float = 0.1,
     device: Optional[Union[str, torch.device]] = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> TemporalGCN:
     """
     Create temporal graph model (robust to all kwargs).
@@ -288,7 +311,7 @@ MODELS = {
 }
 
 
-def create_model(model_name: str, **kwargs):
+def create_model(model_name: str, **kwargs: Any):
     """
     Create model by name with robust parameter filtering.
 
