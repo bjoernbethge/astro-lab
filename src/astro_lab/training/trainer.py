@@ -320,6 +320,12 @@ class AstroTrainer(Trainer):
             ckpt_path: Checkpoint path for resuming
         """
         try:
+            # Extract survey name from datamodule if available
+            if datamodule and hasattr(datamodule, "survey"):
+                self.survey = datamodule.survey
+            else:
+                self.survey = "unknown"
+
             # Use the lightning module directly - Lightning expects the LightningModule as model parameter
             if datamodule is not None:
                 # Use DataModule (recommended approach)
@@ -379,13 +385,20 @@ class AstroTrainer(Trainer):
     def _save_training_results(self):
         """Save training results to organized directory structure."""
         try:
-            # Get survey name for organization
-            survey = getattr(self, "survey", "gaia")
+            # Use the survey name extracted during fit()
+            survey = getattr(self, "survey", "unknown")
 
-            # Create organized results structure
+            # Extract model name from training config
+            model_name = "unknown"
+            if self.training_config and hasattr(self.training_config, "model"):
+                model_name = getattr(self.training_config.model, "name", "unknown")
+
+            # Create organized results structure: results/survey/model/
             results_structure = data_config.ensure_results_directories(
-                survey, self.experiment_name
+                survey, model_name
             )
+
+            models_dir = results_structure["models"]
 
             # Save best models if enabled
             if getattr(self.training_config.logging, "save_best_models", True):
@@ -985,16 +998,20 @@ class AstroTrainer(Trainer):
             Dictionary mapping model names to saved paths
         """
         try:
-            # Get survey name for better organization
-            survey = getattr(self, "survey", "gaia")
+            # Use the survey name extracted during fit()
+            survey = getattr(self, "survey", "unknown")
 
-            # Create organized results structure
-            results_dir = Path(f"./results/{survey}")
-            models_dir = results_dir / "models"
-            plots_dir = results_dir / "plots"
+            # Extract model name from training config
+            model_name = "unknown"
+            if self.training_config and hasattr(self.training_config, "model"):
+                model_name = getattr(self.training_config.model, "name", "unknown")
 
-            models_dir.mkdir(parents=True, exist_ok=True)
-            plots_dir.mkdir(parents=True, exist_ok=True)
+            # Create organized results structure: results/survey/model/
+            results_structure = data_config.ensure_results_directories(
+                survey, model_name
+            )
+
+            models_dir = results_structure["models"]
 
             # Get all checkpoints
             # Use data_config to get the correct checkpoint directory
@@ -1048,57 +1065,12 @@ class AstroTrainer(Trainer):
                 except Exception as e:
                     logger.error(f"Failed to save model {i + 1}: {e}")
 
-            # Create README with model information
-            self._create_models_readme(saved_models, checkpoints[:top_k])
-
             logger.info(f"Saved {len(saved_models)} models to: {models_dir}")
             return saved_models
 
         except Exception as e:
             logger.error(f"Failed to save models to results: {e}")
             return {}
-
-    def _create_models_readme(
-        self, saved_models: Dict[str, Path], checkpoints_info: List
-    ):
-        """Create README file with model information."""
-        try:
-            results_dir = data_config.results_dir / self.experiment_name
-            # Ensure the results directory exists
-            results_dir.mkdir(parents=True, exist_ok=True)
-            readme_path = results_dir / "README.md"
-
-            with open(readme_path, "w", encoding="utf-8") as f:
-                f.write(f"# {self.experiment_name} - Model Results\n\n")
-                f.write(f"**Survey:** {self.survey}\n")
-                f.write(f"**Experiment:** {self.experiment_name}\n")
-                f.write(f"**Date:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-
-                f.write("## Saved Models\n\n")
-                for model_name, model_path in saved_models.items():
-                    f.write(f"- **{model_name}**: `{model_path.name}`\n")
-
-                f.write("\n## Training Information\n\n")
-                f.write(f"- **Model Type:** {type(self.astro_module.model).__name__}\n")
-                f.write(f"- **Task Type:** {self.astro_module.task_type}\n")
-                f.write(
-                    f"- **Number of Classes:** {getattr(self.astro_module, 'num_classes', 'N/A')}\n"
-                )
-
-                if self.training_config:
-                    f.write(
-                        f"- **Max Epochs:** {self.training_config.scheduler.max_epochs}\n"
-                    )
-                    f.write(
-                        f"- **Learning Rate:** {getattr(self.astro_module, 'learning_rate', 'N/A')}\n"
-                    )
-
-                f.write("\n## Checkpoints\n\n")
-                for i, checkpoint in enumerate(checkpoints_info[:10]):  # Show top 10
-                    f.write(f"{i + 1}. `{checkpoint.name}`\n")
-
-        except Exception as e:
-            logger.error(f"Failed to create README: {e}")
 
     def get_results_summary(self) -> Dict[str, Any]:
         """Get comprehensive results summary."""
