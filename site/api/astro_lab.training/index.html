@@ -1017,9 +1017,36 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#astro_lab.training.optimize_hyperparameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      optimize_hyperparameters
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#astro_lab.training.run_training" class="md-nav__link">
     <span class="md-ellipsis">
       run_training
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#astro_lab.training.train_from_config" class="md-nav__link">
+    <span class="md-ellipsis">
+      train_from_config
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#astro_lab.training.train_quick" class="md-nav__link">
+    <span class="md-ellipsis">
+      train_quick
     </span>
   </a>
   
@@ -1276,10 +1303,34 @@ Lightning modules, MLflow logging, and Optuna optimization.</p>
       </thead>
       <tbody>
             <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="optimize_hyperparameters (astro_lab.training.optimize_hyperparameters)" href="#astro_lab.training.optimize_hyperparameters">optimize_hyperparameters</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Run hyperparameter optimization.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
               <td><code><a class="autorefs autorefs-internal" title="run_training (astro_lab.training.run_training)" href="#astro_lab.training.run_training">run_training</a></code></td>
               <td>
                 <div class="doc-md-description">
                   <p>Run training based on CLI arguments.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="train_from_config (astro_lab.training.train_from_config)" href="#astro_lab.training.train_from_config">train_from_config</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Train a model from configuration file.</p>
+                </div>
+              </td>
+            </tr>
+            <tr class="doc-section-item">
+              <td><code><a class="autorefs autorefs-internal" title="train_quick (astro_lab.training.train_quick)" href="#astro_lab.training.train_quick">train_quick</a></code></td>
+              <td>
+                <div class="doc-md-description">
+                  <p>Quick training with dataset and model names.</p>
                 </div>
               </td>
             </tr>
@@ -10549,6 +10600,126 @@ Updated for Lightning 2.0+ and modern ML practices.</p>
 <div class="doc doc-object doc-function">
 
 
+<h3 id="astro_lab.training.optimize_hyperparameters" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">optimize_hyperparameters</span>
+
+
+<a href="#astro_lab.training.optimize_hyperparameters" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">optimize_hyperparameters</span><span class="p">(</span>
+    <span class="n">config_path</span><span class="p">:</span> <span class="n"><span title="typing.Union">Union</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="pathlib.Path">Path</span></span><span class="p">],</span> <span class="n">n_trials</span><span class="p">:</span> <span class="n"><span title="int">int</span></span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="int">int</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Run hyperparameter optimization.
+Args:
+    config_path: Path to configuration file
+    n_trials: Number of optimization trials
+    **kwargs: Additional arguments
+Returns:
+    Exit code (0 for success)</p>
+
+          
+
+            <details class="quote">
+              <summary>Source code in <code>src\astro_lab\training\__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">optimize_hyperparameters</span><span class="p">(</span>
+    <span class="n">config_path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span> <span class="n">n_trials</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Run hyperparameter optimization.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        config_path: Path to configuration file</span>
+<span class="sd">        n_trials: Number of optimization trials</span>
+<span class="sd">        **kwargs: Additional arguments</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Exit code (0 for success)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_astro_datamodule</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.models.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.utils.config.loader</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfigLoader</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">config_loader</span> <span class="o">=</span> <span class="n">ConfigLoader</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+        <span class="n">config_loader</span><span class="o">.</span><span class="n">load_config</span><span class="p">()</span>
+        <span class="n">training_dict</span> <span class="o">=</span> <span class="n">config_loader</span><span class="o">.</span><span class="n">get_training_config</span><span class="p">()</span>
+        <span class="n">model_dict</span> <span class="o">=</span> <span class="n">config_loader</span><span class="o">.</span><span class="n">get_model_config</span><span class="p">()</span>
+        <span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span><span class="o">**</span><span class="n">model_dict</span><span class="p">)</span>
+        <span class="n">training_config</span> <span class="o">=</span> <span class="n">TrainingConfig</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">training_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;optimization_training&quot;</span><span class="p">),</span>
+            <span class="n">model</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">training_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">]},</span>
+        <span class="p">)</span>
+        <span class="n">survey</span> <span class="o">=</span> <span class="n">model_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;gaia&quot;</span><span class="p">)</span>
+        <span class="n">datamodule</span> <span class="o">=</span> <span class="n">create_astro_datamodule</span><span class="p">(</span>
+            <span class="n">survey</span><span class="o">=</span><span class="n">survey</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="n">training_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;batch_size&quot;</span><span class="p">,</span> <span class="mi">32</span><span class="p">),</span>
+            <span class="n">max_samples</span><span class="o">=</span><span class="n">training_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;data&quot;</span><span class="p">,</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;max_samples&quot;</span><span class="p">,</span> <span class="mi">1000</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">datamodule</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+        <span class="n">trainer</span> <span class="o">=</span> <span class="n">AstroTrainer</span><span class="p">(</span><span class="n">training_config</span><span class="o">=</span><span class="n">training_config</span><span class="p">)</span>
+        <span class="n">trainer</span><span class="o">.</span><span class="n">optimize_hyperparameters</span><span class="p">(</span>
+            <span class="n">train_dataloader</span><span class="o">=</span><span class="n">datamodule</span><span class="o">.</span><span class="n">train_dataloader</span><span class="p">(),</span>
+            <span class="n">val_dataloader</span><span class="o">=</span><span class="n">datamodule</span><span class="o">.</span><span class="n">val_dataloader</span><span class="p">(),</span>
+            <span class="n">n_trials</span><span class="o">=</span><span class="n">n_trials</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Optimization failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
 <h3 id="astro_lab.training.run_training" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">run_training</span>
 
@@ -10565,8 +10736,7 @@ Updated for Lightning 2.0+ and modern ML practices.</p>
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\training\__init__.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 38</span>
-<span class="normal"> 39</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 39</span>
 <span class="normal"> 40</span>
 <span class="normal"> 41</span>
 <span class="normal"> 42</span>
@@ -10666,7 +10836,8 @@ Updated for Lightning 2.0+ and modern ML practices.</p>
 <span class="normal">136</span>
 <span class="normal">137</span>
 <span class="normal">138</span>
-<span class="normal">139</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run_training</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+<span class="normal">139</span>
+<span class="normal">140</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run_training</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Run training based on CLI arguments.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
         <span class="c1"># Load config and create TrainingConfig object</span>
@@ -10768,6 +10939,285 @@ Updated for Lightning 2.0+ and modern ML practices.</p>
         <span class="k">return</span> <span class="mi">1</span>
 
     <span class="k">return</span> <span class="mi">0</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="astro_lab.training.train_from_config" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">train_from_config</span>
+
+
+<a href="#astro_lab.training.train_from_config" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">train_from_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="n"><span title="typing.Union">Union</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="pathlib.Path">Path</span></span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="int">int</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Train a model from configuration file.
+Args:
+    config_path: Path to configuration file
+    **kwargs: Additional arguments to override config
+Returns:
+    Exit code (0 for success)</p>
+
+          
+
+            <details class="quote">
+              <summary>Source code in <code>src\astro_lab\training\__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">train_from_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Train a model from configuration file.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        config_path: Path to configuration file</span>
+<span class="sd">        **kwargs: Additional arguments to override config</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Exit code (0 for success)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_astro_datamodule</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.models.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.utils.config.loader</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConfigLoader</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">config_loader</span> <span class="o">=</span> <span class="n">ConfigLoader</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span>
+        <span class="n">config_loader</span><span class="o">.</span><span class="n">load_config</span><span class="p">()</span>
+        <span class="n">training_dict</span> <span class="o">=</span> <span class="n">config_loader</span><span class="o">.</span><span class="n">get_training_config</span><span class="p">()</span>
+        <span class="n">model_dict</span> <span class="o">=</span> <span class="n">config_loader</span><span class="o">.</span><span class="n">get_model_config</span><span class="p">()</span>
+        <span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span><span class="o">**</span><span class="n">model_dict</span><span class="p">)</span>
+        <span class="n">training_config</span> <span class="o">=</span> <span class="n">TrainingConfig</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">training_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;config_training&quot;</span><span class="p">),</span>
+            <span class="n">model</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+            <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">training_dict</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;model&quot;</span><span class="p">]},</span>
+        <span class="p">)</span>
+        <span class="c1"># Override with kwargs</span>
+        <span class="k">if</span> <span class="s2">&quot;epochs&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="ow">and</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;epochs&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">training_config</span><span class="o">.</span><span class="n">scheduler</span><span class="p">[</span><span class="s2">&quot;max_epochs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;epochs&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="s2">&quot;learning_rate&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="ow">and</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;learning_rate&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">training_config</span><span class="o">.</span><span class="n">optimizer</span><span class="p">[</span><span class="s2">&quot;lr&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;learning_rate&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="s2">&quot;devices&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="ow">and</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;devices&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">training_config</span><span class="o">.</span><span class="n">hardware</span><span class="p">[</span><span class="s2">&quot;devices&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;devices&quot;</span><span class="p">]</span>
+        <span class="k">if</span> <span class="s2">&quot;precision&quot;</span> <span class="ow">in</span> <span class="n">kwargs</span> <span class="ow">and</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;precision&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">training_config</span><span class="o">.</span><span class="n">hardware</span><span class="p">[</span><span class="s2">&quot;precision&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">kwargs</span><span class="p">[</span><span class="s2">&quot;precision&quot;</span><span class="p">]</span>
+        <span class="n">survey</span> <span class="o">=</span> <span class="n">model_dict</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;gaia&quot;</span><span class="p">)</span>
+        <span class="n">datamodule</span> <span class="o">=</span> <span class="n">create_astro_datamodule</span><span class="p">(</span>
+            <span class="n">survey</span><span class="o">=</span><span class="n">survey</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;batch_size&quot;</span><span class="p">,</span> <span class="mi">32</span><span class="p">),</span>
+            <span class="n">max_samples</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;max_samples&quot;</span><span class="p">,</span> <span class="mi">1000</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">datamodule</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+        <span class="n">trainer</span> <span class="o">=</span> <span class="n">AstroTrainer</span><span class="p">(</span><span class="n">training_config</span><span class="o">=</span><span class="n">training_config</span><span class="p">)</span>
+        <span class="n">trainer</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">datamodule</span><span class="o">=</span><span class="n">datamodule</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    <span class="k">except</span> <span class="ne">FileNotFoundError</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Configuration file not found: </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Training failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
+</code></pre></div></td></tr></table></div>
+            </details>
+    </div>
+
+</div>
+
+<div class="doc doc-object doc-function">
+
+
+<h3 id="astro_lab.training.train_quick" class="doc doc-heading">
+            <span class="doc doc-object-name doc-function-name">train_quick</span>
+
+
+<a href="#astro_lab.training.train_quick" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><span class="nf">train_quick</span><span class="p">(</span><span class="n">dataset</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="int">int</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Quick training with dataset and model names.
+Args:
+    dataset: Dataset name (e.g., 'gaia', 'sdss')
+    model: Model preset name
+    **kwargs: Training parameters
+Returns:
+    Exit code (0 for success)</p>
+
+          
+
+            <details class="quote">
+              <summary>Source code in <code>src\astro_lab\training\__init__.py</code></summary>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">train_quick</span><span class="p">(</span><span class="n">dataset</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Quick training with dataset and model names.</span>
+<span class="sd">    Args:</span>
+<span class="sd">        dataset: Dataset name (e.g., &#39;gaia&#39;, &#39;sdss&#39;)</span>
+<span class="sd">        model: Model preset name</span>
+<span class="sd">        **kwargs: Training parameters</span>
+<span class="sd">    Returns:</span>
+<span class="sd">        Exit code (0 for success)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.data</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_astro_datamodule</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">astro_lab.models.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">ModelConfig</span>
+
+    <span class="n">MODEL_PRESETS</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s2">&quot;gaia_classifier&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;classification&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;lsst_transient&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;classification&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;lightcurve_classifier&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;classification&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;sdss_galaxy&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;regression&quot;</span><span class="p">},</span>
+        <span class="s2">&quot;galaxy_modeler&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;task&quot;</span><span class="p">:</span> <span class="s2">&quot;regression&quot;</span><span class="p">},</span>
+    <span class="p">}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">model</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">MODEL_PRESETS</span><span class="p">:</span>
+            <span class="n">available</span> <span class="o">=</span> <span class="s2">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">MODEL_PRESETS</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown model &#39;</span><span class="si">{</span><span class="n">model</span><span class="si">}</span><span class="s2">&#39;. Available models: </span><span class="si">{</span><span class="n">available</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="mi">1</span>
+        <span class="n">datamodule</span> <span class="o">=</span> <span class="n">create_astro_datamodule</span><span class="p">(</span>
+            <span class="n">survey</span><span class="o">=</span><span class="n">dataset</span><span class="p">,</span>
+            <span class="n">batch_size</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;batch_size&quot;</span><span class="p">,</span> <span class="mi">32</span><span class="p">),</span>
+            <span class="n">max_samples</span><span class="o">=</span><span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;max_samples&quot;</span><span class="p">,</span> <span class="mi">1000</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="n">datamodule</span><span class="o">.</span><span class="n">setup</span><span class="p">()</span>
+        <span class="n">num_classes</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">datamodule</span><span class="p">,</span> <span class="s2">&quot;num_classes&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">MODEL_PRESETS</span><span class="p">[</span><span class="n">model</span><span class="p">][</span><span class="s2">&quot;task&quot;</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;classification&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">num_classes</span><span class="p">:</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Could not detect number of classes for </span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s2"> dataset. Please check your data.&quot;</span>
+            <span class="p">)</span>
+            <span class="k">return</span> <span class="mi">1</span>
+        <span class="n">model_config</span> <span class="o">=</span> <span class="n">ModelConfig</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="n">model</span><span class="p">,</span>
+            <span class="n">task</span><span class="o">=</span><span class="n">MODEL_PRESETS</span><span class="p">[</span><span class="n">model</span><span class="p">][</span><span class="s2">&quot;task&quot;</span><span class="p">],</span>
+            <span class="n">output_dim</span><span class="o">=</span><span class="n">num_classes</span> <span class="k">if</span> <span class="n">num_classes</span> <span class="k">else</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">training_config</span> <span class="o">=</span> <span class="n">TrainingConfig</span><span class="p">(</span>
+            <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;quick_</span><span class="si">{</span><span class="n">dataset</span><span class="si">}</span><span class="s2">_</span><span class="si">{</span><span class="n">model</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+            <span class="n">model</span><span class="o">=</span><span class="n">model_config</span><span class="p">,</span>
+            <span class="n">scheduler</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;max_epochs&quot;</span><span class="p">:</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;epochs&quot;</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                <span class="s2">&quot;learning_rate&quot;</span><span class="p">:</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;learning_rate&quot;</span><span class="p">,</span> <span class="mf">0.001</span><span class="p">),</span>
+            <span class="p">},</span>
+            <span class="n">hardware</span><span class="o">=</span><span class="p">{</span>
+                <span class="s2">&quot;devices&quot;</span><span class="p">:</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;devices&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span>
+                <span class="s2">&quot;precision&quot;</span><span class="p">:</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;precision&quot;</span><span class="p">,</span> <span class="s2">&quot;16-mixed&quot;</span><span class="p">),</span>
+                <span class="s2">&quot;strategy&quot;</span><span class="p">:</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;strategy&quot;</span><span class="p">,</span> <span class="s2">&quot;auto&quot;</span><span class="p">),</span>
+            <span class="p">},</span>
+        <span class="p">)</span>
+        <span class="n">trainer</span> <span class="o">=</span> <span class="n">AstroTrainer</span><span class="p">(</span><span class="n">training_config</span><span class="o">=</span><span class="n">training_config</span><span class="p">)</span>
+        <span class="n">trainer</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">datamodule</span><span class="o">=</span><span class="n">datamodule</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">0</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Training failed: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="mi">1</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

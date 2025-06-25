@@ -7,6 +7,7 @@ Lightning modules, MLflow logging, and Optuna optimization.
 """
 
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Core dependencies - should always be available
@@ -139,10 +140,173 @@ def run_training(args):
     return 0
 
 
+def train_from_config(config_path: Union[str, Path], **kwargs) -> int:
+    """
+    Train a model from configuration file.
+    Args:
+        config_path: Path to configuration file
+        **kwargs: Additional arguments to override config
+    Returns:
+        Exit code (0 for success)
+    """
+    from astro_lab.data import create_astro_datamodule
+    from astro_lab.models.config import ModelConfig
+    from astro_lab.utils.config.loader import ConfigLoader
+
+    try:
+        config_loader = ConfigLoader(config_path)
+        config_loader.load_config()
+        training_dict = config_loader.get_training_config()
+        model_dict = config_loader.get_model_config()
+        model_config = ModelConfig(**model_dict)
+        training_config = TrainingConfig(
+            name=training_dict.get("name", "config_training"),
+            model=model_config,
+            **{k: v for k, v in training_dict.items() if k not in ["name", "model"]},
+        )
+        # Override with kwargs
+        if "epochs" in kwargs and kwargs["epochs"] is not None:
+            training_config.scheduler["max_epochs"] = kwargs["epochs"]
+        if "learning_rate" in kwargs and kwargs["learning_rate"] is not None:
+            training_config.optimizer["lr"] = kwargs["learning_rate"]
+        if "devices" in kwargs and kwargs["devices"] is not None:
+            training_config.hardware["devices"] = kwargs["devices"]
+        if "precision" in kwargs and kwargs["precision"] is not None:
+            training_config.hardware["precision"] = kwargs["precision"]
+        survey = model_dict.get("name", "gaia")
+        datamodule = create_astro_datamodule(
+            survey=survey,
+            batch_size=kwargs.get("batch_size", 32),
+            max_samples=kwargs.get("max_samples", 1000),
+        )
+        datamodule.setup()
+        trainer = AstroTrainer(training_config=training_config)
+        trainer.fit(datamodule=datamodule)
+        return 0
+    except FileNotFoundError:
+        logger.error(f"Configuration file not found: {config_path}")
+        return 1
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+        return 1
+
+
+def train_quick(dataset: str, model: str, **kwargs) -> int:
+    """
+    Quick training with dataset and model names.
+    Args:
+        dataset: Dataset name (e.g., 'gaia', 'sdss')
+        model: Model preset name
+        **kwargs: Training parameters
+    Returns:
+        Exit code (0 for success)
+    """
+    from astro_lab.data import create_astro_datamodule
+    from astro_lab.models.config import ModelConfig
+
+    MODEL_PRESETS = {
+        "gaia_classifier": {"task": "classification"},
+        "lsst_transient": {"task": "classification"},
+        "lightcurve_classifier": {"task": "classification"},
+        "sdss_galaxy": {"task": "regression"},
+        "galaxy_modeler": {"task": "regression"},
+    }
+    try:
+        if model not in MODEL_PRESETS:
+            available = ", ".join(MODEL_PRESETS.keys())
+            logger.error(f"Unknown model '{model}'. Available models: {available}")
+            return 1
+        datamodule = create_astro_datamodule(
+            survey=dataset,
+            batch_size=kwargs.get("batch_size", 32),
+            max_samples=kwargs.get("max_samples", 1000),
+        )
+        datamodule.setup()
+        num_classes = getattr(datamodule, "num_classes", None)
+        if MODEL_PRESETS[model]["task"] == "classification" and not num_classes:
+            logger.error(
+                f"Could not detect number of classes for {dataset} dataset. Please check your data."
+            )
+            return 1
+        model_config = ModelConfig(
+            name=model,
+            task=MODEL_PRESETS[model]["task"],
+            output_dim=num_classes if num_classes else 1,
+        )
+        training_config = TrainingConfig(
+            name=f"quick_{dataset}_{model}",
+            model=model_config,
+            scheduler={
+                "max_epochs": kwargs.get("epochs", 10),
+                "learning_rate": kwargs.get("learning_rate", 0.001),
+            },
+            hardware={
+                "devices": kwargs.get("devices", 1),
+                "precision": kwargs.get("precision", "16-mixed"),
+                "strategy": kwargs.get("strategy", "auto"),
+            },
+        )
+        trainer = AstroTrainer(training_config=training_config)
+        trainer.fit(datamodule=datamodule)
+        return 0
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+        return 1
+
+
+def optimize_hyperparameters(
+    config_path: Union[str, Path], n_trials: int = 10, **kwargs
+) -> int:
+    """
+    Run hyperparameter optimization.
+    Args:
+        config_path: Path to configuration file
+        n_trials: Number of optimization trials
+        **kwargs: Additional arguments
+    Returns:
+        Exit code (0 for success)
+    """
+    from astro_lab.data import create_astro_datamodule
+    from astro_lab.models.config import ModelConfig
+    from astro_lab.utils.config.loader import ConfigLoader
+
+    try:
+        config_loader = ConfigLoader(config_path)
+        config_loader.load_config()
+        training_dict = config_loader.get_training_config()
+        model_dict = config_loader.get_model_config()
+        model_config = ModelConfig(**model_dict)
+        training_config = TrainingConfig(
+            name=training_dict.get("name", "optimization_training"),
+            model=model_config,
+            **{k: v for k, v in training_dict.items() if k not in ["name", "model"]},
+        )
+        survey = model_dict.get("name", "gaia")
+        datamodule = create_astro_datamodule(
+            survey=survey,
+            batch_size=training_dict.get("data", {}).get("batch_size", 32),
+            max_samples=training_dict.get("data", {}).get("max_samples", 1000),
+        )
+        datamodule.setup()
+        trainer = AstroTrainer(training_config=training_config)
+        trainer.optimize_hyperparameters(
+            train_dataloader=datamodule.train_dataloader(),
+            val_dataloader=datamodule.val_dataloader(),
+            n_trials=n_trials,
+        )
+        return 0
+    except Exception as e:
+        logger.error(f"Optimization failed: {e}")
+        return 1
+
+
 __all__ = [
     "AstroTrainer",
     "AstroLightningModule",
     "AstroMLflowLogger",
     "TrainingConfig",
     "run_training",
+    "train_from_config",
+    "train_quick",
+    "optimize_hyperparameters",
 ]

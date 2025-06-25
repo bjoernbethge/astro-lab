@@ -236,6 +236,33 @@ def preprocess_catalog_lazy(
     return lf_clean
 
 
+# Survey-specific graph configurations
+SURVEY_GRAPH_CONFIG = {
+    "gaia": {
+        "coord_cols": ["ra", "dec"],
+        "feature_cols": ["phot_g_mean_mag", "bp_rp_color", "parallax", "pmra", "pmdec"],
+        "label_source": "bp_rp_color",
+        "label_bins": [-0.5, 0.0, 0.3, 0.6, 0.9, 1.2, 1.5, 2.0],
+        "num_classes": 8,
+    },
+    "sdss": {
+        "coord_cols": ["ra", "dec", "z"],
+        "feature_cols": ["modelMag_r", "modelMag_g", "modelMag_i", "petroRad_r", "fracDeV_r"],
+        "num_classes": 3,
+    },
+    "nsa": {
+        "coord_cols": ["ra", "dec", "z"],
+        "feature_cols": ["mag_r", "mag_g", "mag_i", "mass", "sersic_n"],
+        "num_classes": 3,
+    },
+    "tng50": {
+        "coord_cols": ["x", "y", "z"],
+        "feature_cols": ["masses", "density", "velocities_0", "velocities_1", "velocities_2"],
+        "num_classes": 4,
+    },
+}
+
+
 def create_graph_from_dataframe(
     df: pl.DataFrame,
     survey_type: str,
@@ -245,48 +272,106 @@ def create_graph_from_dataframe(
     **kwargs: Any,
 ) -> Optional[Data]:
     """
-    Create PyTorch Geometric graph from Polars DataFrame. 🕸️
-
-    Args:
-        df: Input DataFrame
-        survey_type: Type of survey
-        k_neighbors: Number of nearest neighbors
-        distance_threshold: Distance threshold for edges
-        output_path: Path to save graph
-        **kwargs: Additional parameters
-
-    Returns:
-        PyTorch Geometric Data object
+    Create PyTorch Geometric graph from DataFrame using configuration. 🕸️
     """
     logger.info(f"🔄 Creating graph for {survey_type} with k={k_neighbors}")
-
-    # Apply survey-specific graph creation
-    if survey_type == "nsa":
-        graph_data = _create_nsa_graph(df, k_neighbors, distance_threshold, **kwargs)
-    elif survey_type == "gaia":
-        graph_data = _create_gaia_graph(df, k_neighbors, distance_threshold, **kwargs)
-    elif survey_type == "sdss":
-        graph_data = _create_sdss_graph(df, k_neighbors, distance_threshold, **kwargs)
-    elif survey_type == "tng50":
-        graph_data = _create_tng50_graph(df, k_neighbors, distance_threshold, **kwargs)
+    
+    # Get survey configuration or use generic
+    config = SURVEY_GRAPH_CONFIG.get(survey_type, {})
+    
+    # Extract coordinates
+    coord_cols = config.get("coord_cols", [])
+    if not coord_cols:
+        # Try to find coordinate columns
+        coord_patterns = [
+            ["ra", "dec"],
+            ["raLIN", "decLIN"],
+            ["x", "y", "z"],
+        ]
+        for pattern in coord_patterns:
+            if all(col in df.columns for col in pattern):
+                coord_cols = pattern
+                break
+    
+    if not coord_cols:
+        raise ValueError(f"No coordinate columns found for {survey_type}")
+    
+    coords = df.select(coord_cols).to_numpy()
+    
+    # Create k-NN graph
+    edge_index = _create_knn_graph_gpu(coords, k_neighbors)
+    
+    # Prepare features
+    feature_cols = config.get("feature_cols", [])
+    if not feature_cols:
+        # Use all numeric columns as features
+        feature_cols = [
+            col for col in df.columns
+            if col not in coord_cols
+            and df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
+        ]
+    
+    # Filter to available columns
+    available_features = [col for col in feature_cols if col in df.columns]
+    if not available_features:
+        # Fallback to first numeric column or dummy
+        numeric_cols = [
+            col for col in df.columns
+            if df[col].dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]
+        ]
+        available_features = numeric_cols[:1] if numeric_cols else []
+    
+    if available_features:
+        features = df.select(available_features).to_torch(dtype=pl.Float32)
+        features = torch.nan_to_num(features, nan=0.0)
     else:
-        graph_data = _create_generic_graph(
-            df, k_neighbors, distance_threshold, **kwargs
-        )
-
+        features = torch.ones((len(df), 1), dtype=torch.float32)
+        available_features = ["dummy"]
+    
+    # Create labels
+    num_classes = config.get("num_classes", 2)
+    label_source = config.get("label_source")
+    
+    if label_source and label_source in df.columns:
+        label_bins = config.get("label_bins")
+        if label_bins:
+            values = df[label_source].to_numpy()
+            values = np.nan_to_num(values, nan=0.0)
+            labels = np.digitize(values, bins=np.array(label_bins)) - 1
+            labels = np.clip(labels, 0, num_classes - 1)
+            y = torch.tensor(labels, dtype=torch.long)
+        else:
+            y = torch.randint(0, num_classes, (len(df),), dtype=torch.long)
+    else:
+        y = torch.randint(0, num_classes, (len(df),), dtype=torch.long)
+    
+    # Create graph
+    data = Data(
+        x=features,
+        edge_index=edge_index,
+        pos=torch.tensor(coords, dtype=torch.float32),
+        y=y,
+        num_nodes=len(df),
+    )
+    
+    # Add metadata
+    data.survey_name = survey_type.capitalize()
+    data.feature_names = available_features
+    data.coord_names = coord_cols
+    data.k_neighbors = k_neighbors
+    
     # Save graph if output path provided
     if output_path is None:
-        # Wenn kein expliziter Output-Path: Nutze den einfachen Namen wie beim Parquet
         output_dir = Path("data/processed") / survey_type
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{survey_type}.pt"
     else:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-    if graph_data:
-        torch.save(graph_data, output_path)
-        logger.info(f"💾 Saved graph to {output_path}")
-
-    return graph_data
+    
+    torch.save(data, output_path)
+    logger.info(f"💾 Saved graph to {output_path}")
+    
+    return data
 
 
 def create_graph_datasets_from_splits(
@@ -338,39 +423,108 @@ def create_graph_datasets_from_splits(
     return datasets
 
 
+# Survey-specific preprocessing configurations
+SURVEY_PREPROCESSING = {
+    "gaia": {
+        "required_columns": ["ra", "dec", "phot_g_mean_mag"],
+        "color_columns": {
+            "bp_rp_color": ("phot_bp_mean_mag", "phot_rp_mean_mag", lambda bp, rp: bp - rp)
+        },
+    },
+    "sdss": {
+        "required_columns": ["ra", "dec", "z"],
+    },
+    "nsa": {
+        "required_columns": ["ra", "dec"],
+        "rename_columns": {"ra_nsa": "ra", "dec_nsa": "dec", "RA": "ra", "DEC": "dec"},
+    },
+    "linear": {
+        "required_columns": ["ra", "dec"],
+        "rename_columns": {"raLIN": "ra", "decLIN": "dec"},
+    },
+    "exoplanet": {
+        "required_columns": ["ra", "dec"],
+        "special_processing": "enrich_coordinates",
+    },
+}
+
+
 def _apply_survey_preprocessing(df: pl.DataFrame, survey_type: str) -> pl.DataFrame:
-    """Apply survey-specific preprocessing."""
-    if survey_type == "gaia":
-        return _preprocess_gaia_data(df)
-    elif survey_type == "sdss":
-        return _preprocess_sdss_data(df)
-    elif survey_type == "nsa":
-        return _preprocess_nsa_data(df)
-    elif survey_type == "linear":
-        return _preprocess_linear_data(df)
-    elif survey_type == "exoplanet":
-        return _preprocess_exoplanet_data(df)
-    else:
-        logger.warning(f"⚠️ No specific preprocessing for {survey_type}, using generic")
-        return _preprocess_generic_data(df)
+    """Apply survey-specific preprocessing using configuration."""
+    config = SURVEY_PREPROCESSING.get(survey_type, {})
+    
+    # Handle special processing
+    if config.get("special_processing") == "enrich_coordinates" and survey_type == "exoplanet":
+        df = enrich_exoplanets_with_gaia_coordinates(df)
+    
+    # Rename columns if needed
+    if "rename_columns" in config:
+        rename_dict = {}
+        for old_name, new_name in config["rename_columns"].items():
+            if old_name in df.columns and new_name not in df.columns:
+                rename_dict[old_name] = new_name
+        if rename_dict:
+            df = df.rename(rename_dict)
+    
+    # Filter required columns
+    required = config.get("required_columns", [])
+    if required:
+        # Build filter expression
+        filter_expr = pl.lit(True)
+        for col in required:
+            if col in df.columns:
+                filter_expr = filter_expr & pl.col(col).is_not_null()
+        df = df.filter(filter_expr)
+    
+    # Add computed columns
+    if "color_columns" in config:
+        for new_col, (col1, col2, func) in config["color_columns"].items():
+            if col1 in df.columns and col2 in df.columns:
+                df = df.with_columns([
+                    func(pl.col(col1), pl.col(col2)).alias(new_col)
+                ])
+    
+    return df
 
 
 def _apply_survey_preprocessing_lazy(
     lf: pl.LazyFrame, survey_type: str
 ) -> pl.LazyFrame:
-    """Apply survey-specific preprocessing lazily."""
-    if survey_type == "gaia":
-        return _preprocess_gaia_data_lazy(lf)
-    elif survey_type == "sdss":
-        return _preprocess_sdss_data_lazy(lf)
-    elif survey_type == "nsa":
-        return _preprocess_nsa_data_lazy(lf)
-    elif survey_type == "linear":
-        return _preprocess_linear_data_lazy(lf)
-    elif survey_type == "tng50":
-        return lf  # TNG50 data is already clean
-    else:
-        return _preprocess_generic_data_lazy(lf)
+    """Apply survey-specific preprocessing lazily using configuration."""
+    config = SURVEY_PREPROCESSING.get(survey_type, {})
+    
+    # Rename columns if needed
+    if "rename_columns" in config:
+        schema = lf.collect_schema()
+        rename_dict = {}
+        for old_name, new_name in config["rename_columns"].items():
+            if old_name in schema.names() and new_name not in schema.names():
+                rename_dict[old_name] = new_name
+        if rename_dict:
+            lf = lf.rename(rename_dict)
+    
+    # Filter required columns
+    required = config.get("required_columns", [])
+    if required:
+        # Build filter expression
+        filter_expr = pl.lit(True)
+        for col in required:
+            filter_expr = filter_expr & pl.col(col).is_not_null()
+        lf = lf.filter(filter_expr)
+    
+    # Add computed columns
+    if "color_columns" in config:
+        for new_col, (col1, col2, func) in config["color_columns"].items():
+            lf = lf.with_columns([
+                pl.when(
+                    pl.col(col1).is_not_null() & pl.col(col2).is_not_null()
+                )
+                .then(func(pl.col(col1), pl.col(col2)))
+                .otherwise(None)
+                .alias(new_col)
+            ])
+    
+    return lf
 
 
 def _preprocess_gaia_data(df: pl.DataFrame) -> pl.DataFrame:

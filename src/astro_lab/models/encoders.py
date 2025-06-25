@@ -66,33 +66,73 @@ class BaseEncoder(nn.Module):
             nn.Linear(self.hidden_dim, output_dim),
         )
 
+        # Ensure parameters require gradients
+        for param in self.encoder.parameters():
+            param.requires_grad = True
+
         self.to(self.device)
 
     def forward(self, data: Union[torch.Tensor, Any]) -> torch.Tensor:
-        """Process data through encoder."""
+        """Process data through encoder. Expects: batch x features, float32."""
         # Extract tensor data if needed
         if hasattr(data, "data"):
             tensor_data = data.data
         else:
             tensor_data = data
 
-        # Ensure correct device
+        # Move to correct device if needed
         if tensor_data.device != self.device:
             tensor_data = tensor_data.to(self.device)
+        
+        # Convert to float32 if needed
+        if tensor_data.dtype != torch.float32:
+            tensor_data = tensor_data.float()
+            
+        assert tensor_data.dim() == 2, (
+            f"Input must be 2D (batch, features), got shape {tensor_data.shape}"
+        )
+        assert tensor_data.shape[1] == self.input_dim, (
+            f"Input must have {self.input_dim} features, got {tensor_data.shape[1]}"
+        )
 
-        # Add batch dimension if needed
-        if tensor_data.dim() == 1:
-            tensor_data = tensor_data.unsqueeze(0)
-
-        return self.encoder(tensor_data.float())
+        return self.encoder(tensor_data)
 
 
 class PhotometryEncoder(BaseEncoder):
-    """Encoder for photometric data."""
+    """Encoder for photometric data with NaN handling."""
 
     def __init__(self, output_dim: int, input_dim: int = 5, **kwargs):
         # Default 5 bands for photometry
         super().__init__(input_dim=input_dim, output_dim=output_dim, **kwargs)
+
+    def forward(self, data: Union[torch.Tensor, Any]) -> torch.Tensor:
+        """Process photometric data with NaN handling. Expects: batch x features, float32."""
+        # Extract tensor data if needed
+        if hasattr(data, "data"):
+            tensor_data = data.data
+        else:
+            tensor_data = data
+
+        # Move to correct device if needed
+        if tensor_data.device != self.device:
+            tensor_data = tensor_data.to(self.device)
+        
+        # Convert to float32 if needed
+        if tensor_data.dtype != torch.float32:
+            tensor_data = tensor_data.float()
+            
+        assert tensor_data.dim() == 2, (
+            f"Input must be 2D (batch, features), got shape {tensor_data.shape}"
+        )
+        assert tensor_data.shape[1] == self.input_dim, (
+            f"Input must have {self.input_dim} features, got {tensor_data.shape[1]}"
+        )
+
+        # Handle NaN values by replacing with zeros
+        if torch.isnan(tensor_data).any():
+            tensor_data = torch.nan_to_num(tensor_data, nan=0.0, posinf=0.0, neginf=0.0)
+
+        return self.encoder(tensor_data)
 
 
 class AstrometryEncoder(BaseEncoder):
@@ -112,7 +152,7 @@ class SpectroscopyEncoder(BaseEncoder):
 
 
 class LightcurveEncoder(nn.Module):
-    """Encoder for lightcurve data using LSTM."""
+    """Encoder for lightcurve data using LSTM with attention."""
 
     def __init__(
         self,
@@ -144,44 +184,59 @@ class LightcurveEncoder(nn.Module):
             dropout=dropout if num_layers > 1 else 0,
         )
 
-        # Output projection
-        self.output_proj = nn.Linear(hidden_dim, output_dim)
+        # Attention mechanism for better feature extraction
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=4, dropout=dropout, batch_first=True
+        )
+
+        # Output projection with more capacity
+        self.output_proj = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim // 2, output_dim),
+        )
 
         self.to(self.device)
 
     def forward(self, data: Union[torch.Tensor, Any]) -> torch.Tensor:
-        """Process lightcurve data."""
+        """Process lightcurve data. Expects: batch x seq_len x features, float32."""
         # Extract tensor data if needed
         if hasattr(data, "data"):
             tensor_data = data.data
         else:
             tensor_data = data
 
-        # Ensure correct device
+        # Move to correct device if needed
         if tensor_data.device != self.device:
             tensor_data = tensor_data.to(self.device)
-
-        # Ensure correct shape: (batch, seq_len, features)
-        if tensor_data.dim() == 1:
-            # Single sequence, single feature
-            tensor_data = tensor_data.unsqueeze(0).unsqueeze(-1)
-        elif tensor_data.dim() == 2:
-            # Either (batch, seq_len) or (seq_len, features)
-            if tensor_data.size(-1) == self.input_dim:
-                # (seq_len, features) -> add batch
-                tensor_data = tensor_data.unsqueeze(0)
-            else:
-                # (batch, seq_len) -> add feature
-                tensor_data = tensor_data.unsqueeze(-1)
+        
+        # Convert to float32 if needed
+        if tensor_data.dtype != torch.float32:
+            tensor_data = tensor_data.float()
+            
+        assert tensor_data.dim() == 3, (
+            f"Input must be 3D (batch, seq_len, features), got shape {tensor_data.shape}"
+        )
+        assert tensor_data.shape[2] == self.input_dim, (
+            f"Input must have {self.input_dim} features, got {tensor_data.shape[2]}"
+        )
 
         # Process through LSTM
-        lstm_out, (h_n, _) = self.lstm(tensor_data.float())
+        lstm_out, (h_n, _) = self.lstm(tensor_data)
 
-        # Use last hidden state from top layer
+        # Apply attention to LSTM outputs
+        attn_out, _ = self.attention(lstm_out, lstm_out, lstm_out)
+
+        # Use last hidden state from top layer + attention output
         final_hidden = h_n[-1]  # (batch, hidden_dim)
+        attn_pooled = attn_out.mean(dim=1)  # (batch, hidden_dim)
+
+        # Combine both representations
+        combined = final_hidden + attn_pooled
 
         # Project to output dimension
-        return self.output_proj(final_hidden)
+        return self.output_proj(combined)
 
 
 class Spatial3DEncoder(BaseEncoder):

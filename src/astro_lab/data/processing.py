@@ -88,7 +88,7 @@ class SimpleProcessingConfig(BaseModel):
     """configuration for data processing with memory management."""
 
     # Basic options
-    device: str = Field(default="cpu", description="Device to use for processing")
+    device: str = Field(default="cuda", description="Device to use for processing")
     batch_size: int = Field(default=1000, description="Batch size for processing")
     memory_limit_mb: float = Field(default=1000.0, description="Memory limit in MB")
 

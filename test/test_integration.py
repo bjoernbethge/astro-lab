@@ -179,7 +179,7 @@ class TestModelIntegration:
                 hidden_dim=32,
                 output_dim=4,
                 num_layers=2,
-                device="cpu",  # Explicitly use CPU
+                device="cuda",  # Explicitly use CPU
             )
 
             # Save model
@@ -192,7 +192,7 @@ class TestModelIntegration:
                 hidden_dim=32,
                 output_dim=4,
                 num_layers=2,
-                device="cpu",  # Also on CPU
+                device="cuda",  # Also on CPU
             )
             model2.load_state_dict(torch.load(save_path))
 

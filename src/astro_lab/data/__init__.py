@@ -64,7 +64,8 @@ from .preprocessing import (
 
 # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
 from .preprocessing import (
-    preprocess_catalog as preprocess_catalog_new,
+    preprocess_catalog,
+    process_survey,
 )
 
 # 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
@@ -120,7 +121,8 @@ __all__ = [
     "load_fits_table_optimized",
     "get_fits_info",
     # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
-    "preprocess_catalog_new",
+    "preprocess_catalog",
+    "process_survey",
 ]
 
 # Feature flags
