@@ -87,7 +87,7 @@ training:
 
 # MLflow Configuration
 mlflow:
-  tracking_uri: file:./data/experiments/mlruns
+  tracking_uri: null # Let data_config handle the path automatically
   experiment_name: astro_lab_default
   experiment_description: "Default AstroLab experiment with 2025 optimizations"
 
