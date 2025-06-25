@@ -96,17 +96,10 @@ class AstroTrainer(Trainer):
         # Store configurations
         self.training_config = training_config
         self._lightning_module = lightning_module
+        self._optuna_study = None  # Will be set during hyperparameter optimization
 
         # Create default training config if none provided
         if training_config is None:
-            from astro_lab.models.config import (
-                EncoderConfig,
-                GraphConfig,
-                ModelConfig,
-                OutputConfig,
-            )
-            from astro_lab.training.config import TrainingConfig
-
             # Only pass valid ModelConfig fields after refactoring.
             model_config = ModelConfig(name="default_model")
 
@@ -265,16 +258,26 @@ class AstroTrainer(Trainer):
 
     def _setup_astro_logger(self):
         """Setup logging with MLflow integration."""
-        if getattr(self.training_config.logging, "use_mlflow", False):
+        if getattr(self.training_config.logging, "use_mlflow", True):  # Default to True
             try:
                 tracking_uri = getattr(
-                    self.training_config.logging, "mlflow_tracking_uri", None
+                    self.training_config.logging, "tracking_uri", None
                 )
                 if not tracking_uri:
-                    tracking_uri = "file:./mlruns"
+                    # Use data_config system for organized MLflow storage
+                    data_config.ensure_experiment_directories(self.experiment_name)
+                    exp_paths = data_config.get_experiment_paths(self.experiment_name)
+                    tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
+
                 logger_instance = AstroMLflowLogger(
                     experiment_name=self.experiment_name,
                     tracking_uri=tracking_uri,
+                    artifact_location=getattr(
+                        self.training_config.logging, "tracking_uri", None
+                    ),
+                    enable_system_metrics=getattr(
+                        self.training_config.logging, "enable_system_metrics", True
+                    ),
                 )
                 return logger_instance
             except Exception as e:
@@ -300,24 +303,27 @@ class AstroTrainer(Trainer):
             ckpt_path: Checkpoint path for resuming
         """
         try:
-            # Automatische Klassenableitung vor dem Training
-            self._auto_detect_classes(train_dataloader, val_dataloader, datamodule)
-
-            # Use the lightning module directly
+            # Use the lightning module directly - Lightning expects the LightningModule as model parameter
             if datamodule is not None:
                 # Use DataModule (recommended approach)
+                # Pass the LightningModule as model parameter to the parent Trainer
                 super().fit(
-                    model=self.astro_module,
+                    model=self.astro_module,  # This is the LightningModule
                     datamodule=datamodule,
                     ckpt_path=ckpt_path,
                 )
-            else:
+            elif train_dataloader is not None or val_dataloader is not None:
                 # Use individual dataloaders
                 super().fit(
-                    model=self.astro_module,
+                    model=self.astro_module,  # This is the LightningModule
                     train_dataloaders=train_dataloader,
                     val_dataloaders=val_dataloader,
                     ckpt_path=ckpt_path,
+                )
+            else:
+                # No dataloaders provided - this should not happen with proper DataModule
+                raise ValueError(
+                    "No dataloaders or datamodule provided. Cannot train without data."
                 )
 
             # Cleanup after training
@@ -346,129 +352,215 @@ class AstroTrainer(Trainer):
                         param.grad.detach_()
                         param.grad.zero_()
 
+            # Automatically save results and create plots if enabled
+            if getattr(self.training_config.logging, "save_results_to_disk", True):
+                self._save_training_results()
+
         except Exception as e:
             logger.error(f"Memory cleanup failed: {e}")
 
-    def _auto_detect_classes(self, train_dataloader, val_dataloader, datamodule):
-        """Automatic class detection from data."""
+    def _save_training_results(self):
+        """Save training results to organized directory structure."""
         try:
-            # Determine DataLoader for class detection
-            target_dataloader = None
-            if datamodule is not None and hasattr(datamodule, "train_dataloader"):
-                target_dataloader = datamodule.train_dataloader()
-            elif train_dataloader is not None:
-                target_dataloader = train_dataloader
-            elif val_dataloader is not None:
-                target_dataloader = val_dataloader
+            # Get survey name for organization
+            survey = getattr(self, "survey", "gaia")
 
-            if target_dataloader is None:
-                return
+            # Create organized results structure
+            results_structure = data_config.ensure_results_directories(
+                survey, self.experiment_name
+            )
 
-            # Class detection from data
-            targets = None
-            if hasattr(target_dataloader, "y"):
-                targets = target_dataloader.y
-            elif (
-                isinstance(target_dataloader, (list, tuple))
-                and len(target_dataloader) > 1
-            ):
-                if hasattr(target_dataloader[1], "y"):
-                    targets = target_dataloader[1].y
-                elif hasattr(target_dataloader[1], "target"):
-                    targets = target_dataloader[1].target
-            # Only use targets if found
-            if targets is not None:
-                all_targets = torch.cat(targets)
-                num_classes = int(all_targets.max().item()) + 1
+            # Save best models if enabled
+            if getattr(self.training_config.logging, "save_best_models", True):
+                top_k = getattr(self.training_config.logging, "top_k_models", 3)
+                saved_models = self.save_best_models_to_results(top_k)
+                logger.info(f"✅ Saved {len(saved_models)} best models to results")
 
-                # Update Lightning module with correct number of classes
-                if (
-                    hasattr(self.astro_module, "num_classes")
-                    and self.astro_module.num_classes != num_classes
-                ):
-                    self.astro_module.num_classes = num_classes
+            # Create MLflow and Optuna plots using their built-in functions
+            if getattr(self.training_config.logging, "create_plots", True):
+                self._create_mlflow_optuna_plots(results_structure["plots"])
 
-                    # Recreate model with correct number of classes
-                    if (
-                        hasattr(self.astro_module, "model_config")
-                        and self.astro_module.model_config is not None
-                    ):
-                        # Update model config
-                        self.astro_module.model_config.output_dim = num_classes
+            # Create comprehensive results summary
+            self._create_results_summary(results_structure["base"])
 
-                        # Recreate model
-                        try:
-                            self.astro_module.model = (
-                                self.astro_module._create_model_from_config(
-                                    self.astro_module.model_config
-                                )
-                            )
-                        except Exception as e:
-                            logger.error(f"Error recreating model: {e}")
-                            # Fallback
-                            from astro_lab.models.core.survey_gnn import AstroSurveyGNN
-
-                            # Defensive: ensure input_dim and output_dim are integers
-                            input_dim = getattr(
-                                self.astro_module.model, "input_dim", None
-                            )
-                            if (
-                                input_dim is not None
-                                and not isinstance(input_dim, int)
-                                and hasattr(input_dim, "item")
-                            ):
-                                input_dim = int(input_dim.item())
-                            output_dim = getattr(
-                                self.astro_module.model, "output_dim", 1
-                            )
-                            if (
-                                output_dim is not None
-                                and not isinstance(output_dim, int)
-                                and hasattr(output_dim, "item")
-                            ):
-                                output_dim = int(output_dim.item())
-                            model = AstroSurveyGNN(
-                                input_dim=input_dim,
-                                hidden_dim=128,  # Default
-                                output_dim=output_dim,
-                                conv_type="gcn",
-                                num_layers=3,
-                                dropout=0.1,
-                                task="stellar_classification",
-                            )
-                            self.astro_module.model = model
-                        else:
-                            # Create from scratch using new import path
-                            from astro_lab.models.core.survey_gnn import AstroSurveyGNN
-
-                            self.astro_module.model = AstroSurveyGNN(
-                                input_dim=16,  # Default
-                                hidden_dim=128,  # Default
-                                output_dim=num_classes,
-                                conv_type="gcn",
-                                num_layers=3,
-                                dropout=0.1,
-                                task="stellar_classification",
-                            )
-                    else:
-                        # Create from scratch using new import path
-                        from astro_lab.models.core.survey_gnn import AstroSurveyGNN
-
-                        self.astro_module.model = AstroSurveyGNN(
-                            input_dim=16,  # Default
-                            hidden_dim=128,  # Default
-                            output_dim=num_classes,
-                            conv_type="gcn",
-                            num_layers=3,
-                            dropout=0.1,
-                            task="stellar_classification",
-                        )
-
-                    # Recreate metrics
-                    self.astro_module._setup_metrics()
+            logger.info(f"📊 Training results saved to: {results_structure['base']}")
 
         except Exception as e:
-            logger.error(f"Error during automatic class detection: {e}")
+            logger.error(f"Failed to save training results: {e}")
+
+    def _create_mlflow_optuna_plots(self, plots_dir: Path):
+        """Create plots using MLflow and Optuna built-in visualization functions."""
+        try:
+            import mlflow
+            import optuna
+
+            # Create plots directory
+            plots_dir.mkdir(parents=True, exist_ok=True)
+
+            # 1. MLflow built-in plots (if we have an active run)
+            if mlflow.active_run():
+                self._create_mlflow_plots(plots_dir)
+
+            # 2. Optuna plots (if we have optimization results)
+            if hasattr(self, "_optuna_study") and self._optuna_study is not None:
+                self._create_optuna_plots(plots_dir)
+
+            logger.info(f"📈 MLflow/Optuna plots created in: {plots_dir}")
+
+        except Exception as e:
+            logger.error(f"Failed to create MLflow/Optuna plots: {e}")
+
+    def _create_mlflow_plots(self, plots_dir: Path):
+        """Create plots using MLflow's built-in visualization functions."""
+        try:
+            import mlflow
+
+            # Get current run
+            run = mlflow.active_run()
+            if not run:
+                return
+
+            # MLflow automatically creates these plots in the UI
+            # We can also export them programmatically
+            logger.info(f"📊 MLflow run {run.info.run_id} has built-in visualizations")
+            logger.info(
+                f"   View at: mlflow ui --backend-store-uri {mlflow.get_tracking_uri()}"
+            )
+
+            # Create a simple summary of available metrics
+            client = mlflow.tracking.MlflowClient()
+            metrics = client.get_metric_history(run.info.run_id, "val_loss")
+
+            if metrics:
+                summary_file = plots_dir / "mlflow_summary.txt"
+                with open(summary_file, "w") as f:
+                    f.write("MLflow Run Summary\n")
+                    f.write(f"Run ID: {run.info.run_id}\n")
+                    f.write(f"Experiment: {run.info.experiment_id}\n")
+                    f.write(f"Status: {run.info.status}\n")
+                    f.write(f"Validation Loss Metrics: {len(metrics)}\n")
+                    f.write(f"Best Loss: {min(m.value for m in metrics):.4f}\n")
+                    f.write(f"Last Loss: {metrics[-1].value:.4f}\n")
+                    f.write(
+                        f"\nView plots at: mlflow ui --backend-store-uri {mlflow.get_tracking_uri()}\n"
+                    )
+
+        except Exception as e:
+            logger.warning(f"Could not create MLflow plots: {e}")
+
+    def _create_optuna_plots(self, plots_dir: Path):
+        """Create plots using Optuna's built-in visualization functions."""
+        try:
+            import matplotlib.pyplot as plt
+            import optuna
+
+            study = getattr(self, "_optuna_study", None)
+            if not study:
+                return
+
+            # Create Optuna plots using their built-in functions
+            fig1 = optuna.visualization.plot_optimization_history(study)
+            fig1.write_html(str(plots_dir / "optuna_optimization_history.html"))
+
+            fig2 = optuna.visualization.plot_param_importances(study)
+            fig2.write_html(str(plots_dir / "optuna_param_importances.html"))
+
+            fig3 = optuna.visualization.plot_parallel_coordinate(study)
+            fig3.write_html(str(plots_dir / "optuna_parallel_coordinate.html"))
+
+            fig4 = optuna.visualization.plot_contour(study)
+            fig4.write_html(str(plots_dir / "optuna_contour.html"))
+
+            # Also save as static images
+            fig1.write_image(str(plots_dir / "optuna_optimization_history.png"))
+            fig2.write_image(str(plots_dir / "optuna_param_importances.png"))
+
+            logger.info(f"📊 Created {len(study.trials)} Optuna visualization plots")
+
+        except Exception as e:
+            logger.warning(f"Could not create Optuna plots: {e}")
+
+    def _create_results_summary(self, results_dir: Path):
+        """Create comprehensive results summary."""
+        try:
+            from datetime import datetime
+
+            summary_file = results_dir / "training_summary.md"
+
+            with open(summary_file, "w", encoding="utf-8") as f:
+                f.write(f"# Training Summary: {self.experiment_name}\n\n")
+                f.write(
+                    f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                )
+                f.write(f"**Survey:** {getattr(self, 'survey', 'unknown')}\n\n")
+
+                # Model information
+                f.write("## Model Information\n\n")
+                f.write(f"- **Model Type:** {type(self.astro_module.model).__name__}\n")
+                f.write(
+                    f"- **Task Type:** {getattr(self.astro_module, 'task_type', 'unknown')}\n"
+                )
+                f.write(
+                    f"- **Number of Classes:** {getattr(self.astro_module, 'num_classes', 'N/A')}\n"
+                )
+                f.write(
+                    f"- **Parameters:** {sum(p.numel() for p in self.astro_module.model.parameters()):,}\n"
+                )
+                f.write(
+                    f"- **Trainable Parameters:** {sum(p.numel() for p in self.astro_module.model.parameters() if p.requires_grad):,}\n\n"
+                )
+
+                # Training configuration
+                f.write("## Training Configuration\n\n")
+                if self.training_config:
+                    f.write(
+                        f"- **Max Epochs:** {self.training_config.scheduler.max_epochs}\n"
+                    )
+                    f.write(
+                        f"- **Learning Rate:** {self.training_config.scheduler.learning_rate}\n"
+                    )
+                    f.write(
+                        f"- **Batch Size:** {getattr(self.training_config.data, 'batch_size', 'N/A')}\n"
+                    )
+                    f.write(
+                        f"- **Hardware:** {self.training_config.hardware.accelerator}\n"
+                    )
+                    f.write(
+                        f"- **Precision:** {self.training_config.hardware.precision}\n\n"
+                    )
+
+                # Results
+                f.write("## Results\n\n")
+                f.write(f"- **Best Model Path:** {self.best_model_path or 'N/A'}\n")
+                f.write(f"- **Last Model Path:** {self.last_model_path or 'N/A'}\n")
+                f.write(f"- **Checkpoint Directory:** {self.checkpoint_dir}\n\n")
+
+                # MLflow information
+                f.write("## MLflow Integration\n\n")
+                f.write(f"- **Experiment Name:** {self.experiment_name}\n")
+                f.write(
+                    f"- **MLflow Enabled:** {getattr(self.training_config.logging, 'use_mlflow', True)}\n"
+                )
+                if hasattr(self, "logger") and self.logger:
+                    f.write(f"- **Logger Type:** {type(self.logger).__name__}\n")
+
+                # Directory structure
+                f.write("\n## Directory Structure\n\n")
+                f.write("```\n")
+                f.write(f"{results_dir}/\n")
+                f.write("├── models/          # Saved best models\n")
+                f.write("├── plots/           # Training visualizations\n")
+                f.write("│   ├── training_curves.png\n")
+                f.write("│   ├── model_architecture.png\n")
+                f.write("│   ├── confusion_matrix.png\n")
+                f.write("│   └── feature_importance.png\n")
+                f.write("└── training_summary.md  # This file\n")
+                f.write("```\n")
+
+            logger.info(f"📝 Training summary created: {summary_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to create results summary: {e}")
 
     def test(
         self,
@@ -765,6 +857,9 @@ class AstroTrainer(Trainer):
         logger.info(f"Starting hyperparameter optimization with {n_trials} trials...")
         study.optimize(objective, n_trials=n_trials, timeout=timeout)
 
+        # Store the study for later plotting
+        self._optuna_study = study
+
         # Get best parameters
         best_params = study.best_params
         best_value = study.best_value
@@ -959,7 +1054,7 @@ class AstroTrainer(Trainer):
     @property
     def lightning_module(self) -> Optional[AstroLightningModule]:
         """Get the lightning module."""
-        return self._lightning_module
+        return self.astro_module
 
 
 __all__ = ["AstroTrainer"]
