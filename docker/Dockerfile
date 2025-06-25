@@ -12,6 +12,17 @@ RUN groupadd --gid 1000 astro-lab \
 # Install uv
 COPY --from=ghcr.io/astral-sh/uv:0.7.8 /uv /uvx /bin/
 
+ENV SHELL=/bin/zsh
+
+# Default powerline10k theme
+RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.2.0/zsh-in-docker.sh)" -- \
+  -p git \
+  -p fzf \
+  -a "source /usr/share/doc/fzf/examples/key-bindings.zsh" \
+  -a "source /usr/share/doc/fzf/examples/completion.zsh" \
+  -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
+  -x
+
 # Set working directory and give ownership to astro-lab user
 WORKDIR /app
 RUN chown -R astro-lab:astro-lab /app
