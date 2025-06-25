@@ -4,8 +4,11 @@ Core Blender utilities for astronomical data visualization.
 This module consolidates all Blender functionality into a DRY, well-organized system
 that handles plotting, animation, materials, lighting, cameras, and rendering.
 
-Enhanced with NumPy 2.x compatibility and robust error handling.
+with NumPy 2.x compatibility and robust error handling.
 """
+
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
 
 import math
 import os
@@ -43,11 +46,11 @@ def reset_scene() -> None:
 
     try:
         # Delete all objects
-        bpy.ops.object.select_all(action="SELECT")
-        bpy.ops.object.delete(use_global=False)
+        bpy.ops.object.select_all(action="SELECT")  # type: ignore
+        bpy.ops.object.delete(use_global=False)  # type: ignore
 
         # Clear materials, lights, etc.
-        for collection in [bpy.data.materials, bpy.data.lights, bpy.data.curves]:
+        for collection in [bpy.data.materials, bpy.data.lights, bpy.data.curves]:  # type: ignore
             for item in collection:
                 collection.remove(item)
     except Exception as e:
@@ -66,7 +69,7 @@ def normalize_scene(
         min_coord = np.array([float("inf")] * 3)
         max_coord = np.array([float("-inf")] * 3)
 
-        for obj in bpy.context.scene.objects:
+        for obj in bpy.context.scene.objects:  # type: ignore
             if obj.type == "MESH" and hasattr(obj.data, "vertices"):
                 mesh_data = obj.data
                 for vertex in mesh_data.vertices:
@@ -83,12 +86,12 @@ def normalize_scene(
         scale = target_scale / max_size if max_size > 0 else 1.0
 
         # Apply transformations
-        for obj in bpy.context.scene.objects:
+        for obj in bpy.context.scene.objects:  # type: ignore
             if obj.type == "MESH":
                 obj.location = obj.location + Vector(offset.tolist())
                 obj.scale *= scale
 
-        bpy.context.view_layer.update()
+        bpy.context.view_layer.update()  # type: ignore
         return scale, tuple(offset)
 
     except Exception as e:
@@ -106,12 +109,12 @@ def setup_scene(
         return False
 
     try:
-        scene = bpy.context.scene
+        scene = bpy.context.scene  # type: ignore
         scene.name = name
         scene.unit_settings.system = units
 
         # Setup world background
-        world = bpy.data.worlds.new(name=f"{name}_World")
+        world = bpy.data.worlds.new(name=f"{name}_World")  # type: ignore
         world.use_nodes = True
         world.node_tree.nodes.clear()
 
@@ -152,7 +155,7 @@ def create_material(  # type: ignore
         return None
 
     try:
-        mat = bpy.data.materials.new(name=name)
+        mat = bpy.data.materials.new(name=name)  # type: ignore
         mat.use_nodes = True
         nodes = mat.node_tree.nodes
         links = mat.node_tree.links
@@ -224,8 +227,8 @@ def create_cosmic_grid(
         return None
     try:
         # Create a new mesh and object
-        mesh = bpy.data.meshes.new("CosmicGridMesh")
-        obj = bpy.data.objects.new("CosmicGrid", mesh)
+        mesh = bpy.data.meshes.new("CosmicGridMesh")  # type: ignore
+        obj = bpy.data.objects.new("CosmicGrid", mesh)  # type: ignore
 
         # Create vertices and edges
         verts = []
@@ -247,7 +250,7 @@ def create_cosmic_grid(
         mesh.update()
 
         # Link object to scene
-        bpy.context.collection.objects.link(obj)
+        bpy.context.collection.objects.link(obj)  # type: ignore
 
         # Create a simple material for the grid
         mat = create_material(
@@ -280,10 +283,10 @@ def create_text_legend(
     try:
         for i, (name, color) in enumerate(items.items()):
             # Create text object
-            bpy.ops.object.text_add(
+            bpy.ops.object.text_add(  # type: ignore
                 location=(position[0], position[1] - i * (font_size * 1.5), position[2])
             )
-            text_obj = bpy.context.object
+            text_obj = bpy.context.object  # type: ignore
             text_obj.data.body = name
             text_obj.data.size = font_size
             text_obj.name = f"Legend_{name}"
@@ -325,8 +328,8 @@ def create_light(
         return None
 
     try:
-        bpy.ops.object.light_add(type=light_type.upper(), location=position)
-        light = bpy.context.active_object
+        bpy.ops.object.light_add(type=light_type.upper(), location=position)  # type: ignore
+        light = bpy.context.active_object  # type: ignore
         light.name = name
 
         # Type-safe light data access
@@ -416,8 +419,8 @@ def create_camera(
         return None
 
     try:
-        bpy.ops.object.camera_add(location=position)
-        camera = bpy.context.active_object
+        bpy.ops.object.camera_add(location=position)  # type: ignore
+        camera = bpy.context.active_object  # type: ignore
         camera.name = name
 
         # Point camera at target
@@ -431,7 +434,7 @@ def create_camera(
         camera.data.clip_end = 1000.0
 
         # Set as active camera
-        bpy.context.scene.camera = camera
+        bpy.context.scene.camera = camera  # type: ignore
 
         return camera
 
@@ -451,7 +454,7 @@ def animate_camera(
         return False
 
     try:
-        scene = bpy.context.scene
+        scene = bpy.context.scene  # type: ignore
         scene.frame_start = frame_start
         scene.frame_end = frame_end
 
@@ -485,7 +488,7 @@ def create_camera_path(
 
     try:
         # Create curve
-        curve_data = bpy.data.curves.new(name=name, type="CURVE")
+        curve_data = bpy.data.curves.new(name=name, type="CURVE")  # type: ignore
         curve_data.dimensions = "3D"
 
         # Create spline
@@ -499,8 +502,8 @@ def create_camera_path(
             spline.use_smooth = True
 
         # Create object
-        curve_obj = bpy.data.objects.new(name, curve_data)
-        bpy.context.collection.objects.link(curve_obj)
+        curve_obj = bpy.data.objects.new(name, curve_data)  # type: ignore
+        bpy.context.collection.objects.link(curve_obj)  # type: ignore
 
         return curve_obj
 
@@ -528,8 +531,8 @@ def create_astro_object(
     obj = None
     try:
         if object_type == "star":
-            bpy.ops.mesh.primitive_ico_sphere_add(location=position, radius=scale)
-            obj = bpy.context.active_object
+            bpy.ops.mesh.primitive_ico_sphere_add(location=position, radius=scale)  # type: ignore
+            obj = bpy.context.active_object  # type: ignore
             obj.name = f"{name}_Star"
 
             # Create star material
@@ -546,8 +549,8 @@ def create_astro_object(
                     obj.data.materials.append(mat)
 
         elif object_type == "galaxy":
-            bpy.ops.mesh.primitive_uv_sphere_add(location=position, radius=scale)
-            obj = bpy.context.active_object
+            bpy.ops.mesh.primitive_uv_sphere_add(location=position, radius=scale)  # type: ignore
+            obj = bpy.context.active_object  # type: ignore
             obj.name = f"{name}_Galaxy"
 
             # Create galaxy material
@@ -561,8 +564,8 @@ def create_astro_object(
                 obj.data.materials.append(mat)
 
         elif object_type == "nebula":
-            bpy.ops.mesh.primitive_cube_add(location=position, size=scale)
-            obj = bpy.context.active_object
+            bpy.ops.mesh.primitive_cube_add(location=position, size=scale)  # type: ignore
+            obj = bpy.context.active_object  # type: ignore
             obj.name = f"{name}_Nebula"
 
             # Create nebula material with transparency
@@ -603,7 +606,7 @@ def setup_astronomical_scene(
     try:
         # Convert to list of dicts if DataFrame
         if hasattr(data, "to_dicts"):
-            data_list = data.to_dicts()
+            data_list = data.to_dicts()  # type: ignore
         else:
             data_list = data
 
@@ -643,7 +646,7 @@ def setup_render_settings(
         return False
 
     try:
-        scene = bpy.context.scene
+        scene = bpy.context.scene  # type: ignore
         render = scene.render
 
         # Engine settings
@@ -685,12 +688,12 @@ def render_scene(
         return False
 
     try:
-        bpy.context.scene.render.filepath = output_path
+        bpy.context.scene.render.filepath = output_path  # type: ignore
 
         if animation:
-            bpy.ops.render.render(animation=True)
+            bpy.ops.render.render(animation=True)  # type: ignore
         else:
-            bpy.ops.render.render(write_still=True)
+            bpy.ops.render.render(write_still=True)  # type: ignore
 
         return True
 
@@ -783,7 +786,7 @@ class FuturisticAstroPlotter(AstroPlotter):
 
 
 class GeometryNodesVisualizer:
-    """Advanced geometry nodes-based visualizer."""
+    """geometry nodes-based visualizer."""
 
     def __init__(self):
         """Initialize geometry nodes visualizer."""
@@ -797,8 +800,8 @@ class GeometryNodesVisualizer:
         try:
             # This would require extensive geometry nodes setup
             # For now, return a placeholder
-            bpy.ops.mesh.primitive_ico_sphere_add()
-            obj = bpy.context.active_object
+            bpy.ops.mesh.primitive_ico_sphere_add()  # type: ignore
+            obj = bpy.context.active_object  # type: ignore
             obj.name = name
             return obj
         except Exception as e:
@@ -822,8 +825,8 @@ class GreasePencilPlotter:
 
         try:
             # Create grease pencil object
-            bpy.ops.object.gpencil_add(location=(0, 0, 0))
-            gp_obj = bpy.context.active_object
+            bpy.ops.object.gpencil_add(location=(0, 0, 0))  # type: ignore
+            gp_obj = bpy.context.active_object  # type: ignore
             gp_obj.name = "ConstellationLines"
 
             # Get grease pencil data

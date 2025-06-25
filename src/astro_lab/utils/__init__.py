@@ -12,14 +12,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
+import torch_geometric
+import yaml
 
 # DO NOT import blender automatically - only when explicitly needed
 # DO NOT import viz functions automatically - they load Blender modules
 # Import them manually when needed: from astro_lab.utils.viz import ...
-# Core dependencies - should always be available
-import torch_geometric
-import yaml
-
 # Import core utility modules directly
 from . import config, viz
 
@@ -32,6 +30,32 @@ from .viz.graph import (
     spatial_distance_matrix,
 )
 
+
+# Core utility functions
+def get_device() -> torch.device:
+    """Get the best available device (CUDA if available, else CPU)."""
+    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def set_random_seed(seed: int = 42) -> None:
+    """Set random seed for reproducibility."""
+    import random
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+
+
+def setup_logging(level: int = logging.INFO) -> None:
+    """Setup logging configuration."""
+    logging.basicConfig(
+        level=level, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+
+
 # Base exports - always available (minimal to avoid Blender loading)
 __all__ = [
     "config",
@@ -42,6 +66,9 @@ __all__ = [
     "create_spatial_graph",
     "calculate_graph_metrics",
     "spatial_distance_matrix",
+    "get_device",
+    "set_random_seed",
+    "setup_logging",
 ]
 
 

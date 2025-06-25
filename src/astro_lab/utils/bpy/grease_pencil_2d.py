@@ -5,29 +5,25 @@ This module provides radar charts, histograms, multi-panel plots, and comparison
 using Grease Pencil or curve fallbacks for Blender 4.4 compatibility.
 """
 
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+
 import os
 import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
+import bpy
+import mathutils
 import numpy as np
 import polars as pl
 
-try:
-    from . import bpy
-    BPY_AVAILABLE = True
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    BPY_AVAILABLE = False
-    bpy = None
-
-import mathutils
-
 # Set environment variable for NumPy 2.x compatibility with bpy
-os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
+os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
 
 class GreasePencil2DPlotter:
     """Professional 2D plotting using Grease Pencil v3 with curve fallbacks."""

@@ -16,38 +16,34 @@ Version: 1.0.0
 Blender: 4.4+
 """
 
-import warnings
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+
 import math
+import os
 import random
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+import bmesh
+import bpy
+import numpy as np
+from mathutils import Euler, Matrix, Vector
+
+from .. import numpy_compat  # noqa: F401
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-try:
-    import bpy
-    import bmesh
-    import numpy as np
-    from mathutils import Euler, Matrix, Vector
-    BPY_AVAILABLE = True
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    BPY_AVAILABLE = False
-    bpy = None
-    bmesh = None
-    np = None
-    Euler = None
-    Matrix = None
-    Vector = None
 
 class ProceduralAstronomy:
     """Generate procedural astronomical structures"""
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_hr_diagram_3d(
         stellar_data: List[Dict[str, float]], scale_factor: float = 1.0
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore
         """
         Create a 3D Hertzsprung-Russell diagram visualization.
 
@@ -93,13 +89,13 @@ class ProceduralAstronomy:
 
         return obj
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_galaxy_structure(
         center: Vector = Vector((0, 0, 0)),
         galaxy_type: str = "spiral",
         num_stars: int = 50000,
         radius: float = 20.0,
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore
         """
         Create a procedural galaxy structure.
 
@@ -139,8 +135,8 @@ class ProceduralAstronomy:
 
         return galaxy_obj
 
-    @staticmethod
-    def _add_stellar_instances(obj: bpy.types.Object) -> None:
+    @staticmethod  # type: ignore
+    def _add_stellar_instances(obj: bpy.types.Object) -> None:  # type: ignore
         """Add instanced stars with spectral colors."""
         # Add geometry nodes modifier
         modifier = obj.modifiers.new(name="StellarInstances", type="NODES")
@@ -201,10 +197,10 @@ class ProceduralAstronomy:
         links.new(random_size.outputs["Value"], instance.inputs["Scale"])
         links.new(instance.outputs["Instances"], output_node.inputs["Geometry"])
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def _create_spiral_galaxy_nodes(
         num_stars: int, radius: float, num_arms: int = 4
-    ) -> bpy.types.NodeTree:
+    ) -> bpy.types.NodeTree:  # type: ignore
         """Create node tree for spiral galaxy generation."""
         tree = bpy.data.node_groups.new(name="SpiralGalaxy", type="GeometryNodeTree")
         nodes = tree.nodes
@@ -267,10 +263,10 @@ class ProceduralAstronomy:
 
         return tree
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def _create_elliptical_galaxy_nodes(
         num_stars: int, radius: float
-    ) -> bpy.types.NodeTree:
+    ) -> bpy.types.NodeTree:  # type: ignore
         """Create node tree for elliptical galaxy generation."""
         tree = bpy.data.node_groups.new(
             name="EllipticalGalaxy", type="GeometryNodeTree"
@@ -336,10 +332,10 @@ class ProceduralAstronomy:
 
         return tree
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def _create_irregular_galaxy_nodes(
         num_stars: int, radius: float
-    ) -> bpy.types.NodeTree:
+    ) -> bpy.types.NodeTree:  # type: ignore
         """Create node tree for irregular galaxy generation."""
         tree = bpy.data.node_groups.new(name="IrregularGalaxy", type="GeometryNodeTree")
         nodes = tree.nodes
@@ -398,13 +394,14 @@ class ProceduralAstronomy:
 
         return tree
 
+
 class AstronomicalMaterials:
     """Materials for astronomical objects"""
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_stellar_classification_material(
         spectral_class: str = "G",
-    ) -> bpy.types.Material:
+    ) -> bpy.types.Material:  # type: ignore
         """
         Create material based on stellar spectral classification.
 
@@ -455,6 +452,7 @@ class AstronomicalMaterials:
 
         return mat
 
+
 # Example usage functions
 def create_hr_diagram_demo():
     """Create a demonstration HR diagram."""
@@ -502,6 +500,7 @@ def create_hr_diagram_demo():
 
     print("HR Diagram demonstration created!")
 
+
 def create_galaxy_comparison():
     """Create comparison of different galaxy types."""
     # Spiral galaxy
@@ -530,6 +529,7 @@ def create_galaxy_comparison():
         galaxy.data.materials.append(star_materials[i])
 
     print("Galaxy comparison scene created!")
+
 
 if __name__ == "__main__":
     create_hr_diagram_demo()

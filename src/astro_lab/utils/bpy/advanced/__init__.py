@@ -1,54 +1,43 @@
 """
-AstroLab Blender Advanced Utils
+AstroLab Blender  Utils
 ===============================
 
-Advanced Blender utilities for astronomical visualization.
+ Blender utilities for astronomical visualization.
 Includes materials, physics, volumetrics, and shaders.
 """
+
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
 
 import math
 import os
 import random
 import warnings
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import bmesh
 import bpy
-import numpy as np
-
-from .futuristic_materials import FuturisticMaterials
-from .geometry_nodes import ProceduralAstronomy, AstronomicalMaterials
-from .physics import OrbitalMechanics, GravitationalSimulation, PhysicsShaders
-from .post_processing import PostProcessingSuite, ArtisticFilters
-from .shaders import AstronomicalShaders
-from .volumetrics import VolumetricAstronomy, VolumetricShaders
 
 # Set environment variable for NumPy 2.x compatibility with bpy
-os.environ['NUMPY_EXPERIMENTAL_ARRAY_API'] = '1'
+os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 # Import Blender modules directly
-from mathutils import Euler, Matrix, Vector
+from mathutils import Vector
 
-try:
-    # Import all advanced modules
-    from .geometry_nodes import AstronomicalMaterials, ProceduralAstronomy
-    from .physics import GravitationalSimulation, OrbitalMechanics, PhysicsShaders
-    from .shaders import AstronomicalShaders
-    from .volumetrics import VolumetricAstronomy, VolumetricShaders
-    from .post_processing import PostProcessingSuite, ArtisticFilters
-    from .futuristic_materials import FuturisticMaterials, MaterialPresets
+# Import all advanced modules
+from .futuristic_materials import FuturisticMaterials, MaterialPresets
+from .geometry_nodes import AstronomicalMaterials, ProceduralAstronomy
+from .physics import GravitationalSimulation, OrbitalMechanics, PhysicsShaders
+from .post_processing import ArtisticFilters, PostProcessingSuite
+from .shaders import AstronomicalShaders
+from .volumetrics import VolumetricAstronomy, VolumetricShaders
 
-    ADVANCED_AVAILABLE = True
-except ImportError as e:
-    print(f"Advanced modules not available: {e}")
-    ADVANCED_AVAILABLE = False
 
-class AdvancedVisualizationSuite:
+class VisualizationSuite:
     """
     Main interface for advanced astronomical visualization.
 
@@ -56,7 +45,7 @@ class AdvancedVisualizationSuite:
     for creating scientific astronomical visualizations.
     """
 
-    def __init__(self, scene_name: str = "AstroAdvanced"):
+    def __init__(self, scene_name: str = "Astro"):
         self.scene_name = scene_name
         self.scene_objects = {}
 
@@ -65,7 +54,7 @@ class AdvancedVisualizationSuite:
         if not bpy:
             print("Blender not available")
             return
-            
+
         # Set render engine to EEVEE Next
         bpy.context.scene.render.engine = "BLENDER_EEVEE_NEXT"
 
@@ -105,7 +94,7 @@ class AdvancedVisualizationSuite:
 
         bpy.context.scene.world = world
 
-        print(f"Advanced scene '{self.scene_name}' initialized with EEVEE Next")
+        print(f" scene '{self.scene_name}' initialized with EEVEE Next")
 
     def create_procedural_galaxy(
         self,
@@ -126,10 +115,6 @@ class AdvancedVisualizationSuite:
         Returns:
             Created galaxy object
         """
-        if not ADVANCED_AVAILABLE:
-            print("Advanced modules not available")
-            return None
-
         if position is None and Vector:
             position = Vector((0, 0, 0))
 
@@ -169,10 +154,6 @@ class AdvancedVisualizationSuite:
         Returns:
             Created nebula object
         """
-        if not ADVANCED_AVAILABLE:
-            print("Advanced modules not available")
-            return None
-
         if center is None and Vector:
             center = Vector((0, 0, 0))
 
@@ -186,7 +167,7 @@ class AdvancedVisualizationSuite:
         return nebula
 
     def create_orbital_system(
-        self, star_mass: float = 1.0, planet_data: List[Dict[str, Any]] = None
+        self, star_mass: float = 1.0, planet_data: Optional[List[Dict[str, Any]]] = None
     ) -> List[Any]:
         """
         Create realistic orbital system with physics.
@@ -198,10 +179,6 @@ class AdvancedVisualizationSuite:
         Returns:
             List of created objects [star, ...planets]
         """
-        if not ADVANCED_AVAILABLE:
-            print("Advanced modules not available")
-            return []
-
         # Create central star
         bpy.ops.mesh.primitive_uv_sphere_add(location=(0, 0, 0))
         star = bpy.context.active_object
@@ -280,10 +257,6 @@ class AdvancedVisualizationSuite:
         Returns:
             Tuple of (primary_star, secondary_star)
         """
-        if not ADVANCED_AVAILABLE:
-            print("Advanced modules not available")
-            return None, None
-
         primary, secondary = GravitationalSimulation.create_binary_system(
             primary_mass=primary_mass,
             secondary_mass=secondary_mass,
@@ -302,7 +275,9 @@ class AdvancedVisualizationSuite:
         return primary, secondary
 
     def create_hr_diagram_3d(
-        self, stellar_data: List[Dict[str, float]] = None, scale_factor: float = 2.0
+        self,
+        stellar_data: Optional[List[Dict[str, float]]] = None,
+        scale_factor: float = 2.0,
     ) -> Optional[Any]:
         """
         Create 3D Hertzsprung-Russell diagram.
@@ -314,10 +289,6 @@ class AdvancedVisualizationSuite:
         Returns:
             Created HR diagram object
         """
-        if not ADVANCED_AVAILABLE:
-            print("Advanced modules not available")
-            return None
-
         # Generate sample data if none provided
         if stellar_data is None:
             stellar_data = []
@@ -488,9 +459,10 @@ class AdvancedVisualizationSuite:
             print(f"Render failed: {e}")
             return False
 
+
 def initialize_advanced_scene(
     quality_preset: str = "high",
-) -> AdvancedVisualizationSuite:
+) -> VisualizationSuite:
     """
     Initialize advanced astronomical visualization scene.
 
@@ -498,18 +470,14 @@ def initialize_advanced_scene(
         quality_preset: Quality preset ('low', 'medium', 'high', 'cinematic')
 
     Returns:
-        Configured AdvancedVisualizationSuite instance
+        Configured VisualizationSuite instance
     """
-    if not ADVANCED_AVAILABLE:
-        print("Advanced modules not available - using stub")
-        return AdvancedVisualizationSuite()
-
     # Clear existing scene
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
 
     # Create suite
-    suite = AdvancedVisualizationSuite("AstroAdvanced")
+    suite = VisualizationSuite("Astro")
 
     # Configure quality settings
     scene = bpy.context.scene
@@ -534,11 +502,12 @@ def initialize_advanced_scene(
         scene.render.resolution_x = 3840
         scene.render.resolution_y = 2160
 
-    print(f"Advanced scene initialized with {quality_preset} quality")
+    print(f" scene initialized with {quality_preset} quality")
     return suite
 
+
 # Convenience functions for quick scene creation
-def create_galaxy_showcase() -> AdvancedVisualizationSuite:
+def create_galaxy_showcase() -> VisualizationSuite:
     """Create showcase of different galaxy types."""
     suite = initialize_advanced_scene("high")
 
@@ -553,7 +522,8 @@ def create_galaxy_showcase() -> AdvancedVisualizationSuite:
 
     return suite
 
-def create_nebula_showcase() -> AdvancedVisualizationSuite:
+
+def create_nebula_showcase() -> VisualizationSuite:
     """Create showcase of different nebula types."""
     suite = initialize_advanced_scene("high")
 
@@ -568,7 +538,8 @@ def create_nebula_showcase() -> AdvancedVisualizationSuite:
 
     return suite
 
-def create_stellar_system_showcase() -> AdvancedVisualizationSuite:
+
+def create_stellar_system_showcase() -> VisualizationSuite:
     """Create showcase stellar system with planets."""
     suite = initialize_advanced_scene("high")
 
@@ -584,13 +555,15 @@ def create_stellar_system_showcase() -> AdvancedVisualizationSuite:
 
     return suite
 
-def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_teal") -> None:
+
+def apply_visual_style(suite: VisualizationSuite, style: str = "luxury_teal") -> None:
     """
     Apply a high-level visual style preset to the current advanced scene.
     Styles: 'luxury_teal', 'autumn', 'iridescent', 'cinematic_closeup', 'dreamy_pastel'
     """
     import bpy
     from mathutils import Vector
+
     scene = bpy.context.scene
 
     # Default: luxury_teal (deep teal, high contrast, bloom, dramatic light)
@@ -612,7 +585,7 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
         # High contrast
         scene.view_settings.look = "High Contrast"
         scene.view_settings.view_transform = "Filmic"
-        
+
         # Apply post-processing
         post_processing = PostProcessingSuite()
         post_processing.apply_cinematic_preset()
@@ -633,7 +606,7 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
             scene.eevee.bloom_radius = 6.0
         scene.view_settings.look = "Medium High Contrast"
         scene.view_settings.view_transform = "Filmic"
-        
+
         # Apply post-processing
         post_processing = PostProcessingSuite()
         post_processing.add_color_grading("warm")
@@ -655,7 +628,7 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
             scene.eevee.bloom_radius = 8.0
         scene.view_settings.look = "Very High Contrast"
         scene.view_settings.view_transform = "Filmic"
-        
+
         # Apply post-processing
         post_processing = PostProcessingSuite()
         post_processing.add_lens_flare("stellar", 1.0)
@@ -677,7 +650,7 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
             scene.eevee.bloom_radius = 9.0
         scene.view_settings.look = "Very High Contrast"
         scene.view_settings.view_transform = "Filmic"
-        
+
         # Apply post-processing
         post_processing = PostProcessingSuite()
         post_processing.apply_dramatic_preset()
@@ -698,7 +671,7 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
             scene.eevee.bloom_radius = 5.0
         scene.view_settings.look = "Low Contrast"
         scene.view_settings.view_transform = "Filmic"
-        
+
         # Apply post-processing
         post_processing = PostProcessingSuite()
         post_processing.apply_dreamy_preset()
@@ -709,28 +682,29 @@ def apply_visual_style(suite: AdvancedVisualizationSuite, style: str = "luxury_t
 
     print(f"Applied visual style: {style}")
 
+
 def create_futuristic_scene(
     scene_name: str = "FuturisticAstroScene",
     style: str = "luxury_teal",
     use_post_processing: bool = True,
-) -> AdvancedVisualizationSuite:
+) -> VisualizationSuite:
     """
     Create a complete futuristic astronomical scene with all advanced features.
-    
+
     Args:
         scene_name: Name of the scene
         style: Visual style preset
         use_post_processing: Whether to apply post-processing effects
-        
+
     Returns:
         Configured advanced visualization suite
     """
     # Create advanced suite
-    suite = AdvancedVisualizationSuite(scene_name)
-    
+    suite = VisualizationSuite(scene_name)
+
     # Apply visual style
     apply_visual_style(suite, style)
-    
+
     # Apply post-processing if requested
     if use_post_processing:
         post_processing = PostProcessingSuite(scene_name)
@@ -740,8 +714,9 @@ def create_futuristic_scene(
             post_processing.apply_dramatic_preset()
         elif style == "dreamy":
             post_processing.apply_dreamy_preset()
-    
+
     return suite
+
 
 def apply_material_preset(
     object_name: str,
@@ -749,11 +724,11 @@ def apply_material_preset(
 ) -> bpy.types.Material:
     """
     Apply a material preset to an object.
-    
+
     Args:
         object_name: Name of the object
         material_preset: Material preset name
-        
+
     Returns:
         Applied material
     """
@@ -761,7 +736,7 @@ def apply_material_preset(
     if not obj:
         print(f"Object {object_name} not found")
         return None
-    
+
     # Get material based on preset
     if material_preset == "luxury_teal":
         material = MaterialPresets.luxury_teal_material()
@@ -776,25 +751,38 @@ def apply_material_preset(
     else:
         print(f"Unknown material preset: {material_preset}")
         return None
-    
+
     # Apply material to object
     if obj.data.materials:
         obj.data.materials[0] = material
     else:
         obj.data.materials.append(material)
-    
+
     return material
+
 
 # Export all classes and functions
 __all__ = [
-    "AdvancedVisualizationSuite",
-    "PostProcessingSuite", 
+    "VisualizationSuite",
+    "PostProcessingSuite",
     "ArtisticFilters",
     "FuturisticMaterials",
     "MaterialPresets",
+    "AstronomicalMaterials",
+    "ProceduralAstronomy",
+    "GravitationalSimulation",
+    "OrbitalMechanics",
+    "PhysicsShaders",
+    "AstronomicalShaders",
+    "VolumetricAstronomy",
+    "VolumetricShaders",
     "apply_visual_style",
     "create_futuristic_scene",
     "apply_material_preset",
+    "initialize_advanced_scene",
+    "create_galaxy_showcase",
+    "create_nebula_showcase",
+    "create_stellar_system_showcase",
 ]
 
 if __name__ == "__main__":

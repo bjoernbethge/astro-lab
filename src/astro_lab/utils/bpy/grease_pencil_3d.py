@@ -1,21 +1,25 @@
 """
-Advanced 3D Grease Pencil plotting for astronomical data.
+ 3D Grease Pencil plotting for astronomical data.
 
 This module provides 3D scatter plots, surface plots, trajectories, and vector fields
 using curves as fallbacks for Blender 4.4 compatibility.
 """
 
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+
 import math
 from typing import Any, Dict, List, Optional, Tuple
 
+import mathutils
 import numpy as np
 import polars as pl
 
 from . import bpy
-import mathutils
+
 
 class GreasePencil3DPlotter:
-    """Advanced 3D plotting using curves for Grease Pencil-style visualizations."""
+    """3D plotting using curves for Grease Pencil-style visualizations."""
 
     def __init__(self, name: str = "GP3D"):
         self.name = name
@@ -169,7 +173,7 @@ class GreasePencil3DPlotter:
         color_map: str = "viridis",
     ) -> List[Any]:
         """Create 3D surface plot using curve wireframe."""
-        
+
         objects = []
 
         # Normalize coordinates
@@ -374,7 +378,6 @@ class GreasePencil3DPlotter:
     ) -> Optional[Any]:
         """Create text object."""
 
-
         try:
             bpy.ops.object.text_add(location=position)
             text_obj = bpy.context.active_object
@@ -398,7 +401,7 @@ class GreasePencil3DPlotter:
         self, name: str, color: List[float], strength: float = 2.0
     ) -> Optional[Any]:
         """Create emission material."""
-        
+
         if name in bpy.data.materials:
             return bpy.data.materials[name]
 

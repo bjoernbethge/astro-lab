@@ -16,37 +16,34 @@ Version: 1.0.0
 Blender: 4.4+
 """
 
-import os
-import warnings
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+
 import math
+import os
 import random
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
-from .. import numpy_compat  # noqa: F401
+
+import bmesh
 import bpy
+import numpy as np
+from mathutils import Euler, Matrix, Vector
+
+from .. import numpy_compat  # noqa: F401
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-try:
-    import bmesh
-    import numpy as np
-    from mathutils import Euler, Matrix, Vector
-    BPY_AVAILABLE = bpy is not None
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    BPY_AVAILABLE = False
-    bpy = None
-    bmesh = None
-    Vector = None
 
 class OrbitalMechanics:
     """Create realistic orbital mechanics visualizations"""
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_orbital_system(
         center_obj: bpy.types.Object, orbits: List[Dict[str, float]]
-    ) -> List[bpy.types.Object]:
+    ) -> List[bpy.types.Object]:  # type: ignore
         """
         Create a system of orbiting objects with trails.
 
@@ -93,13 +90,13 @@ class OrbitalMechanics:
 
         return orbital_objects
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def _create_elliptical_orbit(
         radius: float,
         eccentricity: float = 0,
         center: Vector = Vector((0, 0, 0)),
         segments: int = 64,
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore
         """Create an elliptical orbit curve."""
         # Create curve data
         curve_data = bpy.data.curves.new(name="Orbit", type="CURVE")
@@ -131,8 +128,8 @@ class OrbitalMechanics:
 
         return curve_obj
 
-    @staticmethod
-    def _add_orbit_trail(obj: bpy.types.Object) -> bpy.types.NodeTree:
+    @staticmethod  # type: ignore
+    def _add_orbit_trail(obj: bpy.types.Object) -> bpy.types.NodeTree:  # type: ignore
         """Add a glowing trail to an orbiting object."""
         # Add geometry nodes modifier
         modifier = obj.modifiers.new(name="OrbitTrail", type="NODES")
@@ -173,11 +170,12 @@ class OrbitalMechanics:
 
         return tree
 
+
 class GravitationalSimulation:
     """N-body gravitational simulations"""
 
-    @staticmethod
-    def create_n_body_system(bodies: List[Dict[str, Any]]) -> List[bpy.types.Object]:
+    @staticmethod  # type: ignore
+    def create_n_body_system(bodies: List[Dict[str, Any]]) -> List[bpy.types.Object]:  # type: ignore
         """
         Create N-body gravitational simulation.
 
@@ -211,10 +209,10 @@ class GravitationalSimulation:
 
         return body_objects
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_binary_system(
         primary_mass: float, secondary_mass: float, separation: float
-    ) -> Tuple[bpy.types.Object, bpy.types.Object]:
+    ) -> Tuple[bpy.types.Object, bpy.types.Object]:  # type: ignore
         """
         Create gravitationally bound binary system.
 
@@ -258,11 +256,12 @@ class GravitationalSimulation:
 
         return primary, secondary
 
+
 class PhysicsShaders:
     """Shaders for astrophysical objects"""
 
-    @staticmethod
-    def create_body_material(mass: float, body_type: str) -> bpy.types.Material:
+    @staticmethod  # type: ignore
+    def create_body_material(mass: float, body_type: str) -> bpy.types.Material:  # type: ignore
         """Create material for astronomical body."""
         mat = bpy.data.materials.new(name=f"{body_type.title()}Material")
         mat.use_nodes = True
@@ -304,8 +303,8 @@ class PhysicsShaders:
 
         return mat
 
-    @staticmethod
-    def create_stellar_material(mass: float) -> bpy.types.Material:
+    @staticmethod  # type: ignore
+    def create_stellar_material(mass: float) -> bpy.types.Material:  # type: ignore
         """Create stellar material based on mass."""
         mat = bpy.data.materials.new(name=f"Star_{mass:.1f}M")
         mat.use_nodes = True
@@ -350,6 +349,7 @@ class PhysicsShaders:
 
         return mat
 
+
 # Example usage functions
 def create_solar_system():
     """Create a simple solar system."""
@@ -380,6 +380,7 @@ def create_solar_system():
 
     print("Solar system created!")
 
+
 def create_binary_stars():
     """Create binary star system."""
     primary, secondary = GravitationalSimulation.create_binary_system(
@@ -388,6 +389,7 @@ def create_binary_stars():
 
     print("Binary star system created!")
     return [primary, secondary]
+
 
 if __name__ == "__main__":
     create_solar_system()
