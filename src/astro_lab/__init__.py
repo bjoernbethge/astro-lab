@@ -21,11 +21,32 @@ _data_dir.mkdir(exist_ok=True)
 # Set environment variable for astroML
 os.environ["ASTROML_DATA"] = str(_data_dir)
 
-# Import main modules
+# Import main modules - moved to top to fix E402
 from astro_lab import data
-# from astro_lab.models import * # This causes cascading import errors
-from astro_lab.tensors import *
-from astro_lab.utils import *
+
+# Import specific tensor classes instead of star imports
+from astro_lab.tensors import (
+    AstroTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SpatialTensorDict,
+    SpectralTensorDict,
+    SurveyTensorDict,
+)
+
+# Import specific utils instead of star imports
+from astro_lab.utils import get_device, set_random_seed, setup_logging
 
 __version__ = "0.1.0"
-__all__ = ["tensors", "data", "models", "utils"]
+__all__ = [
+    "data",
+    "AstroTensorDict",
+    "SpatialTensorDict",
+    "PhotometricTensorDict",
+    "SpectralTensorDict",
+    "LightcurveTensorDict",
+    "SurveyTensorDict",
+    "setup_logging",
+    "get_device",
+    "set_random_seed",
+]

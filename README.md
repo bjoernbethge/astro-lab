@@ -31,7 +31,7 @@ marimo edit
 - **NASA Exoplanet Archive**: Confirmed exoplanets with Gaia crossmatching
 - **LINEAR**: Asteroid light curves
 
-### 🧠 **Advanced Machine Learning**
+### 🧠 ** Machine Learning**
 - **Graph Neural Networks**: For spatial astronomical structures
 - **Automatic Class Detection**: From training data
 - **Hyperparameter Optimization**: With Optuna integration
@@ -48,7 +48,7 @@ marimo edit
 - **CosmographBridge**: Seamless integration with cosmic web analysis
 - **Survey-specific colors**: Gold for stars, blue for galaxies, green for simulations
 - **Real-time physics**: Gravity and repulsion simulation
-- **Blender Integration**: Advanced 3D rendering capabilities
+- **Blender Integration**:  3D rendering capabilities
 
 ## 📚 Documentation & API Reference
 
@@ -71,7 +71,7 @@ astro-lab process
 # Process specific surveys
 astro-lab process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
 
-# Advanced processing
+#  processing
 astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits
 astro-lab preprocess stats data/gaia_catalog.parquet
 astro-lab preprocess browse --survey gaia --details
@@ -120,7 +120,7 @@ astro-lab/
 - **Polars 1.31.0**: High-performance data processing
 - **AstroPy 7.1.0**: Astronomical calculations
 - **Cosmograph**: Interactive graph visualization
-- **Blender** (optional): Advanced 3D rendering
+- **Blender** (optional):  3D rendering
 
 ## 🎯 Use Cases
 

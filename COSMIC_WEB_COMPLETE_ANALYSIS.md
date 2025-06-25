@@ -94,7 +94,7 @@ Successfully completed comprehensive 3D cosmic web analysis processing **3.6 mil
 
 ## 🔬 Technical Achievements
 
-### Enhanced Spatial3DTensor
+### Spatial3DTensor
 ```python
 # New cosmic web methods added:
 spatial_tensor.cosmic_web_clustering(eps_pc, min_samples, algorithm)
