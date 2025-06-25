@@ -158,17 +158,29 @@ class AstroTrainer(Trainer):
             if k not in ["accelerator", "devices", "precision", "max_epochs"]
         }
 
-        # Determine if we should disable Lightning's default logging
-        disable_lightning_logs = (
-            getattr(self.training_config.logging, "use_mlflow", False)
-            and logger_instance is not None
-        )
+        # Determine logging configuration based on Lightning best practices
+        # Reference: https://lightning.ai/docs/pytorch/stable/api_references.html
+        use_mlflow = getattr(self.training_config.logging, "use_mlflow", False)
+
+        # Configure default_root_dir properly
+        if use_mlflow and logger_instance is not None:
+            # When using MLflow, disable Lightning's default logs by setting default_root_dir=None
+            # This prevents the lightning_logs directory from being created
+            default_root_dir = None
+
+            # Also ensure we don't pass logger=False, keep our MLflow logger
+            final_logger = logger_instance
+        else:
+            # When not using MLflow, use checkpoint_dir as root for Lightning's default TensorBoardLogger
+            default_root_dir = str(self.checkpoint_dir)
+            final_logger = True  # Use Lightning's default TensorBoardLogger
 
         # Remove UI parameters from filtered_kwargs to avoid duplication - these are always set
         ui_params = [
             "enable_progress_bar",
             "enable_model_summary",
             "enable_checkpointing",
+            "default_root_dir",  # Also remove this to avoid conflicts
         ]
         for param in ui_params:
             filtered_kwargs.pop(param, None)
@@ -180,13 +192,13 @@ class AstroTrainer(Trainer):
             devices=devices,
             precision=precision,
             callbacks=callbacks,
-            logger=logger_instance,
+            logger=final_logger,
             # UI parameters - always enabled, not configurable
             enable_progress_bar=True,
             enable_model_summary=True,
             enable_checkpointing=True,
-            # Disable default Lightning logs directory when using MLflow
-            default_root_dir=None if disable_lightning_logs else None,
+            # Set default_root_dir according to Lightning best practices
+            default_root_dir=default_root_dir,
             **filtered_kwargs,
         )
 

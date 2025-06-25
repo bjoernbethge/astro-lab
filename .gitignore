@@ -24,6 +24,9 @@ data/
 results/
 *.log
 
+# Lightning logs (use MLflow instead)
+lightning_logs/
+
 # Temporary files
 *.tmp
 *.temp
