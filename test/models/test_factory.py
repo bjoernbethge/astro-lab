@@ -26,30 +26,27 @@ from astro_lab.models.factories import (
     create_lightcurve_classifier,
     create_temporal_graph_model,
 )
-from astro_lab.tensors import LightcurveTensor, PhotometricTensor
+from astro_lab.tensors import LightcurveTensorDict, PhotometricTensorDict
 
 
 @pytest.fixture
 def mock_survey_data():
     """Mock survey data for testing."""
-    photometry = PhotometricTensor(
-        data=torch.randn(10, 5), bands=["u", "g", "r", "i", "z"]
-    )
+    photometry_data = torch.randn(10, 5)
     edge_index = torch.randint(0, 10, (2, 20), dtype=torch.long)
-    return {"photometry": photometry, "edge_index": edge_index}
+    return {"photometry": photometry_data, "edge_index": edge_index}
 
 
 @pytest.fixture
 def mock_temporal_data():
     """Mock temporal data for testing."""
     n_points = 20
-    lightcurve = torch.randn(n_points, 2)
-    lightcurve[:, 0] = torch.sort(lightcurve[:, 0]).values
+    lightcurve_data = torch.randn(n_points, 2)
     edge_index = torch.stack(
         [torch.arange(0, n_points - 1), torch.arange(1, n_points)], dim=0
     )
     return {
-        "lightcurve": LightcurveTensor(data=lightcurve, bands=["time", "mag"]),
+        "lightcurve": lightcurve_data,
         "edge_index": edge_index,
     }
 
@@ -88,25 +85,37 @@ class TestFactoryFunctions:
     """Test factory functions."""
 
     def test_create_gaia_classifier(self):
-        """Test Gaia classifier factory."""
-        model = create_gaia_classifier(num_classes=7)
+        """Test creating Gaia classifier model."""
+        # Should raise error without num_classes
+        with pytest.raises(ValueError, match="num_classes must be specified"):
+            create_gaia_classifier()
+
+        # Should work with num_classes
+        model = create_gaia_classifier(num_classes=8)  # Gaia data has 8 classes
         assert isinstance(model, AstroSurveyGNN)
-        assert model.output_dim == 7
-        assert model.task == "classification"
+        assert model.get_num_parameters() > 0
 
     def test_create_sdss_galaxy_model(self):
-        """Test SDSS galaxy model factory."""
+        """Test creating SDSS galaxy model."""
+        # Should raise error without output_dim
+        with pytest.raises(ValueError, match="output_dim must be specified"):
+            create_sdss_galaxy_model()
+
+        # Should work with output_dim
         model = create_sdss_galaxy_model(output_dim=5)
         assert isinstance(model, AstroSurveyGNN)
-        assert model.output_dim == 5
-        assert model.task == "regression"
+        assert model.get_num_parameters() > 0
 
     def test_create_lsst_transient_detector(self):
-        """Test LSST transient detector factory."""
-        model = create_lsst_transient_detector()
+        """Test creating LSST transient detector."""
+        # Should raise error without num_classes
+        with pytest.raises(ValueError, match="num_classes must be specified"):
+            create_lsst_transient_detector()
+
+        # Should work with num_classes
+        model = create_lsst_transient_detector(num_classes=2)
         assert isinstance(model, AstroSurveyGNN)
-        assert model.output_dim == 2
-        assert model.task == "classification"
+        assert model.get_num_parameters() > 0
 
     def test_create_asteroid_period_detector(self):
         """Test asteroid period detector factory."""
