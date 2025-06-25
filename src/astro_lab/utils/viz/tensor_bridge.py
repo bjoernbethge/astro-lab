@@ -1,60 +1,66 @@
 """
-Tensor Bridge - High-Performance Tensor Visualization Bridge
-===========================================================
+AstroLab Tensor Bridge - Zero-Copy Data Transfer
+===============================================
 
-Provides efficient tensor-to-visualization framework bridges with zero-copy
-operations and GPU acceleration support.
+Provides zero-copy data transfer between PyTorch tensors and various
+visualization frameworks (PyVista, Blender, NumPy).
 """
 
 import logging
-import threading
 import time
-import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Protocol, Tuple, Union
+from typing import Any, Dict, Optional, Protocol
 
 import numpy as np
 import torch
 
+from ..bpy import bpy, mathutils
+
 logger = logging.getLogger(__name__)
 
-# Visualization dependencies
-import pyvista as pv
-import vtk
+# =========================================================================
+# MEMORY MANAGEMENT
+# =========================================================================
 
-# CRITICAL: Suppress PyVista __del__ TypeError
-# This is a known PyVista issue with VTK cleanup
-try:
-    original_polydata_del = pv.PolyData.__del__
 
-    def safe_polydata_del(self):
+class PolyDataManager:
+    """Manages PyVista PolyData objects to prevent memory leaks."""
+
+    def __init__(self):
+        self.active_meshes = set()
+
+    def register_mesh(self, mesh):
+        """Register a mesh for cleanup."""
+        self.active_meshes.add(mesh)
+
+    def cleanup_all(self):
+        """Clean up all registered meshes."""
+        for mesh in self.active_meshes:
+            self.safe_polydata_del(mesh)
+        self.active_meshes.clear()
+
+    def safe_polydata_del(self, mesh):
+        """Safely delete PyVista PolyData object."""
         try:
-            original_polydata_del(self)
-        except (TypeError, AttributeError):
-            # Silently ignore PyVista cleanup errors
-            pass
-
-    pv.PolyData.__del__ = safe_polydata_del
-    logger.debug("✅ PyVista __del__ TypeError protection enabled")
-
-except (AttributeError, TypeError):
-    # If monkey patching fails, just continue
-    logger.debug("⚠️ Could not patch PyVista __del__")
-
-# Also suppress warnings for PyVista
-warnings.filterwarnings("ignore", category=UserWarning, module="pyvista")
+            if hasattr(mesh, "clear_data"):
+                mesh.clear_data()
+            if hasattr(mesh, "clear_points"):
+                mesh.clear_points()
+            if hasattr(mesh, "clear_cells"):
+                mesh.clear_cells()
+            del mesh
+        except Exception as e:
+            logger.warning(f"Error cleaning up PolyData: {e}")
 
 
-# Blender integration - LAZY LOADING
+# Global mesh manager
+_mesh_manager = PolyDataManager()
+
+
 def _get_blender_modules():
-    """Lazy import of Blender modules to avoid memory leak."""
-    try:
-        from ..bpy import bpy, mathutils
-
-        return bpy, mathutils
-    except ImportError:
-        return None, None
+    """Get Blender modules."""
+    return bpy, mathutils
 
 
 class TensorProtocol(Protocol):
@@ -218,19 +224,29 @@ class ZeroCopyBridge:
     def validate_3d_coordinates(self, tensor: torch.Tensor) -> torch.Tensor:
         """Validate and ensure tensor has correct 3D coordinate format."""
         # Check if it's a SurveyTensor object
-        if hasattr(tensor, 'survey_name') and hasattr(tensor, 'get_spatial_tensor'):
-            logger.info(f"✅ SurveyTensor detected: {tensor.survey_name}. Extracting spatial coordinates.")
+        if hasattr(tensor, "survey_name") and hasattr(tensor, "get_spatial_tensor"):
+            logger.info(
+                f"✅ SurveyTensor detected: {tensor.survey_name}. Extracting spatial coordinates."
+            )
             try:
                 spatial_tensor = tensor.get_spatial_tensor()
-                if hasattr(spatial_tensor, 'cartesian'):
+                if hasattr(spatial_tensor, "cartesian"):
                     coords = spatial_tensor.cartesian
-                    logger.info(f"✅ Extracted 3D coordinates from SurveyTensor: {coords.shape}")
+                    logger.info(
+                        f"✅ Extracted 3D coordinates from SurveyTensor: {coords.shape}"
+                    )
                     tensor = coords
                 else:
-                    raise ValueError("SurveyTensor spatial_tensor has no cartesian attribute")
+                    raise ValueError(
+                        "SurveyTensor spatial_tensor has no cartesian attribute"
+                    )
             except Exception as e:
-                logger.error(f"❌ Failed to extract spatial coordinates from SurveyTensor: {e}")
-                raise ValueError(f"Failed to extract spatial coordinates from SurveyTensor: {e}")
+                logger.error(
+                    f"❌ Failed to extract spatial coordinates from SurveyTensor: {e}"
+                )
+                raise ValueError(
+                    f"Failed to extract spatial coordinates from SurveyTensor: {e}"
+                )
 
         # Ensure tensor is 2D with shape [N, 3]
         if tensor.dim() == 1:
@@ -238,7 +254,9 @@ class ZeroCopyBridge:
                 # Single point [3] -> [1, 3]
                 tensor = tensor.unsqueeze(0)
             else:
-                raise ValueError(f"1D tensor must have 3 elements, got {tensor.shape[0]}")
+                raise ValueError(
+                    f"1D tensor must have 3 elements, got {tensor.shape[0]}"
+                )
         elif tensor.dim() == 2:
             if tensor.shape[-1] != 3:
                 raise ValueError(
@@ -246,80 +264,73 @@ class ZeroCopyBridge:
                 )
         else:
             raise ValueError(f"Expected 1D or 2D tensor, got {tensor.dim()}D tensor")
-        
+
         return tensor
 
 
 @contextmanager
 def pyvista_mesh_context():
-    """Context manager for PyVista mesh operations with proper cleanup."""
+    """Context manager for PyVista mesh operations with cleanup."""
     try:
         yield
     finally:
-        # Gentle cleanup - just ensure CUDA cache is cleared
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        _mesh_manager.cleanup_all()
 
 
 class PyVistaZeroCopyBridge(ZeroCopyBridge):
-    """High-performance zero-copy bridge to PyVista meshes."""
+    """Zero-copy bridge for PyVista."""
 
     def to_pyvista(
         self, tensor: torch.Tensor, scalars: Optional[torch.Tensor] = None, **kwargs
     ):
-        """Convert tensor to PyVista mesh with zero-copy optimization."""
+        """
+        Convert tensor to PyVista PolyData with zero-copy optimization.
+
+        Args:
+            tensor: 3D coordinates tensor [N, 3]
+            scalars: Optional scalar values for coloring
+            **kwargs: Additional PyVista parameters
+
+        Returns:
+            PyVista PolyData object
+        """
+        import pyvista as pv
 
         with zero_copy_context("PyVista conversion"):
-            # Validate and optimize
-            points_tensor = self.validate_3d_coordinates(tensor)
-            points_optimized = self.ensure_cpu_contiguous(points_tensor)
+            # Optimize tensor layout
+            coords = self.ensure_cpu_contiguous(tensor)
+            coords = self.validate_3d_coordinates(coords)
 
-            # Zero-copy numpy conversion
-            points_np = points_optimized.numpy()
+            # Convert to numpy with zero-copy
+            coords_np = coords.numpy()
 
-            # Create mesh with robust error handling
-            try:
-                # Create a copy to avoid zero-copy issues with PyVista's __del__
-                points_copy = points_np.copy()
-                mesh = pv.PolyData(points_copy)
+            # Create PyVista points
+            points = pv.PolyData(coords_np)
 
-                # Add scalar data efficiently
-                if scalars is not None:
-                    scalars_optimized = self.ensure_cpu_contiguous(scalars)
-                    scalars_copy = scalars_optimized.numpy().copy()
-                    mesh.point_data["scalars"] = scalars_copy
+            # Add scalars if provided
+            if scalars is not None:
+                scalars_opt = self.ensure_cpu_contiguous(scalars)
+                points.point_data["scalars"] = scalars_opt.numpy()
 
-                # Force proper VTK initialization to prevent __del__ issues
-                _ = mesh.n_points  # This forces internal initialization
+            # Register for cleanup
+            _mesh_manager.register_mesh(points)
 
-                return mesh
-
-            except Exception as e:
-                logger.error(f"PyVista mesh creation failed: {e}")
-                raise e
+            return points
 
     def to_pyvista_safe(
         self, tensor: torch.Tensor, scalars: Optional[torch.Tensor] = None, **kwargs
     ):
-        """Convert tensor to PyVista mesh with safe cleanup."""
+        """Safe version with automatic cleanup."""
         with pyvista_mesh_context():
             return self.to_pyvista(tensor, scalars, **kwargs)
 
     def cleanup_pyvista_mesh(self, mesh):
-        """Properly cleanup PyVista mesh to prevent exceptions."""
-        if mesh is None:
-            return
-
-        try:
-            # Gentle cleanup - just clear point data
-            if hasattr(mesh, "point_data") and mesh.point_data:
-                mesh.point_data.clear()
-        except:
-            pass  # Ignore cleanup errors
+        """Clean up PyVista mesh."""
+        _mesh_manager.safe_polydata_del(mesh)
 
 
 class BlenderZeroCopyBridge(ZeroCopyBridge):
-    """Ultra-high-performance zero-copy bridge to Blender."""
+    """Zero-copy bridge for Blender."""
 
     def to_blender(
         self,
@@ -327,52 +338,56 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
         name: str = "astro_object",
         collection_name: str = "AstroLab",
     ) -> Optional[Any]:
-        """Convert tensor to Blender object with maximum performance."""
-        # Lazy load Blender modules
-        bpy, mathutils = _get_blender_modules()
+        """
+        Convert tensor to Blender mesh with zero-copy optimization.
+
+        Args:
+            tensor: 3D coordinates tensor [N, 3]
+            name: Name for the Blender object
+            collection_name: Name for the collection
+
+        Returns:
+            Blender mesh object or None if Blender not available
+        """
         if bpy is None:
-            raise ImportError("Blender (bpy) not available")
+            logger.warning("Blender not available")
+            return None
 
-        # Use proper context manager for memory management
-        from ..bpy import blender_memory_context
+        with zero_copy_context("Blender conversion"):
+            # Optimize tensor layout
+            coords = self.ensure_cpu_contiguous(tensor)
+            coords = self.validate_3d_coordinates(coords)
 
-        with blender_memory_context():
-            with zero_copy_context("Blender conversion"):
-                # Validate and optimize
-                points_tensor = self.validate_3d_coordinates(tensor)
-                data_optimized = self.ensure_cpu_contiguous(points_tensor)
+            # Convert to numpy with zero-copy
+            coords_np = coords.numpy()
 
-                # Create mesh
-                mesh = bpy.data.meshes.new(name)
-                num_verts = data_optimized.shape[0]
-                mesh.vertices.add(num_verts)
+            # Create Blender mesh
+            mesh = bpy.data.meshes.new(name)
+            obj = bpy.data.objects.new(name, mesh)
 
-                # Ultra-fast foreach_set transfer
-                coords_flat = data_optimized.view(-1).numpy()
-                mesh.vertices.foreach_set("co", coords_flat)
-                mesh.update()
+            # Add to collection
+            collection = bpy.data.collections.get(collection_name)
+            if collection is None:
+                collection = bpy.data.collections.new(collection_name)
+                bpy.context.scene.collection.children.link(collection)
 
-                # Create object and add to collection
-                obj = bpy.data.objects.new(name, mesh)
+            collection.objects.link(obj)
 
-                try:
-                    collection = bpy.data.collections[collection_name]
-                except KeyError:
-                    collection = bpy.data.collections.new(collection_name)
-                    bpy.context.scene.collection.children.link(collection)
+            # Set mesh data
+            mesh.from_pydata(coords_np.tolist(), [], [])
+            mesh.update()
 
-                collection.objects.link(obj)
-                return obj
+            return obj
 
 
 class NumpyZeroCopyBridge(ZeroCopyBridge):
-    """Zero-copy bridge between PyTorch tensors and NumPy arrays."""
+    """Zero-copy bridge for NumPy."""
 
     def to_numpy(self, tensor: torch.Tensor, force_copy: bool = False) -> np.ndarray:
-        """Convert tensor to NumPy with zero-copy when possible."""
-        with zero_copy_context("Tensor to NumPy"):
-            optimized = self.ensure_cpu_contiguous(tensor)
-            return optimized.numpy().copy() if force_copy else optimized.numpy()
+        """Convert tensor to numpy array with zero-copy when possible."""
+        if force_copy or not tensor.is_contiguous():
+            return tensor.detach().cpu().numpy()
+        return tensor.detach().cpu().numpy()
 
     def from_numpy(
         self,
@@ -380,156 +395,118 @@ class NumpyZeroCopyBridge(ZeroCopyBridge):
         device: Optional[torch.device] = None,
         dtype: Optional[torch.dtype] = None,
     ) -> torch.Tensor:
-        """Convert NumPy array to tensor with zero-copy when possible."""
-        with zero_copy_context("NumPy to tensor"):
-            tensor = torch.from_numpy(array)
-            if device is not None or dtype is not None:
-                tensor = tensor.to(device=device, dtype=dtype)
-            return tensor
+        """Convert numpy array to tensor with zero-copy when possible."""
+        if device is None:
+            device = torch.device("cpu")
+        if dtype is None:
+            dtype = torch.float32
 
-
-# =========================================================================
-# Bidirectional Bridge with Live Sync
-# =========================================================================
+        return torch.from_numpy(array).to(device=device, dtype=dtype)
 
 
 class BidirectionalTensorBridge:
-    """
-    Complete bidirectional bridge between PyVista and Blender with live sync.
-
-    Consolidates all tensor bridge functionality with zero-copy operations.
-    """
+    """Bidirectional bridge between different frameworks."""
 
     def __init__(self, config: Optional[SyncConfig] = None):
-        """Initialize the bidirectional bridge."""
+        """Initialize bridge with configuration."""
         self.config = config or SyncConfig()
-        self._sync_thread = None
-        self._sync_running = False
-        self._sync_pairs = {}  # {source_id: target}
-        self._sync_callbacks = []
-
-        # Initialize bridges
         self.pyvista_bridge = PyVistaZeroCopyBridge()
         self.blender_bridge = BlenderZeroCopyBridge()
         self.numpy_bridge = NumpyZeroCopyBridge()
-
-        logger.info("🌉 Bidirectional Tensor Bridge initialized")
+        self.sync_callbacks = []
+        self.sync_active = False
 
     def pyvista_to_blender(
         self, mesh, name: str = "pyvista_mesh", collection_name: str = "PyVistaImports"
     ) -> Optional[Any]:
-        """Convert PyVista mesh to Blender object."""
+        """
+        Convert PyVista mesh to Blender object.
 
-        bpy, mathutils = _get_blender_modules()
+        Args:
+            mesh: PyVista PolyData object
+            name: Name for Blender object
+            collection_name: Name for Blender collection
+
+        Returns:
+            Blender object or None
+        """
         if bpy is None:
-            raise ImportError("Blender not available")
+            logger.warning("Blender not available")
+            return None
 
         try:
-            # Extract mesh data
-            vertices = mesh.points
-            faces = mesh.faces if hasattr(mesh, "faces") else []
+            # Extract points from PyVista mesh
+            points = mesh.points
+            if points is None:
+                logger.warning("PyVista mesh has no points")
+                return None
 
-            # Create Blender mesh
-            blender_mesh = bpy.data.meshes.new(name)
-            blender_obj = bpy.data.objects.new(name, blender_mesh)
+            # Convert to tensor
+            tensor = torch.tensor(points, dtype=torch.float32)
 
-            # Add vertices
-            blender_mesh.vertices.add(len(vertices))
-            blender_mesh.vertices.foreach_set("co", vertices.flatten())
-
-            # Add faces if available
-            if len(faces) > 0:
-                # Simple face handling for now
-                blender_mesh.polygons.add(len(faces) // 4)  # Assuming quads
-                blender_mesh.loops.add(len(faces))
-                blender_mesh.loops.foreach_set("vertex_index", faces)
-
-            blender_mesh.update()
-
-            # Add to collection
-            try:
-                collection = bpy.data.collections[collection_name]
-            except KeyError:
-                collection = bpy.data.collections.new(collection_name)
-                bpy.context.scene.collection.children.link(collection)
-
-            collection.objects.link(blender_obj)
-
-            # Store sync pair
-            self._sync_pairs[id(mesh)] = blender_obj
-
-            logger.info(f"✅ Converted PyVista mesh to Blender: {name}")
-            return blender_obj
+            # Convert to Blender
+            return self.blender_bridge.to_blender(tensor, name, collection_name)
 
         except Exception as e:
-            logger.error(f"❌ Failed to convert PyVista to Blender: {e}")
+            logger.error(f"Error converting PyVista to Blender: {e}")
             return None
 
     def create_live_sync(self, sync_interval: Optional[float] = None) -> bool:
         """Create live synchronization between frameworks."""
-        if self._sync_running:
-            logger.warning("Live sync already running")
+        if sync_interval is None:
+            sync_interval = self.config.sync_interval
+
+        if self.sync_active:
+            logger.warning("Live sync already active")
             return False
 
-        interval = sync_interval or self.config.sync_interval
+        self.sync_active = True
 
         def sync_loop():
-            while self._sync_running:
+            while self.sync_active:
                 try:
-                    # Call custom sync callbacks
-                    for callback in self._sync_callbacks:
+                    for callback in self.sync_callbacks:
                         callback()
+                    time.sleep(sync_interval)
                 except Exception as e:
-                    logger.error(f"Live sync error: {e}")
+                    logger.error(f"Sync loop error: {e}")
+                    break
 
-                time.sleep(interval)
+        import threading
 
-        self._sync_running = True
-        self._sync_thread = threading.Thread(target=sync_loop, daemon=True)
-        self._sync_thread.start()
+        sync_thread = threading.Thread(target=sync_loop, daemon=True)
+        sync_thread.start()
 
-        logger.info(f"✅ Live sync started (interval: {interval}s)")
         return True
 
     def stop_live_sync(self):
         """Stop live synchronization."""
-        if self._sync_running:
-            self._sync_running = False
-            if self._sync_thread:
-                self._sync_thread.join(timeout=1.0)
-            logger.info("✅ Live sync stopped")
+        self.sync_active = False
 
     def add_sync_callback(self, callback):
-        """Add custom callback for live synchronization."""
-        self._sync_callbacks.append(callback)
-
-
-# =========================================================================
-# High-level API
-# =========================================================================
+        """Add callback for synchronization."""
+        self.sync_callbacks.append(callback)
 
 
 def transfer_to_framework(tensor: torch.Tensor, framework: str, **kwargs) -> Any:
     """
-    Transfer tensor data to visualization framework with zero-copy.
+    Transfer tensor to specified framework with zero-copy optimization.
 
     Args:
-        tensor: Source tensor
+        tensor: Input tensor
         framework: Target framework ('pyvista', 'blender', 'numpy')
-        **kwargs: Framework-specific arguments
+        **kwargs: Framework-specific parameters
 
     Returns:
-        Converted object in target framework
+        Framework-specific object
     """
-    framework_lower = framework.lower()
-
-    if framework_lower == "pyvista":
+    if framework == "pyvista":
         bridge = PyVistaZeroCopyBridge()
         return bridge.to_pyvista(tensor, **kwargs)
-    elif framework_lower == "blender":
+    elif framework == "blender":
         bridge = BlenderZeroCopyBridge()
         return bridge.to_blender(tensor, **kwargs)
-    elif framework_lower == "numpy":
+    elif framework == "numpy":
         bridge = NumpyZeroCopyBridge()
         return bridge.to_numpy(tensor, **kwargs)
     else:
@@ -538,26 +515,36 @@ def transfer_to_framework(tensor: torch.Tensor, framework: str, **kwargs) -> Any
 
 @contextmanager
 def pinned_memory_context(size_mb: int = 100):
-    """Context manager for pinned memory optimization."""
+    """
+    Context manager for pinned memory operations.
+
+    Args:
+        size_mb: Size of pinned memory in MB
+
+    Yields:
+        Pinned memory context
+    """
     if not torch.cuda.is_available():
         yield
         return
 
     try:
-        # Pre-allocate pinned memory for efficient CPU-GPU transfers
-        pool_size = size_mb * 1024 * 1024 // 4
-        pool_tensor = torch.empty(pool_size, dtype=torch.float32).pin_memory()
-        yield
+        # Allocate pinned memory
+        pinned_tensor = torch.empty(
+            size_mb * 1024 * 1024 // 4, dtype=torch.float32, pin_memory=True
+        )
+        yield pinned_tensor
     finally:
-        if "pool_tensor" in locals():
-            del pool_tensor
+        # Cleanup
+        if "pinned_tensor" in locals():
+            del pinned_tensor
+        torch.cuda.empty_cache()
 
 
-# High-level convenience functions
 def create_bidirectional_bridge(
     config: Optional[SyncConfig] = None,
 ) -> BidirectionalTensorBridge:
-    """Create a new bidirectional bridge instance."""
+    """Create a bidirectional bridge instance."""
     return BidirectionalTensorBridge(config)
 
 
@@ -579,30 +566,3 @@ def quick_convert_tensor_to_blender(tensor: torch.Tensor, **kwargs) -> Optional[
     """Quick conversion from tensor to Blender."""
     bridge = BlenderZeroCopyBridge()
     return bridge.to_blender(tensor, **kwargs)
-
-
-__all__ = [
-    # Bridge classes
-    "PyVistaZeroCopyBridge",
-    "BlenderZeroCopyBridge",
-    "NumpyZeroCopyBridge",
-    "BidirectionalTensorBridge",
-    "ZeroCopyBridge",
-    # Configuration
-    "SyncConfig",
-    # High-level API
-    "transfer_to_framework",
-    "create_bidirectional_bridge",
-    "quick_convert_pyvista_to_blender",
-    "quick_convert_tensor_to_pyvista",
-    "quick_convert_tensor_to_blender",
-    # Utilities
-    "optimize_tensor_layout",
-    "get_tensor_memory_info",
-    # Context managers
-    "zero_copy_context",
-    "pinned_memory_context",
-    "pyvista_mesh_context",
-    # Protocol
-    "TensorProtocol",
-]

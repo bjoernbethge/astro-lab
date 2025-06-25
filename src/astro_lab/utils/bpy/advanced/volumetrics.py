@@ -16,40 +16,37 @@ Version: 1.0.0
 Blender: 4.4+
 """
 
-import os
-import warnings
+# pyright: reportAttributeAccessIssue=false
+# pyright: reportGeneralTypeIssues=false
+
 import math
+import os
 import random
+import warnings
 from typing import Any, Dict, List, Optional, Tuple, Union
-from .. import numpy_compat  # noqa: F401
+
+import bmesh
 import bpy
+import numpy as np
+from mathutils import Euler, Matrix, Vector
+
+from .. import numpy_compat  # noqa: F401
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
-try:
-    import bmesh
-    import numpy as np
-    from mathutils import Euler, Matrix, Vector
-    BPY_AVAILABLE = bpy is not None
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    BPY_AVAILABLE = False
-    bpy = None
-    bmesh = None
-    Vector = None
 
 class VolumetricAstronomy:
     """Create volumetric astronomical phenomena"""
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_emission_nebula(
         center: Vector = Vector((0, 0, 0)),
         size: float = 10.0,
         nebula_type: str = "h_alpha",
         density: float = 0.1,
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore
         """
         Create an emission nebula with realistic structure.
 
@@ -76,13 +73,13 @@ class VolumetricAstronomy:
 
         return nebula_obj
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_stellar_wind(
         star_obj: bpy.types.Object,
         wind_speed: float = 500.0,
         mass_loss_rate: float = 1e-6,
         wind_radius: float = 5.0,
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore # noqa: F821
         """
         Create stellar wind visualization around a star.
 
@@ -111,12 +108,12 @@ class VolumetricAstronomy:
 
         return wind_obj
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_planetary_atmosphere(
         planet_obj: bpy.types.Object,
         atmosphere_type: str = "earth_like",
         thickness: float = 0.5,
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore # noqa: F821
         """
         Create layered planetary atmosphere with scattering.
 
@@ -145,13 +142,13 @@ class VolumetricAstronomy:
 
         return atmo_obj
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def create_galactic_dust_lane(
         start_pos: Vector,
         end_pos: Vector,
         width: float = 2.0,
         dust_density: float = 0.05,
-    ) -> bpy.types.Object:
+    ) -> bpy.types.Object:  # type: ignore # noqa: F821
         """
         Create galactic dust lane with absorption and scattering.
 
@@ -184,8 +181,8 @@ class VolumetricAstronomy:
 
         return dust_obj
 
-    @staticmethod
-    def _add_nebula_structure_nodes(obj: bpy.types.Object, density: float) -> None:
+    @staticmethod  # type: ignore
+    def _add_nebula_structure_nodes(obj: bpy.types.Object, density: float) -> None:  # type: ignore # noqa: F821
         """Add geometry nodes for nebula structure."""
         # Add geometry nodes modifier
         modifier = obj.modifiers.new(name="NebulaStructure", type="NODES")
@@ -228,10 +225,10 @@ class VolumetricAstronomy:
         # Connect
         links.new(input_node.outputs["Geometry"], output_node.inputs["Geometry"])
 
-    @staticmethod
+    @staticmethod  # type: ignore
     def _add_wind_particles(
         obj: bpy.types.Object, wind_speed: float, mass_loss_rate: float
-    ) -> None:
+    ) -> None:  # type: ignore
         """Add particle system for stellar wind."""
         # Add particle system
         particle_settings = bpy.data.particles.new("StellarWindParticles")
@@ -246,11 +243,12 @@ class VolumetricAstronomy:
         particle_settings.lifetime = 100
         particle_settings.render_type = "NONE"  # Volume only
 
+
 class VolumetricShaders:
     """Volumetric shaders for astronomical phenomena"""
 
-    @staticmethod
-    def create_emission_nebula_material(nebula_type: str) -> bpy.types.Material:
+    @staticmethod  # type: ignore
+    def create_emission_nebula_material(nebula_type: str) -> bpy.types.Material:  # type: ignore # noqa: F821
         """
         Create emission nebula material based on spectral lines.
 
@@ -321,8 +319,8 @@ class VolumetricShaders:
 
         return mat
 
-    @staticmethod
-    def create_stellar_wind_material(wind_speed: float) -> bpy.types.Material:
+    @staticmethod  # type: ignore
+    def create_stellar_wind_material(wind_speed: float) -> bpy.types.Material:  # type: ignore # noqa: F821
         """
         Create stellar wind material with velocity-based opacity.
 
@@ -391,8 +389,8 @@ class VolumetricShaders:
 
         return mat
 
-    @staticmethod
-    def create_atmospheric_material(atmosphere_type: str) -> bpy.types.Material:
+    @staticmethod  # type: ignore
+    def create_atmospheric_material(atmosphere_type: str) -> bpy.types.Material:  # type: ignore # noqa: F821
         """
         Create planetary atmosphere material with Rayleigh scattering.
 
@@ -462,8 +460,8 @@ class VolumetricShaders:
 
         return mat
 
-    @staticmethod
-    def create_dust_lane_material(dust_density: float) -> bpy.types.Material:
+    @staticmethod  # type: ignore
+    def create_dust_lane_material(dust_density: float) -> bpy.types.Material:  # type: ignore # noqa: F821
         """
         Create galactic dust lane material with absorption.
 
@@ -511,6 +509,7 @@ class VolumetricShaders:
 
         return mat
 
+
 # Example usage functions
 def create_nebula_complex():
     """Create a complex nebula with multiple emission regions."""
@@ -533,6 +532,7 @@ def create_nebula_complex():
     )
 
     print("Complex nebula scene created!")
+
 
 def create_stellar_system_with_winds():
     """Create stellar system with stellar winds."""
@@ -561,6 +561,7 @@ def create_stellar_system_with_winds():
             )
 
     print("Stellar system with winds created!")
+
 
 if __name__ == "__main__":
     create_nebula_complex()

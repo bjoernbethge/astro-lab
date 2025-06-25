@@ -17,13 +17,26 @@ Access via:
 
 from typing import Set
 
+from . import advanced as b3d_adv
+
 # Use centralized bpy import - modules are already loaded if available
-from . import bpy, advanced as b3d_adv, core, grease_pencil_2d, grease_pencil_3d, live_tensor_bridge
+from . import (  # type: ignore
+    bpy,
+    core,
+    grease_pencil_2d,
+    grease_pencil_3d,
+    live_tensor_bridge,
+)
 
 # Import core functions directly
 from .core import (
-    create_camera, create_light, create_material, normalize_scene, reset_scene,
-    create_cosmic_grid, create_text_legend
+    create_camera,
+    create_cosmic_grid,
+    create_light,
+    create_material,
+    create_text_legend,
+    normalize_scene,
+    reset_scene,
 )
 from .grease_pencil_2d import GreasePencil2DPlotter
 from .grease_pencil_3d import GreasePencil3DPlotter
@@ -32,20 +45,24 @@ from .grease_pencil_3d import GreasePencil3DPlotter
 # Programmatic Python API (for Widget and advanced scripting)
 # =============================================================================
 
+
 class AstroLabApi:
     """
     The main programmatic API for Astro-Lab's Blender functionalities.
     This class provides direct access to all visualization and simulation tools.
     """
+
     def __init__(self):
         if bpy is None:
-            raise RuntimeError("Blender is not available. AstroLabApi cannot be initialized.")
+            raise RuntimeError(
+                "Blender is not available. AstroLabApi cannot be initialized."
+            )
 
         # Live Tensor-Socket Bridge
         self.live_bridge = live_tensor_bridge
 
-        # Advanced Visualization Suite
-        self.advanced = b3d_adv.AdvancedVisualizationSuite()
+        #  Visualization Suite
+        self.advanced = b3d_adv.VisualizationSuite()
 
         # Core functionalities
         self.core = {
@@ -65,66 +82,72 @@ class AstroLabApi:
     def __repr__(self):
         return "AstroLabApi(live_bridge, advanced, core, plot_2d, plot_3d)"
 
+
 # =============================================================================
 # Blender Operator Wrappers (for Blender UI and simple scripting)
 # =============================================================================
 
 if bpy is not None:
+
     class AL_OT_CreateProceduralGalaxy(bpy.types.Operator):  # type: ignore
         """Create a procedural galaxy using Astro-Lab's advanced tools."""
+
         bl_idname = "al.create_procedural_galaxy"
         bl_label = "AL: Create Procedural Galaxy"
         bl_description = "Generates a procedural galaxy with Geometry Nodes"
-        bl_options = {'REGISTER', 'UNDO'}
+        bl_options = {"REGISTER", "UNDO"}
 
         galaxy_type: bpy.props.EnumProperty(  # type: ignore
             name="Galaxy Type",
             items=[
-                ('spiral', "Spiral", "A spiral galaxy with arms"),
-                ('elliptical', "Elliptical", "An elliptical galaxy"),
-                ('irregular', "Irregular", "An irregular galaxy"),
+                ("spiral", "Spiral", "A spiral galaxy with arms"),
+                ("elliptical", "Elliptical", "An elliptical galaxy"),
+                ("irregular", "Irregular", "An irregular galaxy"),
             ],
-            default='spiral'
+            default="spiral",
         )
-        num_stars: bpy.props.IntProperty(name="Number of Stars", default=50000, min=1000, max=500000)  # type: ignore
+        num_stars: bpy.props.IntProperty(  # type: ignore
+            name="Number of Stars", default=50000, min=1000, max=500000
+        )  # type: ignore
         radius: bpy.props.FloatProperty(name="Radius", default=20.0, min=1.0, max=100.0)  # type: ignore
 
-        @classmethod
+        @classmethod  # type: ignore
         def poll(cls, context):  # type: ignore
-            return b3d_adv.ADVANCED_AVAILABLE
+            return True  #  modules sind immer verfügbar
 
         def execute(self, context):  # type: ignore
             api = AstroLabApi()
             api.advanced.create_procedural_galaxy(
                 galaxy_type=self.galaxy_type,
                 num_stars=self.num_stars,
-                radius=self.radius
+                radius=self.radius,
             )
-            self.report({'INFO'}, f"Created {self.galaxy_type} galaxy.")
-            return {'FINISHED'}
+            self.report({"INFO"}, f"Created {self.galaxy_type} galaxy.")
+            return {"FINISHED"}
 
     class AL_OT_CreateEmissionNebula(bpy.types.Operator):  # type: ignore
         """Create a volumetric emission nebula."""
+
         bl_idname = "al.create_emission_nebula"
         bl_label = "AL: Create Emission Nebula"
         bl_description = "Generates a volumetric emission nebula"
-        bl_options = {'REGISTER', 'UNDO'}
+        bl_options = {"REGISTER", "UNDO"}
 
         nebula_type: bpy.props.EnumProperty(  # type: ignore
             name="Nebula Type",
             items=[
-                ('h_alpha', "H-Alpha", "Hydrogen-alpha emission"),
-                ('oxygen', "Oxygen-III", "Oxygen-III emission"),
-                ('planetary', "Planetary", "A planetary nebula"),
+                ("h_alpha", "H-Alpha", "Hydrogen-alpha emission"),
+                ("oxygen", "Oxygen-III", "Oxygen-III emission"),
+                ("planetary", "Planetary", "A planetary nebula"),
             ],
-            default='h_alpha'
+            default="h_alpha",
         )
         size: bpy.props.FloatProperty(name="Size", default=15.0, min=1.0, max=100.0)  # type: ignore
         density: bpy.props.FloatProperty(name="Density", default=0.2, min=0.01, max=1.0)  # type: ignore
 
-        @classmethod
+        @classmethod  # type: ignore
         def poll(cls, context):  # type: ignore
-            return b3d_adv.ADVANCED_AVAILABLE
+            return True  #  modules sind immer verfügbar
 
         def execute(self, context):  # type: ignore
             api = AstroLabApi()
@@ -132,8 +155,8 @@ if bpy is not None:
                 nebula_type=self.nebula_type,
                 size=self.size,
             )
-            self.report({'INFO'}, f"Created {self.nebula_type} nebula.")
-            return {'FINISHED'}
+            self.report({"INFO"}, f"Created {self.nebula_type} nebula.")
+            return {"FINISHED"}
 
     # Add more operators for other functionalities here...
 
@@ -150,16 +173,16 @@ if bpy is not None:
     def register():
         """Register all Astro-Lab operators and create the API."""
         for cls in operator_classes:
-            bpy.utils.register_class(cls)
+            bpy.utils.register_class(cls)  # type: ignore
 
     def unregister():
         """Unregister all Astro-Lab operators."""
         for cls in reversed(operator_classes):
-            bpy.utils.unregister_class(cls)
+            bpy.utils.unregister_class(cls)  # type: ignore
 else:
     # Dummy functions when Blender is not available
     def register():
         pass
-    
+
     def unregister():
-        pass 
+        pass

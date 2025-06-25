@@ -17,19 +17,19 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 # 3. Import bpy/mathutils direkt mit Memory Management
-try:
-    import bpy
-    import mathutils
+import bpy  # type: ignore
+import mathutils  # type: ignore
 
-    # Force garbage collection after Blender imports
-    gc.collect()
+# 4. Import operators with memory management
+from .operators import AstroLabApi
+from .operators import register as al_register
+from .operators import unregister as al_unregister
 
-except ImportError as e:
-    print(f"Blender modules not available: {e}")
-    bpy = None
-    mathutils = None
+# Force garbage collection after Blender imports
+gc.collect()
 
-# 4. Context Managers for proper memory management - ONLY BPY
+
+# 5. Context Managers for proper memory management - ONLY BPY
 @contextmanager
 def blender_memory_context():
     """
@@ -42,7 +42,7 @@ def blender_memory_context():
     try:
         # Setup: Clear any orphaned data blocks
         try:
-            bpy.ops.outliner.orphans_purge(
+            bpy.ops.outliner.orphans_purge(  # type: ignore
                 do_local_ids=True, do_linked_ids=True, do_recursive=True
             )
         except:
@@ -51,53 +51,60 @@ def blender_memory_context():
     finally:
         # Cleanup: Purge orphaned data and force garbage collection
         try:
-            bpy.ops.outliner.orphans_purge(
+            bpy.ops.outliner.orphans_purge(  # type: ignore
                 do_local_ids=True, do_linked_ids=True, do_recursive=True
             )
         except:
             pass  # Ignore if purge fails
         gc.collect()
 
-@contextmanager
+
 def bpy_object_context(mesh_obj):
     """
     Context manager for BPY mesh operations - NO BMESH.
     Only uses pure BPY API for mesh manipulation.
     """
-    if bpy is None:
-        raise ImportError("Blender (bpy) not available")
 
-    # Store original selection state
-    original_active = bpy.context.view_layer.objects.active
-    original_selected = [obj for obj in bpy.context.selected_objects]
+    @contextmanager
+    def _context():
+        if bpy is None:
+            raise ImportError("Blender (bpy) not available")
 
-    try:
-        # Setup: Make target object active and selected
-        bpy.ops.object.select_all(action="DESELECT")
-        bpy.context.view_layer.objects.active = mesh_obj
-        mesh_obj.select_set(True)
+        # Store original selection state
+        original_active = bpy.context.view_layer.objects.active  # type: ignore
+        original_selected = [obj for obj in bpy.context.selected_objects]  # type: ignore
 
-        yield mesh_obj
-
-    finally:
-        # Cleanup: Restore original selection
         try:
-            bpy.ops.object.select_all(action="DESELECT")
-            for obj in original_selected:
-                obj.select_set(True)
-            if original_active:
-                bpy.context.view_layer.objects.active = original_active
-        except:
-            pass  # Ignore if restoration fails
-        gc.collect()
+            # Setup: Make target object active and selected
+            bpy.ops.object.select_all(action="DESELECT")  # type: ignore
+            bpy.context.view_layer.objects.active = mesh_obj  # type: ignore
+            mesh_obj.select_set(True)
 
-# 5. Lazy-import functions for submodules
+            yield mesh_obj
+
+        finally:
+            # Cleanup: Restore original selection
+            try:
+                bpy.ops.object.select_all(action="DESELECT")  # type: ignore
+                for obj in original_selected:
+                    obj.select_set(True)
+                if original_active:
+                    bpy.context.view_layer.objects.active = original_active  # type: ignore
+            except:
+                pass  # Ignore if restoration fails
+            gc.collect()
+
+    return _context()
+
+
+# 6. Lazy-import functions for submodules
 def get_core():
     """Get core module with memory management."""
     from . import core
 
     gc.collect()  # Clean up after import
     return core
+
 
 def get_grease_pencil_2d():
     """Get grease pencil 2D module with memory management."""
@@ -106,12 +113,14 @@ def get_grease_pencil_2d():
     gc.collect()  # Clean up after import
     return grease_pencil_2d
 
+
 def get_grease_pencil_3d():
     """Get grease pencil 3D module with memory management."""
     from . import grease_pencil_3d
 
     gc.collect()  # Clean up after import
     return grease_pencil_3d
+
 
 def get_advanced():
     """Get advanced module with memory management."""
@@ -120,18 +129,6 @@ def get_advanced():
     gc.collect()  # Clean up after import
     return advanced
 
-# 6. Import operators with memory management
-try:
-    from .operators import AstroLabApi
-    from .operators import register as al_register
-    from .operators import unregister as al_unregister
-
-    gc.collect()  # Clean up after import
-except ImportError as e:
-    print(f"Blender operators not available: {e}")
-    AstroLabApi = None
-    al_register = None
-    al_unregister = None
 
 __all__ = [
     "bpy",
@@ -148,17 +145,20 @@ __all__ = [
     "get_advanced",
 ]
 
+
 def register():
     """Register all Blender modules for Astro-Lab."""
     if al_register:
         al_register()
         gc.collect()  # Clean up after registration
 
+
 def unregister():
     """Unregister all Blender modules for Astro-Lab."""
     if al_unregister:
         al_unregister()
         gc.collect()  # Clean up after unregistration
+
 
 # Automatisch registrieren, wenn in Blender-Umgebung
 if bpy and hasattr(bpy, "context"):
