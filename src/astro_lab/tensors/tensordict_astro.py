@@ -1,9 +1,9 @@
 ﻿"""
-TensorDict-basierte Refaktorierung der astro_lab.tensors
-======================================================
+TensorDict-based refactoring of astro_lab.tensors
+================================================
 
-Diese Implementierung nutzt TensorDict für bessere Performance,
-native PyTorch Integration und hierarchische Datenstrukturen.
+This implementation uses TensorDict for better performance,
+native PyTorch Integration and hierarchical data structures.
 """
 
 from __future__ import annotations
@@ -11,68 +11,64 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
-import numpy as np
 
 
 class AstroTensorDict(TensorDict):
     """
-    Basis-Klasse für alle astronomischen TensorDicts.
+    Basis-class for all astronomical TensorDicts.
 
-    Erweitert TensorDict um astronomie-spezifische Funktionalität
-    während die native PyTorch Performance beibehalten wird.
+    Extends TensorDict with astronomical-specific functionality
+    while maintaining native PyTorch performance.
     """
 
-    def __init__(self, data: Dict[str, torch.Tensor], **kwargs):
-        """
-        Initialisiert AstroTensorDict.
-
-        Args:
-            data: Dictionary mit Tensoren und Metadaten
-            **kwargs: Zusätzliche TensorDict Parameter
-        """
-        # Ensure all tensors have consistent batch size
-        if data:
-            batch_sizes = [v.shape[0] for v in data.values() if isinstance(v, torch.Tensor) and v.dim() > 0]
-            if batch_sizes and not all(b == batch_sizes[0] for b in batch_sizes):
-                raise ValueError(f"Inconsistent batch sizes: {batch_sizes}")
+    def __init__(self, data: Dict[str, Any], **kwargs):
+        """Initialize TensorDictAstro with metadata handling."""
+        # Handle metadata separately to avoid batch dimension issues
+        metadata = data.pop("meta", {}) if "meta" in data else {}
 
         super().__init__(data, **kwargs)
 
-        # Add tensor type information
-        if "meta" not in self:
-            self["meta"] = TensorDict({}, batch_size=self.batch_size)
+        # Store metadata as instance variable to avoid batch dimension issues
+        self._metadata = metadata if metadata else {}
 
-        if "tensor_type" not in self["meta"]:
-            self["meta", "tensor_type"] = self.__class__.__name__
+        # Add tensor type information
+        if "tensor_type" not in self._metadata:
+            self._metadata["tensor_type"] = self.__class__.__name__
+
+    @property
+    def meta(self) -> Dict[str, Any]:
+        """Access metadata without batch dimension issues."""
+        return self._metadata
 
     @property
     def n_objects(self) -> int:
-        """Anzahl der Objekte (Batch-Größe)."""
+        """Number of objects (batch size)."""
         return self.batch_size[0] if self.batch_size else 0
 
     def add_history(self, operation: str, **details) -> AstroTensorDict:
-        """Fügt Eintrag zur Operationshistorie hinzu."""
-        if "history" not in self["meta"]:
-            self["meta", "history"] = []
+        """Adds entry to operations history."""
+        if "history" not in self._metadata:
+            self._metadata["history"] = []
 
         # Convert to list if it's a tensor (for compatibility)
-        history = self["meta", "history"]
+        history = self._metadata["history"]
         if isinstance(history, torch.Tensor):
             history = []
 
         history.append({"operation": operation, "details": details})
-        self["meta", "history"] = history
+        self._metadata["history"] = history
         return self
 
     def memory_info(self) -> Dict[str, Any]:
-        """Speicher-Informationen für alle Tensoren."""
+        """Memory information for all tensors."""
         info = {
             "total_bytes": 0,
             "n_tensors": 0,
-            "device": str(self.device) if hasattr(self, 'device') else "mixed",
+            "device": str(self.device) if hasattr(self, "device") else "mixed",
             "batch_size": self.batch_size,
         }
 
@@ -88,11 +84,11 @@ class AstroTensorDict(TensorDict):
 
 class SpatialTensorDict(AstroTensorDict):
     """
-    TensorDict für 3D-Raumkoordinaten.
+    TensorDict for 3D space coordinates.
 
-    Struktur:
+    Structure:
     {
-        "coordinates": Tensor[N, 3],  # x, y, z oder ra, dec, distance
+        "coordinates": Tensor[N, 3],  # x, y, z or ra, dec, distance
         "meta": {
             "coordinate_system": str,
             "unit": str,
@@ -101,27 +97,35 @@ class SpatialTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, coordinates: torch.Tensor, coordinate_system: str = "icrs", 
-                 unit: str = "parsec", epoch: float = 2000.0, **kwargs):
+    def __init__(
+        self,
+        coordinates: torch.Tensor,
+        coordinate_system: str = "icrs",
+        unit: str = "parsec",
+        epoch: float = 2000.0,
+        **kwargs,
+    ):
         """
-        Initialisiert SpatialTensorDict.
+        Initialize SpatialTensorDict.
 
         Args:
-            coordinates: [N, 3] Tensor mit Koordinaten
-            coordinate_system: Koordinatensystem
-            unit: Einheit der Koordinaten
-            epoch: Epoche der Koordinaten
+            coordinates: [N, 3] Tensor with coordinates
+            coordinate_system: Coordinate system
+            unit: Unit of coordinates
+            epoch: Epoch of coordinates
         """
         if coordinates.shape[-1] != 3:
-            raise ValueError(f"Coordinates must have shape [..., 3], got {coordinates.shape}")
+            raise ValueError(
+                f"Coordinates must have shape [..., 3], got {coordinates.shape}"
+            )
 
         data = {
             "coordinates": coordinates,
-            "meta": TensorDict({
+            "meta": {
                 "coordinate_system": coordinate_system,
                 "unit": unit,
                 "epoch": epoch,
-            }, batch_size=coordinates.shape[:-1])
+            },
         }
 
         super().__init__(data, batch_size=coordinates.shape[:-1], **kwargs)
@@ -140,10 +144,10 @@ class SpatialTensorDict(AstroTensorDict):
 
     @property
     def coordinate_system(self) -> str:
-        return self["meta", "coordinate_system"]
+        return self["meta"]["coordinate_system"]
 
     def to_spherical(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Konvertiert zu sphärischen Koordinaten (RA, Dec, Distanz)."""
+        """Converts to spherical coordinates (RA, Dec, Distance)."""
         x, y, z = self.x, self.y, self.z
 
         # Distance
@@ -159,23 +163,23 @@ class SpatialTensorDict(AstroTensorDict):
         return ra, dec, distance
 
     def angular_separation(self, other: SpatialTensorDict) -> torch.Tensor:
-        """Berechnet Winkeltrennung zu anderen Koordinaten."""
+        """Calculates angular separation to other coordinates."""
         ra1, dec1, _ = self.to_spherical()
         ra2, dec2, _ = other.to_spherical()
 
-        # Konvertiere zu Radians
+        # Convert to radians
         ra1_rad, dec1_rad = ra1 * math.pi / 180, dec1 * math.pi / 180
         ra2_rad, dec2_rad = ra2 * math.pi / 180, dec2 * math.pi / 180
 
-        # Sphärische Trigonometrie
-        cos_sep = (torch.sin(dec1_rad) * torch.sin(dec2_rad) + 
-                   torch.cos(dec1_rad) * torch.cos(dec2_rad) * 
-                   torch.cos(ra1_rad - ra2_rad))
+        # Spherical trigonometry
+        cos_sep = torch.sin(dec1_rad) * torch.sin(dec2_rad) + torch.cos(
+            dec1_rad
+        ) * torch.cos(dec2_rad) * torch.cos(ra1_rad - ra2_rad)
 
         return torch.acos(torch.clamp(cos_sep, -1, 1)) * 180 / math.pi
 
     def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:
-        """Findet Objekte innerhalb eines Kegels."""
+        """Finds objects within a cone."""
         center_spatial = SpatialTensorDict(center.unsqueeze(0))
         separations = self.angular_separation(center_spatial)
         return torch.where(separations <= radius_deg)[0]
@@ -183,11 +187,11 @@ class SpatialTensorDict(AstroTensorDict):
 
 class PhotometricTensorDict(AstroTensorDict):
     """
-    TensorDict für photometrische Daten.
+    TensorDict for photometric data.
 
-    Struktur:
+    Structure:
     {
-        "magnitudes": Tensor[N, B],  # B = Anzahl Bänder
+        "magnitudes": Tensor[N, B],  # B = Number of bands
         "errors": Tensor[N, B],      # Optional
         "meta": {
             "bands": List[str],
@@ -197,30 +201,38 @@ class PhotometricTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, magnitudes: torch.Tensor, bands: List[str], 
-                 errors: Optional[torch.Tensor] = None, filter_system: str = "AB",
-                 is_magnitude: bool = True, **kwargs):
+    def __init__(
+        self,
+        magnitudes: torch.Tensor,
+        bands: List[str],
+        errors: Optional[torch.Tensor] = None,
+        filter_system: str = "AB",
+        is_magnitude: bool = True,
+        **kwargs,
+    ):
         """
-        Initialisiert PhotometricTensorDict.
+        Initialize PhotometricTensorDict.
 
         Args:
-            magnitudes: [N, B] Tensor mit Magnituden/Flüssen
-            bands: Liste der Bandnamen
-            errors: Optionale Fehler
+            magnitudes: [N, B] Tensor with magnitudes/fluxes
+            bands: List of band names
+            errors: Optional errors
             filter_system: Filtersystem
-            is_magnitude: True für Magnituden, False für Flüsse
+            is_magnitude: True for magnitudes, False for fluxes
         """
         if magnitudes.shape[-1] != len(bands):
-            raise ValueError(f"Number of bands ({len(bands)}) doesn't match data columns ({magnitudes.shape[-1]})")
+            raise ValueError(
+                f"Number of bands ({len(bands)}) doesn't match data columns ({magnitudes.shape[-1]})"
+            )
 
         data = {
             "magnitudes": magnitudes,
-            "meta": TensorDict({
+            "meta": {
                 "bands": bands,
                 "filter_system": filter_system,
                 "is_magnitude": is_magnitude,
                 "n_bands": len(bands),
-            }, batch_size=magnitudes.shape[:-1])
+            },
         }
 
         if errors is not None:
@@ -230,18 +242,18 @@ class PhotometricTensorDict(AstroTensorDict):
 
     @property
     def bands(self) -> List[str]:
-        return self["meta", "bands"]
+        return self["meta"]["bands"]
 
     @property
     def n_bands(self) -> int:
-        return self["meta", "n_bands"]
+        return self["meta"]["n_bands"]
 
     @property
     def is_magnitude(self) -> bool:
-        return self["meta", "is_magnitude"]
+        return self["meta"]["is_magnitude"]
 
     def get_band(self, band: str) -> torch.Tensor:
-        """Extrahiert Daten für ein spezifisches Band."""
+        """Extracts data for a specific band."""
         try:
             band_idx = self.bands.index(band)
             return self["magnitudes"][..., band_idx]
@@ -249,7 +261,7 @@ class PhotometricTensorDict(AstroTensorDict):
             raise ValueError(f"Band '{band}' not found in {self.bands}")
 
     def compute_colors(self, band_pairs: List[Tuple[str, str]]) -> TensorDict:
-        """Berechnet Farbindizes für Bandpaare."""
+        """Calculates color indices for band pairs."""
         if not self.is_magnitude:
             raise ValueError("Color computation requires magnitude data")
 
@@ -261,56 +273,64 @@ class PhotometricTensorDict(AstroTensorDict):
         return TensorDict(colors, batch_size=self.batch_size)
 
     def to_flux(self) -> PhotometricTensorDict:
-        """Konvertiert Magnituden zu Flüssen."""
+        """Converts magnitudes to fluxes."""
         if not self.is_magnitude:
             return self.clone()
 
         # F = 10^(-0.4 * M)
         flux_data = torch.pow(10, -0.4 * self["magnitudes"])
 
-        # Fehler-Propagation
+        # Error propagation
         new_errors = None
         if "errors" in self:
-            new_errors = flux_data * self["errors"] * (torch.log(torch.tensor(10.0)) / 2.5)
+            new_errors = (
+                flux_data * self["errors"] * (torch.log(torch.tensor(10.0)) / 2.5)
+            )
 
-        return PhotometricTensorDict(
+        result = PhotometricTensorDict(
             magnitudes=flux_data,
             bands=self.bands,
             errors=new_errors,
-            filter_system=self["meta", "filter_system"],
-            is_magnitude=False
-        ).add_history("to_flux")
+            filter_system=self["meta"]["filter_system"],
+            is_magnitude=False,
+        )
+        result.add_history("to_flux")
+        return result
 
     def to_magnitude(self) -> PhotometricTensorDict:
-        """Konvertiert Flüsse zu Magnituden."""
+        """Converts fluxes to magnitudes."""
         if self.is_magnitude:
             return self.clone()
 
         # M = -2.5 * log10(F)
         mag_data = -2.5 * torch.log10(self["magnitudes"])
 
-        # Fehler-Propagation
+        # Error propagation
         new_errors = None
         if "errors" in self:
-            new_errors = (2.5 / torch.log(torch.tensor(10.0))) * (self["errors"] / self["magnitudes"])
+            new_errors = (2.5 / torch.log(torch.tensor(10.0))) * (
+                self["errors"] / self["magnitudes"]
+            )
 
-        return PhotometricTensorDict(
+        result = PhotometricTensorDict(
             magnitudes=mag_data,
             bands=self.bands,
             errors=new_errors,
-            filter_system=self["meta", "filter_system"],
-            is_magnitude=True
-        ).add_history("to_magnitude")
+            filter_system=self["meta"]["filter_system"],
+            is_magnitude=True,
+        )
+        result.add_history("to_magnitude")
+        return result
 
 
 class SpectralTensorDict(AstroTensorDict):
     """
-    TensorDict für spektroskopische Daten.
+    TensorDict for spectroscopic data.
 
-    Struktur:
+    Structure:
     {
-        "flux": Tensor[N, W],       # W = Anzahl Wellenlängen
-        "wavelengths": Tensor[W],    # Wellenlängen-Grid
+        "flux": Tensor[N, W],       # W = Number of wavelengths
+        "wavelengths": Tensor[W],    # Wavelength grid
         "errors": Tensor[N, W],      # Optional
         "meta": {
             "redshift": float,
@@ -320,22 +340,30 @@ class SpectralTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, flux: torch.Tensor, wavelengths: torch.Tensor,
-                 errors: Optional[torch.Tensor] = None, redshift: float = 0.0,
-                 flux_units: str = "erg/s/cm2/A", wavelength_units: str = "Angstrom", **kwargs):
-
+    def __init__(
+        self,
+        flux: torch.Tensor,
+        wavelengths: torch.Tensor,
+        errors: Optional[torch.Tensor] = None,
+        redshift: float = 0.0,
+        flux_units: str = "erg/s/cm2/A",
+        wavelength_units: str = "Angstrom",
+        **kwargs,
+    ):
         if flux.shape[-1] != len(wavelengths):
-            raise ValueError(f"Flux shape {flux.shape} incompatible with wavelengths length {len(wavelengths)}")
+            raise ValueError(
+                f"Flux shape {flux.shape} incompatible with wavelengths length {len(wavelengths)}"
+            )
 
         data = {
             "flux": flux,
             "wavelengths": wavelengths,
-            "meta": TensorDict({
+            "meta": {
                 "redshift": redshift,
                 "flux_units": flux_units,
                 "wavelength_units": wavelength_units,
                 "n_wavelengths": len(wavelengths),
-            }, batch_size=flux.shape[:-1])
+            },
         }
 
         if errors is not None:
@@ -345,52 +373,56 @@ class SpectralTensorDict(AstroTensorDict):
 
     @property
     def redshift(self) -> float:
-        return self["meta", "redshift"]
+        return self["meta"]["redshift"]
 
     @property
     def rest_wavelengths(self) -> torch.Tensor:
-        """Rest-frame Wellenlängen."""
+        """Rest-frame wavelengths."""
         return self["wavelengths"] / (1 + self.redshift)
 
     def apply_redshift(self, z: float) -> SpectralTensorDict:
-        """Wendet Rotverschiebung an."""
+        """Applies redshift."""
         new_wavelengths = self["wavelengths"] * (1 + z)
 
-        return SpectralTensorDict(
+        result = SpectralTensorDict(
             flux=self["flux"],
             wavelengths=new_wavelengths,
             errors=self.get("errors"),
             redshift=self.redshift + z,
-            flux_units=self["meta", "flux_units"],
-            wavelength_units=self["meta", "wavelength_units"]
-        ).add_history("apply_redshift", z=z)
+            flux_units=self["meta"]["flux_units"],
+            wavelength_units=self["meta"]["wavelength_units"],
+        )
+        result.add_history("apply_redshift", z=z)
+        return result
 
     def normalize(self, wavelength: float) -> SpectralTensorDict:
-        """Normalisiert auf Fluss bei gegebener Wellenlänge."""
-        # Finde nächste Wellenlänge
+        """Normalizes to flux at given wavelength."""
+        # Find nearest wavelength
         idx = torch.argmin(torch.abs(self["wavelengths"] - wavelength))
         norm_flux = self["flux"][..., idx].unsqueeze(-1)
 
         normalized_flux = self["flux"] / (norm_flux + 1e-9)
 
-        return SpectralTensorDict(
+        result = SpectralTensorDict(
             flux=normalized_flux,
             wavelengths=self["wavelengths"],
             errors=self.get("errors"),
             redshift=self.redshift,
             flux_units="normalized",
-            wavelength_units=self["meta", "wavelength_units"]
-        ).add_history("normalize", wavelength=wavelength)
+            wavelength_units=self["meta"]["wavelength_units"],
+        )
+        result.add_history("normalize", wavelength=wavelength)
+        return result
 
 
 class LightcurveTensorDict(AstroTensorDict):
     """
-    TensorDict für Lichtkurven.
+    TensorDict for light curves.
 
-    Struktur:
+    Structure:
     {
-        "times": Tensor[N, T],       # T = Anzahl Zeitpunkte
-        "magnitudes": Tensor[N, T, B], # B = Anzahl Bänder
+        "times": Tensor[N, T],       # T = Number of time points
+        "magnitudes": Tensor[N, T, B], # B = Number of bands
         "errors": Tensor[N, T, B],    # Optional
         "meta": {
             "time_format": str,
@@ -399,23 +431,30 @@ class LightcurveTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, times: torch.Tensor, magnitudes: torch.Tensor,
-                 bands: List[str], errors: Optional[torch.Tensor] = None,
-                 time_format: str = "mjd", **kwargs):
-
-        # Konsistenz-Checks
+    def __init__(
+        self,
+        times: torch.Tensor,
+        magnitudes: torch.Tensor,
+        bands: List[str],
+        errors: Optional[torch.Tensor] = None,
+        time_format: str = "mjd",
+        **kwargs,
+    ):
+        # Consistency checks
         if times.shape != magnitudes.shape[:-1]:
-            raise ValueError(f"Times shape {times.shape} incompatible with magnitudes shape {magnitudes.shape}")
+            raise ValueError(
+                f"Times shape {times.shape} incompatible with magnitudes shape {magnitudes.shape}"
+            )
 
         data = {
             "times": times,
             "magnitudes": magnitudes,
-            "meta": TensorDict({
+            "meta": {
                 "time_format": time_format,
                 "bands": bands,
                 "n_bands": len(bands),
                 "n_times": times.shape[-1],
-            }, batch_size=times.shape[:-1])
+            },
         }
 
         if errors is not None:
@@ -425,59 +464,65 @@ class LightcurveTensorDict(AstroTensorDict):
 
     @property
     def time_span(self) -> torch.Tensor:
-        """Zeitspanne für jedes Objekt."""
+        """Time span for each object."""
         return self["times"].max(dim=-1)[0] - self["times"].min(dim=-1)[0]
 
-    def phase_fold(self, period: torch.Tensor, epoch: torch.Tensor = None) -> LightcurveTensorDict:
-        """Phasen-gefaltete Lichtkurve."""
+    def phase_fold(
+        self, period: torch.Tensor, epoch: Optional[torch.Tensor] = None
+    ) -> LightcurveTensorDict:
+        """Phase-folded light curve."""
         if epoch is None:
             epoch = torch.zeros_like(period)
 
-        # Broadcasting für Batch-Operation
+        # Broadcasting for batch operation
         times_expanded = self["times"].unsqueeze(-1)  # [N, T, 1]
-        period_expanded = period.unsqueeze(-1).unsqueeze(-1)  # [N, 1, 1] 
-        epoch_expanded = epoch.unsqueeze(-1).unsqueeze(-1)    # [N, 1, 1]
+        period_expanded = period.unsqueeze(-1).unsqueeze(-1)  # [N, 1, 1]
+        epoch_expanded = epoch.unsqueeze(-1).unsqueeze(-1)  # [N, 1, 1]
 
         phases = ((times_expanded - epoch_expanded) % period_expanded) / period_expanded
         phases = phases.squeeze(-1)  # [N, T]
 
-        # Sortiere nach Phase
+        # Sort by phase
         sorted_indices = torch.argsort(phases, dim=-1)
 
         # Apply sorting to all time-series data
         sorted_times = torch.gather(phases, -1, sorted_indices)
         sorted_magnitudes = torch.gather(
-            self["magnitudes"], -2, 
-            sorted_indices.unsqueeze(-1).expand(-1, -1, self["magnitudes"].shape[-1])
+            self["magnitudes"],
+            -2,
+            sorted_indices.unsqueeze(-1).expand(-1, -1, self["magnitudes"].shape[-1]),
         )
 
         sorted_errors = None
         if "errors" in self:
             sorted_errors = torch.gather(
-                self["errors"], -2,
-                sorted_indices.unsqueeze(-1).expand(-1, -1, self["errors"].shape[-1])
+                self["errors"],
+                -2,
+                sorted_indices.unsqueeze(-1).expand(-1, -1, self["errors"].shape[-1]),
             )
 
-        return LightcurveTensorDict(
+        result = LightcurveTensorDict(
             times=sorted_times,
             magnitudes=sorted_magnitudes,
-            bands=self["meta", "bands"],
+            bands=self["meta"]["bands"],
             errors=sorted_errors,
-            time_format="phase"
-        ).add_history("phase_fold", period=period.tolist())
+            time_format="phase",
+        )
+        result.add_history("phase_fold", period=period.tolist())
+        return result
 
 
 class SurveyTensorDict(AstroTensorDict):
     """
-    Haupt-TensorDict für Survey-Daten - koordiniert alle anderen Tensoren.
+    Main TensorDict for survey data - coordinates all other tensors.
 
-    Struktur:
+    Structure:
     {
         "spatial": SpatialTensorDict,
         "photometric": PhotometricTensorDict,
         "spectral": SpectralTensorDict,      # Optional
         "lightcurves": LightcurveTensorDict, # Optional
-        "features": Tensor[N, F],            # Zusätzliche Features
+        "features": Tensor[N, F],            # Additional features
         "meta": {
             "survey_name": str,
             "data_release": str,
@@ -486,13 +531,18 @@ class SurveyTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, spatial: SpatialTensorDict, photometric: PhotometricTensorDict,
-                 survey_name: str, data_release: str = "unknown",
-                 spectral: Optional[SpectralTensorDict] = None,
-                 lightcurves: Optional[LightcurveTensorDict] = None,
-                 features: Optional[torch.Tensor] = None, **kwargs):
-
-        # Konsistenz-Check: Alle Komponenten müssen gleiche Batch-Größe haben
+    def __init__(
+        self,
+        spatial: SpatialTensorDict,
+        photometric: PhotometricTensorDict,
+        survey_name: str,
+        data_release: str = "unknown",
+        spectral: Optional[SpectralTensorDict] = None,
+        lightcurves: Optional[LightcurveTensorDict] = None,
+        features: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        # Consistency check: All components must have same batch size
         batch_size = spatial.batch_size
         if photometric.batch_size != batch_size:
             raise ValueError("Spatial and photometric data must have same batch size")
@@ -500,12 +550,12 @@ class SurveyTensorDict(AstroTensorDict):
         data = {
             "spatial": spatial,
             "photometric": photometric,
-            "meta": TensorDict({
+            "meta": {
                 "survey_name": survey_name,
                 "data_release": data_release,
-                "filter_system": photometric["meta", "filter_system"],
+                "filter_system": photometric["meta"]["filter_system"],
                 "n_objects": batch_size[0] if batch_size else 0,
-            }, batch_size=batch_size)
+            },
         }
 
         if spectral is not None:
@@ -525,54 +575,65 @@ class SurveyTensorDict(AstroTensorDict):
 
     @property
     def survey_name(self) -> str:
-        return self["meta", "survey_name"]
+        return self["meta"]["survey_name"]
 
     @property
     def n_objects(self) -> int:
-        return self["meta", "n_objects"]
+        return self["meta"]["n_objects"]
 
-    def cross_match(self, other: SurveyTensorDict, tolerance: float = 1.0) -> torch.Tensor:
-        """Cross-Match mit anderem Survey."""
-        # Nutze räumliche Koordinaten für Cross-Match
+    def cross_match(
+        self, other: SurveyTensorDict, tolerance: float = 1.0
+    ) -> Tuple[torch.Tensor, ...]:
+        """Cross-Match with other survey."""
+        # Use spatial coordinates for Cross-Match
         separations = self["spatial"].angular_separation(other["spatial"])
         matches = torch.where(separations <= tolerance)
         return matches
 
     def compute_colors(self, band_pairs: List[Tuple[str, str]]) -> TensorDict:
-        """Delegiert an photometrische Komponente."""
+        """Delegates to photometric component."""
         return self["photometric"].compute_colors(band_pairs)
 
     def cone_search(self, center: torch.Tensor, radius_deg: float) -> torch.Tensor:
-        """Delegiert an räumliche Komponente."""
+        """Delegates to spatial component."""
         return self["spatial"].cone_search(center, radius_deg)
 
-    def query_region(self, ra_range: Tuple[float, float], 
-                     dec_range: Tuple[float, float]) -> SurveyTensorDict:
-        """Filtert Daten nach RA/Dec Region."""
+    def query_region(
+        self, ra_range: Tuple[float, float], dec_range: Tuple[float, float]
+    ) -> SurveyTensorDict:
+        """Filters data by RA/Dec region."""
         ra, dec, _ = self["spatial"].to_spherical()
 
-        mask = ((ra >= ra_range[0]) & (ra <= ra_range[1]) & 
-                (dec >= dec_range[0]) & (dec <= dec_range[1]))
+        mask = (
+            (ra >= ra_range[0])
+            & (ra <= ra_range[1])
+            & (dec >= dec_range[0])
+            & (dec <= dec_range[1])
+        )
 
-        # Wende Maske auf alle Komponenten an
+        # Apply mask to all components
         filtered_spatial = SpatialTensorDict(
             self["spatial"]["coordinates"][mask],
             coordinate_system=self["spatial"].coordinate_system,
-            unit=self["spatial"]["meta", "unit"],
-            epoch=self["spatial"]["meta", "epoch"]
+            unit=self["spatial"]["meta"]["unit"],
+            epoch=self["spatial"]["meta"]["epoch"],
         )
 
         filtered_photometric = PhotometricTensorDict(
             self["photometric"]["magnitudes"][mask],
             bands=self["photometric"].bands,
-            errors=self["photometric"].get("errors")[mask] if "errors" in self["photometric"] else None,
-            filter_system=self["photometric"]["meta", "filter_system"],
-            is_magnitude=self["photometric"].is_magnitude
+            errors=self["photometric"].get("errors")[mask]
+            if "errors" in self["photometric"]
+            else None,
+            filter_system=self["photometric"]["meta"]["filter_system"],
+            is_magnitude=self["photometric"].is_magnitude,
         )
 
-        return SurveyTensorDict(
+        result = SurveyTensorDict(
             spatial=filtered_spatial,
             photometric=filtered_photometric,
             survey_name=self.survey_name,
-            data_release=self["meta", "data_release"]
-        ).add_history("query_region", ra_range=ra_range, dec_range=dec_range)
+            data_release=self["meta"]["data_release"],
+        )
+        result.add_history("query_region", ra_range=ra_range, dec_range=dec_range)
+        return result

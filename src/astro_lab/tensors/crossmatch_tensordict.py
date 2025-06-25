@@ -13,8 +13,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import torch
 from tensordict import TensorDict
 
-from .tensordict_astro import AstroTensorDict
-from .spatial_tensordict import SpatialTensorDict
+from .tensordict_astro import AstroTensorDict, SpatialTensorDict
 
 
 class CrossMatchTensorDict(AstroTensorDict):
@@ -37,21 +36,27 @@ class CrossMatchTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, catalog1: AstroTensorDict, catalog2: AstroTensorDict,
-                 match_radius: float = 1.0, algorithm: str = "nearest_neighbor", **kwargs):
+    def __init__(
+        self,
+        catalog1: AstroTensorDict,
+        catalog2: AstroTensorDict,
+        match_radius: float = 1.0,
+        algorithm: str = "nearest_neighbor",
+        **kwargs,
+    ):
         """
-        Initialisiert CrossMatchTensorDict.
+        Initialize CrossMatchTensorDict.
 
         Args:
-            catalog1: Erster Katalog
-            catalog2: Zweiter Katalog
-            match_radius: Such-Radius in Bogensekunden
-            algorithm: Matching-Algorithmus
+            catalog1: First catalog data
+            catalog2: Second catalog data
+            match_radius: Search radius in arcseconds
+            algorithm: Matching algorithm
         """
         # Extrahiere räumliche Informationen aus beiden Katalogen
-        if not hasattr(catalog1, 'spatial') and 'spatial' not in catalog1:
+        if not hasattr(catalog1, "spatial") and "spatial" not in catalog1:
             raise ValueError("Catalog1 must contain spatial information")
-        if not hasattr(catalog2, 'spatial') and 'spatial' not in catalog2:
+        if not hasattr(catalog2, "spatial") and "spatial" not in catalog2:
             raise ValueError("Catalog2 must contain spatial information")
 
         # Initialisiere leere Matches
@@ -65,12 +70,12 @@ class CrossMatchTensorDict(AstroTensorDict):
             "matches": empty_matches,
             "distances": empty_distances,
             "match_quality": empty_quality,
-            "meta": TensorDict({
+            "meta": {
                 "match_radius": match_radius,
                 "algorithm": algorithm,
                 "n_matches": 0,
                 "match_statistics": {},
-            }, batch_size=())
+            },
         }
 
         super().__init__(data, **kwargs)
@@ -98,12 +103,12 @@ class CrossMatchTensorDict(AstroTensorDict):
         match_radius = self["meta", "match_radius"]
 
         # Extrahiere Positionen
-        if hasattr(cat1, 'spatial'):
+        if hasattr(cat1, "spatial"):
             pos1 = cat1.spatial.to_spherical()[:2]  # RA, Dec
         else:
             pos1 = cat1["spatial"].to_spherical()[:2]
 
-        if hasattr(cat2, 'spatial'):
+        if hasattr(cat2, "spatial"):
             pos2 = cat2.spatial.to_spherical()[:2]
         else:
             pos2 = cat2["spatial"].to_spherical()[:2]
@@ -118,9 +123,7 @@ class CrossMatchTensorDict(AstroTensorDict):
         # Für jeden Eintrag in Katalog 1, finde nächsten Nachbarn in Katalog 2
         for i in range(len(ra1)):
             # Berechne Winkeldistanzen zu allen Objekten in Katalog 2
-            sep = self._angular_separation(
-                ra1[i], dec1[i], ra2, dec2
-            )
+            sep = self._angular_separation(ra1[i], dec1[i], ra2, dec2)
 
             # Finde nächsten Nachbarn
             min_sep, min_idx = torch.min(sep, dim=0)
@@ -152,12 +155,12 @@ class CrossMatchTensorDict(AstroTensorDict):
         match_radius = self["meta", "match_radius"]
 
         # Extrahiere Positionen
-        if hasattr(cat1, 'spatial'):
+        if hasattr(cat1, "spatial"):
             pos1 = cat1.spatial.to_spherical()[:2]
         else:
             pos1 = cat1["spatial"].to_spherical()[:2]
 
-        if hasattr(cat2, 'spatial'):
+        if hasattr(cat2, "spatial"):
             pos2 = cat2.spatial.to_spherical()[:2]
         else:
             pos2 = cat2["spatial"].to_spherical()[:2]
@@ -172,9 +175,7 @@ class CrossMatchTensorDict(AstroTensorDict):
         # Alle Paare prüfen
         for i in range(len(ra1)):
             for j in range(len(ra2)):
-                sep = self._angular_separation(
-                    ra1[i], dec1[i], ra2[j], dec2[j]
-                )
+                sep = self._angular_separation(ra1[i], dec1[i], ra2[j], dec2[j])
 
                 if sep <= match_radius / 3600:  # Convert arcsec to degrees
                     matches.append([i, j])
@@ -195,8 +196,13 @@ class CrossMatchTensorDict(AstroTensorDict):
 
         return self
 
-    def _angular_separation(self, ra1: torch.Tensor, dec1: torch.Tensor,
-                           ra2: torch.Tensor, dec2: torch.Tensor) -> torch.Tensor:
+    def _angular_separation(
+        self,
+        ra1: torch.Tensor,
+        dec1: torch.Tensor,
+        ra2: torch.Tensor,
+        dec2: torch.Tensor,
+    ) -> torch.Tensor:
         """
         Berechnet Winkeldistanz zwischen Himmelskoordinaten.
 
@@ -214,9 +220,9 @@ class CrossMatchTensorDict(AstroTensorDict):
         dec2_rad = dec2 * math.pi / 180
 
         # Sphärische Trigonometrie
-        cos_sep = (torch.sin(dec1_rad) * torch.sin(dec2_rad) + 
-                   torch.cos(dec1_rad) * torch.cos(dec2_rad) * 
-                   torch.cos(ra1_rad - ra2_rad))
+        cos_sep = torch.sin(dec1_rad) * torch.sin(dec2_rad) + torch.cos(
+            dec1_rad
+        ) * torch.cos(dec2_rad) * torch.cos(ra1_rad - ra2_rad)
 
         # Numerische Stabilität
         cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
@@ -335,7 +341,7 @@ class CrossMatchTensorDict(AstroTensorDict):
         n_cat1 = self["catalog1"].n_objects
         n_cat2 = self["catalog2"].n_objects
 
-        print(f"Cross-Match Statistiken:")
+        print("Cross-Match Statistiken:")
         print(f"  Katalog 1: {n_cat1} Objekte")
         print(f"  Katalog 2: {n_cat2} Objekte")
         print(f"  Matches: {n_matches}")
@@ -343,4 +349,6 @@ class CrossMatchTensorDict(AstroTensorDict):
         print(f"  Mittlere Distanz: {stats['mean_distance']:.2f} arcsec")
         print(f"  Median Distanz: {stats['median_distance']:.2f} arcsec")
         print(f"  Std Distanz: {stats['std_distance']:.2f} arcsec")
-        print(f"  Min/Max Distanz: {stats['min_distance']:.2f}/{stats['max_distance']:.2f} arcsec")
+        print(
+            f"  Min/Max Distanz: {stats['min_distance']:.2f}/{stats['max_distance']:.2f} arcsec"
+        )
