@@ -246,7 +246,7 @@ astro-lab process
 # Process specific surveys
 astro-lab process --surveys gaia nsa --max-samples 10000
 
-# Advanced processing
+#  processing
 astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits
 ```
 

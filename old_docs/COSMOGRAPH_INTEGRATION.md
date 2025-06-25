@@ -9,7 +9,7 @@ Interactive 3D visualization for astronomical data using CosmographBridge with s
 - [🔧 Basic Usage](#-basic-usage)
 - [🎨 Customization Options](#-customization-options)
 - [🌌 Survey-Specific Visualizations](#-survey-specific-visualizations)
-- [🔄 Advanced Usage](#-advanced-usage)
+- [🔄  Usage](#-advanced-usage)
 - [🎯 Use Cases](#-use-cases)
 - [🐛 Troubleshooting](#-troubleshooting)
 - [📚 Related Documentation](#-related-documentation)
@@ -179,7 +179,7 @@ widget = bridge.from_cosmic_web_results(
 )
 ```
 
-## 🔄 Advanced Usage
+## 🔄  Usage
 
 ### Custom Data Integration
 ```python

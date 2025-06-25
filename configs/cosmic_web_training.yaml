@@ -50,7 +50,7 @@ training:
     cosmological_params: 0.5 # Cosmological parameter inference
     density_field: 0.3 # Density field reconstruction
 
-  # Advanced training techniques
+  #  training techniques
   gradient_clip_val: 1.0
   accumulate_grad_batches: 4 # Effective batch size 64
 

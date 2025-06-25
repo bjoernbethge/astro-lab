@@ -11,7 +11,7 @@ maintainers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-"h5py>=3.8.0", # check astropy.io API
+    "h5py>=3.8.0", # check astropy.io API
     "pydantic>=2.11.6",
     "pyyaml>=6.0.2",
     "markupsafe>=3.0.2",
@@ -42,6 +42,7 @@ dependencies = [
     "plotly>=6.1.2",
     "anywidget>=0.9.18",
     "traitlets>=5.14.3",
+    "tensordict>=0.8.3",
 ]
 
 [build-system]
@@ -90,5 +91,5 @@ torch = [{ index = "pytorch-cuda" }]
 
 # Console scripts for CLI tools
 [project.scripts]
-astro-lab = "astro_lab.cli.__main__:main"
+astro-lab = "astro_lab.cli:main"
 astro-test = "scripts.run_tests:main"
