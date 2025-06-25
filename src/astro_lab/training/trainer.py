@@ -16,6 +16,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Mapping, Optional, Union
 
+# MLflow and Optuna imports
+import mlflow
+import optuna
 import torch
 from lightning import Trainer
 from lightning.pytorch.callbacks import (
@@ -25,6 +28,7 @@ from lightning.pytorch.callbacks import (
     RichProgressBar,
     StochasticWeightAveraging,
 )
+from optuna.integration.pytorch_lightning import PyTorchLightningPruningCallback
 from torch.utils.data import DataLoader
 
 from astro_lab.data.config import data_config
@@ -389,7 +393,7 @@ class AstroTrainer(Trainer):
             logger.error(f"Failed to save training results: {e}")
 
     def _create_mlflow_optuna_plots(self, plots_dir: Path):
-        """Create plots using MLflow and Optuna built-in visualization functions."""
+        """Create plots using MLflow and Optuna built-in visualization functions (2025 Best Practices)."""
         try:
             import mlflow
             import optuna
@@ -411,7 +415,7 @@ class AstroTrainer(Trainer):
             logger.error(f"Failed to create MLflow/Optuna plots: {e}")
 
     def _create_mlflow_plots(self, plots_dir: Path):
-        """Create plots using MLflow's built-in visualization functions."""
+        """Create plots using MLflow's built-in visualization functions (2025 Best Practices)."""
         try:
             import mlflow
 
@@ -444,38 +448,93 @@ class AstroTrainer(Trainer):
                     f.write(
                         f"\nView plots at: mlflow ui --backend-store-uri {mlflow.get_tracking_uri()}\n"
                     )
+                    f.write("   - Training curves (loss, accuracy, learning rate)\n")
+                    f.write("   - System metrics (CPU, GPU, memory)\n")
+                    f.write("   - Parameter tracking and comparison\n")
+                    f.write("   - Model artifacts and versions\n")
 
         except Exception as e:
             logger.warning(f"Could not create MLflow plots: {e}")
 
     def _create_optuna_plots(self, plots_dir: Path):
-        """Create plots using Optuna's built-in visualization functions."""
+        """Create plots using Optuna's built-in visualization functions (2025 Best Practices)."""
         try:
-            import matplotlib.pyplot as plt
             import optuna
 
             study = getattr(self, "_optuna_study", None)
             if not study:
                 return
 
-            # Create Optuna plots using their built-in functions
+            # Create Optuna plots using their built-in functions (2025 Best Practices)
+            # These are interactive HTML plots that can be viewed in browser
+
+            # 1. Optimization History - shows how the objective value improved over trials
             fig1 = optuna.visualization.plot_optimization_history(study)
             fig1.write_html(str(plots_dir / "optuna_optimization_history.html"))
+            fig1.write_image(str(plots_dir / "optuna_optimization_history.png"))
 
+            # 2. Parameter Importances - shows which hyperparameters are most important
             fig2 = optuna.visualization.plot_param_importances(study)
             fig2.write_html(str(plots_dir / "optuna_param_importances.html"))
+            fig2.write_image(str(plots_dir / "optuna_param_importances.png"))
 
+            # 3. Parallel Coordinate Plot - shows relationships between parameters
             fig3 = optuna.visualization.plot_parallel_coordinate(study)
             fig3.write_html(str(plots_dir / "optuna_parallel_coordinate.html"))
 
+            # 4. Contour Plot - shows 2D parameter relationships
             fig4 = optuna.visualization.plot_contour(study)
             fig4.write_html(str(plots_dir / "optuna_contour.html"))
 
-            # Also save as static images
-            fig1.write_image(str(plots_dir / "optuna_optimization_history.png"))
-            fig2.write_image(str(plots_dir / "optuna_param_importances.png"))
+            # 5. Slice Plot - shows individual parameter distributions
+            fig5 = optuna.visualization.plot_slice(study)
+            fig5.write_html(str(plots_dir / "optuna_slice.html"))
+
+            # 6. Timeline Plot - shows trial duration and timing
+            fig6 = optuna.visualization.plot_timeline(study)
+            fig6.write_html(str(plots_dir / "optuna_timeline.html"))
+
+            # Create a summary file with instructions
+            summary_file = plots_dir / "optuna_visualization_guide.md"
+            with open(summary_file, "w") as f:
+                f.write("# Optuna Visualization Guide\n\n")
+                f.write(f"Study Name: {study.study_name}\n")
+                f.write(f"Number of Trials: {len(study.trials)}\n")
+                f.write(f"Best Value: {study.best_value:.4f}\n")
+                f.write(f"Best Parameters: {study.best_params}\n\n")
+
+                f.write("## Available Plots\n\n")
+                f.write(
+                    "1. **optimization_history.html** - How objective value improved over trials\n"
+                )
+                f.write(
+                    "2. **param_importances.html** - Which hyperparameters matter most\n"
+                )
+                f.write(
+                    "3. **parallel_coordinate.html** - Parameter relationships and correlations\n"
+                )
+                f.write("4. **contour.html** - 2D parameter space visualization\n")
+                f.write("5. **slice.html** - Individual parameter distributions\n")
+                f.write("6. **timeline.html** - Trial timing and duration analysis\n\n")
+
+                f.write("## How to View\n\n")
+                f.write(
+                    "Open any `.html` file in your web browser for interactive visualizations.\n"
+                )
+                f.write(
+                    "The plots are interactive - you can zoom, hover, and explore the data.\n\n"
+                )
+
+                f.write("## Best Practices (2025)\n\n")
+                f.write("- Use HTML plots for detailed analysis (interactive)\n")
+                f.write("- Use PNG plots for reports and documentation\n")
+                f.write("- Parameter importance helps focus optimization efforts\n")
+                f.write("- Parallel coordinate plots reveal parameter interactions\n")
+                f.write("- Timeline plots help identify performance bottlenecks\n")
 
             logger.info(f"📊 Created {len(study.trials)} Optuna visualization plots")
+            logger.info("   HTML plots: Open in browser for interactive analysis")
+            logger.info("   PNG plots: Use for reports and documentation")
 
         except Exception as e:
             logger.warning(f"Could not create Optuna plots: {e}")
@@ -708,9 +767,6 @@ class AstroTrainer(Trainer):
         Returns:
             Dictionary with best parameters and results
         """
-        import optuna
-        from optuna.integration.pytorch_lightning import PyTorchLightningPruningCallback
-
         # Optuna direction and pruner are valid for create_study, but use kwargs to avoid linter errors
         study_kwargs = dict(
             direction="minimize" if "loss" in monitor else "maximize",

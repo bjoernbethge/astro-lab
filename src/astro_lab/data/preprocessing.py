@@ -1,17 +1,18 @@
 """
-AstroLab Data Preprocessing Module 🔬
-===================================
+Data preprocessing utilities for astronomical surveys.
 
-Handles data preprocessing and graph creation for astronomical surveys.
-Moved from CLI to data module for better organization.
-Updated for TensorDict architecture.
+This module provides functions for preprocessing astronomical data from various surveys,
+including Gaia, SDSS, NSA, and TNG50. It handles data cleaning, feature engineering,
+and graph creation for machine learning applications.
 """
 
 import json
 import logging
+import os
 import re
+from itertools import combinations
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import h5py
 import numpy as np
@@ -25,6 +26,7 @@ from astro_lab.utils.config.surveys import get_survey_config
 # Use TensorDict classes instead of old tensor classes
 from ..tensors import (
     ClusteringTensorDict,
+    CrossMatchTensorDict,
     FeatureTensorDict,
     LightcurveTensorDict,
     PhotometricTensorDict,
@@ -1154,8 +1156,6 @@ def _create_graph_data(df: pl.DataFrame, survey: str, k_neighbors: int) -> Data:
     # Create k-NN graph
     if num_nodes <= 100:
         # Fully connected for small graphs
-        from itertools import combinations
-
         edges = list(combinations(range(num_nodes), 2))
         edge_index = torch.tensor(edges).t()
         # Make undirected
@@ -1252,12 +1252,6 @@ def process_survey(
     For TNG50(-4), process all HDF5 snapshots as a time series and save outputs under data/processed/tng50/ with simple names (tng50.parquet, tng50.pt, tng50_metadata.json).
     If max_samples is set, sample the combined DataFrame before saving and graph creation.
     """
-    import json
-    from pathlib import Path
-
-    import polars as pl
-    import torch
-
     logger = logging.getLogger(__name__)
 
     # Special case: TNG50(-4) → time series graph processing
@@ -1412,10 +1406,6 @@ def find_or_create_catalog_file(survey: str, data_dir: Path) -> Path:
     """
     Sucht nach Parquet/CSV für einen Survey, erzeugt bei FITS oder HDF5 automatisch Parquet und gibt den Pfad zurück. 📊
     """
-    import logging
-
-    import polars as pl
-
     logger = logging.getLogger(__name__)
 
     # 1. Suche Parquet
@@ -1586,10 +1576,6 @@ if __name__ == "__main__":
     print("🌟 Testing new TensorDict factory methods:")
 
     # Test Gaia survey creation
-    import torch
-
-    from astro_lab.tensors.factories import create_gaia_survey
-
     # Create dummy data
     coordinates = torch.randn(100, 2) * 10  # Random RA, Dec
     g_mag = torch.randn(100) + 15  # Random G magnitudes
@@ -1597,6 +1583,8 @@ if __name__ == "__main__":
     rp_mag = g_mag - torch.randn(100) * 0.1 + 0.3  # RP magnitudes
 
     # Create Gaia survey using factory
+    from astro_lab.tensors.factories import create_gaia_survey
+
     gaia_survey = create_gaia_survey(coordinates, g_mag, bp_mag, rp_mag)
     print(f"✅ Created Gaia survey: {gaia_survey.survey_name}")
     print(f"   Spatial: {gaia_survey['spatial'].n_objects} objects")

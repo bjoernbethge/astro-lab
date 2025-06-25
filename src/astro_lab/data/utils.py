@@ -1,24 +1,27 @@
 """
-AstroLab Data Utilities - Utility functions for data processing
-==============================================================
+Data utilities for astronomical surveys.
 
-Utility functions for data loading, processing, and visualization.
-Updated for TensorDict architecture.
+This module provides utility functions for data loading, processing, and visualization
+of astronomical data from various surveys including Gaia, SDSS, NSA, and TNG50.
 """
 
+import json
 import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import polars as pl
 import torch
+from astropy.io import fits
+from astropy.table import Table
+from matplotlib.colors import LogNorm
 
-try:
-    from astropy.table import Table
-except ImportError:
-    Table = Any
+from astro_lab.tensors import SurveyTensorDict
+from astro_lab.utils.bpy import create_image_mesh
+from astro_lab.utils.config.surveys import get_survey_config
 
 logger = logging.getLogger(__name__)
 
@@ -126,9 +129,6 @@ def load_fits_optimized(
         FITS data as numpy array or astropy Table
     """
     try:
-        from astropy.io import fits
-        from astropy.table import Table
-
         fits_path = Path(fits_path)
         if not fits_path.exists():
             raise FileNotFoundError(f"FITS file not found: {fits_path}")
@@ -203,9 +203,6 @@ def load_fits_table_optimized(
         FITS table as Polars DataFrame or astropy Table
     """
     try:
-        from astropy.io import fits
-        from astropy.table import Table
-
         fits_path = Path(fits_path)
         if not fits_path.exists():
             raise FileNotFoundError(f"FITS file not found: {fits_path}")
@@ -279,8 +276,6 @@ def get_fits_info(fits_path: Union[str, Path]) -> Dict[str, Any]:
         Dictionary with FITS information
     """
     try:
-        from astropy.io import fits
-
         fits_path = Path(fits_path)
         if not fits_path.exists():
             raise FileNotFoundError(f"FITS file not found: {fits_path}")
@@ -461,8 +456,6 @@ def save_splits_to_parquet(
     }
 
     metadata_path = base_path / f"{dataset_name}_metadata.json"
-    import json
-
     with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
 
@@ -515,8 +508,6 @@ def load_nsa_as_tensors(
     Returns:
         Dictionary with tensors
     """
-    from astro_lab.tensors import SurveyTensorDict
-
     data_path = Path(data_path)
     parquet_file = data_path / f"nsa_v1_0_1_{split}.parquet"
 
@@ -646,7 +637,6 @@ def convert_nsa_fits_to_parquet(
     Returns:
         Path to created parquet file
     """
-    from astro_lab.utils.config.surveys import get_survey_config
 
     fits_path = Path(fits_path)
     parquet_path = Path(parquet_path)
