@@ -39,14 +39,16 @@ class AstroMLflowLogger(MLFlowLogger):
     ):
         # Set up MLflow tracking URI and artifact location
         if tracking_uri is None:
-            # Use proper file URI format for Windows
-            mlruns_path = Path.cwd() / "data" / "experiments" / "mlruns"
-            tracking_uri = f"file:///{mlruns_path.as_posix()}"
+            # Use data_config system for organized MLflow storage
+            data_config.ensure_experiment_directories(experiment_name)
+            exp_paths = data_config.get_experiment_paths(experiment_name)
+            tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
 
         if artifact_location is None:
-            # Use proper file URI format for Windows
-            artifacts_path = Path.cwd() / "data" / "experiments" / "artifacts"
-            artifact_location = f"file:///{artifacts_path.as_posix()}"
+            # Use data_config system for organized artifact storage
+            data_config.ensure_experiment_directories(experiment_name)
+            exp_paths = data_config.get_experiment_paths(experiment_name)
+            artifact_location = f"file://{exp_paths['artifacts'].absolute()}"
 
         # Set environment variable for consistency
         os.environ["MLFLOW_TRACKING_URI"] = tracking_uri
@@ -61,6 +63,7 @@ class AstroMLflowLogger(MLFlowLogger):
             "version": "0.3.0",
             "data_config_version": "2.0",  # Track config system version
             "tracking_uri": tracking_uri,
+            "artifact_location": artifact_location,
             "system_metrics_enabled": str(enable_system_metrics),
         }
         if tags:
@@ -80,6 +83,10 @@ class AstroMLflowLogger(MLFlowLogger):
         self.system_metrics_interval = system_metrics_interval
         self._system_metrics_thread = None
         self._stop_system_metrics = threading.Event()
+
+        # Store paths for later use
+        self.experiment_name = experiment_name
+        self.tracking_uri = tracking_uri
 
     def start_system_metrics_logging(self) -> None:
         """Start automatic system metrics logging in background thread."""
@@ -555,7 +562,7 @@ def setup_mlflow_experiment(
         data_config.ensure_experiment_directories(experiment_name)
         exp_paths = data_config.get_experiment_paths(experiment_name)
         tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
-        
+
         # Set artifact location if not provided
         if artifact_location is None:
             artifact_location = f"file://{exp_paths['artifacts'].absolute()}"

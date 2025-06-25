@@ -51,7 +51,7 @@ class AstroLightningModule(LightningModule):
     - Unified logging throughout
     - Modern metrics tracking with torchmetrics
     - Automatic class detection from data
-    - Advanced training features: gradient accumulation, gradient clipping
+    -  training features: gradient accumulation, gradient clipping
     - 2025 Best Practices: Compile mode, FSDP support, advanced schedulers
     - Fixed PyTorch Geometric compatibility
     """
@@ -93,7 +93,7 @@ class AstroLightningModule(LightningModule):
         self.model_config = model_config
         self.training_config = training_config
 
-        # Advanced training options
+        #  training options
         self.gradient_accumulation_steps = gradient_accumulation_steps
         self.gradient_clip_val = gradient_clip_val
         self.gradient_clip_algorithm = gradient_clip_algorithm
@@ -107,8 +107,9 @@ class AstroLightningModule(LightningModule):
         # Use automatic optimization (default) instead of manual
         self.automatic_optimization = True
 
-        # Initialize model with robust error handling
-        self._initialize_model(model)
+        # LAZY INITIALIZATION: Don't create model until we know num_classes
+        self._model = model  # Store the provided model
+        self._model_initialized = False  # Track if model is initialized
 
         # Initialize EMA if requested
         if self.use_ema:
@@ -119,7 +120,7 @@ class AstroLightningModule(LightningModule):
         if task_type == "unsupervised":
             self.projection_head = self._auto_create_projection_head()
 
-        # Initialize metrics for tracking (will be set up after class detection)
+        # Initialize metrics placeholders (will be set up after class detection)
         self._setup_metrics()
         self.metrics_initialized = False  # Will be set to True after setup
 
@@ -127,29 +128,50 @@ class AstroLightningModule(LightningModule):
         self._step_times = []
         self._memory_usage = []
 
+    @property
+    def model(self) -> torch.nn.Module:
+        """Lazy model getter - creates model if not initialized."""
+        if not self._model_initialized:
+            self._initialize_model(self._model)
+        return self._model
+
+    @model.setter
+    def model(self, value: torch.nn.Module):
+        """Model setter."""
+        self._model = value
+        self._model_initialized = True
+
     def _init_ema(self):
         """Initialize Exponential Moving Average of model weights."""
-        self.ema_model = torch.nn.ModuleDict()
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                self.ema_model[name] = param.data.clone()
+        self.ema_model = torch.nn.ParameterDict()
+        # Don't access self.model here as it may not be initialized yet
 
     def _update_ema(self):
         """Update EMA weights."""
-        if self.use_ema:
+        if self.use_ema and self._model_initialized:
             with torch.no_grad():
                 for name, param in self.model.named_parameters():
-                    if param.requires_grad and name in self.ema_model:
-                        self.ema_model[name].mul_(self.ema_decay).add_(
-                            param.data, alpha=1 - self.ema_decay
-                        )
+                    if param.requires_grad:
+                        key = name.replace(".", "_")
+                        if key not in self.ema_model:
+                            # Initialize EMA parameter on first access
+                            self.ema_model[key] = param.data.clone()
+                        else:
+                            ema_param = self.ema_model[key]
+                            ema_param.mul_(self.ema_decay).add_(
+                                param.data, alpha=1 - self.ema_decay
+                            )
 
     def _initialize_model(self, model: Optional[torch.nn.Module]) -> None:
         """Initialize model with compile support and error handling."""
+        if self._model_initialized and self._model is not None:
+            return  # Already initialized
+
         if model is None:
             model = self._create_default_model()
 
-        self.model = model
+        self._model = model
+        self._model_initialized = True
 
         # Skip torch.compile on Windows due to cl.exe and triton issues
         import platform
@@ -160,8 +182,8 @@ class AstroLightningModule(LightningModule):
         if self.use_compile and not skip_compile_windows:
             try:
                 # Use inductor backend for best performance with dynamic shapes
-                self.model = torch.compile(
-                    self.model,
+                self._model = torch.compile(
+                    self._model,
                     backend="inductor",  # Better than eager for performance
                     mode="reduce-overhead",  # Stable mode
                     fullgraph=False,  # Allow fallback for unsupported operations
@@ -274,6 +296,14 @@ class AstroLightningModule(LightningModule):
                 # Ensure at least 2 classes
                 return max(num_classes, 2)
             else:
+                # Use datamodule info if available
+                if (
+                    hasattr(self.trainer, "datamodule")
+                    and self.trainer.datamodule is not None
+                ):
+                    dm = self.trainer.datamodule
+                    if hasattr(dm, "num_classes") and dm.num_classes:
+                        return dm.num_classes
                 return 4  # Default fallback
 
         except Exception as e:
@@ -283,14 +313,35 @@ class AstroLightningModule(LightningModule):
     def _create_default_model(self) -> torch.nn.Module:
         """Create a default model if none provided."""
         try:
+            # Ensure we have num_classes before creating the model
+            if self.num_classes is None:
+                # Try to get from datamodule first
+                if (
+                    hasattr(self, "trainer")
+                    and hasattr(self.trainer, "datamodule")
+                    and self.trainer.datamodule is not None
+                ):
+                    dm = self.trainer.datamodule
+                    if hasattr(dm, "num_classes") and dm.num_classes:
+                        self.num_classes = dm.num_classes
+
+                # If still None, use default
+                if self.num_classes is None:
+                    logger.warning(
+                        "Creating model without known num_classes, using default 4"
+                    )
+                    self.num_classes = 4
+
             if self.model_config:
+                # Update model config with correct number of classes
+                self.model_config.output_dim = self.num_classes
                 return self._create_model_from_config(self.model_config)
             else:
                 # Create a simple default model
                 return AstroSurveyGNN(
                     input_dim=16,  # Default input dimension
                     hidden_dim=64,
-                    output_dim=self.num_classes or 4,
+                    output_dim=self.num_classes,
                     num_layers=3,
                     dropout=0.1,
                 )
@@ -307,20 +358,35 @@ class AstroLightningModule(LightningModule):
     def _create_model_from_config(self, config: ModelConfig) -> torch.nn.Module:
         """Create model from configuration."""
         try:
+            # IMPORTANT: Ensure we have num_classes for classification models
+            if config.task == "classification" and self.num_classes is None:
+                raise ValueError(
+                    "Cannot create classification model without knowing num_classes. "
+                    "Please ensure datamodule.setup() was called first."
+                )
+
+            # Ensure output_dim is set correctly
+            if self.num_classes is not None:
+                config.output_dim = self.num_classes
+
             # Use the simplified ModelConfig fields
             if (
                 config.task == "classification"
                 and config.name
                 and "gaia" in config.name.lower()
             ):
+                # CRITICAL: Pass num_classes explicitly
+                if self.num_classes is None:
+                    raise ValueError("num_classes must be set for Gaia classifier")
+
                 return create_gaia_classifier(
                     hidden_dim=config.hidden_dim,
-                    num_classes=config.output_dim or 7,
+                    num_classes=self.num_classes,  # Explicit parameter
                 )
             elif config.name and "astrophot" in config.name.lower():
                 return AstroPhotGNN(
                     hidden_dim=config.hidden_dim,
-                    output_dim=config.output_dim or 12,
+                    output_dim=config.output_dim or self.num_classes or 12,
                 )
             elif config.name and "temporal" in config.name.lower():
                 return ALCDEFTemporalGNN(
@@ -331,7 +397,7 @@ class AstroLightningModule(LightningModule):
                 # Default survey GNN
                 return AstroSurveyGNN(
                     hidden_dim=config.hidden_dim,
-                    output_dim=config.output_dim or 4,
+                    output_dim=config.output_dim or self.num_classes or 4,
                     num_layers=config.num_layers,
                     conv_type=config.conv_type,
                     task=config.task or "classification",
@@ -340,7 +406,9 @@ class AstroLightningModule(LightningModule):
 
         except Exception as e:
             logger.error(f"Failed to create model from config: {e}")
-            return self._create_default_model()
+            logger.error(f"Config: {config}")
+            logger.error(f"num_classes: {self.num_classes}")
+            raise  # Re-raise to see the actual error
 
     def _auto_create_projection_head(self) -> Optional[torch.nn.Module]:
         """Create projection head for unsupervised learning."""
@@ -367,14 +435,15 @@ class AstroLightningModule(LightningModule):
             Model output tensor
         """
         try:
-            try:
-                return self.model(batch)
-            except TypeError as e:
-                # Fallback: call model.forward directly (for torch.compile/ScriptModule)
-                if hasattr(self.model, "forward"):
-                    return self.model.forward(batch)
-                else:
-                    raise e
+            return self.model(batch)
+        except TypeError as e:
+            # Fallback: call model.forward directly (for torch.compile/ScriptModule)
+            if hasattr(self.model, "forward"):
+                return self.model.forward(batch)
+            else:
+                logger.error(f"Forward pass failed - no forward method: {e}")
+                logger.error(f"Batch type: {type(batch)}")
+                raise e
         except Exception as e:
             logger.error(f"Forward pass failed: {e}")
             logger.error(f"Batch type: {type(batch)}")
@@ -425,7 +494,13 @@ class AstroLightningModule(LightningModule):
                 return F.mse_loss(outputs, targets)
         except Exception as e:
             logger.error(f"Loss computation failed: {e}")
-            return torch.tensor(0.0, device=outputs.device, requires_grad=True)
+            logger.error(
+                f"Outputs shape: {outputs.shape if hasattr(outputs, 'shape') else 'unknown'}"
+            )
+            logger.error(
+                f"Targets shape: {targets.shape if hasattr(targets, 'shape') else 'unknown'}"
+            )
+            raise  # Re-raise instead of returning dummy loss
 
     def _compute_step(self, batch: Any, stage: str) -> Dict[str, torch.Tensor]:
         """
@@ -438,60 +513,85 @@ class AstroLightningModule(LightningModule):
         Returns:
             Dictionary with loss and other metrics
         """
-        try:
-            # Ensure we have a PyTorch Geometric Data object
-            if not hasattr(batch, "x") or not hasattr(batch, "edge_index"):
+        # Ensure we have a PyTorch Geometric Data object
+        if not hasattr(batch, "x") or not hasattr(batch, "edge_index"):
+            raise ValueError(
+                f"Expected PyTorch Geometric Data object with 'x' and 'edge_index', got {type(batch)}"
+            )
+
+        # Initialize metrics if not done yet
+        if not self.metrics_initialized and hasattr(batch, "y"):
+            num_classes = self._detect_num_classes_from_data(batch)
+            self.num_classes = num_classes
+            self._create_metrics_for_classes(num_classes)
+
+            # IMPORTANT: Ensure model is created/updated with correct num_classes
+            if not self._model_initialized:
+                # Create model now that we know num_classes
+                self._initialize_model(None)
+            elif hasattr(self._model, "output_dim"):
+                # Validate that model output matches detected classes
+                model_output_dim = self._model.output_dim
+                if model_output_dim != num_classes:
+                    raise ValueError(
+                        f"Model output dimension ({model_output_dim}) does not match "
+                        f"number of classes in data ({num_classes}). "
+                        f"This usually happens when the model was created with wrong num_classes. "
+                        f"Labels in data: {torch.unique(batch.y).tolist()}"
+                    )
+
+        # Get the appropriate mask for this stage
+        if stage == "train" and hasattr(batch, "train_mask"):
+            mask = batch.train_mask
+        elif stage == "val" and hasattr(batch, "val_mask"):
+            mask = batch.val_mask
+        elif stage == "test" and hasattr(batch, "test_mask"):
+            mask = batch.test_mask
+        else:
+            mask = None
+
+        # Forward pass
+        outputs = self.forward(batch)
+
+        # Apply mask if available and valid
+        if mask is not None and mask.sum() > 0:
+            outputs_masked = outputs[mask]
+            targets_masked = batch.y[mask]
+        else:
+            outputs_masked = outputs
+            targets_masked = batch.y
+
+        # Ensure we have valid targets
+        if targets_masked.numel() == 0:
+            raise RuntimeError(
+                f"No valid targets for stage {stage} - all masks are empty or False"
+            )
+
+        # Additional validation for classification
+        if self.task_type == "classification":
+            # Check that all labels are within valid range
+            unique_labels = torch.unique(targets_masked)
+            max_label = unique_labels.max().item()
+            min_label = unique_labels.min().item()
+
+            if min_label < 0:
                 raise ValueError(
-                    f"Expected PyTorch Geometric Data object, got {type(batch)}"
+                    f"Found negative label: {min_label}. Labels must be >= 0"
                 )
 
-            # Initialize metrics if not done yet
-            if not self.metrics_initialized and hasattr(batch, "y"):
-                num_classes = self._detect_num_classes_from_data(batch)
-                self.num_classes = num_classes
-                self._create_metrics_for_classes(num_classes)
+            if max_label >= self.num_classes:
+                raise ValueError(
+                    f"Found label {max_label} but model expects {self.num_classes} classes (0 to {self.num_classes - 1}). "
+                    f"All unique labels in batch: {unique_labels.tolist()}"
+                )
 
-            # Get the appropriate mask for this stage
-            if stage == "train" and hasattr(batch, "train_mask"):
-                mask = batch.train_mask
-            elif stage == "val" and hasattr(batch, "val_mask"):
-                mask = batch.val_mask
-            elif stage == "test" and hasattr(batch, "test_mask"):
-                mask = batch.test_mask
-            else:
-                mask = None
+        # Compute loss
+        loss = self._compute_loss(outputs_masked, targets_masked)
 
-            # Forward pass
-            outputs = self.forward(batch)
+        # Log metrics
+        self._log_step_metrics(outputs_masked, targets_masked, loss, stage)
 
-            # Apply mask if available
-            if mask is not None and mask.sum() > 0:
-                outputs_masked = outputs[mask]
-                targets_masked = batch.y[mask]
-            else:
-                outputs_masked = outputs
-                targets_masked = batch.y
-
-            # Ensure we have valid targets
-            if targets_masked.numel() == 0:
-                logger.warning(f"No valid targets for stage {stage}, using full batch")
-                outputs_masked = outputs
-                targets_masked = batch.y
-
-            # Compute loss
-            loss = self._compute_loss(outputs_masked, targets_masked)
-
-            # Log metrics
-            self._log_step_metrics(outputs_masked, targets_masked, loss, stage)
-
-            return {"loss": loss, "outputs": outputs_masked, "targets": targets_masked}
-
-        except Exception as e:
-            logger.error(f"Step computation failed for stage {stage}: {e}")
-            logger.error(f"Batch type: {type(batch)}")
-            # Return a dummy loss to prevent training from crashing
-            dummy_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
-            return {"loss": dummy_loss}
+        return {"loss": loss, "outputs": outputs_masked, "targets": targets_masked}
 
     def _log_step_metrics(
         self,
@@ -538,7 +638,8 @@ class AstroLightningModule(LightningModule):
                     self.log("test_acc", acc, on_step=False, on_epoch=True)
 
         except Exception as e:
-            logger.error(f"Metric logging failed for stage {stage}: {e}")
+            logger.warning(f"Metric logging failed for stage {stage}: {e}")
+            # Continue execution - metric logging failure shouldn't crash training
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """
@@ -562,31 +663,30 @@ class AstroLightningModule(LightningModule):
             logger.error(f"   Batch type: {type(batch)}")
             if hasattr(batch, "x"):
                 logger.error(f"   Batch x shape: {batch.x.shape}")
-            raise
+            raise  # Re-raise to fail fast and fix the underlying issue
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        """Validation step with guaranteed val_loss logging."""
+        """Validation step - fails fast on errors."""
         try:
             result = self._compute_step(batch, "val")
             return result["loss"]
-
         except Exception as e:
-            logger.error(f"❌ Validation step failed: {e}")
+            logger.error(f"❌ Validation step {batch_idx} failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
-            # Log dummy val_loss to prevent Lightning from crashing
-            dummy_loss = torch.tensor(0.0, device=self.device)
-            self.log("val_loss", dummy_loss, prog_bar=True, on_epoch=True)
-            return dummy_loss
+            if hasattr(batch, "x"):
+                logger.error(f"   Batch x shape: {batch.x.shape}")
+            raise  # Re-raise to fail fast - validation errors indicate serious problems
 
     def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
         """Test step with comprehensive evaluation."""
         try:
             result = self._compute_step(batch, "test")
             return result["loss"]
-
         except Exception as e:
-            logger.error(f"❌ Test step failed: {e}")
+            logger.error(f"❌ Test step {batch_idx} failed: {e}")
             logger.error(f"   Batch type: {type(batch)}")
+            if hasattr(batch, "x"):
+                logger.error(f"   Batch x shape: {batch.x.shape}")
             raise
 
     def configure_optimizers(self) -> Dict[str, Any]:
@@ -634,7 +734,7 @@ class AstroLightningModule(LightningModule):
         )
 
         # Configure scheduler
-        config = {"optimizer": optimizer}
+        config: Dict[str, Any] = {"optimizer": optimizer}
 
         if self.scheduler_type == "cosine":
             # Safe trainer access - use default if trainer not attached yet
@@ -646,7 +746,7 @@ class AstroLightningModule(LightningModule):
                     and self.trainer.max_epochs
                 ):
                     max_epochs = self.trainer.max_epochs
-            except RuntimeError:
+            except (RuntimeError, AttributeError):
                 # Trainer not attached yet - use default
                 pass
 
@@ -665,8 +765,8 @@ class AstroLightningModule(LightningModule):
                     and hasattr(self.trainer, "estimated_stepping_batches")
                     and self.trainer.estimated_stepping_batches
                 ):
-                    total_steps = self.trainer.estimated_stepping_batches
-            except RuntimeError:
+                    total_steps = int(self.trainer.estimated_stepping_batches)
+            except (RuntimeError, AttributeError):
                 # Trainer not attached yet - use default
                 pass
 
@@ -723,8 +823,11 @@ class AstroLightningModule(LightningModule):
         """Called at the start of training."""
         try:
             # Get datamodule info if available
-            if hasattr(self.trainer, "datamodule") and self.trainer.datamodule:
-                dm = self.trainer.datamodule
+            if (
+                hasattr(self.trainer, "datamodule")
+                and self.trainer.datamodule is not None  # type: ignore
+            ):
+                dm = self.trainer.datamodule  # type: ignore
                 if (
                     hasattr(dm, "num_classes")
                     and dm.num_classes
