@@ -1,51 +1,58 @@
 """Pure utility functions - no factories or classes."""
 
+import inspect
+from typing import Any, Dict, Optional, Type, Union
+
 import torch
 import torch.nn as nn
-from typing import Optional, Union
 
 
 def get_activation(name: str) -> nn.Module:
     """Get activation function by name."""
     activations = {
-        'relu': nn.ReLU(),
-        'gelu': nn.GELU(),
-        'swish': nn.SiLU(),
-        'tanh': nn.Tanh(),
-        'leaky_relu': nn.LeakyReLU(0.2),
-        'elu': nn.ELU(),
-        'mish': nn.Mish(),
+        "relu": nn.ReLU(),
+        "gelu": nn.GELU(),
+        "swish": nn.SiLU(),
+        "tanh": nn.Tanh(),
+        "leaky_relu": nn.LeakyReLU(0.2),
+        "elu": nn.ELU(),
+        "mish": nn.Mish(),
     }
-    
+
     name = name.lower()
     if name not in activations:
-        raise ValueError(f"Unknown activation: {name}. Available: {list(activations.keys())}")
-        
+        raise ValueError(
+            f"Unknown activation: {name}. Available: {list(activations.keys())}"
+        )
+
     return activations[name]
 
 
 def get_pooling(pooling_type: str) -> str:
     """Get pooling type string (for compatibility)."""
-    valid_types = ['mean', 'max', 'add', 'attention']
+    valid_types = ["mean", "max", "add", "attention"]
     pooling_type = pooling_type.lower()
-    
+
     if pooling_type not in valid_types:
         raise ValueError(f"Unknown pooling: {pooling_type}. Available: {valid_types}")
-        
+
     return pooling_type
 
 
 def initialize_weights(module: nn.Module) -> None:
     """Initialize model weights using Xavier/Kaiming initialization."""
     for name, param in module.named_parameters():
-        if 'weight' in name:
+        if "weight" in name:
             if len(param.shape) >= 2:
                 # Use Kaiming for ReLU networks, Xavier otherwise
-                if hasattr(module, 'activation') and 'relu' in str(module.activation).lower():
-                    nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+                if (
+                    hasattr(module, "activation")
+                    and "relu" in str(module.activation).lower()
+                ):
+                    nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
                 else:
                     nn.init.xavier_uniform_(param)
-        elif 'bias' in name:
+        elif "bias" in name:
             nn.init.zeros_(param)
 
 
@@ -57,7 +64,7 @@ def count_parameters(model: nn.Module) -> int:
 def get_device(device: Optional[Union[str, torch.device]] = None) -> torch.device:
     """Get torch device, with automatic CUDA detection."""
     if device is None:
-        return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return torch.device(device)
 
 
@@ -67,7 +74,11 @@ def move_batch_to_device(batch: dict, device: torch.device) -> dict:
     for key, value in batch.items():
         if isinstance(value, torch.Tensor):
             moved_batch[key] = value.to(device)
-        elif isinstance(value, (list, tuple)) and len(value) > 0 and isinstance(value[0], torch.Tensor):
+        elif (
+            isinstance(value, (list, tuple))
+            and len(value) > 0
+            and isinstance(value[0], torch.Tensor)
+        ):
             moved_batch[key] = [v.to(device) for v in value]
         else:
             moved_batch[key] = value
@@ -77,25 +88,25 @@ def move_batch_to_device(batch: dict, device: torch.device) -> dict:
 def get_model_summary(model: nn.Module, input_shape: Optional[tuple] = None) -> str:
     """Get a simple model summary string."""
     total_params = count_parameters(model)
-    
+
     summary = f"{model.__class__.__name__}\n"
     summary += f"Total trainable parameters: {total_params:,}\n"
-    
+
     if input_shape is not None:
         summary += f"Expected input shape: {input_shape}\n"
-        
+
     # Count layers by type
     layer_counts = {}
     for name, module in model.named_modules():
         module_type = module.__class__.__name__
-        if module_type in ['Module', 'Sequential', 'ModuleList', 'ModuleDict']:
+        if module_type in ["Module", "Sequential", "ModuleList", "ModuleDict"]:
             continue
         layer_counts[module_type] = layer_counts.get(module_type, 0) + 1
-        
+
     summary += "\nLayer counts:\n"
     for layer_type, count in sorted(layer_counts.items()):
         summary += f"  {layer_type}: {count}\n"
-        
+
     return summary
 
 
@@ -135,23 +146,42 @@ def unfreeze_layers(model: nn.Module, layer_names: Optional[list[str]] = None) -
 # Keep AttentionPooling for backward compatibility
 class AttentionPooling(nn.Module):
     """Simple attention pooling module."""
-    
+
     def __init__(self, hidden_dim: int):
         super().__init__()
         self.attention = nn.Linear(hidden_dim, 1)
-        
-    def forward(self, x: torch.Tensor, batch: Optional[torch.Tensor] = None) -> torch.Tensor:
+
+    def forward(
+        self, x: torch.Tensor, batch: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         """Apply attention pooling."""
         # Compute attention scores
         scores = self.attention(x)
-        
+
         if batch is not None:
             # Masked softmax for batched graphs
             from torch_geometric.utils import softmax
+
             alpha = softmax(scores, batch, dim=0)
         else:
             # Simple softmax for single graph
             alpha = torch.softmax(scores, dim=0)
-            
+
         # Weighted sum
         return (x * alpha).sum(dim=0, keepdim=True)
+
+
+def filter_kwargs(target_class: Type[Any], **kwargs: Any) -> Dict[str, Any]:
+    """
+    Filter kwargs to only include parameters accepted by target_class.__init__.
+
+    Args:
+        target_class: The class to filter kwargs for
+        **kwargs: Keyword arguments to filter
+
+    Returns:
+        Dictionary containing only valid parameters for the target class
+    """
+    sig = inspect.signature(target_class.__init__)
+    valid_params = set(sig.parameters.keys()) - {"self"}
+    return {k: v for k, v in kwargs.items() if k in valid_params}

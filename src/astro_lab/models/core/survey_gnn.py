@@ -219,7 +219,7 @@ class AstroSurveyGNN(nn.Module):
             return output
 
         except Exception as e:
-            # Enhanced error reporting
+            # error reporting
             import logging
             import traceback
 
