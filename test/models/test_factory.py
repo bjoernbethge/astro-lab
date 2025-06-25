@@ -262,18 +262,18 @@ class TestDeviceHandling:
 
     def test_model_device_cpu(self):
         """Test model on CPU."""
-        model = create_gaia_classifier(device="cpu")
+        model = create_gaia_classifier(num_classes=4, device="cpu")
         assert next(model.parameters()).device.type == "cpu"
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_model_device_cuda(self):
         """Test model on CUDA."""
-        model = create_gaia_classifier(device="cuda")
+        model = create_gaia_classifier(num_classes=4, device="cuda")
         assert next(model.parameters()).device.type == "cuda"
 
     def test_auto_device_movement(self):
         """Test automatic device movement in forward pass."""
-        model = create_gaia_classifier()
+        model = create_gaia_classifier(num_classes=4)
         device = next(model.parameters()).device
 
         # Create data on different device
