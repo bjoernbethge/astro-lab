@@ -8,7 +8,12 @@ Optimized for Lightning 2.0+ compatibility and modern ML practices.
 Fixed for PyTorch Geometric compatibility and proper batch handling.
 """
 
+import gc
+import json
 import logging
+import os
+import warnings
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import torch
@@ -18,8 +23,10 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import (
     CosineAnnealingLR,
     CosineAnnealingWarmRestarts,
+    ExponentialLR,
     OneCycleLR,
     ReduceLROnPlateau,
+    StepLR,
 )
 from torchmetrics import Accuracy, F1Score, Precision, Recall
 from torchmetrics.classification import MulticlassAccuracy
@@ -212,9 +219,6 @@ class AstroLightningModule(LightningModule):
                 "data/processed/gaia/gaia_metadata.json",
                 "data/processed/gaia_metadata.json",
             ]
-
-            import json
-            from pathlib import Path
 
             for metadata_path in metadata_paths:
                 path = Path(metadata_path)
