@@ -14,10 +14,13 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
+import astropy
+import mlflow
 import numpy as np
 import polars as pl
 import pytest
 import torch
+import torch_geometric
 
 # Performance optimization: Only disable CUDA if explicitly requested
 # Use CUDA_VISIBLE_DEVICES="" to disable CUDA for specific tests if needed
@@ -42,15 +45,18 @@ warnings.filterwarnings("ignore", category=ResourceWarning)
 
 # Memory management (gc already imported above)
 
+
 # Test performance helpers
 def is_ci_environment():
     """Check if we're running in a CI environment."""
     ci_vars = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "JENKINS", "TRAVIS"]
     return any(os.environ.get(var) for var in ci_vars)
 
+
 def should_skip_slow_tests():
     """Check if slow tests should be skipped."""
     return os.environ.get("SKIP_SLOW_TESTS", "").lower() in ("1", "true", "yes")
+
 
 # Pytest hooks for performance optimization
 def pytest_runtest_setup(item):
@@ -58,11 +64,11 @@ def pytest_runtest_setup(item):
     # Skip slow tests if requested
     if should_skip_slow_tests() and "slow" in item.keywords:
         pytest.skip("Skipping slow test (SKIP_SLOW_TESTS=1)")
-    
+
     # Skip tests that require data if in CI
     if is_ci_environment() and "requires_data" in item.keywords:
         pytest.skip("Skipping data-dependent test in CI")
-    
+
     # Skip CUDA tests if no GPU available
     if "cuda" in item.keywords and not torch.cuda.is_available():
         pytest.skip("CUDA not available")
@@ -153,6 +159,7 @@ def device() -> torch.device:
 def gaia_dataset(data_dir: Path):
     """Create Gaia AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
+
     try:
         return AstroDataset(root=str(data_dir), survey="gaia", max_samples=1000)
     except Exception as e:
@@ -163,6 +170,7 @@ def gaia_dataset(data_dir: Path):
 def nsa_dataset(data_dir: Path):
     """Create NSA AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
+
     try:
         return AstroDataset(root=str(data_dir), survey="nsa", max_samples=1000)
     except Exception as e:
@@ -173,6 +181,7 @@ def nsa_dataset(data_dir: Path):
 def exoplanet_dataset(data_dir: Path):
     """Create exoplanet AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
+
     try:
         return AstroDataset(root=str(data_dir), survey="exoplanet", max_samples=1000)
     except Exception as e:
@@ -183,6 +192,7 @@ def exoplanet_dataset(data_dir: Path):
 def linear_dataset(data_dir: Path):
     """Create LINEAR AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
+
     try:
         return AstroDataset(root=str(data_dir), survey="linear", max_samples=1000)
     except Exception as e:
@@ -193,8 +203,11 @@ def linear_dataset(data_dir: Path):
 def rrlyrae_dataset(data_dir: Path):
     """Create RR Lyrae AstroDataset using the existing data system."""
     from astro_lab.data.core import AstroDataset
+
     try:
-        return AstroDataset(root=str(data_dir), survey="rrlyrae", max_samples=100, k_neighbors=8)
+        return AstroDataset(
+            root=str(data_dir), survey="rrlyrae", max_samples=100, k_neighbors=8
+        )
     except Exception as e:
         pytest.skip(f"Could not create RR Lyrae dataset: {e}")
 
@@ -203,17 +216,19 @@ def rrlyrae_dataset(data_dir: Path):
 @pytest.fixture(scope="session")
 def test_data_dir(project_root_dir: Path):
     """Temporary test data directory for backwards compatibility."""
-    import tempfile
     with tempfile.TemporaryDirectory(prefix="astro_lab_test_") as tmp_dir:
         yield Path(tmp_dir)
 
 
-@pytest.fixture(scope="session")  
+@pytest.fixture(scope="session")
 def gaia_data_path(data_dir: Path):
     """Legacy fixture - returns path to gaia data if available."""
     gaia_files = [
         data_dir / "raw" / "gaia" / "gaia_dr3_bright_all_sky_mag12.0.parquet",
-        data_dir / "processed" / "gaia" / "gaia_dr3_bright_all_sky_mag12.0_processed.parquet"
+        data_dir
+        / "processed"
+        / "gaia"
+        / "gaia_dr3_bright_all_sky_mag12.0_processed.parquet",
     ]
     for gaia_file in gaia_files:
         if gaia_file.exists():
@@ -221,13 +236,13 @@ def gaia_data_path(data_dir: Path):
     return None
 
 
-@pytest.fixture(scope="session")  
+@pytest.fixture(scope="session")
 def nsa_data_path(data_dir: Path):
     """Legacy fixture - returns path to nsa data if available."""
     nsa_files = [
         data_dir / "raw" / "nsa" / "nsa.parquet",
         data_dir / "raw" / "nsa" / "nsa_v1_0_1.parquet",
-        data_dir / "processed" / "nsa" / "nsa_v1_0_1_processed.parquet"
+        data_dir / "processed" / "nsa" / "nsa_v1_0_1_processed.parquet",
     ]
     for nsa_file in nsa_files:
         if nsa_file.exists():
@@ -235,12 +250,12 @@ def nsa_data_path(data_dir: Path):
     return None
 
 
-@pytest.fixture(scope="session")  
+@pytest.fixture(scope="session")
 def linear_data_path(data_dir: Path):
     """Legacy fixture - returns path to linear data if available."""
     linear_files = [
         data_dir / "raw" / "linear" / "linear_raw.parquet",
-        data_dir / "processed" / "linear" / "linear_raw_processed.parquet"
+        data_dir / "processed" / "linear" / "linear_raw_processed.parquet",
     ]
     for linear_file in linear_files:
         if linear_file.exists():
@@ -254,6 +269,7 @@ def gaia_df() -> Optional[pl.DataFrame]:
     """Load Gaia data as Polars DataFrame using the data manager system."""
     try:
         from astro_lab.data.manager import AstroDataManager
+
         manager = AstroDataManager()
         # Load using existing catalog system if available
         catalogs = manager.list_catalogs()
@@ -271,6 +287,7 @@ def nsa_df() -> Optional[pl.DataFrame]:
     """Load NSA data as Polars DataFrame using the data manager system."""
     try:
         from astro_lab.data.manager import AstroDataManager
+
         manager = AstroDataManager()
         catalogs = manager.list_catalogs()
         nsa_catalogs = catalogs.filter(pl.col("name").str.contains("nsa"))
@@ -287,6 +304,7 @@ def linear_df() -> Optional[pl.DataFrame]:
     """Load LINEAR data as Polars DataFrame using the data manager system."""
     try:
         from astro_lab.data.manager import AstroDataManager
+
         manager = AstroDataManager()
         catalogs = manager.list_catalogs()
         linear_catalogs = catalogs.filter(pl.col("name").str.contains("linear"))
@@ -309,27 +327,21 @@ def skip_if_no_cuda():
 @pytest.fixture
 def skip_if_no_astropy():
     """Skip test if astropy is not available."""
-    try:
-        import astropy
-    except ImportError:
+    if not astropy:
         pytest.skip("astropy not available")
 
 
 @pytest.fixture
 def skip_if_no_torch_geometric():
     """Skip test if PyTorch Geometric is not available."""
-    try:
-        import torch_geometric
-    except ImportError:
+    if not torch_geometric:
         pytest.skip("PyTorch Geometric not available")
 
 
 @pytest.fixture
 def skip_if_no_mlflow():
     """Skip test if MLflow is not available."""
-    try:
-        import mlflow
-    except ImportError:
+    if not mlflow:
         pytest.skip("MLflow not available")
 
 
@@ -338,8 +350,6 @@ def cleanup_mlflow():
     """Clean up MLflow experiments after testing."""
     yield
     try:
-        import mlflow
-
         # Clean up any test experiments
         client = mlflow.tracking.MlflowClient()
         experiments = client.search_experiments()
