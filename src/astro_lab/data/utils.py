@@ -20,7 +20,6 @@ from astropy.table import Table
 from matplotlib.colors import LogNorm
 
 from astro_lab.tensors import SurveyTensorDict
-from astro_lab.utils.bpy import create_image_mesh
 from astro_lab.utils.config.surveys import get_survey_config
 
 logger = logging.getLogger(__name__)
@@ -822,9 +821,10 @@ def visualize_fits_image(
         elif backend == "bpy":
             # Blender visualization (if available)
             try:
-                from astro_lab.utils.bpy import create_image_mesh
-
-                return create_image_mesh(image_data, **kwargs)
+                logger.warning(
+                    "Blender visualization not available - create_image_mesh function not found"
+                )
+                return None
             except ImportError:
                 logger.warning("Blender visualization not available")
                 return None
