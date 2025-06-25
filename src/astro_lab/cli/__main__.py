@@ -6,7 +6,8 @@ AstroLab CLI - Simple Command Line Interface
 Simple and user-friendly CLI for AstroLab.
 """
 
+import sys
 from astro_lab.cli import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

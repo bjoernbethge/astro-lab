@@ -1,91 +1,99 @@
 """
-Preprocessing CLI for astro-lab.
+Preprocessing CLI for AstroLab - Thin wrapper around data preprocessing.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
-from astro_lab.data.manager import AstroDataManager
-from astro_lab.data.preprocessing import preprocess_catalog
-from astro_lab.utils.config.loader import ConfigLoader
-
 
 def main():
-    """Main preprocessing CLI function."""
+    """Main entry point for preprocessing command."""
     parser = argparse.ArgumentParser(
-        description="Preprocess astronomical catalogs",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        prog="astro-lab preprocess",
+        description="Preprocess astronomical catalogs for machine learning",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # Input options
+    parser.add_argument("--input", "-i", type=Path, help="Path to input catalog file")
     parser.add_argument(
-        "--config", type=str, help="Path to preprocessing configuration file"
+        "--survey",
+        "-s",
+        required=True,
+        choices=["gaia", "sdss", "nsa", "linear", "exoplanet", "tng50"],
+        help="Survey type",
     )
-
+    parser.add_argument("--output", "-o", type=Path, help="Output directory")
+    parser.add_argument("--max-samples", type=int, help="Maximum samples to process")
     parser.add_argument(
-        "--input", type=str, required=True, help="Input catalog file path"
+        "--write-graph", action="store_true", help="Create graph representation"
     )
-
     parser.add_argument(
-        "--output", type=str, help="Output directory for processed data"
+        "--k-neighbors", type=int, default=8, help="Number of neighbors for graph"
     )
-
     parser.add_argument(
-        "--survey", type=str, help="Survey type (gaia, sdss, nsa, etc.)"
+        "--distance-threshold", type=float, default=50.0, help="Distance threshold"
     )
-
     parser.add_argument(
-        "--magnitude-limit", type=float, help="Magnitude limit for filtering"
-    )
-
-    parser.add_argument(
-        "--region",
-        type=str,
-        help="Region filter (e.g., 'ra_min,ra_max,dec_min,dec_max')",
+        "--verbose", "-v", action="store_true", help="Enable verbose logging"
     )
 
     args = parser.parse_args()
 
-    # Load configuration if provided
-    config = None
-    if args.config:
-        config_loader = ConfigLoader()
-        config = config_loader.load_config(args.config)
+    # Setup logging
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(
+        level=log_level,
+        format="%(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    logger = logging.getLogger(__name__)
 
-    # Initialize data manager
-    manager = AstroDataManager()
+    # Import only what we need
+    from astro_lab.data import preprocess_catalog, process_survey
 
-    # Determine output directory
-    output_dir = args.output or manager.processed_dir
-
-    # Process the catalog
     try:
-        input_path = Path(args.input)
-        if not input_path.exists():
-            print(f"Error: Input file {args.input} does not exist")
-            sys.exit(1)
+        if args.input:
+            # Process single file
+            processed_df = preprocess_catalog(
+                input_path=args.input,
+                survey_type=args.survey,
+                max_samples=args.max_samples,
+                output_dir=args.output,
+                write_graph=args.write_graph,
+                k_neighbors=args.k_neighbors,
+                distance_threshold=args.distance_threshold,
+            )
+            logger.info(f"Preprocessed {len(processed_df):,} objects")
+            return 0
+        else:
+            # Auto-process survey
+            files = process_survey(
+                survey=args.survey,
+                max_samples=args.max_samples,
+                k_neighbors=args.k_neighbors,
+                force=False,
+            )
+            logger.info(f"Processed {args.survey} survey")
+            for file_type, path in files.items():
+                logger.info(f"   {file_type}: {path}")
+            return 0
 
-        # Load and preprocess catalog
-        processed_df = preprocess_catalog(
-            input_path,
-            survey=args.survey,
-            magnitude_limit=args.magnitude_limit,
-            region=args.region,
-            config=config,
-        )
-
-        # Save processed data
-        output_path = Path(output_dir) / f"{input_path.stem}_processed.parquet"
-        processed_df.write_parquet(output_path)
-
-        print("Preprocessing completed successfully!")
-        print(f"Processed data saved to: {output_path}")
-        print(f"Input rows: {len(processed_df)}")
-
+    except FileNotFoundError as e:
+        logger.error(f"Error: {e}")
+        return 1
+    except ValueError as e:
+        logger.error(f"Error: {e}")
+        return 1
+    except KeyboardInterrupt:
+        logger.error("Preprocessing interrupted by user")
+        return 130
     except Exception as e:
-        print(f"Error during preprocessing: {e}")
-        sys.exit(1)
+        logger.error(f"Error: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
