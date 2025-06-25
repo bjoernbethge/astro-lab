@@ -42,16 +42,19 @@ class AstroMLflowLogger(MLFlowLogger):
             # Use data_config system for organized MLflow storage
             data_config.ensure_experiment_directories(experiment_name)
             exp_paths = data_config.get_experiment_paths(experiment_name)
-            tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
+            # Ensure absolute path before using as_uri() for Windows compatibility
+            tracking_uri = exp_paths["mlruns"].resolve().as_uri()
 
         if artifact_location is None:
             # Use data_config system for organized artifact storage
             data_config.ensure_experiment_directories(experiment_name)
             exp_paths = data_config.get_experiment_paths(experiment_name)
-            artifact_location = f"file://{exp_paths['artifacts'].absolute()}"
+            # Ensure absolute path before using as_uri() for Windows compatibility
+            artifact_location = exp_paths["artifacts"].resolve().as_uri()
 
         # Set environment variable for consistency
-        os.environ["MLFLOW_TRACKING_URI"] = tracking_uri
+        if tracking_uri:
+            os.environ["MLFLOW_TRACKING_URI"] = tracking_uri
 
         # Setup MLflow experiment first
         setup_mlflow_experiment(experiment_name, tracking_uri, artifact_location)
@@ -561,11 +564,13 @@ def setup_mlflow_experiment(
     if tracking_uri is None:
         data_config.ensure_experiment_directories(experiment_name)
         exp_paths = data_config.get_experiment_paths(experiment_name)
-        tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
+        # Ensure absolute path before using as_uri() for Windows compatibility
+        tracking_uri = exp_paths["mlruns"].resolve().as_uri()
 
         # Set artifact location if not provided
         if artifact_location is None:
-            artifact_location = f"file://{exp_paths['artifacts'].absolute()}"
+            # Ensure absolute path before using as_uri() for Windows compatibility
+            artifact_location = exp_paths["artifacts"].resolve().as_uri()
 
     mlflow.set_tracking_uri(tracking_uri)
 
@@ -577,7 +582,7 @@ def setup_mlflow_experiment(
                 "domain": "astronomy",
                 "framework": "astrolab",
                 "data_config_version": "2.0",
-                "tracking_uri": tracking_uri,
+                "tracking_uri": tracking_uri or "",
             },
         )
         print(f"🧪 Created new MLflow experiment: {experiment_name}")

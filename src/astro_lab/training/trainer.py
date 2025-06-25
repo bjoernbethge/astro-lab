@@ -283,7 +283,8 @@ class AstroTrainer(Trainer):
                     # Use data_config system for organized MLflow storage
                     data_config.ensure_experiment_directories(self.experiment_name)
                     exp_paths = data_config.get_experiment_paths(self.experiment_name)
-                    tracking_uri = f"file://{exp_paths['mlruns'].absolute()}"
+                    # Ensure absolute path before using as_uri() for Windows compatibility
+                    tracking_uri = exp_paths["mlruns"].resolve().as_uri()
 
                 logger_instance = AstroMLflowLogger(
                     experiment_name=self.experiment_name,
@@ -996,7 +997,11 @@ class AstroTrainer(Trainer):
             plots_dir.mkdir(parents=True, exist_ok=True)
 
             # Get all checkpoints
-            checkpoint_dir = Path(f"./experiments/{survey}/checkpoints")
+            # Use data_config to get the correct checkpoint directory
+            data_config.ensure_experiment_directories(self.experiment_name)
+            exp_paths = data_config.get_experiment_paths(self.experiment_name)
+            checkpoint_dir = exp_paths["checkpoints"]
+
             if not checkpoint_dir.exists():
                 logger.error(f"No checkpoint directory found: {checkpoint_dir}")
                 return {}
@@ -1059,6 +1064,8 @@ class AstroTrainer(Trainer):
         """Create README file with model information."""
         try:
             results_dir = data_config.results_dir / self.experiment_name
+            # Ensure the results directory exists
+            results_dir.mkdir(parents=True, exist_ok=True)
             readme_path = results_dir / "README.md"
 
             with open(readme_path, "w", encoding="utf-8") as f:
