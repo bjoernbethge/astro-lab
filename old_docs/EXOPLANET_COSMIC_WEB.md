@@ -185,7 +185,7 @@ widget = bridge.from_cosmic_web_results(
 )
 ```
 
-### Advanced Analysis
+###  Analysis
 ```python
 # Analyze distance distribution
 import numpy as np

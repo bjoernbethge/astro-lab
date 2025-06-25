@@ -8,4 +8,6 @@ ignore = [
 
 [lint.per-file-ignores]
 # Ignore import errors for healpy specifically
-"src/astro_lab/tensors/catalog.py" = ["F401"] 
+"src/astro_lab/tensors/catalog.py" = ["F401"]
+# Ignore bpy attribute access errors globally for all bpy modules
+"src/astro_lab/utils/bpy/*.py" = ["F401", "E501"] 

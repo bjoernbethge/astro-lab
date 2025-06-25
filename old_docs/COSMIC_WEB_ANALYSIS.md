@@ -254,7 +254,7 @@ for scale in [5.0, 10.0, 20.0]:
         print(f"  {survey}: {efficiency:.1f}% grouped")
 ```
 
-## 🌟 Advanced Features
+## 🌟  Features
 
 ### Adaptive Clustering Parameters
 The cosmic web analysis automatically adapts clustering parameters based on local density:

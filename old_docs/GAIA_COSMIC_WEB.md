@@ -123,7 +123,7 @@ z = cartesian.z.to(u.pc).value  # Z coordinate (pc)
 
 ## 🛠️ Technical Implementation
 
-### Enhanced Spatial3DTensor
+### Spatial3DTensor
 ```python
 from astro_lab.tensors import Spatial3DTensor
 
@@ -143,7 +143,7 @@ results = spatial_tensor.cosmic_web_clustering(
 1. **Load Gaia DR3** → `load_gaia_data(max_samples=3000000)`
 2. **Extract Coordinates** → RA, Dec, Parallax arrays
 3. **Astropy Conversion** → SkyCoord → Cartesian coordinates
-4. **Spatial Tensor** → Enhanced with cosmic web methods
+4. **Spatial Tensor** → with cosmic web methods
 5. **DBSCAN Clustering** → Multi-scale structure analysis
 6. **Statistical Analysis** → Group properties and density
 7. **Interactive Visualization** → CosmographBridge integration
@@ -209,7 +209,7 @@ widget = bridge.from_cosmic_web_results(
 )
 ```
 
-### Advanced Density Analysis
+###  Density Analysis
 ```python
 from astro_lab.tensors import Spatial3DTensor
 import torch
