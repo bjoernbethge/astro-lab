@@ -17,17 +17,18 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 # Configure AstroPhot logging before any imports
-os.environ.setdefault('ASTROPHOT_LOG_LEVEL', 'ERROR')
-os.environ.setdefault('ASTROPHOT_LOG_FILE', '')
+os.environ.setdefault("ASTROPHOT_LOG_LEVEL", "ERROR")
+os.environ.setdefault("ASTROPHOT_LOG_FILE", "")
 
 # Configure logging - reduce level to avoid duplicates
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.WARNING)
 
+
 class DataConfig:
     """
     Centralized data configuration for AstroLab.
-    
+
     Manages all data paths, directory structures, and configuration
     for astronomical data processing and analysis.
     """
@@ -67,8 +68,8 @@ class DataConfig:
 
     @property
     def results_dir(self) -> Path:
-        """Results directory for organized model outputs."""
-        return self.base_dir / "results"
+        """Results directory for organized model outputs (in project root, not data/)."""
+        return Path("results")
 
     @property
     def logs_dir(self) -> Path:
@@ -112,14 +113,11 @@ class DataConfig:
 
     def setup_directories(self):
         """Create only core data directory structure (no survey templates)."""
-        # Only create core directories
+        # Only create core directories under data/
         core_dirs = [
             self.raw_dir,
             self.processed_dir,
-            self.cache_dir,
             self.experiments_dir,
-            self.results_dir,
-            self.configs_dir,
         ]
 
         # Create only core directories
@@ -127,6 +125,10 @@ class DataConfig:
             dir_path.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"📁 Core data structure created in: {self.base_dir}")
+
+        # Results directory is separate in project root
+        self.results_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"📊 Results directory created: {self.results_dir}")
 
     def ensure_survey_directories(self, survey: str):
         """Create directories for a specific survey only when needed."""
@@ -154,11 +156,9 @@ class DataConfig:
 
         logger.info(f"🧪 Created experiment directories for {experiment_name}")
 
-    def get_results_structure(
-        self, survey: str, experiment_name: str
-    ) -> Dict[str, Path]:
-        """Get organized results directory structure for survey/experiment."""
-        base_results = self.results_dir / survey / experiment_name
+    def get_results_structure(self, survey: str, model_name: str) -> Dict[str, Path]:
+        """Get organized results directory structure for survey/model."""
+        base_results = self.results_dir / survey / model_name
 
         return {
             "base": base_results,
@@ -167,15 +167,15 @@ class DataConfig:
             "optuna_plots": base_results / "plots" / "optuna",
         }
 
-    def ensure_results_directories(self, survey: str, experiment_name: str):
+    def ensure_results_directories(self, survey: str, model_name: str):
         """Create organized results directory structure."""
-        structure = self.get_results_structure(survey, experiment_name)
+        structure = self.get_results_structure(survey, model_name)
 
         # Create all directories
         for dir_name, dir_path in structure.items():
             dir_path.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"📊 Created results structure for {survey}/{experiment_name}")
+        logger.info(f"📊 Created results structure for {survey}/{model_name}")
         return structure
 
     def get_experiment_paths(self, experiment_name: str) -> Dict[str, Path]:
@@ -210,6 +210,7 @@ class DataConfig:
 
         logger.info("✅ Migration plan created. Manual file moving required.")
 
+
 # Global configuration instance
 data_config = DataConfig()
 
@@ -217,18 +218,22 @@ data_config = DataConfig()
 if "ASTROLAB_DATA_DIR" in os.environ:
     data_config = DataConfig(os.environ["ASTROLAB_DATA_DIR"])
 
+
 # Convenience functions
 def get_data_dir() -> Path:
     """Get the configured data directory."""
     return data_config.base_dir
 
+
 def get_raw_dir() -> Path:
     """Get the raw data directory."""
     return data_config.raw_dir
 
+
 def get_processed_dir() -> Path:
     """Get the processed data directory."""
     return data_config.processed_dir
+
 
 def get_survey_paths(survey: str) -> Dict[str, Path]:
     """Get all standard paths for a survey."""
@@ -239,6 +244,7 @@ def get_survey_paths(survey: str) -> Dict[str, Path]:
         "graphs": data_config.get_graph_path(survey),
         "tensors": data_config.get_tensor_path(survey),
     }
+
 
 def get_experiment_paths(experiment_name: str) -> Dict[str, Path]:
     """Get all paths for an experiment."""
