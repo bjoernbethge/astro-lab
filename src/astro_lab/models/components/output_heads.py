@@ -7,18 +7,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..utils import filter_kwargs
 from .layers import create_mlp
 
 
-def filter_kwargs(target_class, **kwargs):
-    """Filter kwargs to only include parameters accepted by target_class.__init__."""
-    sig = inspect.signature(target_class.__init__)
-    valid_params = set(sig.parameters.keys()) - {"self"}
-    return {k: v for k, v in kwargs.items() if k in valid_params}
-
-
 class ClassificationHead(nn.Module):
-    """Simple classification head."""
+    """
+    Simple classification head for multi-class classification tasks.
+
+    Args:
+        input_dim: Input feature dimension
+        num_classes: Number of output classes
+        dropout: Dropout rate for regularization
+    """
 
     def __init__(self, input_dim: int, num_classes: int, dropout: float = 0.1):
         super().__init__()
@@ -27,11 +28,27 @@ class ClassificationHead(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for classification.
+
+        Args:
+            x: Input tensor of shape (batch_size, input_dim)
+
+        Returns:
+            Classification logits of shape (batch_size, num_classes)
+        """
         return self.classifier(x)
 
 
 class RegressionHead(nn.Module):
-    """Simple regression head."""
+    """
+    Simple regression head for continuous value prediction.
+
+    Args:
+        input_dim: Input feature dimension
+        output_dim: Output dimension (default: 1)
+        dropout: Dropout rate for regularization
+    """
 
     def __init__(self, input_dim: int, output_dim: int = 1, dropout: float = 0.1):
         super().__init__()
@@ -40,11 +57,26 @@ class RegressionHead(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass for regression.
+
+        Args:
+            x: Input tensor of shape (batch_size, input_dim)
+
+        Returns:
+            Regression output of shape (batch_size, output_dim)
+        """
         return self.regressor(x)
 
 
 class PeriodDetectionHead(nn.Module):
-    """Head for asteroid period detection."""
+    """
+    Head for asteroid period detection with uncertainty estimation.
+
+    Args:
+        input_dim: Input feature dimension
+        dropout: Dropout rate for regularization
+    """
 
     def __init__(self, input_dim: int, dropout: float = 0.1):
         super().__init__()
@@ -57,6 +89,15 @@ class PeriodDetectionHead(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """
+        Forward pass for period detection.
+
+        Args:
+            x: Input tensor of shape (batch_size, input_dim)
+
+        Returns:
+            Dictionary with 'period' and 'uncertainty' tensors
+        """
         output = self.period_net(x)
         period = torch.abs(output[:, 0:1])  # Ensure positive
         uncertainty = torch.abs(output[:, 1:2])
@@ -64,7 +105,14 @@ class PeriodDetectionHead(nn.Module):
 
 
 class ShapeModelingHead(nn.Module):
-    """Head for asteroid shape modeling."""
+    """
+    Head for asteroid shape modeling using spherical harmonics.
+
+    Args:
+        input_dim: Input feature dimension
+        num_harmonics: Number of spherical harmonic coefficients
+        dropout: Dropout rate for regularization
+    """
 
     def __init__(self, input_dim: int, num_harmonics: int = 10, dropout: float = 0.1):
         super().__init__()
@@ -78,6 +126,15 @@ class ShapeModelingHead(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        """
+        Forward pass for shape modeling.
+
+        Args:
+            x: Input tensor of shape (batch_size, input_dim)
+
+        Returns:
+            Dictionary with 'real_coeffs' and 'imag_coeffs' tensors
+        """
         coeffs = self.shape_net(x)
         real_coeffs = coeffs[:, : self.num_harmonics]
         imag_coeffs = coeffs[:, self.num_harmonics :]
@@ -96,7 +153,21 @@ OUTPUT_HEADS: Dict[str, Type[nn.Module]] = {
 def create_output_head(
     head_type: str, input_dim: int, output_dim: Optional[int] = None, **kwargs
 ) -> nn.Module:
-    """Simple factory function with robust parameter filtering."""
+    """
+    Factory function for creating output heads with robust parameter filtering.
+
+    Args:
+        head_type: Type of output head ('classification', 'regression', etc.)
+        input_dim: Input feature dimension
+        output_dim: Output dimension (optional, depends on head type)
+        **kwargs: Additional parameters for the head
+
+    Returns:
+        Configured output head module
+
+    Raises:
+        ValueError: If head_type is not supported
+    """
     if head_type not in OUTPUT_HEADS:
         available = list(OUTPUT_HEADS.keys())
         raise ValueError(f"Unknown head type: {head_type}. Available: {available}")
