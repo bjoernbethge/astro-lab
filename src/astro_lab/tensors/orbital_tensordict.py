@@ -1,8 +1,8 @@
 ﻿"""
-TensorDict-basierte Implementierung für Orbital-Daten
-===================================================
+TensorDict-based implementation for Orbital-Data
+===============================================
 
-Umstellung der OrbitTensor und ManeuverTensor Klassen auf TensorDict-Architektur.
+Transition of OrbitTensor and ManeuverTensor classes to TensorDict architecture.
 """
 
 from __future__ import annotations
@@ -18,109 +18,116 @@ from .tensordict_astro import AstroTensorDict
 
 class OrbitTensorDict(AstroTensorDict):
     """
-    TensorDict für Orbital-Elemente.
+    TensorDict for Orbital-Elements.
 
-    Struktur:
+    Structure:
     {
         "elements": Tensor[N, 6],  # a, e, i, Omega, omega, M
-        "epoch": Tensor[N],        # Epoche der Elemente
+        "epoch": Tensor[N],        # Epoch of orbital elements
         "meta": {
-            "frame": str,          # Referenzrahmen
+            "frame": str,          # Reference frame
             "units": Dict[str, str],
             "central_body": str,
         }
     }
     """
 
-    def __init__(self, elements: torch.Tensor, epoch: Optional[torch.Tensor] = None,
-                 frame: str = "ecliptic", central_body: str = "Sun", **kwargs):
+    def __init__(
+        self,
+        elements: torch.Tensor,
+        epoch: Optional[torch.Tensor] = None,
+        frame: str = "ecliptic",
+        central_body: str = "Sun",
+        **kwargs,
+    ):
         """
-        Initialisiert OrbitTensorDict.
+        Initialize OrbitTensorDict.
 
         Args:
-            elements: [N, 6] Tensor mit Orbital-Elementen [a, e, i, Omega, omega, M]
-            epoch: [N] Epoche der Elemente (optional)
-            frame: Referenzrahmen
-            central_body: Zentralkörper
+            elements: [N, 6] Tensor with orbital elements [a, e, i, Omega, omega, M]
+            epoch: [N] Epoch of orbital elements (optional)
+            frame: Reference frame
+            central_body: Central body
         """
         if elements.shape[-1] != 6:
-            raise ValueError(f"Orbital elements must have shape [..., 6], got {elements.shape}")
+            raise ValueError(
+                f"Orbital elements must have shape [..., 6], got {elements.shape}"
+            )
 
         n_objects = elements.shape[0]
 
         if epoch is None:
-            epoch = torch.zeros(n_objects)  # Default-Epoche
+            epoch = torch.zeros(n_objects)  # Default-Epoch
 
         data = {
             "elements": elements,
             "epoch": epoch,
-            "meta": TensorDict({
+            "meta": {
                 "frame": frame,
                 "central_body": central_body,
                 "units": {
                     "a": "au",
-                    "e": "dimensionless", 
+                    "e": "dimensionless",
                     "i": "degrees",
                     "Omega": "degrees",
                     "omega": "degrees",
-                    "M": "degrees"
-                }
-            }, batch_size=(n_objects,))
+                    "M": "degrees",
+                },
+            },
         }
 
         super().__init__(data, batch_size=(n_objects,), **kwargs)
 
     @property
     def semi_major_axis(self) -> torch.Tensor:
-        """Große Halbachse."""
+        """Semi-major axis."""
         return self["elements"][..., 0]
 
     @property
     def eccentricity(self) -> torch.Tensor:
-        """Exzentrizität."""
+        """Eccentricity."""
         return self["elements"][..., 1]
 
     @property
     def inclination(self) -> torch.Tensor:
-        """Inklination in Grad."""
+        """Inclination in degrees."""
         return self["elements"][..., 2]
 
     @property
     def longitude_of_ascending_node(self) -> torch.Tensor:
-        """Länge des aufsteigenden Knotens in Grad."""
+        """Longitude of ascending node in degrees."""
         return self["elements"][..., 3]
 
     @property
     def argument_of_periapsis(self) -> torch.Tensor:
-        """Argument des Periapsis in Grad."""
+        """Argument of periapsis in degrees."""
         return self["elements"][..., 4]
 
     @property
     def mean_anomaly(self) -> torch.Tensor:
-        """Mittlere Anomalie in Grad."""
+        """Mean anomaly in degrees."""
         return self["elements"][..., 5]
 
     def compute_period(self) -> torch.Tensor:
-        """Berechnet die Orbital-Periode in Jahren."""
-        # Drittes Kepler'sches Gesetz: P² ∝ a³
-        a_au = self.semi_major_axis  # Annahme: bereits in AU
-        return torch.sqrt(a_au ** 3)
+        """Calculates the orbital period in years."""
+        # Third Kepler's Law: P² ∝ a³
+        a_au = self.semi_major_axis  # Assumption: already in AU
+        return torch.sqrt(a_au**3)
 
     def to_cartesian(self, time: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Konvertiert Orbital-Elemente zu kartesischen Koordinaten.
+        Converts orbital elements to Cartesian coordinates.
 
         Args:
-            time: Zeitpunkt für Positionsberechnung (optional)
+            time: Time for position calculation (optional)
 
         Returns:
-            [N, 6] Tensor mit [x, y, z, vx, vy, vz]
+            [N, 6] Tensor with [x, y, z, vx, vy, vz]
         """
         if time is None:
             time = self["epoch"]
 
-        # Vereinfachte Implementierung - in der Praxis würde hier
-        # eine vollständige Orbital-Mechanik-Berechnung stehen
+        # Simplified implementation - in practice, this would be a full orbital mechanics calculation
         a = self.semi_major_axis
         e = self.eccentricity
         i = self.inclination * math.pi / 180
@@ -128,13 +135,13 @@ class OrbitTensorDict(AstroTensorDict):
         omega = self.argument_of_periapsis * math.pi / 180
         M = self.mean_anomaly * math.pi / 180
 
-        # Für Demo: einfache kreisförmige Orbits
+        # For Demo: simple circular orbits
         r = a * (1 - e * torch.cos(M))
         x = r * torch.cos(M)
         y = r * torch.sin(M)
         z = torch.zeros_like(x)
 
-        # Vereinfachte Geschwindigkeiten
+        # Simplified velocities
         vx = -a * torch.sin(M)
         vy = a * torch.cos(M)
         vz = torch.zeros_like(vx)
@@ -143,17 +150,17 @@ class OrbitTensorDict(AstroTensorDict):
 
     def propagate(self, delta_time: torch.Tensor) -> OrbitTensorDict:
         """
-        Propagiert die Orbits um eine gegebene Zeit.
+        Propagates the orbits over a given time.
 
         Args:
-            delta_time: Zeitdifferenz
+            delta_time: Time difference
 
         Returns:
-            Neuer OrbitTensorDict mit propagierten Elementen
+            New OrbitTensorDict with propagated elements
         """
-        # Einfache Keplerian Propagation
+        # Simple Keplerian Propagation
         period = self.compute_period()
-        n = 2 * math.pi / (period * 365.25)  # Mittlere Bewegung
+        n = 2 * math.pi / (period * 365.25)  # Mean motion
 
         new_M = self.mean_anomaly + n * delta_time
         new_M = torch.fmod(new_M, 360.0)  # Normalize to [0, 360)
@@ -164,20 +171,20 @@ class OrbitTensorDict(AstroTensorDict):
         return OrbitTensorDict(
             elements=new_elements,
             epoch=self["epoch"] + delta_time,
-            frame=self["meta", "frame"],
-            central_body=self["meta", "central_body"]
+            frame=self["meta"]["frame"],
+            central_body=self["meta"]["central_body"],
         )
 
 
 class ManeuverTensorDict(AstroTensorDict):
     """
-    TensorDict für Orbital-Manöver.
+    TensorDict for Orbital-Manövers.
 
-    Struktur:
+    Structure:
     {
-        "delta_v": Tensor[N, 3],    # Geschwindigkeitsänderung [x, y, z]
-        "time": Tensor[N],          # Zeitpunkt des Manövers
-        "duration": Tensor[N],      # Dauer des Manövers
+        "delta_v": Tensor[N, 3],    # Velocity change [x, y, z]
+        "time": Tensor[N],          # Time of maneuver
+        "duration": Tensor[N],      # Duration of maneuver
         "meta": {
             "maneuver_type": str,
             "coordinate_frame": str,
@@ -185,17 +192,22 @@ class ManeuverTensorDict(AstroTensorDict):
     }
     """
 
-    def __init__(self, delta_v: torch.Tensor, time: torch.Tensor,
-                 duration: Optional[torch.Tensor] = None,
-                 maneuver_type: str = "impulsive", **kwargs):
+    def __init__(
+        self,
+        delta_v: torch.Tensor,
+        time: torch.Tensor,
+        duration: Optional[torch.Tensor] = None,
+        maneuver_type: str = "impulsive",
+        **kwargs,
+    ):
         """
-        Initialisiert ManeuverTensorDict.
+        Initialize ManeuverTensorDict.
 
         Args:
-            delta_v: [N, 3] Geschwindigkeitsänderung
-            time: [N] Zeitpunkt des Manövers
-            duration: [N] Dauer (optional)
-            maneuver_type: Art des Manövers
+            delta_v: [N, 3] Velocity change
+            time: [N] Time of maneuver
+            duration: [N] Duration (optional)
+            maneuver_type: Type of maneuver
         """
         if delta_v.shape[-1] != 3:
             raise ValueError(f"Delta-v must have shape [..., 3], got {delta_v.shape}")
@@ -209,53 +221,53 @@ class ManeuverTensorDict(AstroTensorDict):
             "delta_v": delta_v,
             "time": time,
             "duration": duration,
-            "meta": TensorDict({
+            "meta": {
                 "maneuver_type": maneuver_type,
                 "coordinate_frame": "body_fixed",
-            }, batch_size=(n_objects,))
+            },
         }
 
         super().__init__(data, batch_size=(n_objects,), **kwargs)
 
     @property
     def delta_v_magnitude(self) -> torch.Tensor:
-        """Betrag der Geschwindigkeitsänderung."""
+        """Magnitude of velocity change."""
         return torch.norm(self["delta_v"], dim=-1)
 
     def apply_to_orbit(self, orbit: OrbitTensorDict) -> OrbitTensorDict:
         """
-        Wendet Manöver auf Orbit an.
+        Applies maneuver to orbit.
 
         Args:
-            orbit: OrbitTensorDict zum Modifizieren
+            orbit: OrbitTensorDict to modify
 
         Returns:
-            Modifizierter OrbitTensorDict
+            Modified OrbitTensorDict
         """
-        # Vereinfachte Implementierung
-        # In der Praxis würde hier eine vollständige Orbital-Mechanik-Berechnung stehen
+        # Simplified implementation
+        # In practice, this would be a full orbital mechanics calculation
 
-        # Propagiere Orbit zum Manöver-Zeitpunkt
+        # Propagate orbit to maneuver time
         dt = self["time"] - orbit["epoch"]
         orbit_at_maneuver = orbit.propagate(dt)
 
-        # Konvertiere zu kartesischen Koordinaten
+        # Convert to Cartesian coordinates
         state = orbit_at_maneuver.to_cartesian()
 
-        # Füge Delta-V hinzu
+        # Add Delta-V
         state[..., 3:6] += self["delta_v"]
 
-        # Konvertiere zurück zu Orbital-Elementen (vereinfacht)
-        # Hier würde normalerweise eine vollständige Konvertierung stehen
+        # Convert back to orbital elements (simplified)
+        # Normally, this would be a full conversion
         new_elements = orbit_at_maneuver["elements"].clone()
 
         return OrbitTensorDict(
             elements=new_elements,
             epoch=self["time"],
-            frame=orbit_at_maneuver["meta", "frame"],
-            central_body=orbit_at_maneuver["meta", "central_body"]
+            frame=orbit_at_maneuver["meta"]["frame"],
+            central_body=orbit_at_maneuver["meta"]["central_body"],
         )
 
     def total_delta_v(self) -> torch.Tensor:
-        """Berechnet den Gesamt-Delta-V für alle Manöver."""
+        """Calculates the total Delta-V for all maneuvers."""
         return torch.sum(self.delta_v_magnitude)

@@ -1,10 +1,11 @@
 """
-Astronomical Tensor System
-=========================
+Astronomical TensorDict System
+=============================
 
-Tensor-based astronomical data processing with visualization integration.
+Modern tensor-based astronomical data processing using TensorDict architecture.
+Fully modernized for PyTorch 2.0+ and Lightning integration.
 
-This module provides specialized tensors for astronomical data types:
+This module provides specialized TensorDicts for astronomical data types:
 - Spatial coordinates with coordinate transformations
 - Photometric measurements across multiple bands
 - Spectroscopic data with wavelength operations
@@ -13,12 +14,12 @@ This module provides specialized tensors for astronomical data types:
 - Orbital mechanics and satellite tracking
 - Cosmological simulation data
 
-All tensors include:
-- Direct PyVista mesh conversion (to_pyvista())
-- Direct Blender object conversion (to_blender())
-- Memory-efficient data exchange
+All TensorDicts include:
+- Native PyTorch integration
+- Memory-efficient hierarchical data structures
 - Zero-copy operations where possible
 - Astronomical metadata preservation
+- Lightning DataModule compatibility
 """
 
 import datetime
@@ -27,46 +28,49 @@ from typing import Any, Dict, List, Optional
 # Pydantic configurations for tensor types
 from pydantic import BaseModel, ConfigDict, Field
 
-# Import base class first
-from .base import AstroTensorBase
-from .clustering import ClusteringTensor
+# Import TensorDict classes from specific modules
+from .crossmatch_tensordict import CrossMatchTensorDict
 
-# Import refactored components
-from .constants import ASTRO, CONSTANTS, GRAVITY, PHOTOMETRY, SPECTROSCOPY
-from .crossmatch import CrossMatchTensor
-
-# Import simple tensor classes (no dependencies)
-# Import complex tensors that depend on others (after their dependencies)
-from .earth_satellite import EarthSatelliteTensor
-from .factory import TensorFactory
-
-# Import data processing tensors
-from .feature import FeatureTensor
-from .lightcurve import LightcurveTensor
-from .orbital import ManeuverTensor, OrbitTensor
-from .photometric import PhotometricTensor
-from .simulation import CosmologyCalculator, SimulationTensor
-
-# Import spatial tensors (minimal dependencies)
-from .spatial_3d import Spatial3DTensor
-from .spectral import SpectralTensor
-from .statistics import StatisticsTensor
-
-# Import coordinator tensor last (depends on most others)
-from .survey import SurveyTensor
-from .tensor_types import (
-    PhotometricTensorProtocol,
-    Spatial3DTensorProtocol,
-    SurveyTensorProtocol,
-    TensorProtocol,
+# Import factory functions from existing modules
+from .factories import (
+    create_2mass_survey,
+    create_asteroid_population,
+    create_cosmology_sample,
+    create_crossmatch_example,
+    create_gaia_survey,
+    create_generic_survey,
+    create_kepler_lightcurves,
+    create_kepler_orbits,
+    create_nbody_simulation,
+    create_pan_starrs_survey,
+    create_sdss_survey,
+    create_wise_survey,
+    merge_surveys,
 )
-from .transformations import TransformationRegistry, apply_transformation
+from .feature_tensordict import (
+    ClusteringTensorDict,
+    FeatureTensorDict,
+    StatisticsTensorDict,
+)
+from .orbital_tensordict import ManeuverTensorDict, OrbitTensorDict
+from .satellite_tensordict import EarthSatelliteTensorDict
+from .simulation_tensordict import CosmologyTensorDict, SimulationTensorDict
+
+# Core TensorDict classes - import from the actual modules
+from .tensordict_astro import (
+    AstroTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SpatialTensorDict,
+    SpectralTensorDict,
+    SurveyTensorDict,
+)
+
 
 class SpatialTensorConfig(BaseModel):
-    """Configuration for Spatial3DTensor."""
+    """Configuration for SpatialTensorDict."""
 
     model_config = ConfigDict(validate_assignment=True, extra="allow")
-
     coordinate_system: str = Field(
         default="icrs", description="Coordinate reference system"
     )
@@ -75,48 +79,48 @@ class SpatialTensorConfig(BaseModel):
     )
     epoch: Optional[str] = Field(default="J2000.0", description="Coordinate epoch")
 
+
 class PhotometricTensorConfig(BaseModel):
-    """Configuration for PhotometricTensor."""
+    """Configuration for PhotometricTensorDict."""
 
     model_config = ConfigDict(validate_assignment=True, extra="allow")
-
     bands: List[str] = Field(default_factory=lambda: ["u", "g", "r", "i", "z"])
     magnitude_system: str = Field(default="AB", description="Magnitude system")
     zeropoints: Optional[Dict[str, float]] = Field(default=None)
 
+
 class SpectralTensorConfig(BaseModel):
-    """Configuration for SpectralTensor."""
+    """Configuration for SpectralTensorDict."""
 
     model_config = ConfigDict(validate_assignment=True, extra="allow")
-
     wavelength_unit: str = Field(default="angstrom", description="Wavelength units")
     flux_unit: str = Field(default="erg/s/cm2/A", description="Flux units")
     spectral_resolution: Optional[float] = Field(default=None, description="R = λ/Δλ")
 
+
 class LightcurveTensorConfig(BaseModel):
-    """Configuration for LightcurveTensor."""
+    """Configuration for LightcurveTensorDict."""
 
     model_config = ConfigDict(validate_assignment=True, extra="allow")
-
     time_format: str = Field(default="mjd", description="Time format")
     time_scale: str = Field(default="utc", description="Time scale")
     bands: List[str] = Field(default_factory=lambda: ["V", "I"])
 
+
 class OrbitTensorConfig(BaseModel):
-    """Configuration for OrbitTensor."""
+    """Configuration for OrbitTensorDict."""
 
     model_config = ConfigDict(validate_assignment=True, extra="allow")
-
     frame: str = Field(default="ecliptic", description="Reference frame")
     units: Dict[str, str] = Field(
         default_factory=lambda: {"a": "au", "e": "dimensionless", "i": "degrees"}
     )
 
+
 class SurveyTensorConfig(BaseModel):
-    """Configuration for SurveyTensor."""
+    """Configuration for SurveyTensorDict."""
 
     model_config = ConfigDict(validate_assignment=True, extra="allow")
-
     survey_name: str = Field(..., description="Name of the survey")
     data_release: Optional[str] = Field(
         default=None, description="Data release version"
@@ -126,26 +130,27 @@ class SurveyTensorConfig(BaseModel):
     )
     created_at: str = Field(default_factory=lambda: datetime.datetime.now().isoformat())
 
+
+# Modern TensorDict-only exports
 __all__ = [
-    # Base class
-    "AstroTensorBase",
-    # Tensor classes
-    "Spatial3DTensor",
-    "PhotometricTensor",
-    "SpectralTensor",
-    "LightcurveTensor",
-    "OrbitTensor",
-    "ManeuverTensor",
-    "EarthSatelliteTensor",
-    "SurveyTensor",
-    "SimulationTensor",
-    "CosmologyCalculator",
-    # Data processing tensors
-    "FeatureTensor",
-    "ClusteringTensor",
-    "StatisticsTensor",
-    "CrossMatchTensor",
-    # Pydantic configuration classes
+    # Core TensorDict classes
+    "AstroTensorDict",
+    "SpatialTensorDict",
+    "PhotometricTensorDict",
+    "SpectralTensorDict",
+    "LightcurveTensorDict",
+    "SurveyTensorDict",
+    # Specialized TensorDict classes
+    "OrbitTensorDict",
+    "ManeuverTensorDict",
+    "EarthSatelliteTensorDict",
+    "SimulationTensorDict",
+    "CosmologyTensorDict",
+    "FeatureTensorDict",
+    "StatisticsTensorDict",
+    "ClusteringTensorDict",
+    "CrossMatchTensorDict",
+    # Configuration classes
     "SpatialTensorConfig",
     "PhotometricTensorConfig",
     "SpectralTensorConfig",
@@ -153,108 +158,120 @@ __all__ = [
     "OrbitTensorConfig",
     "SurveyTensorConfig",
     # Factory functions
+    "create_gaia_survey",
+    "create_sdss_survey",
+    "create_2mass_survey",
+    "create_pan_starrs_survey",
+    "create_wise_survey",
+    "create_generic_survey",
+    "create_kepler_lightcurves",
+    "create_kepler_orbits",
+    "create_asteroid_population",
+    "create_nbody_simulation",
+    "create_cosmology_sample",
+    "create_crossmatch_example",
+    "merge_surveys",
+    # Utility functions
+    "create_spatial_tensor",
+    "create_photometric_tensor",
+    "create_survey_tensor",
+    "create_simulation_tensor",
     "from_astrometric_data",
     "from_lightcurve_data",
     "from_orbital_elements",
 ]
 
-# Add refactored modules
-__all__.extend(
-    [
-        # Constants
-        "ASTRO",
-        "CONSTANTS",
-        "GRAVITY",
-        "PHOTOMETRY",
-        "SPECTROSCOPY",
-        # Protocols
-        "PhotometricTensorProtocol",
-        "Spatial3DTensorProtocol",
-        "SurveyTensorProtocol",
-        "TensorProtocol",
-        # Transformations
-        "TransformationRegistry",
-        "apply_transformation",
-        # Factory
-        "TensorFactory",
-    ]
-)
 
-# Version info
-__version__ = "0.3.0"
-__author__ = "astro-lab"
-__description__ = "Astronomical tensor classes with composition-based architecture"
-
-# Architecture Summary
-TENSOR_ARCHITECTURE = {
-    "base": "AstroTensorBase - composition-based foundation",
-    "spatial": "Spatial3DTensor - 3D coordinates, astrometry, BVH indexing",
-    "photometric": "PhotometricTensor - multi-band photometry",
-    "spectral": "SpectralTensor - spectroscopic data",
-    "temporal": "LightcurveTensor - time series data",
-    "orbital": "OrbitTensor + ManeuverTensor - celestial mechanics",
-    "earth_satellite": "EarthSatelliteTensor - Earth satellites",
-    "coordinator": "SurveyTensor - main coordinator tensor",
-}
-
-# Convenience factory functions
-def create_spatial_tensor(*args, **kwargs):
-    """Create spatial tensor."""
-    if len(args) == 3:  # x, y, z
-        data = torch.stack(args, dim=-1)
-        return Spatial3DTensor(data=data, **kwargs)
-    elif len(args) == 1:  # data tensor
-        return Spatial3DTensor(data=args[0], **kwargs)
-    else:
-        raise ValueError("Spatial3DTensor requires either 3 coordinates (x,y,z) or 1 data tensor")
-
-def create_photometric_tensor(*args, **kwargs):
-    """Create photometric tensor."""
-    return PhotometricTensor(*args, **kwargs)
-
-def create_survey_tensor(*args, **kwargs):
-    """Create survey tensor."""
-    return SurveyTensor(*args, **kwargs)
-
-def create_simulation_tensor(positions, features=None, **kwargs):
-    """Create simulation tensor from TNG50/Illustris data."""
-    return SimulationTensor(positions, features=features, **kwargs)
-
-# Factory methods for tensor creation
-def from_astrometric_data(ra, dec, parallax=None, pmra=None, pmdec=None, **kwargs):
-    """Create Spatial3DTensor from astrometric data."""
+# Factory functions using TensorDict architecture
+def create_spatial_tensor(coordinates, coordinate_system="icrs", **kwargs):
+    """Create SpatialTensorDict from coordinates."""
     import torch
 
-    # Basic coordinate tensor from RA/Dec
-    if isinstance(ra, (list, tuple)):
-        ra = torch.tensor(ra, dtype=torch.float32)
-    if isinstance(dec, (list, tuple)):
-        dec = torch.tensor(dec, dtype=torch.float32)
+    if not isinstance(coordinates, torch.Tensor):
+        coordinates = torch.tensor(coordinates, dtype=torch.float32)
 
-    # Convert to 3D coordinates (simplified)
-    coordinates = torch.stack([ra, dec, torch.zeros_like(ra)], dim=1)
+    return SpatialTensorDict(coordinates, coordinate_system=coordinate_system, **kwargs)
 
-    return Spatial3DTensor(
-        data=coordinates,
-        ra=ra,
-        dec=dec,
-        parallax=parallax,
-        pmra=pmra,
-        pmdec=pmdec,
+
+def create_photometric_tensor(magnitudes, bands, **kwargs):
+    """Create PhotometricTensorDict from magnitude data."""
+    import torch
+
+    if not isinstance(magnitudes, torch.Tensor):
+        magnitudes = torch.tensor(magnitudes, dtype=torch.float32)
+
+    return PhotometricTensorDict(magnitudes, bands, **kwargs)
+
+
+def create_survey_tensor(spatial, photometric, survey_name, **kwargs):
+    """Create SurveyTensorDict from components."""
+    return SurveyTensorDict(
+        spatial=spatial, photometric=photometric, survey_name=survey_name, **kwargs
+    )
+
+
+def create_simulation_tensor(positions, features=None, **kwargs):
+    """Create SimulationTensorDict for N-body data."""
+    return SimulationTensorDict(
+        positions=positions,
+        velocities=kwargs.get("velocities", positions * 0),
+        masses=kwargs.get("masses", positions.new_ones(positions.shape[0])),
         **kwargs,
     )
 
+
+def from_astrometric_data(ra, dec, parallax=None, pmra=None, pmdec=None, **kwargs):
+    """Create SpatialTensorDict from astrometric measurements."""
+    import torch
+
+    # Convert to tensors
+    if not isinstance(ra, torch.Tensor):
+        ra = torch.tensor(ra, dtype=torch.float32)
+    if not isinstance(dec, torch.Tensor):
+        dec = torch.tensor(dec, dtype=torch.float32)
+
+    # Create coordinates tensor
+    coords = torch.stack([ra, dec, torch.zeros_like(ra)], dim=-1)
+
+    # Add distance from parallax if available
+    if parallax is not None:
+        if not isinstance(parallax, torch.Tensor):
+            parallax = torch.tensor(parallax, dtype=torch.float32)
+        distance = 1000.0 / (torch.abs(parallax) + 1e-6)  # mas to parsec
+        coords[..., 2] = distance
+
+    return SpatialTensorDict(coords, coordinate_system="icrs", **kwargs)
+
+
 def from_lightcurve_data(times, magnitudes, errors=None, **kwargs):
-    """Create LightcurveTensor from time series data."""
-    return LightcurveTensor(times=times, magnitudes=magnitudes, errors=errors, **kwargs)
+    """Create LightcurveTensorDict from lightcurve data."""
+    import torch
+
+    if not isinstance(times, torch.Tensor):
+        times = torch.tensor(times, dtype=torch.float32)
+    if not isinstance(magnitudes, torch.Tensor):
+        magnitudes = torch.tensor(magnitudes, dtype=torch.float32)
+
+    # Ensure proper shape for LightcurveTensorDict
+    if magnitudes.dim() == 2:
+        magnitudes = magnitudes.unsqueeze(-1)  # Add band dimension
+
+    if errors is not None:
+        if not isinstance(errors, torch.Tensor):
+            errors = torch.tensor(errors, dtype=torch.float32)
+        if errors.dim() == 2:
+            errors = errors.unsqueeze(-1)
+
+    return LightcurveTensorDict(
+        times=times, magnitudes=magnitudes, bands=["V"], errors=errors, **kwargs
+    )
+
 
 def from_orbital_elements(elements, element_type="keplerian", **kwargs):
-    """Create OrbitTensor from orbital elements."""
-    return OrbitTensor(data=elements, element_type=element_type, **kwargs)
+    """Create OrbitTensorDict from orbital elements."""
+    import torch
 
-# Removed migration helpers - prototyping phase
+    if not isinstance(elements, torch.Tensor):
+        elements = torch.tensor(elements, dtype=torch.float32)
 
-import logging
-
-logger = logging.getLogger(__name__)
-logger.info("🧭 Astronomical tensors loaded with integrated visualization support")
+    return OrbitTensorDict(elements=elements, **kwargs)
