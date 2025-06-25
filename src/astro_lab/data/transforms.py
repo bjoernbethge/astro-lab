@@ -8,13 +8,13 @@ Domain-specific transforms for astronomical data:
 - Feature normalization and scaling
 """
 
-import math
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
 from torch_geometric.data import Data
 from torch_geometric.transforms import BaseTransform, Compose
+
 
 class CoordinateSystemTransform(BaseTransform):
     """Transform between different astronomical coordinate systems."""
@@ -41,6 +41,7 @@ class CoordinateSystemTransform(BaseTransform):
                 data.pos = pos
 
         return data
+
 
 class AddAstronomicalColors(BaseTransform):
     """Add astronomical color indices to node features."""
@@ -75,6 +76,7 @@ class AddAstronomicalColors(BaseTransform):
                     data.x = torch.cat([x, color_tensor], dim=1)
 
         return data
+
 
 class AddDistanceFeatures(BaseTransform):
     """Add distance-based features for astronomical objects."""
@@ -112,6 +114,7 @@ class AddDistanceFeatures(BaseTransform):
                         data.x = distance_modulus.unsqueeze(1)
 
         return data
+
 
 class NormalizeAstronomicalFeatures(BaseTransform):
     """Normalize astronomical features (magnitudes, colors, etc.)."""
@@ -163,6 +166,7 @@ class NormalizeAstronomicalFeatures(BaseTransform):
 
         return data
 
+
 class AddRedshiftFeatures(BaseTransform):
     """Add redshift-derived features for extragalactic objects."""
 
@@ -201,7 +205,9 @@ class AddRedshiftFeatures(BaseTransform):
 
         return data
 
+
 # === Convenience Functions ===
+
 
 def get_default_astro_transforms(
     add_colors: bool = True,
@@ -247,6 +253,7 @@ def get_default_astro_transforms(
 
     return Compose(transforms)
 
+
 def get_galaxy_transforms() -> Compose:
     """Get transforms optimized for galaxy data."""
     return Compose(
@@ -258,6 +265,7 @@ def get_galaxy_transforms() -> Compose:
         ]
     )
 
+
 def get_stellar_transforms() -> Compose:
     """Get transforms optimized for stellar data."""
     return Compose(
@@ -268,6 +276,7 @@ def get_stellar_transforms() -> Compose:
             NormalizeAstronomicalFeatures(method="zscore"),
         ]
     )
+
 
 def get_exoplanet_transforms() -> Compose:
     """Get transforms optimized for exoplanet data."""

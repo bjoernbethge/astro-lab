@@ -5,8 +5,8 @@ Modern data loading and processing for astronomical surveys using Polars, PyTorc
 and specialized astronomical tensors. Perfect for prototyping and modern astronomical ML pipelines.
 
 Quick Start:
-    from astro_lab.data import load_gaia_data
-    dataset = load_gaia_data(max_samples=5000)  # Done!
+    from astro_lab.data import load_survey_data
+    dataset = load_survey_data("gaia", max_samples=5000)  # Done!
 """
 
 import logging
@@ -17,16 +17,6 @@ logger = logging.getLogger(__name__)
 
 # 🌟 PURE CLEAN API - Polars-First Only
 # 🔧 CONFIGURATION SYSTEM
-from .core import (
-    AstroDataset,
-    detect_survey_type,
-    load_gaia_data,
-    load_lightcurve_data,
-    load_nsa_data,
-    load_sdss_data,
-    load_tng50_data,
-    load_tng50_temporal_data,
-)
 from .config import (
     DataConfig,
     data_config,
@@ -34,6 +24,13 @@ from .config import (
     get_processed_dir,
     get_raw_dir,
     get_survey_paths,
+)
+from .core import (
+    AstroDataset,
+    detect_survey_type,
+    load_survey_data,
+    load_tng50_data,
+    load_tng50_temporal_data,
 )
 
 # Clean separated imports
@@ -50,20 +47,24 @@ def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
 from .manager import (
     AstroDataManager,
     data_manager,
-    download_bright_all_sky,
-    download_gaia,
+    download_2mass,
+    download_pan_starrs,
+    download_sdss,
+    download_survey,
+    download_wise,
     import_fits,
     import_tng50,
     list_catalogs,
     load_catalog,
-    load_gaia_bright_stars,
     process_for_ml,
+)
+from .preprocessing import (
+    create_graph_from_dataframe,
 )
 
 # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
 from .preprocessing import (
     preprocess_catalog as preprocess_catalog_new,
-    create_graph_from_dataframe,
 )
 
 # 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
@@ -74,8 +75,8 @@ from .utils import (
     get_fits_info,
     load_fits_optimized,
     load_fits_table_optimized,
-    save_splits_to_parquet,
     load_splits_from_parquet,
+    save_splits_to_parquet,
 )
 
 # Clean exports
@@ -86,10 +87,7 @@ __all__ = [
     # 🏭 FACTORY FUNCTIONS
     "create_astro_datamodule",  # Universal datamodule factory
     # 🚀 CONVENIENCE FUNCTIONS (Most Common)
-    "load_gaia_data",  # One-liner for Gaia
-    "load_sdss_data",  # One-liner for SDSS
-    "load_nsa_data",  # One-liner for NSA
-    "load_lightcurve_data",  # One-liner for lightcurves
+    "load_survey_data",  # Universal survey loader
     "load_tng50_data",
     "load_tng50_temporal_data",  # 🌟 NEW: TNG50 Temporal loader
     # 🔗 GRAPH CREATION FUNCTIONS - NEW!
@@ -102,11 +100,13 @@ __all__ = [
     # 🔧 MANAGER SUPPORT (for CLI)
     "AstroDataManager",
     "data_manager",
-    "download_bright_all_sky",
-    "download_gaia",
+    "download_survey",
+    "download_sdss",
+    "download_2mass",
+    "download_wise",
+    "download_pan_starrs",
     "list_catalogs",
     "load_catalog",
-    "load_gaia_bright_stars",
     "import_fits",
     "import_tng50",
     "process_for_ml",
