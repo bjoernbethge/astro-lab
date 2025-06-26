@@ -21,15 +21,15 @@ from astro_lab.ui import (
     ui_model_selector,
     ui_graph_controls,
     handle_component_actions,
-    WIDGETS_AVAILABLE
+    get_astro_widget
 )
 
 config_loader = ui_config_loader()
 quick_setup = ui_quick_setup()
 
-# Check if advanced widget features are available
-if WIDGETS_AVAILABLE:
-    graph_controls = ui_graph_controls()
+# Use widget functionality
+widget = get_astro_widget()
+graph_controls = ui_graph_controls()
 ```
 
 ## Integration
@@ -38,14 +38,15 @@ if WIDGETS_AVAILABLE:
 - **data_config**: Integrates with path management
 - **Model Configs**: Works with actual model configurations
 - **Training Configs**: Supports predefined training setups
-- **AstroLab Widgets**: Advanced visualization and analysis (if available)
+- **AstroLab Widgets**: Advanced visualization and analysis
 """
 
 import logging
 from typing import Any
 
 from .components import (
-    WIDGETS_AVAILABLE,
+    get_astro_widget,
+    get_widget_status,
     handle_component_actions,
     ui_analysis_controls,
     ui_data_controls,
@@ -63,10 +64,10 @@ from .dashboard import (
     create_config_dashboard,
     create_minimal_dashboard,
     create_widget_showcase,
-    dashboard,
 )
 from .settings import (
     UIConfigManager,
+    create_settings_ui,
     handle_config_actions,
     ui_config,
     ui_config_loader,
@@ -121,7 +122,6 @@ __all__ = [
     "UIConfigManager",
     "ui_config",
     "AstroLabDashboard",
-    "dashboard",
     # Configuration components
     "ui_config_loader",
     "ui_data_paths",
@@ -130,6 +130,7 @@ __all__ = [
     "ui_training_selector",
     "ui_experiment_manager",
     "ui_config_status",
+    "create_settings_ui",
     # UI Components
     "ui_quick_setup",
     "ui_data_controls",
@@ -149,8 +150,9 @@ __all__ = [
     "create_analysis_dashboard",
     "create_widget_showcase",
     "create_dashboard",
-    # Widget availability
-    "WIDGETS_AVAILABLE",
+    # Widget functions
+    "get_astro_widget",
+    "get_widget_status",
 ]
 
 # Supported dashboard types
@@ -160,9 +162,14 @@ DASHBOARD_TYPES = ["full", "minimal", "config", "analysis", "widgets"]
 UI_THEMES = ["light", "dark", "auto"]
 
 # Backend options
-VISUALIZATION_BACKENDS = ["plotly", "matplotlib", "bokeh"]
-if WIDGETS_AVAILABLE:
-    VISUALIZATION_BACKENDS.extend(["open3d", "pyvista", "blender"])
+VISUALIZATION_BACKENDS = [
+    "plotly",
+    "matplotlib",
+    "bokeh",
+    "open3d",
+    "pyvista",
+    "blender",
+]
 
 MODEL_BACKENDS = ["pytorch"]
 

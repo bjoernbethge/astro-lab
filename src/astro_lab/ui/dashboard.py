@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 import marimo as mo
 
 from .components import (
-    WIDGETS_AVAILABLE,
     handle_component_actions,
     ui_analysis_controls,
     ui_data_controls,
@@ -106,7 +105,7 @@ class AstroLabDashboard:
 
     def create_sidebar(self) -> mo.vstack:
         """Create dashboard sidebar."""
-        widget_status = "🟢 Available" if WIDGETS_AVAILABLE else "🔴 Not Available"
+        widget_status = "🟢 Available"
 
         return mo.vstack(
             [
@@ -152,20 +151,11 @@ machine learning, and interactive visualization.
 - **TNG50**: IllustrisTNG simulation data
 
 ### 🧰 Available Tools
-- Interactive plotting with Plotly, Matplotlib, Bokeh"""
-
-        if WIDGETS_AVAILABLE:
-            features_text += """
-- ** 3D visualization** with Open3D, PyVista, Blender
+- Interactive plotting with Plotly, Matplotlib, Bokeh
+- **3D visualization** with Open3D, PyVista, Blender
 - **GPU-accelerated analysis** and clustering
 - **Graph-based analysis** with PyTorch Geometric
-- **High-performance neighbor finding**"""
-        else:
-            features_text += """
-- Graph-based analysis and clustering
-- Neural networks and machine learning"""
-
-        features_text += """
+- **High-performance neighbor finding**
 - GPU acceleration support
             """
 
@@ -313,16 +303,6 @@ def create_analysis_dashboard() -> mo.vstack:
 
 def create_widget_showcase() -> mo.vstack:
     """Create a dashboard showcasing AstroLab widget capabilities."""
-    if not WIDGETS_AVAILABLE:
-        return mo.vstack(
-            [
-                mo.md("# ❌ AstroLab Widgets Not Available"),
-                mo.md(
-                    "Please install the required dependencies for widget functionality."
-                ),
-            ]
-        )
-
     return mo.vstack(
         [
             mo.md("# 🌟 AstroLab Widget Showcase"),

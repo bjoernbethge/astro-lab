@@ -15,7 +15,8 @@ from typing import Any, Dict, Optional, Protocol
 import numpy as np
 import torch
 
-from .bpy import bpy, mathutils
+from .albpy import blender_memory_context, bpy_object_context, mathutils
+from .albpy import bpy as albpy
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ _mesh_manager = PolyDataManager()
 
 def _get_blender_modules():
     """Get Blender modules."""
-    return bpy, mathutils
+    return albpy, mathutils
 
 
 class TensorProtocol(Protocol):
@@ -217,31 +218,52 @@ class ZeroCopyBridge:
             optimized = optimized.cpu()
         return optimized
 
-    def validate_3d_coordinates(self, tensor: torch.Tensor) -> torch.Tensor:
+    def validate_3d_coordinates(self, tensor: Any) -> torch.Tensor:
         """Validate and ensure tensor has correct 3D coordinate format."""
-        # Check if it's a SurveyTensor object
-        if hasattr(tensor, "survey_name") and hasattr(tensor, "get_spatial_tensor"):
+        # Check if it's a SurveyTensorDict object
+        if hasattr(tensor, "survey_name") and hasattr(tensor, "spatial"):
             logger.info(
-                f"✅ SurveyTensor detected: {tensor.survey_name}. Extracting spatial coordinates."
+                f"✅ SurveyTensorDict detected: {tensor.survey_name}. Extracting spatial coordinates."
+            )
+            try:
+                if "coordinates" in tensor["spatial"]:
+                    coords = tensor["spatial"]["coordinates"]
+                    logger.info(
+                        f"✅ Extracted 3D coordinates from SurveyTensorDict: {coords.shape}"
+                    )
+                    tensor = coords
+                else:
+                    raise ValueError("SurveyTensorDict spatial data has no coordinates")
+            except Exception as e:
+                logger.error(
+                    f"❌ Failed to extract spatial coordinates from SurveyTensorDict: {e}"
+                )
+                raise ValueError(
+                    f"Failed to extract spatial coordinates from SurveyTensorDict: {e}"
+                )
+        elif hasattr(tensor, "survey_name") and hasattr(tensor, "get_spatial_tensor"):
+            # Fallback for old API
+            logger.info(
+                f"✅ Legacy SurveyTensor detected: {tensor.survey_name}. Extracting spatial coordinates."
             )
             try:
                 spatial_tensor = tensor.get_spatial_tensor()
                 if hasattr(spatial_tensor, "cartesian"):
                     coords = spatial_tensor.cartesian
                     logger.info(
-                        f"✅ Extracted 3D coordinates from SurveyTensor: {coords.shape}"
+                        f"✅ Extracted 3D coordinates from legacy SurveyTensor: {coords.shape}"
                     )
                     tensor = coords
                 else:
                     raise ValueError(
-                        "SurveyTensor spatial_tensor has no cartesian attribute"
+                        "Legacy SurveyTensor spatial_tensor has no cartesian attribute"
                     )
             except Exception as e:
                 logger.error(
-                    f"❌ Failed to extract spatial coordinates from SurveyTensor: {e}"
+                    f"❌ Failed to extract spatial coordinates from legacy SurveyTensor: {e}"
                 )
                 raise ValueError(
-                    f"Failed to extract spatial coordinates from SurveyTensor: {e}"
+                    f"Failed to extract spatial coordinates from legacy SurveyTensor: {e}"
                 )
 
         # Ensure tensor is 2D with shape [N, 3]
@@ -345,35 +367,36 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
         Returns:
             Blender mesh object or None if Blender not available
         """
-        if bpy is None:
-            logger.warning("Blender not available")
+        if albpy is None:
+            logger.warning("Blender (albpy) not available")
             return None
 
         with zero_copy_context("Blender conversion"):
-            # Optimize tensor layout
-            coords = self.ensure_cpu_contiguous(tensor)
-            coords = self.validate_3d_coordinates(coords)
+            with blender_memory_context():
+                # Optimize tensor layout
+                coords = self.ensure_cpu_contiguous(tensor)
+                coords = self.validate_3d_coordinates(coords)
 
-            # Convert to numpy with zero-copy
-            coords_np = coords.numpy()
+                # Convert to numpy with zero-copy
+                coords_np = coords.numpy()
 
-            # Create Blender mesh
-            mesh = bpy.data.meshes.new(name)
-            obj = bpy.data.objects.new(name, mesh)
+                # Create Blender mesh
+                mesh = albpy.data.meshes.new(name)
+                obj = albpy.data.objects.new(name, mesh)
 
-            # Add to collection
-            collection = bpy.data.collections.get(collection_name)
-            if collection is None:
-                collection = bpy.data.collections.new(collection_name)
-                bpy.context.scene.collection.children.link(collection)
+                # Add to collection
+                collection = albpy.data.collections.get(collection_name)
+                if collection is None:
+                    collection = albpy.data.collections.new(collection_name)
+                    albpy.context.scene.collection.children.link(collection)
 
-            collection.objects.link(obj)
+                collection.objects.link(obj)
 
-            # Set mesh data
-            mesh.from_pydata(coords_np.tolist(), [], [])
-            mesh.update()
+                # Set mesh data
+                mesh.from_pydata(coords_np.tolist(), [], [])
+                mesh.update()
 
-            return obj
+                return obj
 
 
 class NumpyZeroCopyBridge(ZeroCopyBridge):
@@ -426,8 +449,8 @@ class BidirectionalTensorBridge:
         Returns:
             Blender object or None
         """
-        if bpy is None:
-            logger.warning("Blender not available")
+        if albpy is None:
+            logger.warning("Blender (albpy) not available")
             return None
 
         try:
