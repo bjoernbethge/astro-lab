@@ -165,7 +165,6 @@ class TestAstroTrainer:
             "max_samples": 50,
             "batch_size": 4,
             "epochs": 2,
-            "fast_dev_run": True,
         }
         trainer = AstroTrainer(config)
         assert trainer is not None
@@ -179,7 +178,6 @@ class TestAstroTrainer:
             "max_samples": 50,
             "batch_size": 4,
             "epochs": 2,
-            "fast_dev_run": True,
         }
         trainer = AstroTrainer(config)
 
@@ -201,11 +199,10 @@ class TestAstroTrainer:
             "max_samples": 50,
             "batch_size": 4,
             "epochs": 1,
-            "fast_dev_run": True,
         }
         trainer = AstroTrainer(config)
 
-        # This should run quickly with fast_dev_run
+        # This should run quickly with limited samples
         try:
             success = trainer.train()
             # Training should complete without raising exceptions
