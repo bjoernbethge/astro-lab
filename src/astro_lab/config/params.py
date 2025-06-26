@@ -103,6 +103,18 @@ def distribute_config_parameters(config: Dict[str, Any]) -> Dict[str, Dict[str, 
                 distributed["lightning"][key] = value
             # Ignore unknown training params
 
+    # Handle direct CLI parameters (epochs -> max_epochs mapping)
+    for key, value in config.items():
+        if key == "epochs":
+            # Map epochs to max_epochs for trainer
+            distributed["trainer"]["max_epochs"] = value
+        elif key in TRAINER_PARAMS:
+            distributed["trainer"][key] = value
+        elif key in LIGHTNING_PARAMS:
+            distributed["lightning"][key] = value
+        elif key in DATA_PARAMS:
+            distributed["data"][key] = value
+
     # MLflow section
     if "mlflow" in config:
         distributed["mlflow"].update(config["mlflow"])

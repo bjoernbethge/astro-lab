@@ -8,6 +8,7 @@ in astro_lab.models.lightning.
 """
 
 from .astro_trainer import AstroTrainer, train_model
+from .callbacks import SafeModelCheckpoint
 from .config import TrainingConfig
 from .mlflow_logger import LightningMLflowLogger, MLflowModelCheckpoint
 from .utils import set_random_seed, setup_logging
@@ -16,6 +17,8 @@ __all__ = [
     # Main trainer
     "AstroTrainer",
     "train_model",
+    # Callbacks
+    "SafeModelCheckpoint",
     # MLflow integration for Lightning
     "LightningMLflowLogger",
     "MLflowModelCheckpoint",
