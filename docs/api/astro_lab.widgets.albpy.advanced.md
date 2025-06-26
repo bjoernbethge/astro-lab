@@ -1,6 +1,6 @@
-# astro_lab.widgets.bpy
+# astro_lab.widgets.albpy.advanced
 
-::: astro_lab.widgets.bpy
+::: astro_lab.widgets.albpy.advanced
     handler: python
     options:
       show_source: true

@@ -9,6 +9,7 @@ the original models unchanged. This allows both APIs to coexist.
 from .base import AstroLabLightningMixin
 from .factory import (
     LIGHTNING_MODELS,
+    MODEL_PRESETS,
     create_lightning_model,
     create_preset_model,
     list_lightning_models,
@@ -43,4 +44,5 @@ __all__ = [
     "list_lightning_models",
     "list_presets",
     "LIGHTNING_MODELS",
+    "MODEL_PRESETS",
 ]

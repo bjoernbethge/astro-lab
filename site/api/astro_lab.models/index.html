@@ -984,6 +984,29 @@
   
   
     <li class="md-nav__item">
+      <a href="../astro_lab.ui.modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    astro_lab.ui.modules
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
       <a href="../astro_lab.widgets/" class="md-nav__link">
         
   
@@ -1007,12 +1030,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../astro_lab.widgets.bpy/" class="md-nav__link">
+      <a href="../astro_lab.widgets.albpy/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    astro_lab.widgets.bpy
+    astro_lab.widgets.albpy
     
   </span>
   
@@ -1030,12 +1053,12 @@
   
   
     <li class="md-nav__item">
-      <a href="../astro_lab.widgets.bpy.advanced/" class="md-nav__link">
+      <a href="../astro_lab.widgets.albpy.advanced/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
-    astro_lab.widgets.bpy.advanced
+    astro_lab.widgets.albpy.advanced
     
   </span>
   
@@ -3126,7 +3149,15 @@ utilizing the native methods and properties of our TensorDict classes.</p>
 <span class="normal">236</span>
 <span class="normal">237</span>
 <span class="normal">238</span>
-<span class="normal">239</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">AstroSurveyGNN</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">AstroSurveyGNN</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Graph Neural Network for astronomical survey data using native TensorDict methods.</span>
 
@@ -3186,10 +3217,10 @@ utilizing the native methods and properties of our TensorDict classes.</p>
         <span class="bp">self</span><span class="o">.</span><span class="n">gnn_layers</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">ModuleList</span><span class="p">(</span>
             <span class="p">[</span>
                 <span class="n">BaseGNNLayer</span><span class="p">(</span>
-            <span class="n">input_dim</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span>
+                    <span class="n">input_dim</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span>
                     <span class="n">output_dim</span><span class="o">=</span><span class="n">hidden_dim</span><span class="p">,</span>
                     <span class="n">layer_type</span><span class="o">=</span><span class="s2">&quot;gcn&quot;</span><span class="p">,</span>
-            <span class="n">dropout</span><span class="o">=</span><span class="n">dropout</span><span class="p">,</span>
+                    <span class="n">dropout</span><span class="o">=</span><span class="n">dropout</span><span class="p">,</span>
                     <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">,</span>
                 <span class="p">)</span>
                 <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_gnn_layers</span><span class="p">)</span>
@@ -3260,6 +3291,14 @@ utilizing the native methods and properties of our TensorDict classes.</p>
 
         <span class="c1"># Global pooling</span>
         <span class="n">graph_embedding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pooling</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">batch</span><span class="p">)</span>
+
+        <span class="c1"># Debug: Ensure proper dimensions</span>
+        <span class="k">if</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># Scalar output - reshape to [1, 1]</span>
+            <span class="n">graph_embedding</span> <span class="o">=</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># 1D output - reshape to [1, features]</span>
+            <span class="n">graph_embedding</span> <span class="o">=</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
 
         <span class="c1"># Final projection</span>
         <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_projection</span><span class="p">(</span><span class="n">graph_embedding</span><span class="p">)</span>
@@ -3515,7 +3554,15 @@ utilizing the native methods and properties of our TensorDict classes.</p>
 <span class="normal">163</span>
 <span class="normal">164</span>
 <span class="normal">165</span>
-<span class="normal">166</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span>
     <span class="bp">self</span><span class="p">,</span>
     <span class="n">data</span><span class="p">:</span> <span class="n">SurveyTensorDict</span><span class="p">,</span>
     <span class="n">edge_index</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
@@ -3565,6 +3612,14 @@ utilizing the native methods and properties of our TensorDict classes.</p>
     <span class="c1"># Global pooling</span>
     <span class="n">graph_embedding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pooling</span><span class="p">(</span><span class="n">h</span><span class="p">,</span> <span class="n">batch</span><span class="p">)</span>
 
+    <span class="c1"># Debug: Ensure proper dimensions</span>
+    <span class="k">if</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="c1"># Scalar output - reshape to [1, 1]</span>
+        <span class="n">graph_embedding</span> <span class="o">=</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># 1D output - reshape to [1, features]</span>
+        <span class="n">graph_embedding</span> <span class="o">=</span> <span class="n">graph_embedding</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
     <span class="c1"># Final projection</span>
     <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_projection</span><span class="p">(</span><span class="n">graph_embedding</span><span class="p">)</span>
 
@@ -3594,15 +3649,7 @@ utilizing the native methods and properties of our TensorDict classes.</p>
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\models\core\survey_gnn.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">197</span>
-<span class="normal">198</span>
-<span class="normal">199</span>
-<span class="normal">200</span>
-<span class="normal">201</span>
-<span class="normal">202</span>
-<span class="normal">203</span>
-<span class="normal">204</span>
-<span class="normal">205</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">205</span>
 <span class="normal">206</span>
 <span class="normal">207</span>
 <span class="normal">208</span>
@@ -3636,7 +3683,15 @@ utilizing the native methods and properties of our TensorDict classes.</p>
 <span class="normal">236</span>
 <span class="normal">237</span>
 <span class="normal">238</span>
-<span class="normal">239</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">SurveyTensorDict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_metadata</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="n">SurveyTensorDict</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract metadata using native SurveyTensorDict methods.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">SurveyTensorDict</span><span class="p">):</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Requires SurveyTensorDict input&quot;</span><span class="p">)</span>

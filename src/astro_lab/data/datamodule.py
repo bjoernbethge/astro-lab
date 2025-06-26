@@ -8,6 +8,7 @@ Updated for TensorDict architecture.
 
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
@@ -31,25 +32,23 @@ from ..tensors import (
 )
 from .config import data_config
 from .datasets import SurveyGraphDataset
-from .utils import check_graph_consistency, get_graph_statistics, sample_subgraph_random
+from .utils import (
+    MemoryOptimizedDataModule,
+    SafePyGDataLoader,
+    check_graph_consistency,
+    create_optimized_dataloader,
+    get_graph_statistics,
+    sample_subgraph_random,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class AstroDataModule(L.LightningDataModule):
+class AstroDataModule(L.LightningDataModule, MemoryOptimizedDataModule):
     """
-    Clean Lightning DataModule for astronomical datasets.
+    Lightning DataModule for astronomical survey data with graph neural networks.
 
-    Handles train/val/test splits and data loading.
-    Uses unified AstroDataset from core.py.
-
-    2025 Optimizations:
-    - PIN memory for faster GPU transfer
-    - Persistent workers to avoid recreation overhead
-    - Prefetch factor tuning
-    - Drop last for consistent batch sizes
-    - Better distributed sampling
-    - Fixed PyTorch Geometric batch handling
+    Optimized for laptop GPUs with intelligent memory management and pinned memory.
     """
 
     def __init__(
@@ -70,20 +69,20 @@ class AstroDataModule(L.LightningDataModule):
         # New parameters for laptop optimization
         max_nodes_per_graph: int = 1000,  # Limit graph size for laptop GPUs
         use_subgraph_sampling: bool = True,  # Use subgraph sampling for large graphs
+        # Memory optimization parameters
+        use_smart_pinning: bool = True,  # Use intelligent pinning for PyG data
+        non_blocking_transfer: bool = True,  # Use non-blocking device transfers
+        target_device: Optional[str] = None,  # Target device for data transfer
         **kwargs,
     ):
         super().__init__()
-        self.save_hyperparameters()
 
+        # Core parameters
         self.survey = survey
-        self.dataset_name = survey  # For results organization
-        self.data_root = data_root or str(data_config.base_dir)
+        self.data_root = data_root or tempfile.gettempdir()
         self.k_neighbors = k_neighbors
         self.max_samples = max_samples
-        print(
-            f"[DEBUG] batch_size type before logic: {type(batch_size)}, value: {batch_size}"
-        )
-        self.batch_size = int(batch_size)  # Ensure batch_size is always int
+        self.batch_size = batch_size
         self.train_ratio = train_ratio
         self.val_ratio = val_ratio
         self.drop_last = drop_last
@@ -93,25 +92,41 @@ class AstroDataModule(L.LightningDataModule):
         self.max_nodes_per_graph = max_nodes_per_graph
         self.use_subgraph_sampling = use_subgraph_sampling
 
-        # RTX 4070 optimization: PyG works best with single-process loading
-        if num_workers is None:
-            self.num_workers = 10  # Default to 2 workers for better performance
-        else:
-            self.num_workers = max(
-                0, num_workers
-            )  # Allow higher values for better performance
+        # Memory optimization parameters
+        self.use_smart_pinning = use_smart_pinning
+        self.non_blocking_transfer = non_blocking_transfer
 
-        # Conservative settings for laptop GPUs
-        if self.batch_size == 1:
-            self.pin_memory = False
-            self.persistent_workers = (
-                True if self.num_workers > 0 else False
-            )  # Fix: Enable for performance
-            self.prefetch_factor = (
-                2 if self.num_workers > 0 else None
-            )  # Fix: Enable prefetch
+        # Parse target device
+        if target_device is None:
+            self.target_device = (
+                torch.device("cuda")
+                if torch.cuda.is_available()
+                else torch.device("cpu")
+            )
         else:
-            # Conservative memory settings for laptop
+            self.target_device = torch.device(target_device)
+
+        # Auto-detect optimal worker configuration
+        if num_workers is None:
+            if torch.cuda.is_available():
+                self.num_workers = min(
+                    4, torch.get_num_threads()
+                )  # Conservative for GPUs
+            else:
+                self.num_workers = 2  # Conservative for CPU-only
+        else:
+            self.num_workers = max(0, num_workers)
+
+        # Intelligent pin_memory configuration based on PyTorch best practices
+        if self.batch_size == 1:
+            # For single graph training (typical for GNNs)
+            self.pin_memory = (
+                pin_memory and torch.cuda.is_available() and self.use_smart_pinning
+            )
+            self.persistent_workers = True if self.num_workers > 0 else False
+            self.prefetch_factor = 2 if self.num_workers > 0 else None
+        else:
+            # For multi-graph batching
             self.pin_memory = pin_memory and torch.cuda.is_available()
             self.persistent_workers = persistent_workers and self.num_workers > 0
             self.prefetch_factor = prefetch_factor if self.num_workers > 0 else None
@@ -125,6 +140,13 @@ class AstroDataModule(L.LightningDataModule):
         # Class information for Lightning module
         self.num_classes = None
         self.num_features = None
+
+        logger.info(
+            f"🔧 AstroDataModule initialized: "
+            f"survey={survey}, batch_size={batch_size}, num_workers={self.num_workers}, "
+            f"pin_memory={self.pin_memory}, smart_pinning={self.use_smart_pinning}, "
+            f"target_device={self.target_device}"
+        )
 
     def prepare_data(self):
         """
@@ -246,6 +268,7 @@ class AstroDataModule(L.LightningDataModule):
 
         self._create_data_splits()
 
+        # Keep small datasets on CPU to avoid unnecessary transfers
         if (
             hasattr(self._main_data, "num_nodes")
             and self._main_data.num_nodes is not None
@@ -317,24 +340,8 @@ class AstroDataModule(L.LightningDataModule):
 
         return total_memory / (1024 * 1024)  # Convert to MB
 
-    def _get_dataloader_kwargs(self) -> Dict[str, Any]:
-        """Get optimized dataloader kwargs based on settings."""
-        kwargs = {
-            "batch_size": self.batch_size,
-            "num_workers": self.num_workers,
-            "persistent_workers": self.persistent_workers,
-            "pin_memory": self.pin_memory,
-            "drop_last": self.drop_last,
-        }
-
-        # Add prefetch_factor only if using workers
-        if self.num_workers > 0 and self.prefetch_factor is not None:
-            kwargs["prefetch_factor"] = self.prefetch_factor
-
-        return kwargs
-
     def train_dataloader(self):
-        """Create training dataloader with robust settings and logging."""
+        """Create training dataloader with optimized memory management."""
         if self._main_data is None:
             self.setup()
 
@@ -342,22 +349,22 @@ class AstroDataModule(L.LightningDataModule):
         if train_data is None:
             raise RuntimeError("Training data is None")
 
-        logger.info(
-            f"[train_dataloader] batch_size={self.batch_size}, num_workers={self.num_workers}, persistent_workers={self.persistent_workers}, prefetch_factor={self.prefetch_factor}, pin_memory={self.pin_memory}"
-        )
-
-        return DataLoader(
-            [train_data],
+        return create_optimized_dataloader(
+            dataset=[train_data],
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            persistent_workers=self.persistent_workers,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
             prefetch_factor=self.prefetch_factor,
+            drop_last=self.drop_last,
+            target_device=self.target_device,
+            use_smart_pinning=self.use_smart_pinning,
+            non_blocking_transfer=self.non_blocking_transfer,
         )
 
     def val_dataloader(self):
-        """Create validation dataloader with robust settings and logging."""
+        """Create validation dataloader with optimized memory management."""
         if self._main_data is None:
             self.setup()
 
@@ -365,22 +372,22 @@ class AstroDataModule(L.LightningDataModule):
         if val_data is None:
             raise RuntimeError("Validation data is None")
 
-        logger.info(
-            f"[val_dataloader] batch_size={self.batch_size}, num_workers={self.num_workers}, persistent_workers={self.persistent_workers}, prefetch_factor={self.prefetch_factor}, pin_memory={self.pin_memory}"
-        )
-
-        return DataLoader(
-            [val_data],
+        return create_optimized_dataloader(
+            dataset=[val_data],
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            persistent_workers=self.persistent_workers,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
             prefetch_factor=self.prefetch_factor,
+            drop_last=self.drop_last,
+            target_device=self.target_device,
+            use_smart_pinning=self.use_smart_pinning,
+            non_blocking_transfer=self.non_blocking_transfer,
         )
 
     def test_dataloader(self):
-        """Create test dataloader with robust settings and logging."""
+        """Create test dataloader with optimized memory management."""
         if self._main_data is None:
             self.setup()
 
@@ -388,18 +395,18 @@ class AstroDataModule(L.LightningDataModule):
         if test_data is None:
             raise RuntimeError("Test data is None")
 
-        logger.info(
-            f"[test_dataloader] batch_size={self.batch_size}, num_workers={self.num_workers}, persistent_workers={self.persistent_workers}, prefetch_factor={self.prefetch_factor}, pin_memory={self.pin_memory}"
-        )
-
-        return DataLoader(
-            [test_data],
+        return create_optimized_dataloader(
+            dataset=[test_data],
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
-            persistent_workers=self.persistent_workers,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
             prefetch_factor=self.prefetch_factor,
+            drop_last=self.drop_last,
+            target_device=self.target_device,
+            use_smart_pinning=self.use_smart_pinning,
+            non_blocking_transfer=self.non_blocking_transfer,
         )
 
     def teardown(self, stage: Optional[str] = None):
@@ -430,6 +437,9 @@ class AstroDataModule(L.LightningDataModule):
                 "val_ratio": self.val_ratio,
                 "num_classes": self.num_classes,
                 "num_features": self.num_features,
+                "use_smart_pinning": self.use_smart_pinning,
+                "non_blocking_transfer": self.non_blocking_transfer,
+                "target_device": str(self.target_device),
             }
         )
 

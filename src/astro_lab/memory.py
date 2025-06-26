@@ -67,12 +67,24 @@ def memory_management():
 def register_for_cleanup(obj: Any) -> None:
     """Register object for memory tracking, only if weakref is supported."""
     try:
-        weakref.ref(obj)
+        # Skip if object is None or already a weak reference
+        if obj is None or isinstance(obj, weakref.ReferenceType):
+            return
+
+        # Test if the object supports weak references
+        test_ref = weakref.ref(obj)
+        del test_ref
+
+        # Add to registry if test passed
+        _memory_registry.add(weakref.ref(obj))
+
     except TypeError:
         # Object does not support weak references (e.g. C-extensions, widgets)
+        logger.debug(f"Object {type(obj)} does not support weak references, skipping")
         return
-    if obj is not None and not isinstance(obj, weakref.ReferenceType):
-        _memory_registry.add(weakref.ref(obj))
+    except Exception as e:
+        logger.debug(f"Could not register object for cleanup: {e}")
+        return
 
 
 def get_memory_stats() -> Dict[str, Any]:
