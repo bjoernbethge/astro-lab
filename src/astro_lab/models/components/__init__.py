@@ -1,20 +1,20 @@
 """Reusable components for AstroLab models."""
 
-from .base import DeviceMixin, GraphProcessor, FeatureProcessor, PoolingModule
-from .layers import create_conv_layer, create_mlp, get_activation, ResidualBlock
+from .base import DeviceMixin, GraphProcessor, PoolingModule, TensorDictFeatureProcessor
+from .layers import ResidualBlock, create_conv_layer, create_mlp, get_activation
 from .output_heads import (
+    OUTPUT_HEADS,
     ClassificationHead,
-    RegressionHead,
     PeriodDetectionHead,
+    RegressionHead,
     ShapeModelingHead,
     create_output_head,
-    OUTPUT_HEADS,
 )
 
 __all__ = [
     # Base components
     "DeviceMixin",
-    "GraphProcessor", 
+    "GraphProcessor",
     "FeatureProcessor",
     "PoolingModule",
     # Layer functions
@@ -29,4 +29,4 @@ __all__ = [
     "ShapeModelingHead",
     "create_output_head",
     "OUTPUT_HEADS",
-] 
+]
