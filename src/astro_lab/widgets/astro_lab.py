@@ -2,60 +2,34 @@
 AstroLab Widget - Main interface for astronomical data visualization and analysis
 ===============================================================================
 
-Provides a unified interface to all AstroLab functionality including:
-- Data visualization with multiple backends (Open3D, PyVista, Blender)
-- Graph creation and analysis
-- Clustering and density analysis
-- Model preparation and training
-
-## Quick Start
-
-```python
-from astro_lab.widgets import AstroLabWidget
-from astro_lab.data import load_survey_data
-
-# Load data
-data = load_survey_data("gaia")
-
-# Create widget
-widget = AstroLabWidget()
-
-# Visualize data
-widget.plot(data, backend="open3d")
-
-# Create graph for ML
-graph = widget.create_graph(data, k=10)
-
-# Analyze structure
-analysis = widget.analyze_structure(data, k=10)
-```
-
-## Features
-
-- **Multi-backend visualization**: Open3D, PyVista, Blender
-- **GPU acceleration**: CUDA support for large datasets
-- **Graph analysis**: PyTorch Geometric integration
-- **Clustering**: DBSCAN and other algorithms
-- **Blender integration**: 3D visualization and rendering
+Thin wrapper that delegates to specialized modules:
+- astro_lab.data.graphs for graph creation
+- Local widget modules for visualization
+- astro_lab.data for data processing
 """
 
 import logging
 from typing import Any, Optional
 
 import torch
-from tensordict import TensorDict
+from torch_geometric.data import Data
 
-from ..tensors import SurveyTensorDict
-from .analysis import AnalysisModule
-from .clustering import ClusteringModule
-from .graph import GraphModule
-from .visualization import VisualizationModule
+from astro_lab.data.graphs import (
+    create_astronomical_graph,
+    create_knn_graph,
+    create_radius_graph,
+)
+from astro_lab.tensors import SurveyTensorDict
+
+# Use local widget modules
+from .graph import cluster_and_analyze
+from .plotly_bridge import create_plotly_visualization
 
 # Try to import Blender API
 try:
     import bpy
 
-    from ..utils.bpy import AstroLabApi
+    from .bpy import AstroLabApi
 except ImportError:
     bpy = None
     AstroLabApi = None
@@ -67,37 +41,17 @@ class AstroLabWidget:
     """
     Main widget for astronomical data visualization and analysis.
 
-    Provides a unified interface to all AstroLab functionality including
-    visualization, graph analysis, clustering, and model preparation.
-    Delegates to specialized modules for specific functionality.
+    Uses local visualization modules that were moved from utils.viz.
     """
 
     def __init__(self, **kwargs: Any) -> None:
-        """
-        Initialize the widget and set up Blender API attributes if available.
-
-        Args:
-            **kwargs: Additional configuration parameters
-        """
+        """Initialize the widget."""
         self._setup_blender_api()
-
-        # Initialize specialized modules
-        self.graph = GraphModule()
-        self.clustering = ClusteringModule()
-        self.analysis = AnalysisModule()
-        self.visualization = VisualizationModule()
-
-        # Set default backend
         self.backend = kwargs.get("backend", "auto")
-
-        logger.info("AstroLabWidget initialized with all modules.")
+        logger.info("AstroLabWidget initialized with local visualization modules.")
 
     def _setup_blender_api(self) -> None:
-        """
-        Set up direct API access to Blender (al, ops, data, context, scene).
-
-        If Blender is not available, attributes are set to None.
-        """
+        """Set up Blender API access if available."""
         if bpy is None or AstroLabApi is None:
             self.al = None
             self.ops = None
@@ -113,7 +67,7 @@ class AstroLabWidget:
             self.data = getattr(bpy, "data", None)
             self.context = getattr(bpy, "context", None)
             self.scene = getattr(self.context, "scene", None) if self.context else None
-            logger.info("Blender API connected. Access via widget.al, widget.ops, ...")
+            logger.info("Blender API connected.")
         except Exception as e:
             self.al = None
             self.ops = None
@@ -131,232 +85,118 @@ class AstroLabWidget:
         **config: Any,
     ) -> Any:
         """
-        Visualize astronomical data using the optimal backend.
+        Visualize astronomical data using local visualization modules.
 
         Args:
-            data: AstroDataset or SurveyTensor
-            plot_type: Type of plot (default: 'scatter_3d')
-            backend: 'auto', 'open3d', 'pyvista', or 'blender'
-            max_points: Maximum number of points to visualize
-            **config: Additional backend-specific configuration
+            data: SurveyTensorDict or Data object
+            plot_type: Type of plot
+            backend: Visualization backend ('auto', 'plotly')
+            max_points: Maximum points to plot
+            **config: Additional configuration
 
         Returns:
-            The visualization object from the chosen backend
-
-        Raises:
-            ValueError: If backend is not supported
+            Visualization object
         """
-        logger.info(f"Plotting with backend: {backend}")
-
-        # Extract SurveyTensor
         survey_tensor = self._extract_survey_tensor(data)
 
-        # Subsample if needed
-        if len(survey_tensor.data) > max_points:
-            logger.warning(
-                f"Subsampling {len(survey_tensor.data)} to {max_points} points for performance."
-            )
-            indices = torch.randperm(len(survey_tensor.data))[:max_points]
-            survey_tensor = survey_tensor.apply_mask(indices)
-
-        # Select backend
-        if backend == "auto":
-            backend = self.visualization.select_backend(survey_tensor)
-
-        # Delegate to visualization module
-        if backend == "open3d":
-            return self.visualization.plot_to_open3d(survey_tensor, plot_type, **config)
-        elif backend == "pyvista":
-            return self.visualization.plot_to_pyvista(
-                survey_tensor, plot_type, **config
-            )
-        elif backend == "blender":
-            return self.visualization.plot_to_blender(
-                survey_tensor, plot_type, **config
+        # Use local plotly_bridge module
+        if backend in ["auto", "plotly"]:
+            return create_plotly_visualization(
+                survey_tensor, plot_type=plot_type, **config
             )
         else:
-            raise ValueError(f"Unsupported backend: {backend}")
+            # For other backends, just log for now
+            coords = survey_tensor["spatial"]["coordinates"]
+            logger.info(f"Would visualize {len(coords)} points with {backend} backend")
+            return survey_tensor
 
-    def show(self, *args: Any, **kwargs: Any) -> None:
-        """
-        Show the last created interactive visualization.
-
-        Args:
-            *args: Positional arguments passed to visualization backend
-            **kwargs: Keyword arguments passed to visualization backend
-        """
-        self.visualization.show(*args, **kwargs)
-
-    # Delegate to specialized modules
     def create_graph(
         self,
         data: Any,
+        method: str = "knn",
         k: int = 10,
         radius: Optional[float] = None,
-        use_gpu: bool = True,
-    ) -> Any:
+        **kwargs: Any,
+    ) -> Data:
         """
-        Create PyTorch Geometric Data object for model training.
+        Create PyTorch Geometric graph - delegates to data.graphs module.
 
         Args:
-            data: AstroDataset or SurveyTensor
-            k: Number of nearest neighbors
-            radius: Radius for neighbor search
-            use_gpu: Whether to use GPU acceleration
+            data: SurveyTensorDict or compatible data
+            method: Graph creation method ('knn', 'radius', 'astronomical')
+            k: Number of neighbors for KNN
+            radius: Radius for radius graphs
+            **kwargs: Additional parameters
 
         Returns:
             PyTorch Geometric Data object
         """
         survey_tensor = self._extract_survey_tensor(data)
-        return self.graph.create_graph(survey_tensor, k, radius, use_gpu)
 
-    def find_neighbors(
-        self,
-        data: Any,
-        k: int = 10,
-        radius: Optional[float] = None,
-        use_gpu: bool = True,
-    ) -> Any:
-        """
-        GPU-accelerated neighbor finding.
-
-        Args:
-            data: AstroDataset or SurveyTensor
-            k: Number of nearest neighbors
-            radius: Radius for neighbor search
-            use_gpu: Whether to use GPU acceleration
-
-        Returns:
-            Dictionary with edge_index and distances
-        """
-        survey_tensor = self._extract_survey_tensor(data)
-        return self.graph.find_neighbors(survey_tensor, k, radius, use_gpu)
-
-    def prepare_for_model(
-        self, data: Any, model_type: str = "gnn", **kwargs: Any
-    ) -> Any:
-        """
-        Prepare data for specific model types.
-
-        Args:
-            data: AstroDataset or SurveyTensor
-            model_type: Type of model ('gnn', 'point_cloud', 'spatial')
-            **kwargs: Additional model-specific parameters
-
-        Returns:
-            Prepared data for the specified model type
-        """
-        survey_tensor = self._extract_survey_tensor(data)
-        return self.graph.prepare_for_model(survey_tensor, model_type, **kwargs)
-
-    def get_model_input_features(self, data: Any) -> Any:
-        """
-        Extract all available features for model input.
-
-        Args:
-            data: AstroDataset or SurveyTensor
-
-        Returns:
-            Dictionary with different feature types
-        """
-        survey_tensor = self._extract_survey_tensor(data)
-        return self.graph.get_model_input_features(survey_tensor)
+        # Delegate to data.graphs module
+        if method == "knn":
+            return create_knn_graph(survey_tensor, k_neighbors=k, **kwargs)
+        elif method == "radius":
+            if radius is None:
+                raise ValueError("Radius must be specified for radius graphs")
+            return create_radius_graph(survey_tensor, radius=radius, **kwargs)
+        elif method == "astronomical":
+            return create_astronomical_graph(survey_tensor, k_neighbors=k, **kwargs)
+        else:
+            raise ValueError(f"Unknown graph method: {method}")
 
     def cluster_data(
         self,
         data: Any,
+        algorithm: str = "dbscan",
         eps: float = 10.0,
         min_samples: int = 5,
-        algorithm: str = "dbscan",
-        use_gpu: bool = True,
+        **kwargs: Any,
     ) -> Any:
         """
-        GPU-accelerated clustering analysis.
+        Cluster data using local graph module.
 
         Args:
-            data: AstroDataset or SurveyTensor
-            eps: Epsilon parameter for DBSCAN
-            min_samples: Minimum samples for DBSCAN
-            algorithm: Clustering algorithm ('dbscan', 'kmeans')
-            use_gpu: Whether to use GPU acceleration
+            data: SurveyTensorDict or compatible data
+            algorithm: Clustering algorithm
+            eps: DBSCAN epsilon parameter
+            min_samples: DBSCAN minimum samples
+            **kwargs: Additional parameters
 
         Returns:
-            Clustering results dictionary
+            Clustering results
         """
         survey_tensor = self._extract_survey_tensor(data)
-        return self.clustering.cluster_data(
-            survey_tensor, eps, min_samples, algorithm, use_gpu
+        coords = survey_tensor["spatial"]["coordinates"]
+
+        # Use local graph module
+        return cluster_and_analyze(
+            coords, algorithm=algorithm, eps=eps, min_samples=min_samples, **kwargs
         )
 
-    def analyze_density(
-        self, data: Any, radius: float = 5.0, use_gpu: bool = True
-    ) -> Any:
-        """
-        GPU-accelerated local density analysis.
-
-        Args:
-            data: AstroDataset or SurveyTensor
-            radius: Radius for density calculation
-            use_gpu: Whether to use GPU acceleration
-
-        Returns:
-            Density analysis results
-        """
-        survey_tensor = self._extract_survey_tensor(data)
-        return self.analysis.analyze_density(survey_tensor, radius, use_gpu)
-
-    def analyze_structure(self, data: Any, k: int = 10, use_gpu: bool = True) -> Any:
-        """
-        GPU-accelerated structure analysis.
-
-        Args:
-            data: AstroDataset or SurveyTensor
-            k: Number of neighbors for structure analysis
-            use_gpu: Whether to use GPU acceleration
-
-        Returns:
-            Structure analysis results
-        """
-        survey_tensor = self._extract_survey_tensor(data)
-        return self.analysis.analyze_structure(survey_tensor, k, use_gpu)
-
-    def _extract_survey_tensor(self, data: Any) -> Any:
-        """
-        Extract or create a SurveyTensorDict from various input data types.
-
-        Args:
-            data: Input data (AstroDataset, SurveyTensorDict, etc.)
-
-        Returns:
-            SurveyTensorDict object
-
-        Raises:
-            ValueError: If data is empty or invalid
-            TypeError: If data type is not supported
-        """
-        from ..data.core import AstroDataset
-
+    def _extract_survey_tensor(self, data: Any) -> SurveyTensorDict:
+        """Extract SurveyTensorDict from various input formats."""
         if isinstance(data, SurveyTensorDict):
             return data
+        elif isinstance(data, Data):
+            # Convert PyG Data to SurveyTensorDict
+            from astro_lab.tensors.factories import create_generic_survey
 
-        if isinstance(data, AstroDataset):
-            if not data:
-                raise ValueError("Cannot process an empty AstroDataset.")
-
-            pyg_data = data[0]
-            survey_name = getattr(data, "survey", "unknown")
-
-            # Check if pyg_data has attribute x
-            if hasattr(pyg_data, "x"):
-                logger.info(
-                    f"Creating SurveyTensorDict for '{survey_name}' from AstroDataset."
-                )
-                return SurveyTensorDict(
-                    data={"features": getattr(pyg_data, "x")}, survey_name=survey_name
-                )
+            if hasattr(data, "pos") and data.pos is not None:
+                coords = data.pos
+            elif hasattr(data, "x") and data.x.shape[-1] >= 3:
+                coords = data.x[:, :3]  # Use first 3 dimensions as coordinates
             else:
-                raise AttributeError("AstroDataset[0] has no attribute 'x'.")
+                raise ValueError("Cannot extract coordinates from Data object")
 
-        raise TypeError(
-            f"Unsupported data type: {type(data).__name__}. Please provide an AstroDataset or SurveyTensorDict."
-        )
+            # Create dummy magnitudes if not available
+            magnitudes = torch.zeros(coords.shape[0], 1)
+
+            return create_generic_survey(
+                coordinates=coords,
+                magnitudes=magnitudes,
+                bands=["dummy"],
+                survey_name="converted",
+            )
+        else:
+            raise TypeError(f"Unsupported data type: {type(data)}")
