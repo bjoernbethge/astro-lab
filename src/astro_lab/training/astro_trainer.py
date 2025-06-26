@@ -85,8 +85,9 @@ class AstroTrainer:
             survey=survey,
             batch_size=batch_size,
             max_samples=max_samples,
-            pin_memory=True,  # PyG handles memory management
-            persistent_workers=False,
+            pin_memory=False,  # PyG handles memory management
+            persistent_workers=True,  # Fix: Enable for better performance
+            num_workers=4,  # Fix: Use more workers for better performance
         )
 
         self.datamodule = datamodule
@@ -144,7 +145,7 @@ class AstroTrainer:
             "gradient_clip_val": 1.0,
             "accumulate_grad_batches": 1,  # RTX 4070 has enough VRAM for full batches
             "enable_progress_bar": True,
-            "log_every_n_steps": 10,
+            "log_every_n_steps": 1,  # Fix: Log every step for small datasets
             "check_val_every_n_epoch": 1,
             "num_sanity_val_steps": 2,  # Quick sanity check
         }

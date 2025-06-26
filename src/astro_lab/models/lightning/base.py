@@ -113,29 +113,43 @@ class AstroLabLightningMixin(L.LightningModule):
         if self.num_classes is None:
             self.num_classes = 2  # Default to binary classification
 
-        # Training metrics
-        self.train_mse = MeanSquaredError().to(device)
-        self.train_mae = MeanAbsoluteError().to(device)
         if self.task == "classification":
             self.train_acc = Accuracy(
                 task="multiclass", num_classes=self.num_classes
             ).to(device)
-
-        # Validation metrics
-        self.val_mse = MeanSquaredError().to(device)
-        self.val_mae = MeanAbsoluteError().to(device)
-        if self.task == "classification":
             self.val_acc = Accuracy(task="multiclass", num_classes=self.num_classes).to(
                 device
             )
-
-        # Test metrics
-        self.test_mse = MeanSquaredError().to(device)
-        self.test_mae = MeanAbsoluteError().to(device)
-        if self.task == "classification":
             self.test_acc = Accuracy(
                 task="multiclass", num_classes=self.num_classes
             ).to(device)
+            self.train_mse = None
+            self.train_mae = None
+            self.val_mse = None
+            self.val_mae = None
+            self.test_mse = None
+            self.test_mae = None
+        elif self.task == "regression":
+            self.train_mse = MeanSquaredError().to(device)
+            self.train_mae = MeanAbsoluteError().to(device)
+            self.val_mse = MeanSquaredError().to(device)
+            self.val_mae = MeanAbsoluteError().to(device)
+            self.test_mse = MeanSquaredError().to(device)
+            self.test_mae = MeanAbsoluteError().to(device)
+            self.train_acc = None
+            self.val_acc = None
+            self.test_acc = None
+        else:
+            # Default: keine Metriken
+            self.train_mse = None
+            self.train_mae = None
+            self.val_mse = None
+            self.val_mae = None
+            self.test_mse = None
+            self.test_mae = None
+            self.train_acc = None
+            self.val_acc = None
+            self.test_acc = None
 
     def _extract_predictions_and_targets(self, batch, outputs):
         """Extract predictions and targets from batch and model outputs."""
@@ -156,6 +170,47 @@ class AstroLabLightningMixin(L.LightningModule):
         elif isinstance(batch, (list, tuple)) and len(batch) > 1:
             targets = batch[1]
 
+            # Handle node-level predictions for graph data
+        if hasattr(batch, "train_mask") and targets is not None:
+            # Check if this is node-level prediction (predictions per node) or graph-level
+            if predictions.size(0) == targets.size(0):
+                # Node-level prediction - apply masks
+                if hasattr(batch, "train_mask") and self.training:
+                    mask = batch.train_mask
+                elif hasattr(batch, "val_mask") and not self.training:
+                    mask = batch.val_mask
+                elif hasattr(batch, "test_mask"):
+                    mask = batch.test_mask
+                else:
+                    # No mask found, use all nodes
+                    mask = torch.ones(
+                        targets.size(0), dtype=torch.bool, device=targets.device
+                    )
+
+                # Apply masks to both predictions and targets
+                if mask.any():  # Only if mask has True values
+                    predictions = predictions[mask]
+                    targets = targets[mask]
+            else:
+                # Graph-level prediction - create graph-level targets
+                # Convert node-level targets to graph-level (e.g., majority vote)
+                if hasattr(batch, "train_mask") and self.training:
+                    mask = batch.train_mask
+                elif hasattr(batch, "val_mask") and not self.training:
+                    mask = batch.val_mask
+                elif hasattr(batch, "test_mask"):
+                    mask = batch.test_mask
+                else:
+                    mask = torch.ones(
+                        targets.size(0), dtype=torch.bool, device=targets.device
+                    )
+
+                # Use majority vote of masked nodes as graph target
+                if mask.any():
+                    masked_targets = targets[mask]
+                    graph_target = torch.mode(masked_targets)[0].unsqueeze(0)  # [1]
+                    targets = graph_target
+
         # If no targets found, create synthetic ones for testing
         if targets is None:
             # Ensure predictions has proper dimensions
@@ -168,9 +223,9 @@ class AstroLabLightningMixin(L.LightningModule):
 
             # Create synthetic targets based on predictions shape
             if predictions.dim() == 2:
-                # For graph-level predictions, create targets with same shape
+                # For node-level predictions, create targets with same shape
                 if predictions.size(1) > 1:
-                    # Multi-class: create one-hot targets
+                    # Multi-class: create class targets
                     targets = torch.randint(
                         0,
                         predictions.size(1),
@@ -216,65 +271,50 @@ class AstroLabLightningMixin(L.LightningModule):
             loss = self.loss_fn(predictions, targets)
 
             # Log loss
-            self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
+            self.log(
+                "train_loss",
+                loss,
+                prog_bar=True,
+                on_step=True,
+                on_epoch=True,
+                batch_size=predictions.shape[0],
+            )
 
             # Calculate and log metrics
-            if hasattr(self, "train_mse") and self.train_mse is not None:
-                # Fix shape mismatch for regression metrics
-                metric_targets = targets
+            if self.task == "regression":
+                if self.train_mse is not None:
+                    self.train_mse(predictions, targets)
+                    self.log(
+                        "train_mse",
+                        self.train_mse,
+                        on_step=False,
+                        on_epoch=True,
+                        batch_size=predictions.shape[0],
+                    )
+                if self.train_mae is not None:
+                    self.train_mae(predictions, targets)
+                    self.log(
+                        "train_mae",
+                        self.train_mae,
+                        on_step=False,
+                        on_epoch=True,
+                        batch_size=predictions.shape[0],
+                    )
+            if self.task == "classification":
                 if (
-                    predictions.shape != targets.shape
+                    self.train_acc is not None
                     and predictions.dim() == 2
-                    and targets.dim() == 1
+                    and predictions.shape[1] == self.num_classes
                 ):
-                    metric_targets = torch.nn.functional.one_hot(
-                        targets, num_classes=predictions.size(1)
-                    ).float()
-                    if metric_targets.shape[1] != predictions.shape[1]:
-                        metric_targets = torch.nn.functional.pad(
-                            metric_targets,
-                            (0, predictions.shape[1] - metric_targets.shape[1]),
-                        )
-                # Ensure same device
-                metric_targets = metric_targets.to(predictions.device)
-                self.train_mse(predictions, metric_targets)
-                self.log("train_mse", self.train_mse, on_step=False, on_epoch=True)
-
-            if hasattr(self, "train_mae") and self.train_mae is not None:
-                metric_targets = targets
-                if (
-                    predictions.shape != targets.shape
-                    and predictions.dim() == 2
-                    and targets.dim() == 1
-                ):
-                    metric_targets = torch.nn.functional.one_hot(
-                        targets, num_classes=predictions.size(1)
-                    ).float()
-                    if metric_targets.shape[1] != predictions.shape[1]:
-                        metric_targets = torch.nn.functional.pad(
-                            metric_targets,
-                            (0, predictions.shape[1] - metric_targets.shape[1]),
-                        )
-                # Ensure same device
-                metric_targets = metric_targets.to(predictions.device)
-                self.train_mae(predictions, metric_targets)
-                self.log("train_mae", self.train_mae, on_step=False, on_epoch=True)
-
-            if (
-                self.task == "classification"
-                and hasattr(self, "train_acc")
-                and self.train_acc is not None
-                and predictions.dim() == 2
-                and predictions.shape[1] == self.num_classes
-            ):
-                self.train_acc(predictions, targets)
-                self.log(
-                    "train_acc",
-                    self.train_acc,
-                    on_step=False,
-                    on_epoch=True,
-                    prog_bar=True,
-                )
+                    self.train_acc(predictions, targets)
+                    self.log(
+                        "train_acc",
+                        self.train_acc,
+                        on_step=False,
+                        on_epoch=True,
+                        prog_bar=True,
+                        batch_size=predictions.shape[0],
+                    )
 
             return loss
 
@@ -298,59 +338,46 @@ class AstroLabLightningMixin(L.LightningModule):
             loss = self.loss_fn(predictions, targets)
 
             # Log loss
-            self.log("val_loss", loss, prog_bar=True, on_epoch=True)
+            self.log(
+                "val_loss",
+                loss,
+                prog_bar=True,
+                on_epoch=True,
+                batch_size=predictions.shape[0],
+            )
 
             # Calculate and log metrics
-            if hasattr(self, "val_mse") and self.val_mse is not None:
-                # Fix shape mismatch for regression metrics
-                metric_targets = targets
+            if self.task == "regression":
+                if self.val_mse is not None:
+                    self.val_mse(predictions, targets)
+                    self.log(
+                        "val_mse",
+                        self.val_mse,
+                        on_epoch=True,
+                        batch_size=predictions.shape[0],
+                    )
+                if self.val_mae is not None:
+                    self.val_mae(predictions, targets)
+                    self.log(
+                        "val_mae",
+                        self.val_mae,
+                        on_epoch=True,
+                        batch_size=predictions.shape[0],
+                    )
+            if self.task == "classification":
                 if (
-                    predictions.shape != targets.shape
+                    self.val_acc is not None
                     and predictions.dim() == 2
-                    and targets.dim() == 1
+                    and predictions.shape[1] == self.num_classes
                 ):
-                    metric_targets = torch.nn.functional.one_hot(
-                        targets, num_classes=predictions.size(1)
-                    ).float()
-                    if metric_targets.shape[1] != predictions.shape[1]:
-                        metric_targets = torch.nn.functional.pad(
-                            metric_targets,
-                            (0, predictions.shape[1] - metric_targets.shape[1]),
-                        )
-                # Ensure same device
-                metric_targets = metric_targets.to(predictions.device)
-                self.val_mse(predictions, metric_targets)
-                self.log("val_mse", self.val_mse, on_epoch=True)
-
-            if hasattr(self, "val_mae") and self.val_mae is not None:
-                metric_targets = targets
-                if (
-                    predictions.shape != targets.shape
-                    and predictions.dim() == 2
-                    and targets.dim() == 1
-                ):
-                    metric_targets = torch.nn.functional.one_hot(
-                        targets, num_classes=predictions.size(1)
-                    ).float()
-                    if metric_targets.shape[1] != predictions.shape[1]:
-                        metric_targets = torch.nn.functional.pad(
-                            metric_targets,
-                            (0, predictions.shape[1] - metric_targets.shape[1]),
-                        )
-                # Ensure same device
-                metric_targets = metric_targets.to(predictions.device)
-                self.val_mae(predictions, metric_targets)
-                self.log("val_mae", self.val_mae, on_epoch=True)
-
-            if (
-                self.task == "classification"
-                and hasattr(self, "val_acc")
-                and self.val_acc is not None
-                and predictions.dim() == 2
-                and predictions.shape[1] == self.num_classes
-            ):
-                self.val_acc(predictions, targets)
-                self.log("val_acc", self.val_acc, on_epoch=True, prog_bar=True)
+                    self.val_acc(predictions, targets)
+                    self.log(
+                        "val_acc",
+                        self.val_acc,
+                        on_epoch=True,
+                        prog_bar=True,
+                        batch_size=predictions.shape[0],
+                    )
 
         return loss
 
@@ -363,26 +390,24 @@ class AstroLabLightningMixin(L.LightningModule):
         loss = self.loss_fn(predictions, targets)
 
         # Log loss
-        self.log("test_loss", loss)
+        self.log("test_loss", loss, batch_size=predictions.shape[0])
 
         # Calculate and log metrics
-        if hasattr(self, "test_mse") and self.test_mse is not None:
-            self.test_mse(predictions, targets)
-            self.log("test_mse", self.test_mse)
-
-        if hasattr(self, "test_mae") and self.test_mae is not None:
-            self.test_mae(predictions, targets)
-            self.log("test_mae", self.test_mae)
-
-        if (
-            self.task == "classification"
-            and hasattr(self, "test_acc")
-            and self.test_acc is not None
-            and predictions.dim() == 2
-            and predictions.shape[1] == self.num_classes
-        ):
-            self.test_acc(predictions, targets)
-            self.log("test_acc", self.test_acc)
+        if self.task == "regression":
+            if self.test_mse is not None:
+                self.test_mse(predictions, targets)
+                self.log("test_mse", self.test_mse, batch_size=predictions.shape[0])
+            if self.test_mae is not None:
+                self.test_mae(predictions, targets)
+                self.log("test_mae", self.test_mae, batch_size=predictions.shape[0])
+        if self.task == "classification":
+            if (
+                self.test_acc is not None
+                and predictions.dim() == 2
+                and predictions.shape[1] == self.num_classes
+            ):
+                self.test_acc(predictions, targets)
+                self.log("test_acc", self.test_acc, batch_size=predictions.shape[0])
 
         return {"test_loss": loss, "predictions": predictions, "targets": targets}
 
@@ -447,24 +472,12 @@ class AstroLabLightningMixin(L.LightningModule):
                 eta_min=self.min_lr,
             )
 
-        # Add warmup if specified
-        if self.warmup_epochs > 0:
-            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
-                optimizer,
-                start_factor=0.01,
-                end_factor=1.0,
-                total_iters=self.warmup_epochs,
-            )
-
-            scheduler = torch.optim.lr_scheduler.SequentialLR(
-                optimizer,
-                schedulers=[warmup_scheduler, scheduler],
-                milestones=[self.warmup_epochs],
-            )
-
         return {
             "optimizer": optimizer,
-            "lr_scheduler": {"scheduler": scheduler, "monitor": "val_loss"},
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+            },
         }
 
     def on_train_start(self):
@@ -491,9 +504,9 @@ class AstroLabLightningMixin(L.LightningModule):
             f"Model has {total_params:,} total parameters ({trainable_params:,} trainable)"
         )
 
-    def lr_scheduler_step(self, scheduler, metric):
-        """Custom learning rate scheduler step."""
-        if metric is None:
-            scheduler.step()
-        else:
-            scheduler.step(metric)
+    def on_train_end(self):
+        """Cleanup after training to avoid CUDA memory warnings."""
+        import torch
+
+        torch.cuda.empty_cache()
+        logger.info("CUDA cache cleared after training.")

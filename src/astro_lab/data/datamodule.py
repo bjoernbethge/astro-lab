@@ -95,18 +95,21 @@ class AstroDataModule(L.LightningDataModule):
 
         # RTX 4070 optimization: PyG works best with single-process loading
         if num_workers is None:
-            self.num_workers = 0  # Avoid multiprocessing issues with PyG
+            self.num_workers = 10  # Default to 2 workers for better performance
         else:
             self.num_workers = max(
-                0, min(num_workers, 1)
-            )  # Cap at 1 for PyG compatibility
+                0, num_workers
+            )  # Allow higher values for better performance
 
         # Conservative settings for laptop GPUs
         if self.batch_size == 1:
             self.pin_memory = False
-            self.persistent_workers = False
-            self.prefetch_factor = None
-            self.num_workers = 0
+            self.persistent_workers = (
+                True if self.num_workers > 0 else False
+            )  # Fix: Enable for performance
+            self.prefetch_factor = (
+                2 if self.num_workers > 0 else None
+            )  # Fix: Enable prefetch
         else:
             # Conservative memory settings for laptop
             self.pin_memory = pin_memory and torch.cuda.is_available()
@@ -132,7 +135,10 @@ class AstroDataModule(L.LightningDataModule):
         pass
 
     def setup(self, stage: Optional[str] = None):
-        """Setup datasets for training/validation/testing."""
+        """
+        Setup datasets for training/validation/testing.
+        Checks dataset size and logs batch information for robust training.
+        """
         if self.dataset is None:
             self.dataset = SurveyGraphDataset(
                 root=self.data_root,
@@ -141,12 +147,39 @@ class AstroDataModule(L.LightningDataModule):
                 max_samples=self.max_samples,
             )
 
-        # Get the main data object
-        full_data = self.dataset[0]
+        # Get the main data object from the InMemoryDataset
+        if len(self.dataset) == 0:
+            raise RuntimeError("Dataset is empty")
+
+        # Check if dataset contains multiple graphs or just one
+        if hasattr(self.dataset, "__len__"):
+            num_graphs = len(self.dataset)
+        else:
+            num_graphs = 1
+        if num_graphs == 1:
+            logger.warning(
+                "Dataset contains only one graph. Training will use only one batch per epoch. This may cause scheduler warnings and suboptimal training."
+            )
+        else:
+            logger.info(f"Dataset contains {num_graphs} graphs.")
+
+        # Calculate number of batches per epoch
+        num_batches = max(1, num_graphs // self.batch_size)
+        logger.info(f"Batch size: {self.batch_size}, Batches per epoch: {num_batches}")
+        if num_batches == 1:
+            logger.warning(
+                "Only one batch per epoch will be used. Consider reducing batch_size or increasing dataset size for better training."
+            )
+
+        full_data = self.dataset._data
+        if not isinstance(full_data, Data):
+            raise TypeError(f"Expected Data object, got {type(full_data)}")
 
         # Apply subgraph sampling if the graph is too large
         if (
             self.use_subgraph_sampling
+            and hasattr(full_data, "num_nodes")
+            and full_data.num_nodes is not None
             and full_data.num_nodes > self.max_nodes_per_graph
         ):
             logger.info(
@@ -173,49 +206,66 @@ class AstroDataModule(L.LightningDataModule):
             if self._main_data.x.dim() >= 2:
                 self.num_features = self._main_data.x.size(1)
             else:
-                # 1D tensor - use size(0) as feature dimension
                 self.num_features = 1
 
         if hasattr(self._main_data, "y") and self._main_data.y is not None:
             unique_labels = torch.unique(self._main_data.y)
-            self.num_classes = max(len(unique_labels), 2)  # Ensure at least 2 classes
-
-            # If we only have one class, create synthetic binary labels for demonstration
+            self.num_classes = max(len(unique_labels), 2)
             if len(unique_labels) == 1:
                 logger.warning(
                     f"Dataset has only 1 unique label ({unique_labels[0].item()}). Creating synthetic binary labels for training."
                 )
-                # Create binary labels based on node features or random split
-                # Use feature-based split: nodes with feature sum > median get label 1
-                feature_sums = self._main_data.x.sum(dim=1)
+                if self._main_data.x.dim() >= 2:
+                    feature_sums = self._main_data.x.sum(dim=1)
+                else:
+                    feature_sums = self._main_data.x
                 median_val = feature_sums.median()
                 self._main_data.y = (feature_sums > median_val).long()
                 self.num_classes = 2
         else:
-            # No labels available, create synthetic binary labels
             logger.warning(
                 "No labels found in dataset. Creating synthetic binary labels for training."
             )
-            if self._main_data.x.dim() >= 2:
-                feature_sums = self._main_data.x.sum(dim=1)
-            else:
-                feature_sums = self._main_data.x.sum()
+            if hasattr(self._main_data, "x") and self._main_data.x is not None:
+                if self._main_data.x.dim() >= 2:
+                    feature_sums = self._main_data.x.sum(dim=1)
+                else:
+                    feature_sums = self._main_data.x
                 median_val = feature_sums.median()
                 self._main_data.y = (feature_sums > median_val).long()
                 self.num_classes = 2
+            else:
+                logger.warning("No features found, creating random binary labels")
+                num_nodes = (
+                    self._main_data.num_nodes
+                    if hasattr(self._main_data, "num_nodes")
+                    else 100
+                )
+                self._main_data.y = torch.randint(0, 2, (num_nodes,))
+                self.num_classes = 2
 
-        # Create train/val/test splits using masks
         self._create_data_splits()
 
-        # Keep small datasets on CPU to avoid CUDA errors
-        if self._main_data.num_nodes <= 10:
+        if (
+            hasattr(self._main_data, "num_nodes")
+            and self._main_data.num_nodes is not None
+            and self._main_data.num_nodes <= 10
+        ):
             self._main_data = self._main_data.cpu()
             logger.info("Small dataset detected, keeping on CPU")
 
     def _create_data_splits(self):
         """Create train/val/test masks for the graph data."""
         data = self._main_data
-        num_nodes = data.num_nodes
+
+        # Get number of nodes safely
+        num_nodes: int
+        if hasattr(data, "num_nodes") and data.num_nodes is not None:
+            num_nodes = int(data.num_nodes)
+        elif hasattr(data, "x") and data.x is not None:
+            num_nodes = int(data.x.size(0))
+        else:
+            raise RuntimeError("Cannot determine number of nodes in graph data")
 
         # Create train/val/test masks
         data.train_mask = torch.zeros(num_nodes, dtype=torch.bool)
@@ -284,93 +334,72 @@ class AstroDataModule(L.LightningDataModule):
         return kwargs
 
     def train_dataloader(self):
-        """Create training dataloader with optimizations."""
+        """Create training dataloader with robust settings and logging."""
         if self._main_data is None:
             self.setup()
 
-        # Create masks for training data
-        train_mask = getattr(self._main_data, "train_mask", None)
-        if train_mask is not None:
-            train_data = self._main_data.__class__()
-            for attr in self._main_data.keys():
-                value = getattr(self._main_data, attr)
-                if (
-                    isinstance(value, torch.Tensor)
-                    and value.dim() > 0
-                    and value.size(0) == train_mask.size(0)
-                ):
-                    setattr(train_data, attr, value[train_mask])
-                else:
-                    setattr(train_data, attr, value)
-        else:
-            train_data = self._main_data
+        train_data = self._main_data
+        if train_data is None:
+            raise RuntimeError("Training data is None")
+
+        logger.info(
+            f"[train_dataloader] batch_size={self.batch_size}, num_workers={self.num_workers}, persistent_workers={self.persistent_workers}, prefetch_factor={self.prefetch_factor}, pin_memory={self.pin_memory}"
+        )
 
         return DataLoader(
             [train_data],
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=False,  # Disabled for PyG compatibility
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            prefetch_factor=self.prefetch_factor,
         )
 
     def val_dataloader(self):
-        """Create validation dataloader."""
+        """Create validation dataloader with robust settings and logging."""
         if self._main_data is None:
             self.setup()
 
-        # Create masks for validation data
-        val_mask = getattr(self._main_data, "val_mask", None)
-        if val_mask is not None:
-            val_data = self._main_data.__class__()
-            for attr in self._main_data.keys():
-                value = getattr(self._main_data, attr)
-                if (
-                    isinstance(value, torch.Tensor)
-                    and value.dim() > 0
-                    and value.size(0) == val_mask.size(0)
-                ):
-                    setattr(val_data, attr, value[val_mask])
-                else:
-                    setattr(val_data, attr, value)
-        else:
-            val_data = self._main_data
+        val_data = self._main_data
+        if val_data is None:
+            raise RuntimeError("Validation data is None")
+
+        logger.info(
+            f"[val_dataloader] batch_size={self.batch_size}, num_workers={self.num_workers}, persistent_workers={self.persistent_workers}, prefetch_factor={self.prefetch_factor}, pin_memory={self.pin_memory}"
+        )
 
         return DataLoader(
             [val_data],
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=False,  # Disabled for PyG compatibility
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            prefetch_factor=self.prefetch_factor,
         )
 
     def test_dataloader(self):
-        """Create test dataloader."""
+        """Create test dataloader with robust settings and logging."""
         if self._main_data is None:
             self.setup()
 
-        # Create masks for test data
-        test_mask = getattr(self._main_data, "test_mask", None)
-        if test_mask is not None:
-            test_data = self._main_data.__class__()
-            for attr in self._main_data.keys():
-                value = getattr(self._main_data, attr)
-                if (
-                    isinstance(value, torch.Tensor)
-                    and value.dim() > 0
-                    and value.size(0) == test_mask.size(0)
-                ):
-                    setattr(test_data, attr, value[test_mask])
-                else:
-                    setattr(test_data, attr, value)
-        else:
-            test_data = self._main_data
+        test_data = self._main_data
+        if test_data is None:
+            raise RuntimeError("Test data is None")
+
+        logger.info(
+            f"[test_dataloader] batch_size={self.batch_size}, num_workers={self.num_workers}, persistent_workers={self.persistent_workers}, prefetch_factor={self.prefetch_factor}, pin_memory={self.pin_memory}"
+        )
 
         return DataLoader(
             [test_data],
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=False,  # Disabled for PyG compatibility
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            prefetch_factor=self.prefetch_factor,
         )
 
     def teardown(self, stage: Optional[str] = None):
