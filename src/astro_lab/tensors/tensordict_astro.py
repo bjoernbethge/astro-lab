@@ -144,7 +144,7 @@ class SpatialTensorDict(AstroTensorDict):
 
     @property
     def coordinate_system(self) -> str:
-        return self["meta"]["coordinate_system"]
+        return self._metadata["coordinate_system"]
 
     def to_spherical(self) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Converts to spherical coordinates (RA, Dec, Distance)."""
@@ -225,6 +225,7 @@ class PhotometricTensorDict(AstroTensorDict):
                 f"Number of bands ({len(bands)}) doesn't match data columns ({magnitudes.shape[-1]})"
             )
 
+        # Einheitlich: meta als dict, nicht TensorDict!
         data = {
             "magnitudes": magnitudes,
             "meta": {
@@ -242,15 +243,19 @@ class PhotometricTensorDict(AstroTensorDict):
 
     @property
     def bands(self) -> List[str]:
-        return self["meta"]["bands"]
+        return self._metadata["bands"]
 
     @property
     def n_bands(self) -> int:
-        return self["meta"]["n_bands"]
+        return self._metadata["n_bands"]
 
     @property
     def is_magnitude(self) -> bool:
-        return self["meta"]["is_magnitude"]
+        return self._metadata["is_magnitude"]
+
+    @property
+    def filter_system(self) -> str:
+        return self._metadata["filter_system"]
 
     def get_band(self, band: str) -> torch.Tensor:
         """Extracts data for a specific band."""
@@ -291,7 +296,7 @@ class PhotometricTensorDict(AstroTensorDict):
             magnitudes=flux_data,
             bands=self.bands,
             errors=new_errors,
-            filter_system=self["meta"]["filter_system"],
+            filter_system=self._metadata["filter_system"],
             is_magnitude=False,
         )
         result.add_history("to_flux")
@@ -316,7 +321,7 @@ class PhotometricTensorDict(AstroTensorDict):
             magnitudes=mag_data,
             bands=self.bands,
             errors=new_errors,
-            filter_system=self["meta"]["filter_system"],
+            filter_system=self._metadata["filter_system"],
             is_magnitude=True,
         )
         result.add_history("to_magnitude")
@@ -373,7 +378,7 @@ class SpectralTensorDict(AstroTensorDict):
 
     @property
     def redshift(self) -> float:
-        return self["meta"]["redshift"]
+        return self._metadata["redshift"]
 
     @property
     def rest_wavelengths(self) -> torch.Tensor:
@@ -389,8 +394,8 @@ class SpectralTensorDict(AstroTensorDict):
             wavelengths=new_wavelengths,
             errors=self.get("errors"),
             redshift=self.redshift + z,
-            flux_units=self["meta"]["flux_units"],
-            wavelength_units=self["meta"]["wavelength_units"],
+            flux_units=self._metadata["flux_units"],
+            wavelength_units=self._metadata["wavelength_units"],
         )
         result.add_history("apply_redshift", z=z)
         return result
@@ -409,7 +414,7 @@ class SpectralTensorDict(AstroTensorDict):
             errors=self.get("errors"),
             redshift=self.redshift,
             flux_units="normalized",
-            wavelength_units=self["meta"]["wavelength_units"],
+            wavelength_units=self._metadata["wavelength_units"],
         )
         result.add_history("normalize", wavelength=wavelength)
         return result
@@ -504,9 +509,9 @@ class LightcurveTensorDict(AstroTensorDict):
         result = LightcurveTensorDict(
             times=sorted_times,
             magnitudes=sorted_magnitudes,
-            bands=self["meta"]["bands"],
+            bands=self._metadata["bands"],
             errors=sorted_errors,
-            time_format="phase",
+            time_format=self._metadata["time_format"],
         )
         result.add_history("phase_fold", period=period.tolist())
         return result
@@ -553,7 +558,7 @@ class SurveyTensorDict(AstroTensorDict):
             "meta": {
                 "survey_name": survey_name,
                 "data_release": data_release,
-                "filter_system": photometric["meta"]["filter_system"],
+                "filter_system": photometric.filter_system,
                 "n_objects": batch_size[0] if batch_size else 0,
             },
         }
@@ -575,11 +580,11 @@ class SurveyTensorDict(AstroTensorDict):
 
     @property
     def survey_name(self) -> str:
-        return self["meta"]["survey_name"]
+        return self._metadata["survey_name"]
 
     @property
     def n_objects(self) -> int:
-        return self["meta"]["n_objects"]
+        return self._metadata["n_objects"]
 
     def cross_match(
         self, other: SurveyTensorDict, tolerance: float = 1.0
@@ -633,7 +638,7 @@ class SurveyTensorDict(AstroTensorDict):
             spatial=filtered_spatial,
             photometric=filtered_photometric,
             survey_name=self.survey_name,
-            data_release=self["meta"]["data_release"],
+            data_release=self._metadata["data_release"],
         )
         result.add_history("query_region", ra_range=ra_range, dec_range=dec_range)
         return result
