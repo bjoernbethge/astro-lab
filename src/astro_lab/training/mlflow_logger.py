@@ -284,7 +284,12 @@ class LightningMLflowLogger(MLFlowLogger):
         except Exception as e:
             logger.warning(f"Could not finalize run: {e}")
         
-        super().finalize(status)
+        try:
+            # Call parent finalize but catch checkpoint scanning errors
+            super().finalize(status)
+        except Exception as e:
+            logger.warning(f"Error during checkpoint scanning: {e}")
+            # Continue without failing the entire training
     
     # Helper methods
     

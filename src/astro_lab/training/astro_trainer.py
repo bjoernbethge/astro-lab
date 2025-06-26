@@ -6,11 +6,13 @@ Unified trainer class for training AstroLab Lightning models.
 """
 
 import logging
+import traceback
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+import torch
+from lightning.pytorch.callbacks import EarlyStopping
 
 from astro_lab.data import AstroDataModule
 from astro_lab.models.lightning import (
@@ -18,6 +20,7 @@ from astro_lab.models.lightning import (
     create_preset_model,
 )
 
+from .callbacks import SafeModelCheckpoint
 from .mlflow_logger import LightningMLflowLogger
 
 logger = logging.getLogger(__name__)
@@ -81,8 +84,9 @@ class AstroTrainer:
         datamodule = AstroDataModule(
             survey=survey,
             batch_size=batch_size,
-            num_workers=4,
             max_samples=max_samples,
+            pin_memory=True,  # PyG handles memory management
+            persistent_workers=False,
         )
 
         self.datamodule = datamodule
@@ -95,12 +99,14 @@ class AstroTrainer:
         # Setup callbacks
         checkpoint_dir = self.config.get("checkpoint_dir", Path("checkpoints"))
         callbacks = [
-            ModelCheckpoint(
+            SafeModelCheckpoint(
                 dirpath=checkpoint_dir,
-                filename="{epoch:02d}-{val_loss:.3f}",
+                filename="model_epoch{epoch:02d}_valloss{val_loss:.3f}",
                 monitor="val_loss",
                 mode="min",
                 save_top_k=3,
+                auto_insert_metric_name=False,  # Prevent metric name duplication
+                save_weights_only=False,
             ),
             EarlyStopping(
                 monitor="val_loss",
@@ -126,22 +132,24 @@ class AstroTrainer:
 
         self.mlflow_logger = mlflow_logger
 
-        # Create trainer
+        # Optimized RTX 4070 configuration
         trainer_kwargs = {
-            "max_epochs": self.config.get("epochs", 50),
-            "accelerator": "auto",
+            "max_epochs": self.config.get("max_epochs", self.config.get("epochs", 50)),
+            "accelerator": "gpu" if self.config.get("devices", 1) > 0 else "cpu",
             "devices": self.config.get("devices", 1),
-            "precision": self.config.get("precision", "16-mixed"),
-            "strategy": self.config.get("strategy", "auto"),
+            "precision": "16-mixed",  # RTX 4070 has excellent Tensor Core support
+            "strategy": "auto",
             "callbacks": callbacks,
             "logger": mlflow_logger,
             "gradient_clip_val": 1.0,
-            "accumulate_grad_batches": 2,
+            "accumulate_grad_batches": 1,  # RTX 4070 has enough VRAM for full batches
+            "enable_progress_bar": True,
+            "log_every_n_steps": 10,
+            "check_val_every_n_epoch": 1,
+            "num_sanity_val_steps": 2,  # Quick sanity check
         }
 
         # Development options
-        if self.config.get("fast_dev_run"):
-            trainer_kwargs["fast_dev_run"] = True
         if self.config.get("overfit_batches"):
             trainer_kwargs["overfit_batches"] = self.config["overfit_batches"]
 
@@ -158,6 +166,18 @@ class AstroTrainer:
         """
         try:
             logger.info("🚀 Starting AstroLab Lightning training")
+
+            # RTX 4070 optimizations
+
+            if torch.cuda.is_available():
+                # Enable Tensor Core optimizations for RTX 4070
+                torch.set_float32_matmul_precision("medium")
+                torch.backends.cudnn.allow_tf32 = True
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.benchmark = (
+                    True  # Optimize for consistent input sizes
+                )
+                logger.info("✅ RTX 4070 optimizations enabled")
 
             # Create components
             self.create_model()
@@ -181,6 +201,7 @@ class AstroTrainer:
 
         except Exception as e:
             logger.error(f"❌ Training failed: {e}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             return False
 
     def get_model(self) -> Optional[pl.LightningModule]:

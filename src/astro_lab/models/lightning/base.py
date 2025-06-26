@@ -158,6 +158,14 @@ class AstroLabLightningMixin(L.LightningModule):
 
         # If no targets found, create synthetic ones for testing
         if targets is None:
+            # Ensure predictions has proper dimensions
+            if predictions.dim() == 0:
+                # Scalar prediction - unsqueeze to make it [1]
+                predictions = predictions.unsqueeze(0)
+            elif predictions.dim() == 1 and predictions.size(0) == 1:
+                # Single prediction - might need to be reshaped for classification
+                pass
+
             # Create synthetic targets based on predictions shape
             if predictions.dim() == 2:
                 # For graph-level predictions, create targets with same shape
@@ -176,78 +184,109 @@ class AstroLabLightningMixin(L.LightningModule):
                     )
             else:
                 # For other cases, create appropriate synthetic targets
+                batch_size = predictions.size(0) if predictions.dim() > 0 else 1
                 targets = torch.zeros(
-                    predictions.size(0), device=predictions.device, dtype=torch.long
+                    batch_size, device=predictions.device, dtype=torch.long
                 )
 
         return predictions, targets
 
     def training_step(self, batch, batch_idx):
         """Training step - works with all AstroLab model outputs."""
-        outputs = self(batch)
-        predictions, targets = self._extract_predictions_and_targets(batch, outputs)
+        try:
+            outputs = self(batch)
+            predictions, targets = self._extract_predictions_and_targets(batch, outputs)
 
-        # Calculate loss
-        loss = self.loss_fn(predictions, targets)
-
-        # Log loss
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-
-        # Calculate and log metrics
-        if hasattr(self, "train_mse") and self.train_mse is not None:
-            # Fix shape mismatch for regression metrics
-            metric_targets = targets
-            if (
-                predictions.shape != targets.shape
-                and predictions.dim() == 2
-                and targets.dim() == 1
-            ):
-                metric_targets = torch.nn.functional.one_hot(
-                    targets, num_classes=predictions.size(1)
-                ).float()
-                if metric_targets.shape[1] != predictions.shape[1]:
-                    metric_targets = torch.nn.functional.pad(
-                        metric_targets,
-                        (0, predictions.shape[1] - metric_targets.shape[1]),
+            # Debug information
+            if batch_idx == 0:  # Log only for first batch to avoid spam
+                logger.info(f"Batch type: {type(batch)}")
+                if hasattr(batch, "x"):
+                    logger.info(
+                        f"Batch x shape: {batch.x.shape if batch.x is not None else 'None'}"
                     )
-            # Ensure same device
-            metric_targets = metric_targets.to(predictions.device)
-            self.train_mse(predictions, metric_targets)
-            self.log("train_mse", self.train_mse, on_step=False, on_epoch=True)
-
-        if hasattr(self, "train_mae") and self.train_mae is not None:
-            metric_targets = targets
-            if (
-                predictions.shape != targets.shape
-                and predictions.dim() == 2
-                and targets.dim() == 1
-            ):
-                metric_targets = torch.nn.functional.one_hot(
-                    targets, num_classes=predictions.size(1)
-                ).float()
-                if metric_targets.shape[1] != predictions.shape[1]:
-                    metric_targets = torch.nn.functional.pad(
-                        metric_targets,
-                        (0, predictions.shape[1] - metric_targets.shape[1]),
+                if hasattr(batch, "y"):
+                    logger.info(
+                        f"Batch y shape: {batch.y.shape if batch.y is not None else 'None'}"
                     )
-            # Ensure same device
-            metric_targets = metric_targets.to(predictions.device)
-            self.train_mae(predictions, metric_targets)
-            self.log("train_mae", self.train_mae, on_step=False, on_epoch=True)
+                logger.info(f"Model outputs type: {type(outputs)}")
+                logger.info(f"Predictions shape: {predictions.shape}")
+                logger.info(f"Targets shape: {targets.shape}")
 
-        if (
-            self.task == "classification"
-            and hasattr(self, "train_acc")
-            and self.train_acc is not None
-            and predictions.dim() == 2
-            and predictions.shape[1] == self.num_classes
-        ):
-            self.train_acc(predictions, targets)
-            self.log(
-                "train_acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True
-            )
+            # Calculate loss
+            loss = self.loss_fn(predictions, targets)
 
-        return loss
+            # Log loss
+            self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
+
+            # Calculate and log metrics
+            if hasattr(self, "train_mse") and self.train_mse is not None:
+                # Fix shape mismatch for regression metrics
+                metric_targets = targets
+                if (
+                    predictions.shape != targets.shape
+                    and predictions.dim() == 2
+                    and targets.dim() == 1
+                ):
+                    metric_targets = torch.nn.functional.one_hot(
+                        targets, num_classes=predictions.size(1)
+                    ).float()
+                    if metric_targets.shape[1] != predictions.shape[1]:
+                        metric_targets = torch.nn.functional.pad(
+                            metric_targets,
+                            (0, predictions.shape[1] - metric_targets.shape[1]),
+                        )
+                # Ensure same device
+                metric_targets = metric_targets.to(predictions.device)
+                self.train_mse(predictions, metric_targets)
+                self.log("train_mse", self.train_mse, on_step=False, on_epoch=True)
+
+            if hasattr(self, "train_mae") and self.train_mae is not None:
+                metric_targets = targets
+                if (
+                    predictions.shape != targets.shape
+                    and predictions.dim() == 2
+                    and targets.dim() == 1
+                ):
+                    metric_targets = torch.nn.functional.one_hot(
+                        targets, num_classes=predictions.size(1)
+                    ).float()
+                    if metric_targets.shape[1] != predictions.shape[1]:
+                        metric_targets = torch.nn.functional.pad(
+                            metric_targets,
+                            (0, predictions.shape[1] - metric_targets.shape[1]),
+                        )
+                # Ensure same device
+                metric_targets = metric_targets.to(predictions.device)
+                self.train_mae(predictions, metric_targets)
+                self.log("train_mae", self.train_mae, on_step=False, on_epoch=True)
+
+            if (
+                self.task == "classification"
+                and hasattr(self, "train_acc")
+                and self.train_acc is not None
+                and predictions.dim() == 2
+                and predictions.shape[1] == self.num_classes
+            ):
+                self.train_acc(predictions, targets)
+                self.log(
+                    "train_acc",
+                    self.train_acc,
+                    on_step=False,
+                    on_epoch=True,
+                    prog_bar=True,
+                )
+
+            return loss
+
+        except Exception as e:
+            logger.error(f"Training step failed: {e}")
+            logger.error(f"Batch type: {type(batch)}")
+            if hasattr(batch, "x"):
+                logger.error(f"Batch x: {batch.x}")
+            if hasattr(batch, "y"):
+                logger.error(f"Batch y: {batch.y}")
+            logger.error(f"Outputs: {outputs}")
+            raise
 
     def validation_step(self, batch, batch_idx):
         """Validation step."""
