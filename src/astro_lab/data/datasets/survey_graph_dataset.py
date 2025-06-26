@@ -14,9 +14,10 @@ import polars as pl
 import torch
 from torch_geometric.data import Data, InMemoryDataset
 
-from astro_lab.data.graphs import create_astronomical_graph, create_knn_graph
-from astro_lab.tensors import PhotometricTensorDict, SpatialTensorDict, SurveyTensorDict
 from astro_lab.config.surveys import get_survey_config
+from astro_lab.data.graphs import create_astronomical_graph, create_knn_graph
+from astro_lab.memory import force_comprehensive_cleanup
+from astro_lab.tensors import PhotometricTensorDict, SpatialTensorDict, SurveyTensorDict
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,8 @@ class SurveyGraphDataset(InMemoryDataset):
             try:
                 graph_data = torch.load(self._graph_path, weights_only=False)
                 self.data, self.slices = self.collate([graph_data])
+                # Nach großem Ladevorgang Speicher bereinigen
+                force_comprehensive_cleanup()
                 return
             except Exception as e:
                 logger.warning(f"⚠️ Failed to load graph: {e}. Rebuilding...")
@@ -93,6 +96,8 @@ class SurveyGraphDataset(InMemoryDataset):
 
         # Set data for PyG
         self.data, self.slices = self.collate([graph_data])
+        # Nach großem Ladevorgang Speicher bereinigen
+        force_comprehensive_cleanup()
 
     def _load_survey_tensor(self) -> SurveyTensorDict:
         """Load or create SurveyTensorDict from raw data."""
@@ -100,7 +105,9 @@ class SurveyGraphDataset(InMemoryDataset):
         if self._tensor_path.exists():
             try:
                 logger.info(f"🔄 Loading SurveyTensorDict: {self._tensor_path}")
-                return torch.load(self._tensor_path, weights_only=False)
+                tensor = torch.load(self._tensor_path, weights_only=False)
+                force_comprehensive_cleanup()
+                return tensor
             except Exception:
                 logger.warning(
                     "⚠️ Failed to load SurveyTensorDict. Creating from raw data..."
@@ -288,7 +295,9 @@ class SurveyGraphDataset(InMemoryDataset):
     def get_survey_tensor(self) -> SurveyTensorDict:
         """Get the underlying SurveyTensorDict (for analysis/debugging)."""
         if self._tensor_path.exists():
-            return torch.load(self._tensor_path, weights_only=False)
+            tensor = torch.load(self._tensor_path, weights_only=False)
+            force_comprehensive_cleanup()
+            return tensor
         else:
             raise FileNotFoundError(
                 "SurveyTensorDict not found. Run _load_data() first."

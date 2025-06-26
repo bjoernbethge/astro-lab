@@ -407,14 +407,10 @@ class AstroDataModule(L.LightningDataModule):
         # Clean up cached data
         self._main_data = None
 
-        # Force garbage collection
-        import gc
+        # Zentrales Memory-Management nutzen
+        from astro_lab.memory import force_comprehensive_cleanup
 
-        gc.collect()
-
-        # Clear CUDA cache if available
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        force_comprehensive_cleanup()
 
     def get_info(self) -> Dict[str, Any]:
         """Get dataset information."""
