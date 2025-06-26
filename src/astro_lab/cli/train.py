@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from astro_lab.models.lightning import list_lightning_models, list_presets
+from astro_lab.models.core import list_lightning_models, list_presets
 from astro_lab.training import train_model
 
 from .config import load_and_prepare_training_config
@@ -166,72 +166,54 @@ def main(args=None) -> int:
     if args is None:
         parser = create_parser()
         args = parser.parse_args()
-    
+
     logger = setup_logging(args.verbose)
 
     try:
         # CLI-Overrides sammeln - erweiterte Liste von Parametern
         cli_overrides = {}
         for key in [
-            "model", "dataset", "epochs", "batch_size", "learning_rate",
-            "weight_decay", "optimizer", "scheduler", "precision",
-            "gradient_clip_val", "accumulate_grad_batches",
-            "experiment_name", "checkpoint_dir", "resume",
-            "num_workers", "max_samples", "early_stopping_patience",
-            "fast_dev_run"
+            "model",
+            "dataset",
+            "epochs",
+            "batch_size",
+            "learning_rate",
+            "weight_decay",
+            "optimizer",
+            "scheduler",
+            "precision",
+            "gradient_clip_val",
+            "accumulate_grad_batches",
+            "experiment_name",
+            "checkpoint_dir",
+            "resume",
+            "num_workers",
+            "max_samples",
+            "early_stopping_patience",
+            "fast_dev_run",
         ]:
-            # Convert argument names (e.g., batch-size -> batch_size)
-            arg_key = key.replace("_", "-")
-            arg_val = getattr(args, key, None)
-            
-            if arg_val is not None:
-                # Special handling for batch_size to ensure it's int
-                if key == "batch_size":
-                    cli_overrides[key] = int(arg_val)
-                else:
-                    cli_overrides[key] = arg_val
-        
-        # Map 'epochs' to 'max_epochs' for consistency
-        if "epochs" in cli_overrides:
-            cli_overrides["max_epochs"] = cli_overrides.pop("epochs")
-        
-        # Config laden und vorbereiten
-        trainer_config = load_and_prepare_training_config(
+            if hasattr(args, key) and getattr(args, key) is not None:
+                cli_overrides[key] = getattr(args, key)
+
+        logger.info(f"[CLI] CLI overrides: {cli_overrides}")
+
+        # Load and prepare configuration
+        config = load_and_prepare_training_config(
             config_path=args.config,
-            preset=args.preset,
+            preset=getattr(args, "preset", None),
             cli_overrides=cli_overrides,
         )
-        
-        # Validate configuration
-        if not trainer_config.get("model") and not trainer_config.get("preset"):
-            logger.error(
-                "Must specify either --model, --preset or --config with model defined."
-            )
-            parser.print_help()
-            return 1
-        
-        if not trainer_config.get("dataset"):
-            logger.warning("No dataset specified, using default 'gaia'")
-            trainer_config["dataset"] = "gaia"
-        
-        # Log final configuration
-        logger.info("📋 Final training configuration:")
-        for key, value in sorted(trainer_config.items()):
-            if key not in ["checkpoint_dir"]:  # Skip paths in log
-                logger.info(f"   {key}: {value}")
-        
+
+        logger.info(
+            f"[CLI] Final config: num_features={config.get('num_features', 'NOT_SET')}"
+        )
+
         # Start training
-        success = train_model(trainer_config)
+        success = train_model(config)
         return 0 if success else 1
 
-    except KeyboardInterrupt:
-        logger.warning("Training interrupted by user")
-        return 1
     except Exception as e:
         logger.error(f"Training failed: {e}")
-        if args.verbose:
-            import traceback
-            logger.error(traceback.format_exc())
         return 1
 
 

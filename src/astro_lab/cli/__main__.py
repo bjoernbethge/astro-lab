@@ -158,6 +158,17 @@ Examples:
         type=float,
         help="Overfit on a few batches for testing",
     )
+    train_parser.add_argument(
+        "--num-features",
+        type=int,
+        help="Number of input features for the model (overrides dataset default)",
+    )
+    train_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose logging",
+    )
 
     # Optimize command
     optimize_parser = subparsers.add_parser(
