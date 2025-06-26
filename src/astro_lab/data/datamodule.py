@@ -93,17 +93,13 @@ class AstroDataModule(L.LightningDataModule):
         self.max_nodes_per_graph = max_nodes_per_graph
         self.use_subgraph_sampling = use_subgraph_sampling
 
-        # Optimize num_workers for laptop
+        # RTX 4070 optimization: PyG works best with single-process loading
         if num_workers is None:
-            # Conservative settings for laptop
-            try:
-                cpu_count = os.cpu_count()
-                # Use fewer workers on laptop to avoid memory pressure
-                self.num_workers = max(0, min(cpu_count // 2, 4))
-            except (OSError, AttributeError):
-                self.num_workers = 2
+            self.num_workers = 0  # Avoid multiprocessing issues with PyG
         else:
-            self.num_workers = num_workers
+            self.num_workers = max(
+                0, min(num_workers, 1)
+            )  # Cap at 1 for PyG compatibility
 
         # Conservative settings for laptop GPUs
         if self.batch_size == 1:
@@ -314,7 +310,7 @@ class AstroDataModule(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
+            pin_memory=False,  # Disabled for PyG compatibility
         )
 
     def val_dataloader(self):
@@ -328,8 +324,10 @@ class AstroDataModule(L.LightningDataModule):
             val_data = self._main_data.__class__()
             for attr in self._main_data.keys():
                 value = getattr(self._main_data, attr)
-                if isinstance(value, torch.Tensor) and value.size(0) == val_mask.size(
-                    0
+                if (
+                    isinstance(value, torch.Tensor)
+                    and value.dim() > 0
+                    and value.size(0) == val_mask.size(0)
                 ):
                     setattr(val_data, attr, value[val_mask])
                 else:
@@ -342,7 +340,7 @@ class AstroDataModule(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
+            pin_memory=False,  # Disabled for PyG compatibility
         )
 
     def test_dataloader(self):
@@ -356,8 +354,10 @@ class AstroDataModule(L.LightningDataModule):
             test_data = self._main_data.__class__()
             for attr in self._main_data.keys():
                 value = getattr(self._main_data, attr)
-                if isinstance(value, torch.Tensor) and value.size(0) == test_mask.size(
-                    0
+                if (
+                    isinstance(value, torch.Tensor)
+                    and value.dim() > 0
+                    and value.size(0) == test_mask.size(0)
                 ):
                     setattr(test_data, attr, value[test_mask])
                 else:
@@ -370,7 +370,7 @@ class AstroDataModule(L.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=self.pin_memory,
+            pin_memory=False,  # Disabled for PyG compatibility
         )
 
     def teardown(self, stage: Optional[str] = None):
