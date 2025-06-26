@@ -9,6 +9,7 @@ Thin wrapper that delegates to specialized modules:
 """
 
 import logging
+from contextlib import contextmanager
 from typing import Any, Optional
 
 import torch
@@ -27,14 +28,30 @@ from .plotly_bridge import create_plotly_visualization
 
 # Try to import Blender API
 try:
-    import bpy
-
-    from .bpy import AstroLabApi
+    from . import albpy
+    from .albpy import AstroLabApi, blender_memory_context, bpy_object_context
 except ImportError:
-    bpy = None
+    albpy = None
     AstroLabApi = None
+    blender_memory_context = None
+    bpy_object_context = None
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def memory_management():
+    """Context manager for proper memory management."""
+    try:
+        yield
+    finally:
+        # Clear CUDA cache if available
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        # Force garbage collection
+        import gc
+
+        gc.collect()
 
 
 class AstroLabWidget:
@@ -52,29 +69,32 @@ class AstroLabWidget:
 
     def _setup_blender_api(self) -> None:
         """Set up Blender API access if available."""
-        if bpy is None or AstroLabApi is None:
+        if albpy is None or AstroLabApi is None:
             self.al = None
             self.ops = None
             self.data = None
             self.context = None
             self.scene = None
-            logger.warning("Blender not available - API access disabled.")
+            logger.warning("Blender (albpy) not available - API access disabled.")
             return
 
         try:
-            self.al = AstroLabApi()
-            self.ops = getattr(bpy, "ops", None)
-            self.data = getattr(bpy, "data", None)
-            self.context = getattr(bpy, "context", None)
-            self.scene = getattr(self.context, "scene", None) if self.context else None
-            logger.info("Blender API connected.")
+            with memory_management():
+                self.al = AstroLabApi()
+                self.ops = getattr(albpy, "ops", None)
+                self.data = getattr(albpy, "data", None)
+                self.context = getattr(albpy, "context", None)
+                self.scene = (
+                    getattr(self.context, "scene", None) if self.context else None
+                )
+                logger.info("Blender (albpy) API connected.")
         except Exception as e:
             self.al = None
             self.ops = None
             self.data = None
             self.context = None
             self.scene = None
-            logger.error(f"Failed to connect Blender API: {e}")
+            logger.error(f"Failed to connect Blender (albpy) API: {e}")
 
     def plot(
         self,
@@ -97,18 +117,24 @@ class AstroLabWidget:
         Returns:
             Visualization object
         """
-        survey_tensor = self._extract_survey_tensor(data)
+        with memory_management():
+            survey_tensor = self._extract_survey_tensor(data)
 
-        # Use local plotly_bridge module
-        if backend in ["auto", "plotly"]:
-            return create_plotly_visualization(
-                survey_tensor, plot_type=plot_type, **config
-            )
-        else:
-            # For other backends, just log for now
-            coords = survey_tensor["spatial"]["coordinates"]
-            logger.info(f"Would visualize {len(coords)} points with {backend} backend")
-            return survey_tensor
+            if survey_tensor is None:
+                raise ValueError("Failed to extract survey tensor from data")
+
+            # Use local plotly_bridge module
+            if backend in ["auto", "plotly"]:
+                return create_plotly_visualization(
+                    survey_tensor, plot_type=plot_type, **config
+                )
+            else:
+                # For other backends, just log for now
+                coords = survey_tensor["spatial"]["coordinates"]
+                logger.info(
+                    f"Would visualize {len(coords)} points with {backend} backend"
+                )
+                return survey_tensor
 
     def create_graph(
         self,
@@ -131,19 +157,23 @@ class AstroLabWidget:
         Returns:
             PyTorch Geometric Data object
         """
-        survey_tensor = self._extract_survey_tensor(data)
+        with memory_management():
+            survey_tensor = self._extract_survey_tensor(data)
 
-        # Delegate to data.graphs module
-        if method == "knn":
-            return create_knn_graph(survey_tensor, k_neighbors=k, **kwargs)
-        elif method == "radius":
-            if radius is None:
-                raise ValueError("Radius must be specified for radius graphs")
-            return create_radius_graph(survey_tensor, radius=radius, **kwargs)
-        elif method == "astronomical":
-            return create_astronomical_graph(survey_tensor, k_neighbors=k, **kwargs)
-        else:
-            raise ValueError(f"Unknown graph method: {method}")
+            if survey_tensor is None:
+                raise ValueError("Failed to extract survey tensor from data")
+
+            # Delegate to data.graphs module
+            if method == "knn":
+                return create_knn_graph(survey_tensor, k_neighbors=k, **kwargs)
+            elif method == "radius":
+                if radius is None:
+                    raise ValueError("Radius must be specified for radius graphs")
+                return create_radius_graph(survey_tensor, radius=radius, **kwargs)
+            elif method == "astronomical":
+                return create_astronomical_graph(survey_tensor, k_neighbors=k, **kwargs)
+            else:
+                raise ValueError(f"Unknown graph method: {method}")
 
     def cluster_data(
         self,
@@ -166,13 +196,18 @@ class AstroLabWidget:
         Returns:
             Clustering results
         """
-        survey_tensor = self._extract_survey_tensor(data)
-        coords = survey_tensor["spatial"]["coordinates"]
+        with memory_management():
+            survey_tensor = self._extract_survey_tensor(data)
 
-        # Use local graph module
-        return cluster_and_analyze(
-            coords, algorithm=algorithm, eps=eps, min_samples=min_samples, **kwargs
-        )
+            if survey_tensor is None:
+                raise ValueError("Failed to extract survey tensor from data")
+
+            coords = survey_tensor["spatial"]["coordinates"]
+
+            # Use local graph module
+            return cluster_and_analyze(
+                coords, algorithm=algorithm, eps=eps, min_samples=min_samples, **kwargs
+            )
 
     def _extract_survey_tensor(self, data: Any) -> SurveyTensorDict:
         """Extract SurveyTensorDict from various input formats."""
