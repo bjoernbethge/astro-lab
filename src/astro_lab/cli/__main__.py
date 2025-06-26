@@ -45,7 +45,7 @@ Examples:
     process_parser = subparsers.add_parser(
         "process",
         help="Process astronomical data",
-        description="Process and prepare astronomical datasets",
+        description="Process and prepare astronomical datasets for training",
     )
     process_parser.add_argument(
         "--surveys",
@@ -66,64 +66,28 @@ Examples:
         help="Maximum samples to process",
     )
 
-    # Preprocess command
+    # Preprocess command - simplified for raw data preprocessing
     preprocess_parser = subparsers.add_parser(
         "preprocess",
-        help="Preprocess data files",
-        description="Preprocess specific data files",
+        help="Preprocess raw data files",
+        description="Preprocess raw astronomical data files into training-ready format",
     )
-    preprocess_subparsers = preprocess_parser.add_subparsers(
-        dest="preprocess_command",
-        help="Preprocessing operations",
-    )
-
-    # Preprocess catalog
-    catalog_parser = preprocess_subparsers.add_parser(
-        "catalog",
-        help="Preprocess catalog data",
-    )
-    catalog_parser.add_argument(
-        "file",
-        type=Path,
-        help="Input catalog file",
-    )
-    catalog_parser.add_argument(
-        "--config",
-        type=str,
-        help="Configuration to use",
-    )
-    catalog_parser.add_argument(
-        "--splits",
-        action="store_true",
-        help="Create train/val/test splits",
-    )
-
-    # Preprocess stats
-    stats_parser = preprocess_subparsers.add_parser(
-        "stats",
-        help="Show data statistics",
-    )
-    stats_parser.add_argument(
-        "file",
-        type=Path,
-        help="Input data file",
-    )
-
-    # Preprocess browse
-    browse_parser = preprocess_subparsers.add_parser(
-        "browse",
-        help="Browse survey data",
-    )
-    browse_parser.add_argument(
-        "--survey",
+    preprocess_parser.add_argument(
+        "--surveys",
+        nargs="+",
         choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
         required=True,
-        help="Survey to browse",
+        help="Surveys to preprocess",
     )
-    browse_parser.add_argument(
-        "--details",
-        action="store_true",
-        help="Show detailed information",
+    preprocess_parser.add_argument(
+        "--max-samples",
+        type=int,
+        help="Maximum samples to preprocess",
+    )
+    preprocess_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output directory for processed data",
     )
 
     # Train command

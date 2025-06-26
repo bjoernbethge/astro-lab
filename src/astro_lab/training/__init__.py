@@ -10,6 +10,7 @@ in astro_lab.models.lightning.
 from .astro_trainer import AstroTrainer, train_model
 from .config import TrainingConfig
 from .mlflow_logger import LightningMLflowLogger, MLflowModelCheckpoint
+from .utils import set_random_seed, setup_logging
 
 __all__ = [
     # Main trainer
@@ -20,4 +21,7 @@ __all__ = [
     "MLflowModelCheckpoint",
     # Basic configuration
     "TrainingConfig",
+    # Utilities
+    "set_random_seed",
+    "setup_logging",
 ]

@@ -134,7 +134,7 @@ class AstroSurveyGNN(nn.Module):
         node_features = self.survey_encoder(data)
 
         # Create graph edge index if not provided
-            if edge_index is None:
+        if edge_index is None:
             # Create k-NN graph using spatial coordinates if available
             if "spatial" in data and isinstance(data["spatial"], SpatialTensorDict):
                 spatial_data = data["spatial"]
@@ -336,7 +336,7 @@ class MultiModalSurveyGNN(AstroSurveyGNN):
         # Fuse modal features
         if len(modal_features) == 1:
             fused_features = modal_features[0]
-                else:
+        else:
             # Stack and apply cross-modal attention
             stacked_features = torch.stack(
                 modal_features, dim=1
@@ -352,7 +352,7 @@ class MultiModalSurveyGNN(AstroSurveyGNN):
 
         # Continue with standard GNN processing
         edge_index = edge_index or self._create_default_edges(fused_features.shape[0])
-                edge_index = edge_index.to(self.device)
+        edge_index = edge_index.to(self.device)
 
         # Process through GNN layers
         h = fused_features
@@ -365,7 +365,7 @@ class MultiModalSurveyGNN(AstroSurveyGNN):
         graph_embedding = self.pooling(h, batch)
         output = self.output_projection(graph_embedding)
 
-            return output
+        return output
 
     def _create_default_edges(self, num_nodes: int) -> torch.Tensor:
         """Create default edge structure."""

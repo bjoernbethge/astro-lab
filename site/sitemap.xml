@@ -2,46 +2,74 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.cli/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.config/</loc>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.data.datasets/</loc>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.data.graphs/</loc>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.data/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.models.components/</loc>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.models.core/</loc>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.models.lightning/</loc>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.models/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.tensors/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.training/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.ui/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
-         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.utils/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.widgets.bpy.advanced/</loc>
+         <lastmod>2025-06-26</lastmod>
+    </url>
+    <url>
+         <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.widgets.bpy/</loc>
+         <lastmod>2025-06-26</lastmod>
     </url>
     <url>
          <loc>https://bjoernbethge.github.io/astro-lab/api/astro_lab.widgets/</loc>
-         <lastmod>2025-06-25</lastmod>
+         <lastmod>2025-06-26</lastmod>
     </url>
 </urlset>

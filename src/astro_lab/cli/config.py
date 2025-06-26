@@ -14,9 +14,9 @@ import yaml
 
 from astro_lab.data.config import data_config
 from astro_lab.training import TrainingConfig
-from astro_lab.utils.config.loader import ConfigLoader
-from astro_lab.utils.config.params import distribute_config_parameters
-from astro_lab.utils.config.surveys import SURVEY_CONFIGS, get_survey_config
+from astro_lab.config.loader import ConfigLoader
+from astro_lab.config.params import distribute_config_parameters
+from astro_lab.config.surveys import SURVEY_CONFIGS, get_survey_config
 
 
 def setup_logging() -> logging.Logger:

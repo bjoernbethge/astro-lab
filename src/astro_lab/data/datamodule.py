@@ -31,6 +31,7 @@ from ..tensors import (
 )
 from .config import data_config
 from .datasets import SurveyGraphDataset
+from .utils import check_graph_consistency, get_graph_statistics, sample_subgraph_random
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,15 @@ class AstroDataModule(L.LightningDataModule):
         else:
             self._main_data = full_data
 
+        # Verify graph consistency after setup
+        if not check_graph_consistency(self._main_data):
+            logger.error("❌ Graph consistency check failed after setup")
+            raise RuntimeError("Graph data is inconsistent after setup")
+
+        # Log graph statistics
+        stats = get_graph_statistics(self._main_data)
+        logger.info(f"📊 Graph statistics: {stats}")
+
         # Extract dataset information for Lightning module
         self.num_features = None
         if hasattr(self._main_data, "x") and self._main_data.x is not None:
@@ -232,43 +242,8 @@ class AstroDataModule(L.LightningDataModule):
         )
 
     def _create_subgraph_samples(self, data, max_nodes: int):
-        """Create smaller subgraph samples for laptop training."""
-        from torch_geometric.utils import subgraph
-
-        # Randomly sample nodes
-        num_nodes = data.num_nodes
-        if num_nodes <= max_nodes:
-            return data
-
-        # Sample nodes randomly
-        indices = torch.randperm(num_nodes)[:max_nodes]
-
-        # Create subgraph
-        # Ensure indices and edge_index are on the same device
-        device = data.edge_index.device
-        indices = indices.to(device)
-
-        edge_index, edge_attr = subgraph(
-            indices,
-            data.edge_index,
-            edge_attr=data.edge_attr if hasattr(data, "edge_attr") else None,
-            relabel_nodes=True,
-            num_nodes=num_nodes,
-        )
-
-        # Create new data object with subgraph
-        sub_data = data.__class__()
-        sub_data.num_nodes = len(indices)
-        sub_data.x = data.x[indices]
-        sub_data.edge_index = edge_index
-        if hasattr(data, "pos"):
-            sub_data.pos = data.pos[indices]
-        if hasattr(data, "y") and data.y is not None:
-            sub_data.y = data.y[indices]
-        if edge_attr is not None:
-            sub_data.edge_attr = edge_attr
-
-        return sub_data
+        """Create smaller subgraph samples using utility function."""
+        return sample_subgraph_random(data, max_nodes, seed=42)
 
     def _estimate_memory_usage(self, data) -> float:
         """Estimate memory usage of graph data in MB."""
