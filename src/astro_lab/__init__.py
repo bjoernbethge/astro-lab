@@ -34,9 +34,6 @@ from astro_lab.tensors import (
     SurveyTensorDict,
 )
 
-# Import specific utils instead of star imports
-from astro_lab.utils import get_device, set_random_seed, setup_logging
-
 __version__ = "0.1.0"
 __all__ = [
     "data",
@@ -46,7 +43,4 @@ __all__ = [
     "SpectralTensorDict",
     "LightcurveTensorDict",
     "SurveyTensorDict",
-    "setup_logging",
-    "get_device",
-    "set_random_seed",
 ]

@@ -13,6 +13,8 @@ import polars as pl
 import torch
 from astropy.io import fits
 from astropy.table import Table
+from torch_geometric.data import Data
+from torch_geometric.utils import subgraph
 
 logger = logging.getLogger(__name__)
 
@@ -273,3 +275,148 @@ def load_splits_from_parquet(
     )
 
     return df_train, df_val, df_test
+
+
+# ============================================================================
+# GRAPH UTILITIES
+# ============================================================================
+
+
+def check_graph_consistency(data: Data) -> bool:
+    """Check if graph data is consistent."""
+    try:
+        # Basic checks
+        assert data.x.size(0) == data.num_nodes, (
+            f"x size {data.x.size(0)} != num_nodes {data.num_nodes}"
+        )
+        if hasattr(data, "y") and data.y is not None:
+            assert data.y.size(0) == data.num_nodes, (
+                f"y size {data.y.size(0)} != num_nodes {data.num_nodes}"
+            )
+        if hasattr(data, "pos") and data.pos is not None:
+            assert data.pos.size(0) == data.num_nodes, (
+                f"pos size {data.pos.size(0)} != num_nodes {data.num_nodes}"
+            )
+
+        # Edge index checks
+        if data.edge_index.size(1) > 0:
+            max_edge_idx = data.edge_index.max()
+            assert max_edge_idx < data.num_nodes, (
+                f"edge_index max {max_edge_idx} >= num_nodes {data.num_nodes}"
+            )
+
+        logger.info(
+            f"✅ Graph consistency check passed: {data.num_nodes} nodes, {data.edge_index.size(1)} edges"
+        )
+        return True
+
+    except AssertionError as e:
+        logger.error(f"❌ Graph consistency check failed: {e}")
+        return False
+
+
+def sample_subgraph_random(data: Data, num_nodes: int, seed: int = 42) -> Data:
+    """Sample random subgraph with consistency checks."""
+    if data.num_nodes <= num_nodes:
+        logger.info(f"Graph already small enough: {data.num_nodes} <= {num_nodes}")
+        return data
+
+    logger.info(f"📊 Sampling subgraph: {data.num_nodes} -> {num_nodes} nodes")
+
+    # Random sampling
+    torch.manual_seed(seed)
+    indices = torch.randperm(data.num_nodes)[:num_nodes]
+    indices = torch.sort(indices)[0]  # Sort for better performance
+
+    # Create subgraph
+    try:
+        device = data.edge_index.device
+        indices = indices.to(device)
+
+        # Filter invalid edges first
+        if data.edge_index.max() >= data.num_nodes:
+            logger.warning(
+                f"⚠️ Filtering invalid edges: max={data.edge_index.max()}, nodes={data.num_nodes}"
+            )
+            valid_edges = (data.edge_index[0] < data.num_nodes) & (
+                data.edge_index[1] < data.num_nodes
+            )
+            edge_index = data.edge_index[:, valid_edges]
+            edge_attr = (
+                data.edge_attr[valid_edges]
+                if hasattr(data, "edge_attr") and data.edge_attr is not None
+                else None
+            )
+        else:
+            edge_index = data.edge_index
+            edge_attr = data.edge_attr if hasattr(data, "edge_attr") else None
+
+        # Create subgraph
+        sub_edge_index, sub_edge_attr = subgraph(
+            indices,
+            edge_index,
+            edge_attr=edge_attr,
+            relabel_nodes=True,
+            num_nodes=data.num_nodes,
+        )
+
+        # Create new data object
+        sub_data = data.__class__()
+        sub_data.num_nodes = len(indices)
+        sub_data.edge_index = sub_edge_index
+
+        # Copy features safely
+        if hasattr(data, "x") and data.x is not None:
+            sub_data.x = data.x[indices]
+
+        if hasattr(data, "pos") and data.pos is not None:
+            sub_data.pos = data.pos[indices]
+
+        if hasattr(data, "y") and data.y is not None:
+            sub_data.y = data.y[indices]
+
+        if sub_edge_attr is not None:
+            sub_data.edge_attr = sub_edge_attr
+
+        # Verify consistency
+        if not check_graph_consistency(sub_data):
+            raise RuntimeError("Subgraph consistency check failed")
+
+        logger.info(
+            f"✅ Subgraph created: {sub_data.num_nodes} nodes, {sub_data.edge_index.size(1)} edges"
+        )
+        return sub_data
+
+    except Exception as e:
+        logger.error(f"❌ Subgraph sampling failed: {e}")
+        # Fallback: return original data
+        logger.warning("⚠️ Falling back to original data")
+        return data
+
+
+def get_graph_statistics(data: Data) -> Dict[str, Any]:
+    """Get comprehensive statistics for a graph."""
+    stats = {
+        "num_nodes": data.num_nodes,
+        "num_edges": data.edge_index.size(1),
+        "num_features": data.x.size(1) if hasattr(data, "x") and data.x is not None and data.x.dim() > 1 else 0,
+        "has_positions": hasattr(data, "pos") and data.pos is not None,
+        "has_labels": hasattr(data, "y") and data.y is not None,
+        "is_consistent": check_graph_consistency(data),
+    }
+
+    # Handle case where x is 1D (single feature)
+    if hasattr(data, "x") and data.x is not None:
+        if data.x.dim() == 1:
+            stats["num_features"] = 1
+        elif data.x.dim() == 2:
+            stats["num_features"] = data.x.size(1)
+
+    if hasattr(data, "y") and data.y is not None:
+        unique_labels = torch.unique(data.y)
+        stats["num_classes"] = len(unique_labels)
+        stats["label_distribution"] = {
+            int(label): int((data.y == label).sum()) for label in unique_labels
+        }
+
+    return stats

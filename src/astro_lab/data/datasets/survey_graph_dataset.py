@@ -16,7 +16,7 @@ from torch_geometric.data import Data, InMemoryDataset
 
 from astro_lab.data.graphs import create_astronomical_graph, create_knn_graph
 from astro_lab.tensors import PhotometricTensorDict, SpatialTensorDict, SurveyTensorDict
-from astro_lab.utils.config.surveys import get_survey_config
+from astro_lab.config.surveys import get_survey_config
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +139,12 @@ class SurveyGraphDataset(InMemoryDataset):
         """Find raw data file for the survey."""
         # Common locations - check processed first, then raw
         search_paths = [
+            Path("data/processed")
+            / self.survey
+            / f"{self.survey}_processed.parquet",  # Preprocessing output
             Path("data/processed") / self.survey / f"{self.survey}.parquet",
             Path("data/processed") / self.survey / f"{self.survey}.csv",
+            Path("data/raw") / self.survey / f"{self.survey}.parquet",
             Path("data/raw") / f"{self.survey}.parquet",
             Path("data/raw") / f"{self.survey}.csv",
             Path("data") / f"{self.survey}.parquet",
@@ -149,8 +153,11 @@ class SurveyGraphDataset(InMemoryDataset):
 
         for path in search_paths:
             if path.exists():
+                logger.info(f"📁 Found data file: {path}")
                 return path
 
+        logger.warning(f"❌ No data file found for survey: {self.survey}")
+        logger.warning(f"   Searched paths: {search_paths}")
         return None
 
     def _dataframe_to_survey_tensor(self, df: pl.DataFrame) -> SurveyTensorDict:
@@ -159,17 +166,33 @@ class SurveyGraphDataset(InMemoryDataset):
         Always pass a tensor to SpatialTensorDict (not a dict),
         and ensure all meta fields are set as in other TensorDicts.
         """
-        # Get column configuration
-        coord_cols = self.survey_config.get("coord_cols", ["ra", "dec"])
-        mag_cols = self.survey_config.get("mag_cols", [])
+        # Check if this is processed data (has processed column config)
+        if "processed_coord_cols" in self.survey_config:
+            # Use processed column configuration
+            coord_cols = self.survey_config.get(
+                "processed_coord_cols", ["ra_deg", "dec_deg"]
+            )
+            mag_cols = self.survey_config.get("processed_mag_cols", [])
+            logger.info(f"📊 Using processed column config for {self.survey}")
+        else:
+            # Use raw column configuration
+            coord_cols = self.survey_config.get("coord_cols", ["ra", "dec"])
+            mag_cols = self.survey_config.get("mag_cols", [])
+            logger.info(f"📊 Using raw column config for {self.survey}")
 
         # Extract coordinates as tensor [N, D]
         coords = []
         for col in coord_cols:
             if col in df.columns:
                 coords.append(torch.tensor(df[col].to_numpy(), dtype=torch.float32))
+            else:
+                logger.warning(
+                    f"⚠️ Coordinate column '{col}' not found in DataFrame. Available: {df.columns}"
+                )
+
         if not coords:
             raise ValueError(f"No coordinate columns found in DataFrame: {coord_cols}")
+
         coordinates = torch.stack(coords, dim=1)  # [N, D]
         # If only 2D, pad to 3D with zeros (for compatibility)
         if coordinates.shape[1] == 2:
@@ -186,6 +209,9 @@ class SurveyGraphDataset(InMemoryDataset):
                 if col in df.columns:
                     mags.append(torch.tensor(df[col].to_numpy(), dtype=torch.float32))
                     bands.append(col)
+                else:
+                    logger.warning(f"⚠️ Magnitude column '{col}' not found in DataFrame")
+
             if mags:
                 magnitudes = torch.stack(mags, dim=1)  # [N, B]
                 photometric_tensor = PhotometricTensorDict(

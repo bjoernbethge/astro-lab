@@ -43,4 +43,4 @@
       show_bases: true
       backlinks: tree
       filters:
-        - '!^_' 
+        - '!^_'

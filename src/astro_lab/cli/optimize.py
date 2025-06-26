@@ -17,7 +17,7 @@ from astro_lab.training import (
     TrainingConfig,
     get_data_config,
 )
-from astro_lab.utils.config import load_config
+from astro_lab.config import load_config
 
 # Placeholder for data loading - replace with actual implementation
 def load_data(config: TrainingConfig, max_samples: Optional[int] = None):

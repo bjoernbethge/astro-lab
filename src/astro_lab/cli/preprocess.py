@@ -3,11 +3,12 @@
 AstroLab Preprocess CLI
 ======================
 
-Preprocess specific data files.
+Preprocess raw astronomical data files into training-ready format.
 """
 
 import logging
 import sys
+from pathlib import Path
 
 from astro_lab.data import preprocess_survey
 
@@ -31,14 +32,24 @@ def main(args=None) -> int:
         "--surveys", nargs="+", required=True, help="Surveys to preprocess"
     )
     parser.add_argument("--max-samples", type=int, default=None, help="Max samples")
+    parser.add_argument("--output-dir", type=Path, help="Output directory")
     args = parser.parse_args() if args is None else args
 
     logger = setup_logging()
     try:
         for survey in args.surveys:
             logger.info(f"🔄 Preprocessing {survey} ...")
-            preprocess_survey(survey, max_samples=args.max_samples)
+
+            # Determine output path
+            output_path = None
+            if args.output_dir:
+                output_path = args.output_dir / survey / f"{survey}_processed.parquet"
+
+            preprocess_survey(
+                survey, max_samples=args.max_samples, output_path=output_path
+            )
             logger.info(f"✅ {survey} preprocessed successfully")
+
         logger.info("✅ All surveys preprocessed successfully!")
         return 0
     except Exception as e:

@@ -23,6 +23,9 @@ from .factories import (
     create_sdss_galaxy_model,
 )
 
+# Utilities
+from .utils import get_device
+
 __version__ = "0.4.0"
 
 # Only export what users actually need
@@ -39,4 +42,5 @@ __all__ = [
     "ModelConfig",
     "get_predefined_config",
     "lightning",  # Lightning module access
+    "get_device",  # Utility function
 ]
