@@ -23,6 +23,7 @@ TRAINER_PARAMS: Set[str] = {
     "log_every_n_steps",
     "check_val_every_n_epoch",
     "num_sanity_val_steps",
+    "model",
 }
 
 LIGHTNING_PARAMS: Set[str] = {
@@ -34,6 +35,7 @@ LIGHTNING_PARAMS: Set[str] = {
     "beta1",
     "beta2",
     "eps",
+    "model",
 }
 
 OPTUNA_PARAMS: Set[str] = {
@@ -71,6 +73,7 @@ EXCLUDED_PARAMS: Set[str] = {
     "search_space",  # Only for Optuna, not for Trainer
 }
 
+
 def distribute_config_parameters(config: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """
     Distributes configuration parameters to the appropriate components.
@@ -81,7 +84,6 @@ def distribute_config_parameters(config: Dict[str, Any]) -> Dict[str, Dict[str, 
     Returns:
         Dictionary with categorized parameters
     """
-    # Categorize parameters based on config structure
     distributed = {
         "trainer": {},
         "lightning": {},
@@ -127,7 +129,13 @@ def distribute_config_parameters(config: Dict[str, Any]) -> Dict[str, Dict[str, 
         if "params" in model_config:
             distributed["lightning"].update(model_config["params"])
 
+    # Modellname auf Top-Level
+    if "model" in config and isinstance(config["model"], str):
+        distributed["trainer"]["model"] = config["model"]
+        distributed["lightning"]["model"] = config["model"]
+
     return distributed
+
 
 def _flatten_config(config: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
     """
@@ -158,30 +166,36 @@ def _flatten_config(config: Dict[str, Any], prefix: str = "") -> Dict[str, Any]:
 
     return flat
 
+
 def get_trainer_params(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts only Trainer parameters."""
     distributed = distribute_config_parameters(config)
     return distributed["trainer"]
+
 
 def get_lightning_params(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts only Lightning parameters."""
     distributed = distribute_config_parameters(config)
     return distributed["lightning"]
 
+
 def get_optuna_params(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts only Optuna parameters."""
     distributed = distribute_config_parameters(config)
     return distributed["optuna"]
+
 
 def get_mlflow_params(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts only MLflow parameters."""
     distributed = distribute_config_parameters(config)
     return distributed["mlflow"]
 
+
 def get_data_params(config: Dict[str, Any]) -> Dict[str, Any]:
     """Extracts only Data parameters."""
     distributed = distribute_config_parameters(config)
     return distributed["data"]
+
 
 def validate_parameter_conflicts(config: Dict[str, Any]) -> Tuple[bool, str]:
     """
@@ -220,6 +234,7 @@ def validate_parameter_conflicts(config: Dict[str, Any]) -> Tuple[bool, str]:
     except Exception as e:
         return False, f"Validation error: {str(e)}"
 
+
 def print_parameter_distribution(config: Dict[str, Any]) -> None:
     """Debug function: Shows parameter distribution."""
     distributed = distribute_config_parameters(config)
@@ -239,6 +254,7 @@ def print_parameter_distribution(config: Dict[str, Any]) -> None:
         print(f"\n❌ Validation Error: {error}")
     else:
         print("\n✅ Configuration is valid")
+
 
 __all__ = [
     "distribute_config_parameters",

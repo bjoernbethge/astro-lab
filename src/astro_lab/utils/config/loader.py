@@ -38,115 +38,29 @@ class ConfigLoader:
         Returns:
             Loaded configuration dictionary
         """
-        # Load base config
         config_path = Path(self.config_file)
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-
         with open(config_path, "r", encoding="utf-8") as f:
             self.config = yaml.safe_load(f)
-
-        # Override experiment name if provided
         if experiment_name and self.config:
-            self.config["mlflow"]["experiment_name"] = experiment_name
-
-        # Set up experiment directories
+            self.config["experiment_name"] = experiment_name
         if self.config:
-            exp_name = self.config["mlflow"]["experiment_name"]
+            exp_name = self.config["experiment_name"]
             data_config.ensure_experiment_directories(exp_name)
-
-            # Update paths in config using data_config
             self._update_paths()
-
-            # Set environment variables for MLflow
-            self._setup_environment()
-
         return self.config or {}
 
     def _update_paths(self):
         """Update configuration paths using data_config."""
         if not self.config:
             return
-
-        exp_name = self.config["mlflow"]["experiment_name"]
+        exp_name = self.config["experiment_name"]
         exp_paths = data_config.get_experiment_paths(exp_name)
-
-        # Always ensure MLflow tracking URI points to the correct experiment directory
-        # This ensures consistency across all experiments
-        if "mlflow" not in self.config:
-            self.config["mlflow"] = {}
-
-        # Update tracking URI to use experiment-specific path
-        self.config["mlflow"]["tracking_uri"] = (
-            f"file://{exp_paths['mlruns'].absolute()}"
-        )
-
-        # Also set artifact location for MLflow
-        if "artifact_location" not in self.config["mlflow"]:
-            self.config["mlflow"]["artifact_location"] = (
-                f"file://{exp_paths['artifacts'].absolute()}"
-            )
-
-        # Update checkpoint directory (only if checkpoints section exists)
         if "checkpoints" in self.config:
             self.config["checkpoints"]["dir"] = str(exp_paths["checkpoints"])
-
-        # Update data base directory
-        self.config["data"]["base_dir"] = str(data_config.base_dir)
-
-    def _setup_environment(self):
-        """Set up environment variables for MLflow and Lightning."""
-        if not self.config:
-            return
-
-        # MLflow environment
-        os.environ["MLFLOW_TRACKING_URI"] = self.config["mlflow"]["tracking_uri"]
-
-        # Lightning environment (optional)
-        if "LIGHTNING_LOGS_DIR" not in os.environ and "checkpoints" in self.config:
-            os.environ["LIGHTNING_LOGS_DIR"] = self.config["checkpoints"]["dir"]
-
-    def get_mlflow_config(self) -> Dict[str, Any]:
-        """Get MLflow-specific configuration."""
-        if not self.config:
-            raise ValueError("Config not loaded. Call load_config() first.")
-        return self.config["mlflow"]
-
-    def get_training_config(self) -> Dict[str, Any]:
-        """Get training-specific configuration."""
-        if not self.config:
-            raise ValueError("Config not loaded. Call load_config() first.")
-        return self.config["training"]
-
-    def get_model_config(self) -> Dict[str, Any]:
-        """Get model-specific configuration."""
-        if not self.config:
-            raise ValueError("Config not loaded. Call load_config() first.")
-        return self.config["model"]
-
-    def get_survey_config(self, survey: str) -> Dict[str, Any]:
-        """Get survey-specific configuration from configs/surveys/ directory."""
-        survey_config_path = Path(f"configs/surveys/{survey}.yaml")
-
-        if not survey_config_path.exists():
-            raise ValueError(f"Survey config not found: {survey_config_path}")
-
-        with open(survey_config_path, "r", encoding="utf-8") as f:
-            survey_config = yaml.safe_load(f)
-
-        if survey_config is None or "survey" not in survey_config:
-            raise ValueError(f"Invalid survey config structure in {survey_config_path}")
-
-        return survey_config["survey"]
-
-    def list_available_surveys(self) -> List[str]:
-        """List all available survey configurations."""
-        surveys_dir = Path("configs/surveys")
-        if not surveys_dir.exists():
-            return []
-
-        survey_files = surveys_dir.glob("*.yaml")
-        return [f.stem for f in survey_files]
+        if "data" in self.config:
+            self.config["data"]["base_dir"] = str(data_config.base_dir)
 
     def save_config(self, output_path: Optional[str] = None):
         """
@@ -157,19 +71,14 @@ class ConfigLoader:
         """
         if not self.config:
             raise ValueError("Config not loaded. Call load_config() first.")
-
         if output_path is None:
-            exp_name = self.config["mlflow"]["experiment_name"]
-            # Save to configs directory, not experiments
+            exp_name = self.config["experiment_name"]
             output_file = data_config.configs_dir / f"{exp_name}.yaml"
         else:
             output_file = Path(output_path)
-
         output_file.parent.mkdir(parents=True, exist_ok=True)
-
         with open(output_file, "w", encoding="utf-8") as f:
             yaml.dump(self.config, f, default_flow_style=False, indent=2)
-
         print(f"💾 Config saved to: {output_file}")
 
 
@@ -264,7 +173,7 @@ def validate_config_integration(config_path: str = "configs/default.yaml") -> bo
             return False
 
         # Test 5: Check experiment directories exist
-        exp_name = config.get("mlflow", {}).get("experiment_name", "")
+        exp_name = config.get("experiment_name", "")
         exp_paths = data_config.get_experiment_paths(exp_name)
 
         for path_name, path in exp_paths.items():
