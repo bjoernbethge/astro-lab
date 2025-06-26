@@ -30,7 +30,7 @@ from ..tensors import (
     SurveyTensorDict,
 )
 from .config import data_config
-from .core import AstroDataset
+from .datasets import SurveyGraphDataset
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,10 @@ class AstroDataModule(L.LightningDataModule):
         self.data_root = data_root or str(data_config.base_dir)
         self.k_neighbors = k_neighbors
         self.max_samples = max_samples
-        self.batch_size = batch_size
+        print(
+            f"[DEBUG] batch_size type before logic: {type(batch_size)}, value: {batch_size}"
+        )
+        self.batch_size = int(batch_size)  # Ensure batch_size is always int
         self.train_ratio = train_ratio
         self.val_ratio = val_ratio
         self.drop_last = drop_last
@@ -102,7 +105,7 @@ class AstroDataModule(L.LightningDataModule):
             self.num_workers = num_workers
 
         # Conservative settings for laptop GPUs
-        if batch_size == 1:
+        if self.batch_size == 1:
             self.pin_memory = False
             self.persistent_workers = False
             self.prefetch_factor = None
@@ -134,7 +137,7 @@ class AstroDataModule(L.LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         """Setup datasets for training/validation/testing."""
         if self.dataset is None:
-            self.dataset = AstroDataset(
+            self.dataset = SurveyGraphDataset(
                 root=self.data_root,
                 survey=self.survey,
                 k_neighbors=self.k_neighbors,
@@ -159,10 +162,15 @@ class AstroDataModule(L.LightningDataModule):
             self._main_data = full_data
 
         # Extract dataset information for Lightning module
-        self.num_features = (
-            self._main_data.x.size(1) if hasattr(self._main_data, "x") else None
-        )
-        if hasattr(self._main_data, "y"):
+        self.num_features = None
+        if hasattr(self._main_data, "x") and self._main_data.x is not None:
+            if self._main_data.x.dim() >= 2:
+                self.num_features = self._main_data.x.size(1)
+            else:
+                # 1D tensor - use size(0) as feature dimension
+                self.num_features = 1
+
+        if hasattr(self._main_data, "y") and self._main_data.y is not None:
             unique_labels = torch.unique(self._main_data.y)
             self.num_classes = max(len(unique_labels), 2)  # Ensure at least 2 classes
 
@@ -177,9 +185,26 @@ class AstroDataModule(L.LightningDataModule):
                 median_val = feature_sums.median()
                 self._main_data.y = (feature_sums > median_val).long()
                 self.num_classes = 2
+        else:
+            # No labels available, create synthetic binary labels
+            logger.warning(
+                "No labels found in dataset. Creating synthetic binary labels for training."
+            )
+            if self._main_data.x.dim() >= 2:
+                feature_sums = self._main_data.x.sum(dim=1)
+            else:
+                feature_sums = self._main_data.x.sum()
+                median_val = feature_sums.median()
+                self._main_data.y = (feature_sums > median_val).long()
+                self.num_classes = 2
 
         # Create train/val/test splits using masks
         self._create_data_splits()
+
+        # Keep small datasets on CPU to avoid CUDA errors
+        if self._main_data.num_nodes <= 10:
+            self._main_data = self._main_data.cpu()
+            logger.info("Small dataset detected, keeping on CPU")
 
     def _create_data_splits(self):
         """Create train/val/test masks for the graph data."""
@@ -219,6 +244,10 @@ class AstroDataModule(L.LightningDataModule):
         indices = torch.randperm(num_nodes)[:max_nodes]
 
         # Create subgraph
+        # Ensure indices and edge_index are on the same device
+        device = data.edge_index.device
+        indices = indices.to(device)
+
         edge_index, edge_attr = subgraph(
             indices,
             data.edge_index,
@@ -234,7 +263,7 @@ class AstroDataModule(L.LightningDataModule):
         sub_data.edge_index = edge_index
         if hasattr(data, "pos"):
             sub_data.pos = data.pos[indices]
-        if hasattr(data, "y"):
+        if hasattr(data, "y") and data.y is not None:
             sub_data.y = data.y[indices]
         if edge_attr is not None:
             sub_data.edge_attr = edge_attr
@@ -288,54 +317,86 @@ class AstroDataModule(L.LightningDataModule):
         if self._main_data is None:
             self.setup()
 
-        # Create a simple dataloader that yields the data object directly
-        class SingleGraphDataLoader:
-            def __init__(self, data):
-                self.data = data
+        # Create masks for training data
+        train_mask = getattr(self._main_data, "train_mask", None)
+        if train_mask is not None:
+            train_data = self._main_data.__class__()
+            for attr in self._main_data.keys():
+                value = getattr(self._main_data, attr)
+                if (
+                    isinstance(value, torch.Tensor)
+                    and value.dim() > 0
+                    and value.size(0) == train_mask.size(0)
+                ):
+                    setattr(train_data, attr, value[train_mask])
+                else:
+                    setattr(train_data, attr, value)
+        else:
+            train_data = self._main_data
 
-            def __iter__(self):
-                yield self.data
-
-            def __len__(self):
-                return 1
-
-        return SingleGraphDataLoader(self._main_data)
+        return DataLoader(
+            [train_data],
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
 
     def val_dataloader(self):
         """Create validation dataloader."""
         if self._main_data is None:
             self.setup()
 
-        # Create a simple dataloader that yields the data object directly
-        class SingleGraphDataLoader:
-            def __init__(self, data):
-                self.data = data
+        # Create masks for validation data
+        val_mask = getattr(self._main_data, "val_mask", None)
+        if val_mask is not None:
+            val_data = self._main_data.__class__()
+            for attr in self._main_data.keys():
+                value = getattr(self._main_data, attr)
+                if isinstance(value, torch.Tensor) and value.size(0) == val_mask.size(
+                    0
+                ):
+                    setattr(val_data, attr, value[val_mask])
+                else:
+                    setattr(val_data, attr, value)
+        else:
+            val_data = self._main_data
 
-            def __iter__(self):
-                yield self.data
-
-            def __len__(self):
-                return 1
-
-        return SingleGraphDataLoader(self._main_data)
+        return DataLoader(
+            [val_data],
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
 
     def test_dataloader(self):
         """Create test dataloader."""
         if self._main_data is None:
             self.setup()
 
-        # Create a simple dataloader that yields the data object directly
-        class SingleGraphDataLoader:
-            def __init__(self, data):
-                self.data = data
+        # Create masks for test data
+        test_mask = getattr(self._main_data, "test_mask", None)
+        if test_mask is not None:
+            test_data = self._main_data.__class__()
+            for attr in self._main_data.keys():
+                value = getattr(self._main_data, attr)
+                if isinstance(value, torch.Tensor) and value.size(0) == test_mask.size(
+                    0
+                ):
+                    setattr(test_data, attr, value[test_mask])
+                else:
+                    setattr(test_data, attr, value)
+        else:
+            test_data = self._main_data
 
-            def __iter__(self):
-                yield self.data
-
-            def __len__(self):
-                return 1
-
-        return SingleGraphDataLoader(self._main_data)
+        return DataLoader(
+            [test_data],
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=self.pin_memory,
+        )
 
     def teardown(self, stage: Optional[str] = None):
         """Clean up after training/testing."""

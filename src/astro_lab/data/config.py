@@ -168,15 +168,24 @@ class DataConfig:
         }
 
     def ensure_results_directories(self, survey: str, model_name: str):
-        """Create organized results directory structure."""
-        structure = self.get_results_structure(survey, model_name)
+        """Ensure directories for model results exist."""
+        results_dir = self.results_dir / survey / model_name
+        results_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create all directories
-        for dir_name, dir_path in structure.items():
-            dir_path.mkdir(parents=True, exist_ok=True)
+        # Create subdirectories for different result types
+        subdirs = ["checkpoints", "logs", "plots", "predictions"]
+        for subdir in subdirs:
+            (results_dir / subdir).mkdir(exist_ok=True)
 
-        logger.info(f"📊 Created results structure for {survey}/{model_name}")
-        return structure
+        logger.info(f"✅ Results directories ready: {results_dir}")
+
+        return {
+            "base": results_dir,
+            "checkpoints": results_dir / "checkpoints",
+            "logs": results_dir / "logs",
+            "plots": results_dir / "plots",
+            "predictions": results_dir / "predictions",
+        }
 
     def get_experiment_paths(self, experiment_name: str) -> Dict[str, Path]:
         """Get all paths for an experiment."""
@@ -187,28 +196,19 @@ class DataConfig:
             "logs": self.logs_dir / experiment_name,
         }
 
-    def migrate_old_structure(self):
-        """Migrate from old chaotic structure to new clean structure."""
-        logger.info("🔄 Migrating old data structure...")
+    @classmethod
+    def from_yaml(cls, yaml_path: str) -> "DataConfig":
+        """Load DataConfig from YAML file."""
+        import yaml
 
-        # Map old paths to new paths
-        migrations = [
-            # Raw data migrations
-            (self.raw_dir / "fits", self.get_survey_raw_dir("sdss")),
-            (self.raw_dir / "hdf5", self.get_survey_raw_dir("tng50") / "hdf5"),
-            # Processed data migrations
-            (self.processed_dir / "catalogs", self.processed_dir / "temp_catalogs"),
-            (self.processed_dir / "ml_ready", self.processed_dir / "temp_ml_ready"),
-            (self.processed_dir / "features", self.processed_dir / "temp_features"),
-        ]
+        with open(yaml_path, "r") as f:
+            config_dict = yaml.safe_load(f)
 
-        for old_path, new_path in migrations:
-            if old_path.exists() and old_path.is_dir():
-                new_path.parent.mkdir(parents=True, exist_ok=True)
-                logger.info(f"  📦 {old_path} -> {new_path}")
-                # Note: Actual file moving would be done manually or with additional logic
+        # Extract data config if nested
+        if "data" in config_dict:
+            config_dict = config_dict["data"]
 
-        logger.info("✅ Migration plan created. Manual file moving required.")
+        return cls(**config_dict)
 
 
 # Global configuration instance
