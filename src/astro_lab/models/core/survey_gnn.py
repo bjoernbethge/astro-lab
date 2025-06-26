@@ -85,10 +85,10 @@ class AstroSurveyGNN(nn.Module):
         self.gnn_layers = nn.ModuleList(
             [
                 BaseGNNLayer(
-            input_dim=hidden_dim,
+                    input_dim=hidden_dim,
                     output_dim=hidden_dim,
                     layer_type="gcn",
-            dropout=dropout,
+                    dropout=dropout,
                     device=device,
                 )
                 for _ in range(num_gnn_layers)
@@ -159,6 +159,14 @@ class AstroSurveyGNN(nn.Module):
 
         # Global pooling
         graph_embedding = self.pooling(h, batch)
+
+        # Debug: Ensure proper dimensions
+        if graph_embedding.dim() == 0:
+            # Scalar output - reshape to [1, 1]
+            graph_embedding = graph_embedding.unsqueeze(0).unsqueeze(0)
+        elif graph_embedding.dim() == 1:
+            # 1D output - reshape to [1, features]
+            graph_embedding = graph_embedding.unsqueeze(0)
 
         # Final projection
         output = self.output_projection(graph_embedding)
