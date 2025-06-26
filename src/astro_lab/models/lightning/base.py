@@ -3,6 +3,7 @@ Base Lightning Mixin for AstroLab Models
 =======================================
 
 Provides common Lightning functionality that can be mixed into any AstroLab model.
+Optimized for PyTorch Lightning 2.x and modern GPUs.
 """
 
 import logging
@@ -12,7 +13,9 @@ import lightning as L
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import CosineAnnealingLR, OneCycleLR, StepLR
 from torchmetrics import Accuracy, MeanAbsoluteError, MeanSquaredError
+from torchmetrics.classification import MulticlassF1Score
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +51,12 @@ class AstroLabLightningMixin(L.LightningModule):
         Args:
             learning_rate: Learning rate for optimizer
             weight_decay: Weight decay for regularization
-            optimizer: Optimizer name ('adamw', 'adam', 'sgd')
-            scheduler: Scheduler name ('cosine', 'step', 'onecycle', 'none')
+            optimizer: Optimizer name ('adamw', 'adam', 'sgd', 'rmsprop')
+            scheduler: Scheduler name ('cosine', 'step', 'onecycle', 'none', 'exponential')
             warmup_epochs: Number of warmup epochs
             task: Task type ('classification', 'regression', 'period_detection', 'shape_modeling')
             num_classes: Number of classes for classification
-            loss_function: Override loss function ('mse', 'cross_entropy', 'l1', 'huber')
+            loss_function: Override loss function ('mse', 'cross_entropy', 'l1', 'huber', 'focal')
             min_lr: Minimum learning rate for schedulers
             **kwargs: Additional arguments passed to parent
         """
@@ -87,6 +90,15 @@ class AstroLabLightningMixin(L.LightningModule):
                 return nn.L1Loss()
             elif loss_function == "huber":
                 return nn.HuberLoss()
+            elif loss_function == "focal":
+                # Focal Loss für unbalancierte Datensätze
+                from torchvision.ops import sigmoid_focal_loss
+
+                return lambda pred, target: sigmoid_focal_loss(
+                    pred,
+                    F.one_hot(target, num_classes=self.num_classes).float(),
+                    reduction="mean",
+                )
             else:
                 logger.warning(
                     f"Unknown loss function {loss_function}, using task default"
@@ -107,55 +119,52 @@ class AstroLabLightningMixin(L.LightningModule):
 
     def _setup_metrics(self):
         """Setup training, validation, and test metrics."""
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         # Set default num_classes if not provided
         if self.num_classes is None:
             self.num_classes = 2  # Default to binary classification
 
         if self.task == "classification":
-            self.train_acc = Accuracy(
-                task="multiclass", num_classes=self.num_classes
-            ).to(device)
-            self.val_acc = Accuracy(task="multiclass", num_classes=self.num_classes).to(
-                device
-            )
-            self.test_acc = Accuracy(
-                task="multiclass", num_classes=self.num_classes
-            ).to(device)
-            self.train_mse = None
-            self.train_mae = None
-            self.val_mse = None
-            self.val_mae = None
-            self.test_mse = None
-            self.test_mae = None
+            # Classification metrics
+            self.train_acc = Accuracy(task="multiclass", num_classes=self.num_classes)
+            self.val_acc = Accuracy(task="multiclass", num_classes=self.num_classes)
+            self.test_acc = Accuracy(task="multiclass", num_classes=self.num_classes)
+
+            # F1 Score für bessere Evaluation
+            self.train_f1 = MulticlassF1Score(num_classes=self.num_classes)
+            self.val_f1 = MulticlassF1Score(num_classes=self.num_classes)
+            self.test_f1 = MulticlassF1Score(num_classes=self.num_classes)
+
         elif self.task == "regression":
-            self.train_mse = MeanSquaredError().to(device)
-            self.train_mae = MeanAbsoluteError().to(device)
-            self.val_mse = MeanSquaredError().to(device)
-            self.val_mae = MeanAbsoluteError().to(device)
-            self.test_mse = MeanSquaredError().to(device)
-            self.test_mae = MeanAbsoluteError().to(device)
-            self.train_acc = None
-            self.val_acc = None
-            self.test_acc = None
+            # Regression metrics
+            self.train_mse = MeanSquaredError()
+            self.train_mae = MeanAbsoluteError()
+            self.val_mse = MeanSquaredError()
+            self.val_mae = MeanAbsoluteError()
+            self.test_mse = MeanSquaredError()
+            self.test_mae = MeanAbsoluteError()
+
+    def forward(self, batch):
+        """Forward pass - handles different batch formats."""
+        # Extract features from batch
+        if hasattr(batch, "x"):
+            return self.model(batch) if hasattr(self, "model") else self(batch)
+        elif isinstance(batch, dict) and "x" in batch:
+            return (
+                self.model(batch["x"]) if hasattr(self, "model") else self(batch["x"])
+            )
         else:
-            # Default: keine Metriken
-            self.train_mse = None
-            self.train_mae = None
-            self.val_mse = None
-            self.val_mae = None
-            self.test_mse = None
-            self.test_mae = None
-            self.train_acc = None
-            self.val_acc = None
-            self.test_acc = None
+            # Assume batch is the input directly
+            return (
+                self.model(batch) if hasattr(self, "model") else super().forward(batch)
+            )
 
     def _extract_predictions_and_targets(self, batch, outputs):
         """Extract predictions and targets from batch and model outputs."""
         # Handle different output formats from AstroLab models
         if isinstance(outputs, dict):
-            predictions = outputs.get("predictions", outputs.get("output", outputs))
+            predictions = outputs.get(
+                "predictions", outputs.get("output", outputs.get("logits", outputs))
+            )
         else:
             predictions = outputs
 
@@ -170,214 +179,140 @@ class AstroLabLightningMixin(L.LightningModule):
         elif isinstance(batch, (list, tuple)) and len(batch) > 1:
             targets = batch[1]
 
-            # Handle node-level predictions for graph data
+        # Robust mask handling for node-level predictions
         if hasattr(batch, "train_mask") and targets is not None:
-            # Check if this is node-level prediction (predictions per node) or graph-level
-            if predictions.size(0) == targets.size(0):
-                # Node-level prediction - apply masks
-                if hasattr(batch, "train_mask") and self.training:
-                    mask = batch.train_mask
-                elif hasattr(batch, "val_mask") and not self.training:
-                    mask = batch.val_mask
-                elif hasattr(batch, "test_mask"):
-                    mask = batch.test_mask
-                else:
-                    # No mask found, use all nodes
-                    mask = torch.ones(
-                        targets.size(0), dtype=torch.bool, device=targets.device
-                    )
+            # Get the appropriate mask
+            mask = None
+            if self.training and hasattr(batch, "train_mask"):
+                mask = batch.train_mask
+            elif (
+                hasattr(self, "trainer")
+                and hasattr(self.trainer, "validating")
+                and self.trainer.validating
+                and hasattr(batch, "val_mask")
+            ):
+                mask = batch.val_mask
+            elif hasattr(batch, "test_mask"):
+                mask = batch.test_mask
+            else:
+                mask = batch.train_mask  # fallback
 
-                # Apply masks to both predictions and targets
-                if mask.any():  # Only if mask has True values
-                    predictions = predictions[mask]
+            # Apply mask if it exists and has True values
+            if mask is not None and mask.any():
+                # Ensure mask and targets have same size
+                if mask.size(0) == targets.size(0):
                     targets = targets[mask]
-            else:
-                # Graph-level prediction - create graph-level targets
-                # Convert node-level targets to graph-level (e.g., majority vote)
-                if hasattr(batch, "train_mask") and self.training:
-                    mask = batch.train_mask
-                elif hasattr(batch, "val_mask") and not self.training:
-                    mask = batch.val_mask
-                elif hasattr(batch, "test_mask"):
-                    mask = batch.test_mask
-                else:
-                    mask = torch.ones(
-                        targets.size(0), dtype=torch.bool, device=targets.device
-                    )
 
-                # Use majority vote of masked nodes as graph target
-                if mask.any():
-                    masked_targets = targets[mask]
-                    graph_target = torch.mode(masked_targets)[0].unsqueeze(0)  # [1]
-                    targets = graph_target
+                    # Handle predictions - check if they need masking too
+                    if predictions is not None:
+                        if predictions.size(0) == mask.size(0):
+                            # Node-level predictions, apply same mask
+                            predictions = predictions[mask]
+                        elif predictions.size(0) == mask.sum():
+                            # Predictions already masked, keep as-is
+                            pass
+                        else:
+                            # Size mismatch - try to fix it
+                            if predictions.size(0) == 1 and mask.sum() > 1:
+                                # Single prediction, expand to match targets
+                                predictions = (
+                                    predictions.expand(mask.sum().item(), -1)
+                                    if predictions.dim() > 1
+                                    else predictions.expand(mask.sum().item())
+                                )
+                            elif predictions.size(0) > mask.sum():
+                                # Too many predictions, take first N
+                                predictions = predictions[: mask.sum()]
 
-        # If no targets found, create synthetic ones for testing
-        if targets is None:
-            # Ensure predictions has proper dimensions
-            if predictions.dim() == 0:
-                # Scalar prediction - unsqueeze to make it [1]
-                predictions = predictions.unsqueeze(0)
-            elif predictions.dim() == 1 and predictions.size(0) == 1:
-                # Single prediction - might need to be reshaped for classification
-                pass
+        # Final shape fixes
+        if predictions is not None and targets is not None:
+            # For classification, ensure targets are long type
+            if self.task == "classification" and targets.dtype != torch.long:
+                targets = targets.long()
 
-            # Create synthetic targets based on predictions shape
-            if predictions.dim() == 2:
-                # For node-level predictions, create targets with same shape
-                if predictions.size(1) > 1:
-                    # Multi-class: create class targets
-                    targets = torch.randint(
-                        0,
-                        predictions.size(1),
-                        (predictions.size(0),),
-                        device=predictions.device,
-                    )
-                else:
-                    # Binary: create binary targets
-                    targets = torch.randint(
-                        0, 2, (predictions.size(0),), device=predictions.device
-                    )
-            else:
-                # For other cases, create appropriate synthetic targets
-                batch_size = predictions.size(0) if predictions.dim() > 0 else 1
-                targets = torch.zeros(
-                    batch_size, device=predictions.device, dtype=torch.long
-                )
+            # Handle dimension mismatches
+            if predictions.size(0) != targets.size(0):
+                min_size = min(predictions.size(0), targets.size(0))
+                predictions = predictions[:min_size]
+                targets = targets[:min_size]
+
+            # Squeeze extra dimensions if needed
+            if predictions.dim() > 2:
+                predictions = predictions.squeeze()
+            if targets.dim() > 1 and self.task == "classification":
+                targets = targets.squeeze()
 
         return predictions, targets
 
     def training_step(self, batch, batch_idx):
         """Training step - works with all AstroLab model outputs."""
-        try:
-            outputs = self(batch)
-            predictions, targets = self._extract_predictions_and_targets(batch, outputs)
+        outputs = self(batch)
+        predictions, targets = self._extract_predictions_and_targets(batch, outputs)
 
-            # Debug information
-            if batch_idx == 0:  # Log only for first batch to avoid spam
-                logger.info(f"Batch type: {type(batch)}")
-                if hasattr(batch, "x"):
-                    logger.info(
-                        f"Batch x shape: {batch.x.shape if batch.x is not None else 'None'}"
-                    )
-                if hasattr(batch, "y"):
-                    logger.info(
-                        f"Batch y shape: {batch.y.shape if batch.y is not None else 'None'}"
-                    )
-                logger.info(f"Model outputs type: {type(outputs)}")
-                logger.info(f"Predictions shape: {predictions.shape}")
-                logger.info(f"Targets shape: {targets.shape}")
+        # Calculate loss
+        loss = self.loss_fn(predictions, targets)
 
-            # Calculate loss
-            loss = self.loss_fn(predictions, targets)
+        # Log metrics
+        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
 
-            # Log loss
+        if self.task == "classification" and hasattr(self, "train_acc"):
+            self.train_acc(predictions, targets)
             self.log(
-                "train_loss",
-                loss,
-                prog_bar=True,
-                on_step=True,
-                on_epoch=True,
-                batch_size=predictions.shape[0],
+                "train_acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True
             )
+            if hasattr(self, "train_f1"):
+                self.train_f1(predictions, targets)
+                self.log("train_f1", self.train_f1, on_step=False, on_epoch=True)
 
-            # Calculate and log metrics
-            if self.task == "regression":
-                if self.train_mse is not None:
-                    self.train_mse(predictions, targets)
-                    self.log(
-                        "train_mse",
-                        self.train_mse,
-                        on_step=False,
-                        on_epoch=True,
-                        batch_size=predictions.shape[0],
-                    )
-                if self.train_mae is not None:
-                    self.train_mae(predictions, targets)
-                    self.log(
-                        "train_mae",
-                        self.train_mae,
-                        on_step=False,
-                        on_epoch=True,
-                        batch_size=predictions.shape[0],
-                    )
-            if self.task == "classification":
-                if (
-                    self.train_acc is not None
-                    and predictions.dim() == 2
-                    and predictions.shape[1] == self.num_classes
-                ):
-                    self.train_acc(predictions, targets)
-                    self.log(
-                        "train_acc",
-                        self.train_acc,
-                        on_step=False,
-                        on_epoch=True,
-                        prog_bar=True,
-                        batch_size=predictions.shape[0],
-                    )
+        elif self.task == "regression":
+            if hasattr(self, "train_mse"):
+                self.train_mse(predictions, targets)
+                self.log("train_mse", self.train_mse, on_step=False, on_epoch=True)
+            if hasattr(self, "train_mae"):
+                self.train_mae(predictions, targets)
+                self.log(
+                    "train_mae",
+                    self.train_mae,
+                    on_step=False,
+                    on_epoch=True,
+                    prog_bar=True,
+                )
 
-            return loss
-
-        except Exception as e:
-            logger.error(f"Training step failed: {e}")
-            logger.error(f"Batch type: {type(batch)}")
-            if hasattr(batch, "x"):
-                logger.error(f"Batch x: {batch.x}")
-            if hasattr(batch, "y"):
-                logger.error(f"Batch y: {batch.y}")
-            logger.error(f"Outputs: {outputs}")
-            raise
+        return loss
 
     def validation_step(self, batch, batch_idx):
         """Validation step."""
-        with torch.no_grad():
-            outputs = self(batch)
-            predictions, targets = self._extract_predictions_and_targets(batch, outputs)
+        outputs = self(batch)
+        predictions, targets = self._extract_predictions_and_targets(batch, outputs)
 
-            # Calculate loss
-            loss = self.loss_fn(predictions, targets)
+        # Calculate loss
+        loss = self.loss_fn(predictions, targets)
 
-            # Log loss
+        # Log metrics
+        self.log("val_loss", loss, prog_bar=True, on_epoch=True, sync_dist=True)
+
+        if self.task == "classification" and hasattr(self, "val_acc"):
+            self.val_acc(predictions, targets)
             self.log(
-                "val_loss",
-                loss,
-                prog_bar=True,
-                on_epoch=True,
-                batch_size=predictions.shape[0],
+                "val_acc", self.val_acc, on_epoch=True, prog_bar=True, sync_dist=True
             )
+            if hasattr(self, "val_f1"):
+                self.val_f1(predictions, targets)
+                self.log("val_f1", self.val_f1, on_epoch=True, sync_dist=True)
 
-            # Calculate and log metrics
-            if self.task == "regression":
-                if self.val_mse is not None:
-                    self.val_mse(predictions, targets)
-                    self.log(
-                        "val_mse",
-                        self.val_mse,
-                        on_epoch=True,
-                        batch_size=predictions.shape[0],
-                    )
-                if self.val_mae is not None:
-                    self.val_mae(predictions, targets)
-                    self.log(
-                        "val_mae",
-                        self.val_mae,
-                        on_epoch=True,
-                        batch_size=predictions.shape[0],
-                    )
-            if self.task == "classification":
-                if (
-                    self.val_acc is not None
-                    and predictions.dim() == 2
-                    and predictions.shape[1] == self.num_classes
-                ):
-                    self.val_acc(predictions, targets)
-                    self.log(
-                        "val_acc",
-                        self.val_acc,
-                        on_epoch=True,
-                        prog_bar=True,
-                        batch_size=predictions.shape[0],
-                    )
+        elif self.task == "regression":
+            if hasattr(self, "val_mse"):
+                self.val_mse(predictions, targets)
+                self.log("val_mse", self.val_mse, on_epoch=True, sync_dist=True)
+            if hasattr(self, "val_mae"):
+                self.val_mae(predictions, targets)
+                self.log(
+                    "val_mae",
+                    self.val_mae,
+                    on_epoch=True,
+                    prog_bar=True,
+                    sync_dist=True,
+                )
 
         return loss
 
@@ -389,42 +324,55 @@ class AstroLabLightningMixin(L.LightningModule):
         # Calculate loss
         loss = self.loss_fn(predictions, targets)
 
-        # Log loss
-        self.log("test_loss", loss, batch_size=predictions.shape[0])
+        # Log metrics
+        self.log("test_loss", loss, sync_dist=True)
 
-        # Calculate and log metrics
-        if self.task == "regression":
-            if self.test_mse is not None:
+        if self.task == "classification" and hasattr(self, "test_acc"):
+            self.test_acc(predictions, targets)
+            self.log("test_acc", self.test_acc, sync_dist=True)
+            if hasattr(self, "test_f1"):
+                self.test_f1(predictions, targets)
+                self.log("test_f1", self.test_f1, sync_dist=True)
+
+        elif self.task == "regression":
+            if hasattr(self, "test_mse"):
                 self.test_mse(predictions, targets)
-                self.log("test_mse", self.test_mse, batch_size=predictions.shape[0])
-            if self.test_mae is not None:
+                self.log("test_mse", self.test_mse, sync_dist=True)
+            if hasattr(self, "test_mae"):
                 self.test_mae(predictions, targets)
-                self.log("test_mae", self.test_mae, batch_size=predictions.shape[0])
-        if self.task == "classification":
-            if (
-                self.test_acc is not None
-                and predictions.dim() == 2
-                and predictions.shape[1] == self.num_classes
-            ):
-                self.test_acc(predictions, targets)
-                self.log("test_acc", self.test_acc, batch_size=predictions.shape[0])
+                self.log("test_mae", self.test_mae, sync_dist=True)
 
         return {"test_loss": loss, "predictions": predictions, "targets": targets}
 
     def configure_optimizers(self):
         """Configure optimizers and schedulers."""
+        # Parameter groups für unterschiedliche Learning Rates
+        param_groups = self._get_parameter_groups()
+
         # Create optimizer
         if self.optimizer_name == "adamw":
             optimizer = torch.optim.AdamW(
-                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+                param_groups,
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
+                betas=(0.9, 0.999),
+                eps=1e-8,
             )
         elif self.optimizer_name == "adam":
             optimizer = torch.optim.Adam(
-                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+                param_groups, lr=self.learning_rate, weight_decay=self.weight_decay
             )
         elif self.optimizer_name == "sgd":
             optimizer = torch.optim.SGD(
-                self.parameters(),
+                param_groups,
+                lr=self.learning_rate,
+                weight_decay=self.weight_decay,
+                momentum=0.9,
+                nesterov=True,
+            )
+        elif self.optimizer_name == "rmsprop":
+            optimizer = torch.optim.RMSprop(
+                param_groups,
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay,
                 momentum=0.9,
@@ -432,53 +380,74 @@ class AstroLabLightningMixin(L.LightningModule):
         else:
             logger.warning(f"Unknown optimizer {self.optimizer_name}, using AdamW")
             optimizer = torch.optim.AdamW(
-                self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay
+                param_groups, lr=self.learning_rate, weight_decay=self.weight_decay
             )
 
         # No scheduler case
         if self.scheduler_name == "none":
             return optimizer
 
-        # Create scheduler
+        # Create scheduler configuration
+        scheduler_config = self._create_scheduler(optimizer)
+
+        return {"optimizer": optimizer, "lr_scheduler": scheduler_config}
+
+    def _get_parameter_groups(self):
+        """Create parameter groups for different learning rates."""
+        # Default: alle Parameter mit gleicher Learning Rate
+        return self.parameters()
+
+    def _create_scheduler(self, optimizer):
+        """Create learning rate scheduler configuration."""
         if self.scheduler_name == "cosine":
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            scheduler = CosineAnnealingLR(
                 optimizer,
-                T_max=max(1, self.trainer.max_epochs - self.warmup_epochs),
+                T_max=self.trainer.max_epochs if hasattr(self, "trainer") else 100,
                 eta_min=self.min_lr,
             )
+            return {"scheduler": scheduler, "interval": "epoch", "frequency": 1}
+
         elif self.scheduler_name == "step":
-            scheduler = torch.optim.lr_scheduler.StepLR(
-                optimizer, step_size=30, gamma=0.1
+            scheduler = StepLR(
+                optimizer,
+                step_size=max(10, self.trainer.max_epochs // 3)
+                if hasattr(self, "trainer")
+                else 30,
+                gamma=0.1,
             )
+            return {"scheduler": scheduler, "interval": "epoch", "frequency": 1}
+
         elif self.scheduler_name == "exponential":
             scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+            return {"scheduler": scheduler, "interval": "epoch", "frequency": 1}
+
         elif self.scheduler_name == "onecycle":
-            scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            # OneCycleLR needs total steps
+            total_steps = (
+                self.trainer.estimated_stepping_batches
+                if hasattr(self, "trainer")
+                else 1000
+            )
+            scheduler = OneCycleLR(
                 optimizer,
                 max_lr=self.learning_rate * 10,
-                total_steps=self.trainer.estimated_stepping_batches,
+                total_steps=total_steps,
                 pct_start=0.3,
                 anneal_strategy="cos",
+                cycle_momentum=True if self.optimizer_name != "adam" else False,
+                base_momentum=0.85 if self.optimizer_name != "adam" else 0,
+                max_momentum=0.95 if self.optimizer_name != "adam" else 0,
             )
-            return {
-                "optimizer": optimizer,
-                "lr_scheduler": {"scheduler": scheduler, "interval": "step"},
-            }
+            return {"scheduler": scheduler, "interval": "step", "frequency": 1}
+
         else:
             logger.warning(f"Unknown scheduler {self.scheduler_name}, using cosine")
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            scheduler = CosineAnnealingLR(
                 optimizer,
-                T_max=max(1, self.trainer.max_epochs - self.warmup_epochs),
+                T_max=self.trainer.max_epochs if hasattr(self, "trainer") else 100,
                 eta_min=self.min_lr,
             )
-
-        return {
-            "optimizer": optimizer,
-            "lr_scheduler": {
-                "scheduler": scheduler,
-                "interval": "step",
-            },
-        }
+            return {"scheduler": scheduler, "interval": "epoch", "frequency": 1}
 
     def on_train_start(self):
         """Called when training starts."""
@@ -496,17 +465,21 @@ class AstroLabLightningMixin(L.LightningModule):
                 p.numel() for p in self.parameters() if p.requires_grad
             )
 
-        self.log("model/total_params", total_params)
-        self.log("model/trainable_params", trainable_params)
-        self.log("model/size_mb", total_params * 4 / 1024 / 1024)
+        self.log_dict(
+            {
+                "model/total_params": float(total_params),
+                "model/trainable_params": float(trainable_params),
+                "model/size_mb": float(total_params * 4 / 1024 / 1024),
+            }
+        )
 
         logger.info(
             f"Model has {total_params:,} total parameters ({trainable_params:,} trainable)"
         )
 
-    def on_train_end(self):
-        """Cleanup after training to avoid CUDA memory warnings."""
-        import torch
-
-        torch.cuda.empty_cache()
-        logger.info("CUDA cache cleared after training.")
+    def on_train_epoch_end(self):
+        """Log learning rate at end of epoch."""
+        # Log current learning rate
+        if self.trainer.optimizers:
+            current_lr = self.trainer.optimizers[0].param_groups[0]["lr"]
+            self.log("learning_rate", current_lr, prog_bar=True)

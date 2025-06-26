@@ -48,6 +48,23 @@ def find_python_modules(src_path: Path) -> Dict[str, Set[str]]:
     return modules
 
 
+def validate_module_exists(module_name: str, src_path: Path) -> bool:
+    """Check if a module actually exists and can be imported."""
+    try:
+        # Convert module name to path
+        if module_name == "astro_lab":
+            module_path = src_path / "__init__.py"
+        else:
+            parts = module_name.split(".")
+            if parts[0] != "astro_lab":
+                return False
+            module_path = src_path / "/".join(parts[1:]) / "__init__.py"
+
+        return module_path.exists()
+    except Exception:
+        return False
+
+
 def create_api_doc_content(module_name: str) -> str:
     """Create content for an API documentation file."""
     return f"""# {module_name}
@@ -133,9 +150,13 @@ def update_mkdocs_nav(modules: Dict[str, Set[str]]) -> List[Dict]:
 
 def run_command(cmd: str, check: bool = True) -> subprocess.CompletedProcess:
     """Run a shell command and return the result."""
+    print(f"Running: {cmd}")
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
     if check and result.returncode != 0:
+        print(f"Error running command: {cmd}")
+        print(f"stdout: {result.stdout}")
+        print(f"stderr: {result.stderr}")
         sys.exit(1)
 
     return result
@@ -146,11 +167,13 @@ def check_dependencies():
     try:
         import yaml
     except ImportError:
+        print("Error: PyYAML is required but not installed.")
         sys.exit(1)
 
     # Check if mkdocs is available
     result = run_command("uv run mkdocs --version", check=False)
     if result.returncode != 0:
+        print("Error: mkdocs is not available. Please install it with: uv add mkdocs")
         sys.exit(1)
 
 
@@ -168,20 +191,33 @@ def generate_api_docs():
     # Find all modules
     modules = find_python_modules(src_path)
 
+    # Filter out non-existent modules
+    valid_modules = {}
+    for module_name, submodules in modules.items():
+        if validate_module_exists(module_name, src_path):
+            valid_modules[module_name] = submodules
+            print(f"Found valid module: {module_name}")
+        else:
+            print(f"Skipping invalid module: {module_name}")
+
+    print(f"Generating documentation for {len(valid_modules)} modules...")
+
     # Generate API documentation files
-    for module in modules:
+    for module in valid_modules:
         api_file = docs_api_path / f"{module}.md"
         content = create_api_doc_content(module)
 
         with open(api_file, "w", encoding="utf-8") as f:
             f.write(content)
+        print(f"Generated: {api_file}")
 
     # Update API index
     api_index = project_root / "docs" / "api.md"
-    index_content = generate_api_index_content(modules)
+    index_content = generate_api_index_content(valid_modules)
 
     with open(api_index, "w", encoding="utf-8") as f:
         f.write(index_content)
+    print(f"Updated: {api_index}")
 
     # Update mkdocs.yml navigation
     try:
@@ -191,7 +227,7 @@ def generate_api_docs():
         # Check if config was loaded properly
         if mkdocs_config and "nav" in mkdocs_config:
             # Update API Reference navigation
-            api_nav = update_mkdocs_nav(modules)
+            api_nav = update_mkdocs_nav(valid_modules)
 
             # Find and update the API Reference section
             for i, nav_item in enumerate(mkdocs_config["nav"]):
@@ -208,21 +244,36 @@ def generate_api_docs():
                     sort_keys=False,
                     allow_unicode=True,
                 )
+            print(f"Updated: {mkdocs_yml}")
 
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Warning: Could not update mkdocs.yml: {e}")
 
 
 def update_documentation():
     """Update all documentation."""
+    print("Checking dependencies...")
     check_dependencies()
+
+    print("Generating API documentation...")
     generate_api_docs()
+
+    print("Building documentation...")
     run_command("uv run mkdocs build --clean")
 
 
 def serve_docs():
     """Start development server for documentation."""
-    run_command("uv run mkdocs serve", check=False)
+    print("Starting mkdocs development server...")
+    print("The server will be available at http://127.0.0.1:8000")
+    print("Press Ctrl+C to stop the server")
+    print("-" * 50)
+
+    # Run mkdocs serve without capturing output so user can see it
+    try:
+        subprocess.run("uv run mkdocs serve", shell=True, check=False)
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")
 
 
 def deploy_docs():

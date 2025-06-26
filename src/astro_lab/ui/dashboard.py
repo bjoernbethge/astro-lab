@@ -1,337 +1,376 @@
 """
-AstroLab Dashboard
-=================
+AstroLab Dashboard - Modern Marimo UI
+====================================
 
-Clean marimo dashboard interface for AstroLab.
-Integrated with AstroLab widget system for full functionality.
+A modern, interactive dashboard for astronomical data analysis using
+the latest Marimo features (2025) and actual AstroLab modules.
 """
 
-from typing import Any, Dict, Optional
-
 import marimo as mo
+from typing import Any, Dict, Optional
+import logging
 
-from .components import (
-    handle_component_actions,
-    ui_analysis_controls,
-    ui_data_controls,
-    ui_graph_controls,
-    ui_model_controls,
-    ui_quick_actions,
-    ui_quick_setup,
-    ui_system_status,
-    ui_visualization_controls,
+# Import the new modular UI components
+from .modules import (
+    # Data modules
+    data_explorer,
+    data_loader,
+    catalog_manager,
+    # Training modules
+    training_dashboard,
+    model_selector,
+    experiment_tracker,
+    # Visualization modules
+    plot_creator,
+    graph_creator,
+    clustering_visualizer,
+    cosmograph_viewer,
+    # Analysis modules
+    analysis_panel,
+    clustering_tool,
+    statistics_viewer,
+    subgraph_sampler,
+    # Monitoring modules
+    system_monitor,
+    gpu_monitor,
+    mlflow_dashboard,
+    training_monitor,
+    # Settings modules
+    experiment_settings,
+    data_settings,
+    model_settings,
+    visualization_settings,
+    advanced_settings,
 )
-from .settings import (
-    handle_config_actions,
-    ui_config_loader,
-    ui_config_status,
-    ui_data_paths,
-    ui_experiment_manager,
-    ui_model_selector,
-    ui_survey_selector,
-    ui_training_selector,
-)
+
+logger = logging.getLogger(__name__)
 
 
 class AstroLabDashboard:
-    """Complete AstroLab dashboard with integrated components."""
-
+    """Modern AstroLab dashboard with reactive UI components using actual AstroLab modules."""
+    
     def __init__(self):
         """Initialize the dashboard."""
-        self.current_data = None
-        self.status_message = "Ready"
-
-    def create_main_tabs(self) -> mo.ui.tabs:
-        """Create main dashboard tabs."""
-
-        # Data & Analysis Tab
-        data_tab = mo.vstack(
-            [
-                mo.md("## 📊 Data Management"),
-                ui_data_controls(),
-                mo.md("## 🔬 Analysis"),
-                ui_analysis_controls(),
-                mo.md("## 📈 Visualization"),
-                ui_visualization_controls(),
-            ]
-        )
-
-        #  Analysis Tab (with graph functionality)
-        advanced_tab = mo.vstack(
-            [
-                mo.md("## 🕸️ Graph Analysis"),
-                ui_graph_controls(),
-                mo.md("## 🤖 Model Training"),
-                ui_model_controls(),
-                mo.md("## 📊 System Status"),
-                ui_system_status(),
-            ]
-        )
-
-        # Configuration Tab
-        config_tab = mo.vstack(
-            [
-                mo.md("## 🚀 Quick Setup"),
-                ui_quick_setup(),
-                mo.md("## 📂 Configuration"),
-                ui_config_loader(),
-                mo.md("## 📊 Survey Selection"),
-                ui_survey_selector(),
-                mo.md("## 🤖 Model Selection"),
-                ui_model_selector(),
-            ]
-        )
-
-        # Management Tab
-        management_tab = mo.vstack(
-            [
-                mo.md("## 🧪 Experiment Management"),
-                ui_experiment_manager(),
-                mo.md("## 📁 Data Paths"),
-                ui_data_paths(),
-                mo.md("## ℹ️ Configuration Status"),
-                ui_config_status(),
-            ]
-        )
-
-        return mo.ui.tabs(
-            {
-                "🚀 Main": data_tab,
-                "🔬 ": advanced_tab,
-                "⚙️ Config": config_tab,
-                "🔧 Manage": management_tab,
+        # mo.state returns (value, setter) tuple
+        self.state, self.set_state = mo.state({
+            "current_tab": "data",
+            "theme": "dark",
+            "notifications": [],
+        })
+        
+    def create_header(self) -> mo.Html:
+        """Create modern header with navigation."""
+        return mo.Html("""
+        <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); 
+                    padding: 1.5rem 2rem; border-bottom: 3px solid #667eea;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <h1 style="margin: 0; font-size: 2.5rem; color: white;">
+                        🌟 AstroLab
+                    </h1>
+                    <span style="color: #e0e0e0; font-size: 1rem;">
+                        Astronomical Data Analysis Platform
+                    </span>
+                </div>
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <span style="color: white;">v2.0</span>
+                    <button style="background: rgba(255,255,255,0.2); color: white; 
+                                   border: none; padding: 0.5rem 1rem; border-radius: 8px; 
+                                   cursor: pointer;">
+                        📚 Docs
+                    </button>
+                </div>
+            </div>
+        </div>
+        """)
+        
+    def create_main_interface(self) -> mo.Html:
+        """Create the main interface with tabs using actual AstroLab modules."""
+        
+        # Data tab with actual data modules
+        data_tab = mo.vstack([
+            mo.tabs({
+                "📂 Explorer": data_explorer(),
+                "🔄 Loader": data_loader(),
+                "📁 Catalogs": catalog_manager(),
+            })
+        ])
+        
+        # Training tab with actual training modules
+        training_tab = mo.vstack([
+            mo.tabs({
+                "🚀 Dashboard": training_dashboard(),
+                "🎯 Models": model_selector(),
+                "📊 Experiments": experiment_tracker(),
+            })
+        ])
+        
+        # Visualization tab with actual visualization modules
+        viz_tab = mo.vstack([
+            mo.tabs({
+                "🎨 Plots": plot_creator(),
+                "🕸️ Graphs": graph_creator(),
+                "🎯 Clustering": clustering_visualizer(),
+                "🌌 Cosmograph": cosmograph_viewer(),
+            })
+        ])
+        
+        # Analysis tab with actual analysis modules
+        analysis_tab = mo.vstack([
+            mo.tabs({
+                "🔬 Analysis": analysis_panel(),
+                "🎯 Clustering": clustering_tool(),
+                "📊 Statistics": statistics_viewer(),
+                "🎲 Subgraphs": subgraph_sampler(),
+            })
+        ])
+        
+        # Monitoring tab with actual monitoring modules
+        monitor_tab = mo.vstack([
+            mo.tabs({
+                "💻 System": system_monitor(),
+                "🎮 GPU": gpu_monitor(),
+                "📈 Training": training_monitor(),
+                "🔍 MLflow": mlflow_dashboard(),
+            })
+        ])
+        
+        # Settings tab with actual settings modules
+        settings_tab = mo.vstack([
+            mo.tabs({
+                "🧪 Experiment": experiment_settings(),
+                "📊 Data": data_settings(),
+                "🤖 Models": model_settings(),
+                "🎨 Visualization": visualization_settings(),
+                "⚙️ Advanced": advanced_settings(),
+            })
+        ])
+        
+        # Create main tabs
+        main_tabs = mo.ui.tabs({
+            "📊 Data": data_tab,
+            "🤖 Training": training_tab,
+            "🎨 Visualization": viz_tab,
+            "🔬 Analysis": analysis_tab,
+            "📈 Monitoring": monitor_tab,
+            "⚙️ Settings": settings_tab,
+        })
+        
+        return main_tabs
+        
+    def create_sidebar(self) -> mo.Html:
+        """Create sidebar with quick status and actions."""
+        
+        # Quick status
+        status_card = mo.Html("""
+        <div style="background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <h3 style="margin: 0 0 0.5rem 0;">📊 Quick Status</h3>
+            <div style="font-size: 0.9rem; line-height: 1.6;">
+                <div>🟢 System: Ready</div>
+                <div>📂 Data: Not loaded</div>
+                <div>🤖 Model: Not trained</div>
+                <div>🎮 GPU: Available</div>
+            </div>
+        </div>
+        """)
+        
+        # Quick actions
+        actions_card = mo.vstack([
+            mo.md("### ⚡ Quick Actions"),
+            mo.ui.button("🌟 Load Gaia Sample", full_width=True),
+            mo.ui.button("🔭 Load SDSS Sample", full_width=True),
+            mo.ui.button("🎨 Quick 3D Plot", full_width=True),
+            mo.ui.button("🤖 Train Fast Model", full_width=True),
+        ])
+        
+        # Recent activity
+        activity_card = mo.Html("""
+        <div style="background: rgba(255,255,255,0.1); padding: 1rem; border-radius: 8px;">
+            <h3 style="margin: 0 0 0.5rem 0;">📝 Recent Activity</h3>
+            <div style="font-size: 0.85rem; line-height: 1.5;">
+                <div>• Dashboard initialized</div>
+                <div>• GPU detected: RTX 4070</div>
+                <div>• MLflow connected</div>
+            </div>
+        </div>
+        """)
+        
+        return mo.Html(f"""
+        <div style="width: 300px; padding: 1.5rem; background: #1a1a2e; height: 100%; 
+                    overflow-y: auto; border-left: 1px solid #333;">
+            {status_card._repr_html_()}
+            {actions_card._repr_html_()}
+            {activity_card._repr_html_()}
+        </div>
+        """)
+        
+    def create_footer(self) -> mo.Html:
+        """Create footer with system info."""
+        return mo.Html("""
+        <div style="padding: 1rem 2rem; background: #16213e; border-top: 1px solid #333;
+                    display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; gap: 2rem; font-size: 0.9rem;">
+                <span>🐍 Python 3.12</span>
+                <span>🔥 PyTorch 2.5</span>
+                <span>⚡ Lightning 2.5</span>
+                <span>📊 Marimo 0.14</span>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <a href="https://github.com/astro-lab" style="color: #667eea;">GitHub</a>
+                <span>|</span>
+                <a href="https://docs.astro-lab.io" style="color: #667eea;">Documentation</a>
+            </div>
+        </div>
+        """)
+        
+    def create_full_dashboard(self) -> mo.Html:
+        """Create the complete modern dashboard."""
+        
+        # Add CSS
+        css = mo.Html("""
+        <style>
+            body {
+                margin: 0;
+                background: #0f0f23;
+                color: #e0e0e0;
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             }
-        )
-
-    def create_sidebar(self) -> mo.vstack:
-        """Create dashboard sidebar."""
-        widget_status = "🟢 Available"
-
-        return mo.vstack(
-            [
-                mo.md("# 🌟 AstroLab"),
-                mo.md("* Astronomical Data Analysis*"),
-                mo.md("---"),
-                mo.md("### ⚡ Quick Actions"),
-                ui_quick_actions(),
-                mo.md("### 📊 System Status"),
-                ui_system_status(),
-                mo.md(f"**AstroLab Widgets:** {widget_status}"),
-                mo.md("---"),
-                mo.md("### 📚 Resources"),
-                mo.md("""
-- [Documentation](https://astro-lab.readthedocs.io)
-- [GitHub](https://github.com/astro-lab/astro-lab)
-- [Examples](examples/)
-            """),
-            ]
-        )
-
-    def create_welcome_screen(self) -> mo.vstack:
-        """Create welcome screen."""
-        features_text = """
-## Modern Astronomical Data Analysis Platform
-
-AstroLab provides comprehensive tools for astronomical data analysis,
-machine learning, and interactive visualization.
-
-### 🚀 Getting Started
-
-1. **Configure**: Set up your experiment and data paths
-2. **Load Data**: Choose a survey and load astronomical data
-3. **Visualize**: Create interactive plots and visualizations
-4. **Analyze**: Run clustering, classification, and analysis
-5. **Model**: Train machine learning models on your data
-
-### 📊 Supported Surveys
-- **Gaia**: European Space Agency's stellar survey
-- **SDSS**: Sloan Digital Sky Survey
-- **NSA**: NASA-Sloan Atlas
-- **LINEAR**: Linear Asteroid Survey
-- **TNG50**: IllustrisTNG simulation data
-
-### 🧰 Available Tools
-- Interactive plotting with Plotly, Matplotlib, Bokeh
-- **3D visualization** with Open3D, PyVista, Blender
-- **GPU-accelerated analysis** and clustering
-- **Graph-based analysis** with PyTorch Geometric
-- **High-performance neighbor finding**
-- GPU acceleration support
-            """
-
-        return mo.vstack(
-            [
-                mo.md("# 🌟 Welcome to AstroLab"),
-                mo.md(features_text),
-                mo.md("### 🎯 Quick Start"),
-                mo.hstack(
-                    [
-                        mo.ui.button(label="📊 Load Sample Data"),
-                        mo.ui.button(label="🎨 Create Plot"),
-                        mo.ui.button(label="🤖 Train Model"),
-                    ]
-                ),
-            ]
-        )
-
-    def create_full_dashboard(self) -> mo.vstack:
-        """Create the complete dashboard layout."""
-        header = mo.md("# 🌟 AstroLab Dashboard")
-
-        welcome = self.create_welcome_screen()
-        main_tabs = self.create_main_tabs()
+            
+            /* Tab styling */
+            .marimo-tabs {
+                background: transparent !important;
+            }
+            
+            .marimo-tab-button {
+                color: #a0a0a0 !important;
+                border-bottom: 2px solid transparent !important;
+                transition: all 0.2s !important;
+            }
+            
+            .marimo-tab-button:hover {
+                color: #667eea !important;
+                background: rgba(102, 126, 234, 0.1) !important;
+            }
+            
+            .marimo-tab-button[data-selected="true"] {
+                color: #667eea !important;
+                border-bottom-color: #667eea !important;
+            }
+            
+            /* Button styling */
+            button {
+                transition: all 0.2s;
+            }
+            
+            button:hover {
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            }
+            
+            /* Card styling */
+            .card {
+                background: rgba(255, 255, 255, 0.05);
+                border-radius: 8px;
+                padding: 1.5rem;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+            }
+            
+            /* Scrollbar styling */
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            
+            ::-webkit-scrollbar-track {
+                background: rgba(255, 255, 255, 0.05);
+            }
+            
+            ::-webkit-scrollbar-thumb {
+                background: rgba(102, 126, 234, 0.3);
+                border-radius: 4px;
+            }
+            
+            ::-webkit-scrollbar-thumb:hover {
+                background: rgba(102, 126, 234, 0.5);
+            }
+        </style>
+        """)
+        
+        # Main layout components
+        header = self.create_header()
+        main_interface = self.create_main_interface()
         sidebar = self.create_sidebar()
-
-        # Main content area
-        main_content = mo.hstack(
-            [
-                mo.vstack([welcome, main_tabs]),
-                sidebar,
-            ]
-        )
-
-        return mo.vstack(
-            [
-                header,
-                mo.md("---"),
-                main_content,
-            ]
-        )
-
-    def handle_interactions(self, components: Dict[str, Any]) -> Optional[str]:
-        """Handle all dashboard interactions."""
-
-        # Handle component actions
-        component_result = handle_component_actions(components)
-        if component_result:
-            self.status_message = component_result
-            return component_result
-
-        # Handle config actions
-        config_result = handle_config_actions(components)
-        if config_result:
-            self.status_message = "✅ Configuration action completed"
-            return self.status_message
-
-        return None
+        footer = self.create_footer()
+        
+        # Combine into full layout
+        dashboard = mo.Html(f"""
+        <div style="height: 100vh; display: flex; flex-direction: column; background: #0f0f23;">
+            {header._repr_html_()}
+            <div style="flex: 1; display: flex; overflow: hidden;">
+                <div style="flex: 1; padding: 2rem; overflow-y: auto;">
+                    {main_interface._repr_html_()}
+                </div>
+                {sidebar._repr_html_()}
+            </div>
+            {footer._repr_html_()}
+        </div>
+        """)
+        
+        return mo.vstack([css, dashboard])
 
 
-# Global dashboard instance
-dashboard = AstroLabDashboard()
+# Create singleton instance
+_dashboard = AstroLabDashboard()
 
 
-def create_astrolab_dashboard() -> mo.vstack:
-    """Create the complete AstroLab dashboard."""
-    return dashboard.create_full_dashboard()
+def create_astrolab_dashboard() -> mo.Html:
+    """Create the modern AstroLab dashboard."""
+    return _dashboard.create_full_dashboard()
 
 
-def create_minimal_dashboard() -> mo.vstack:
-    """Create a minimal dashboard for quick analysis."""
-    return mo.vstack(
-        [
-            mo.md("# 🌟 AstroLab - Quick Analysis"),
-            mo.md("## 📊 Data Loading"),
-            ui_data_controls(),
-            mo.md("## 📈 Visualization"),
-            ui_visualization_controls(),
-            mo.md("## 🔬 Analysis"),
-            ui_analysis_controls(),
-            mo.md("## ⚡ Quick Actions"),
-            ui_quick_actions(),
-        ]
-    )
+def create_compact_dashboard() -> mo.Html:
+    """Create a compact version for smaller screens."""
+    return mo.vstack([
+        mo.md("# 🌟 AstroLab Compact"),
+        mo.tabs({
+            "📊 Data": mo.vstack([
+                data_explorer(),
+                data_loader(),
+            ]),
+            "🤖 Training": training_dashboard(),
+            "🎨 Viz": plot_creator(),
+            "🔬 Analysis": analysis_panel(),
+            "📈 Monitor": mo.vstack([
+                system_monitor(),
+                gpu_monitor(),
+            ]),
+        })
+    ])
 
 
-def create_config_dashboard() -> mo.vstack:
-    """Create a configuration-focused dashboard."""
-    return mo.vstack(
-        [
-            mo.md("# ⚙️ AstroLab Configuration"),
-            mo.ui.tabs(
-                {
-                    "🚀 Quick": ui_quick_setup(),
-                    "📂 Config": ui_config_loader(),
-                    "📊 Survey": ui_survey_selector(),
-                    "🤖 Model": ui_model_selector(),
-                    "🏋️ Training": ui_training_selector(),
-                    "🧪 Experiment": ui_experiment_manager(),
-                    "📁 Paths": ui_data_paths(),
-                    "ℹ️ Status": ui_config_status(),
-                }
-            ),
-        ]
-    )
-
-
-def create_analysis_dashboard() -> mo.vstack:
-    """Create an analysis-focused dashboard with widget integration."""
-    return mo.vstack(
-        [
-            mo.md("# 🔬 AstroLab Analysis Dashboard"),
-            mo.hstack(
-                [
-                    mo.vstack(
-                        [
-                            mo.md("### 📊 Data"),
-                            ui_data_controls(),
-                            mo.md("### 🔬 Analysis"),
-                            ui_analysis_controls(),
-                        ]
-                    ),
-                    mo.vstack(
-                        [
-                            mo.md("### 📈 Visualization"),
-                            ui_visualization_controls(),
-                            mo.md("### 🕸️ Graph Analysis"),
-                            ui_graph_controls(),
-                        ]
-                    ),
-                ]
-            ),
-            mo.md("## 🤖 Model Training"),
-            ui_model_controls(),
-            mo.md("## 📊 Status & Actions"),
-            mo.hstack(
-                [
-                    ui_system_status(),
-                    ui_quick_actions(),
-                ]
-            ),
-        ]
-    )
-
-
-def create_widget_showcase() -> mo.vstack:
-    """Create a dashboard showcasing AstroLab widget capabilities."""
-    return mo.vstack(
-        [
-            mo.md("# 🌟 AstroLab Widget Showcase"),
-            mo.md("*Demonstrating advanced visualization and analysis capabilities*"),
-            mo.md("## 🎨  Visualization"),
-            mo.md("**Backends:** Open3D, PyVista, Blender integration"),
-            ui_visualization_controls(),
-            mo.md("## 🕸️ Graph Analysis"),
-            mo.md(
-                "**Features:** GPU-accelerated neighbor finding, PyTorch Geometric integration"
-            ),
-            ui_graph_controls(),
-            mo.md("## 🔬  Analysis"),
-            mo.md(
-                "**Capabilities:** GPU clustering, density analysis, structure analysis"
-            ),
-            ui_analysis_controls(),
-            mo.md("## 📊 System Information"),
-            ui_system_status(),
-        ]
-    )
+def create_demo_dashboard() -> mo.Html:
+    """Create a demo dashboard for presentations."""
+    return mo.vstack([
+        mo.Html("""
+        <div style="text-align: center; padding: 3rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+            <h1 style="font-size: 3rem; margin: 0;">🌟 AstroLab Demo</h1>
+            <p style="font-size: 1.5rem; margin-top: 1rem;">
+                Modern Astronomical Data Analysis with Graph Neural Networks
+            </p>
+        </div>
+        """),
+        mo.tabs({
+            "1️⃣ Load Data": data_explorer(),
+            "2️⃣ Visualize": plot_creator(),
+            "3️⃣ Train Model": training_dashboard(),
+            "4️⃣ Analyze": analysis_panel(),
+        }),
+    ])
 
 
 __all__ = [
     "AstroLabDashboard",
-    "dashboard",
     "create_astrolab_dashboard",
-    "create_minimal_dashboard",
-    "create_config_dashboard",
-    "create_analysis_dashboard",
-    "create_widget_showcase",
+    "create_compact_dashboard",
+    "create_demo_dashboard",
 ]

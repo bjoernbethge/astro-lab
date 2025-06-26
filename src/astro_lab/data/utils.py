@@ -13,7 +13,9 @@ import polars as pl
 import torch
 from astropy.io import fits
 from astropy.table import Table
-from torch_geometric.data import Data
+from torch.utils.data import DataLoader
+from torch_geometric.data import Batch, Data
+from torch_geometric.loader import DataLoader as PyGDataLoader
 from torch_geometric.utils import subgraph
 
 logger = logging.getLogger(__name__)
@@ -399,7 +401,9 @@ def get_graph_statistics(data: Data) -> Dict[str, Any]:
     stats = {
         "num_nodes": data.num_nodes,
         "num_edges": data.edge_index.size(1),
-        "num_features": data.x.size(1) if hasattr(data, "x") and data.x is not None and data.x.dim() > 1 else 0,
+        "num_features": data.x.size(1)
+        if hasattr(data, "x") and data.x is not None and data.x.dim() > 1
+        else 0,
         "has_positions": hasattr(data, "pos") and data.pos is not None,
         "has_labels": hasattr(data, "y") and data.y is not None,
         "is_consistent": check_graph_consistency(data),
@@ -420,3 +424,324 @@ def get_graph_statistics(data: Data) -> Dict[str, Any]:
         }
 
     return stats
+
+
+def pyg_collate_fn(batch):
+    """
+    Custom collate function for PyTorch Geometric Data objects.
+
+    Args:
+        batch: List of Data objects
+
+    Returns:
+        Batched Data object or single Data object
+    """
+    # Filter out None values
+    batch = [item for item in batch if item is not None]
+
+    if not batch:
+        return None
+
+    # If single item, return as-is
+    if len(batch) == 1:
+        return batch[0]
+
+    # For multiple items, try to create a Batch
+    try:
+        return Batch.from_data_list(batch)
+    except Exception as e:
+        logger.warning(f"Could not batch PyG data objects: {e}, returning first item")
+        return batch[0]
+
+
+class SafePyGDataLoader(DataLoader):
+    """
+    Safe DataLoader for PyTorch Geometric Data objects that handles pin_memory correctly.
+
+    This DataLoader ensures that pin_memory only applies to CPU tensors and handles
+    the proper device transfer of graph data objects.
+    """
+
+    def __init__(self, *args, **kwargs):
+        # Extract our custom parameters
+        self.use_smart_pinning = kwargs.pop("use_smart_pinning", True)
+        self.target_device = kwargs.pop("target_device", None)
+        self.non_blocking_transfer = kwargs.pop("non_blocking_transfer", True)
+
+        # Set custom collate function for PyG data
+        if "collate_fn" not in kwargs:
+            kwargs["collate_fn"] = pyg_collate_fn
+
+        # Disable standard pin_memory for PyG data
+        original_pin_memory = kwargs.get("pin_memory", False)
+        if original_pin_memory and self.use_smart_pinning:
+            logger.info("🔧 Using smart pin_memory for PyTorch Geometric data")
+            kwargs["pin_memory"] = False  # Disable standard pinning
+
+        super().__init__(*args, **kwargs)
+        self.original_pin_memory = original_pin_memory
+
+    def __iter__(self):
+        """Override iterator to handle smart pinning and device transfer."""
+        for batch in super().__iter__():
+            if self.use_smart_pinning and self.original_pin_memory:
+                batch = self._smart_pin_and_transfer(batch)
+            elif self.target_device is not None:
+                batch = self._transfer_to_device(batch)
+            yield batch
+
+    def _smart_pin_and_transfer(
+        self, batch: Union[Data, List[Data]]
+    ) -> Union[Data, List[Data]]:
+        """
+        Intelligently pin CPU tensors and transfer to target device.
+
+        Args:
+            batch: PyTorch Geometric Data object or list of Data objects
+
+        Returns:
+            Processed batch with pinned memory and device transfer
+        """
+        if isinstance(batch, list):
+            return [self._process_single_data(data) for data in batch]
+        else:
+            return self._process_single_data(batch)
+
+    def _process_single_data(self, data: Data) -> Data:
+        """Process a single Data object for smart pinning and transfer."""
+        if not isinstance(data, Data):
+            return data
+
+        # Pin CPU tensors only
+        if hasattr(data, "x") and data.x is not None and data.x.device.type == "cpu":
+            try:
+                data.x = data.x.pin_memory()
+            except Exception as e:
+                logger.debug(f"Could not pin x tensor: {e}")
+
+        if (
+            hasattr(data, "edge_index")
+            and data.edge_index is not None
+            and data.edge_index.device.type == "cpu"
+        ):
+            try:
+                data.edge_index = data.edge_index.pin_memory()
+            except Exception as e:
+                logger.debug(f"Could not pin edge_index tensor: {e}")
+
+        if (
+            hasattr(data, "pos")
+            and data.pos is not None
+            and data.pos.device.type == "cpu"
+        ):
+            try:
+                data.pos = data.pos.pin_memory()
+            except Exception as e:
+                logger.debug(f"Could not pin pos tensor: {e}")
+
+        if hasattr(data, "y") and data.y is not None and data.y.device.type == "cpu":
+            try:
+                data.y = data.y.pin_memory()
+            except Exception as e:
+                logger.debug(f"Could not pin y tensor: {e}")
+
+        # Pin mask tensors if they exist
+        for mask_name in ["train_mask", "val_mask", "test_mask"]:
+            if hasattr(data, mask_name):
+                mask = getattr(data, mask_name)
+                if mask is not None and mask.device.type == "cpu":
+                    try:
+                        setattr(data, mask_name, mask.pin_memory())
+                    except Exception as e:
+                        logger.debug(f"Could not pin {mask_name} tensor: {e}")
+
+        # Transfer to target device with non-blocking if available
+        if self.target_device is not None:
+            data = self._transfer_to_device(data)
+
+        return data
+
+    def _transfer_to_device(
+        self, batch: Union[Data, List[Data]]
+    ) -> Union[Data, List[Data]]:
+        """Transfer batch to target device with non-blocking transfer."""
+        if self.target_device is None:
+            return batch
+
+        try:
+            if isinstance(batch, list):
+                return [
+                    data.to(self.target_device, non_blocking=self.non_blocking_transfer)
+                    for data in batch
+                ]
+            else:
+                return batch.to(
+                    self.target_device, non_blocking=self.non_blocking_transfer
+                )
+        except Exception as e:
+            logger.warning(
+                f"Non-blocking transfer failed, falling back to blocking: {e}"
+            )
+            if isinstance(batch, list):
+                return [data.to(self.target_device) for data in batch]
+            else:
+                return batch.to(self.target_device)
+
+
+def create_optimized_dataloader(
+    dataset: Any,
+    batch_size: int = 1,
+    shuffle: bool = False,
+    num_workers: int = 0,
+    pin_memory: bool = True,
+    persistent_workers: bool = True,
+    prefetch_factor: Optional[int] = 2,
+    drop_last: bool = False,
+    target_device: Optional[torch.device] = None,
+    use_smart_pinning: bool = True,
+    non_blocking_transfer: bool = True,
+    **kwargs,
+) -> SafePyGDataLoader:
+    """
+    Create an optimized DataLoader for PyTorch Geometric data.
+
+    Args:
+        dataset: Dataset to load from
+        batch_size: Batch size
+        shuffle: Whether to shuffle data
+        num_workers: Number of worker processes
+        pin_memory: Whether to use pinned memory (intelligently applied)
+        persistent_workers: Whether to keep workers alive
+        prefetch_factor: Number of batches to prefetch
+        drop_last: Whether to drop the last incomplete batch
+        target_device: Device to transfer data to
+        use_smart_pinning: Whether to use smart pinning for PyG data
+        non_blocking_transfer: Whether to use non-blocking device transfer
+        **kwargs: Additional arguments for DataLoader
+
+    Returns:
+        Optimized SafePyGDataLoader instance
+    """
+    # Auto-detect target device if not specified
+    if target_device is None and torch.cuda.is_available():
+        target_device = torch.device("cuda")
+
+    # Prepare kwargs
+    dataloader_kwargs = {
+        "batch_size": batch_size,
+        "shuffle": shuffle,
+        "num_workers": num_workers,
+        "pin_memory": pin_memory,
+        "drop_last": drop_last,
+        "target_device": target_device,
+        "use_smart_pinning": use_smart_pinning,
+        "non_blocking_transfer": non_blocking_transfer,
+        **kwargs,
+    }
+
+    # Add worker-specific options
+    if num_workers > 0:
+        dataloader_kwargs["persistent_workers"] = persistent_workers
+        if prefetch_factor is not None:
+            dataloader_kwargs["prefetch_factor"] = prefetch_factor
+    else:
+        # Remove worker-specific options for single-process loading
+        dataloader_kwargs.pop("persistent_workers", None)
+
+    logger.info(
+        f"📊 Creating optimized DataLoader: "
+        f"batch_size={batch_size}, num_workers={num_workers}, "
+        f"pin_memory={pin_memory}, smart_pinning={use_smart_pinning}, "
+        f"non_blocking={non_blocking_transfer}, target_device={target_device}"
+    )
+
+    return SafePyGDataLoader(dataset, **dataloader_kwargs)
+
+
+def optimize_memory_transfer(
+    data: Union[Data, torch.Tensor],
+    target_device: torch.device,
+    use_pinning: bool = True,
+    non_blocking: bool = True,
+) -> Union[Data, torch.Tensor]:
+    """
+    Optimize memory transfer for single data objects.
+
+    Args:
+        data: Data to transfer
+        target_device: Target device
+        use_pinning: Whether to pin memory before transfer
+        non_blocking: Whether to use non-blocking transfer
+
+    Returns:
+        Transferred data
+    """
+    if isinstance(data, torch.Tensor):
+        if use_pinning and data.device.type == "cpu":
+            try:
+                data = data.pin_memory()
+            except Exception as e:
+                logger.debug(f"Could not pin tensor: {e}")
+
+        return data.to(target_device, non_blocking=non_blocking)
+
+    elif isinstance(data, Data):
+        # Pin individual tensors if they're on CPU
+        if use_pinning:
+            for attr_name in ["x", "edge_index", "pos", "y", "edge_attr"]:
+                if hasattr(data, attr_name):
+                    attr_value = getattr(data, attr_name)
+                    if attr_value is not None and attr_value.device.type == "cpu":
+                        try:
+                            setattr(data, attr_name, attr_value.pin_memory())
+                        except Exception as e:
+                            logger.debug(f"Could not pin {attr_name}: {e}")
+
+        return data.to(target_device, non_blocking=non_blocking)
+
+    else:
+        return data
+
+
+class MemoryOptimizedDataModule:
+    """
+    Mixin class for memory optimization in PyTorch Lightning DataModules.
+    """
+
+    def get_optimized_dataloader_kwargs(
+        self,
+        batch_size: int,
+        num_workers: int = 0,
+        pin_memory: bool = True,
+        persistent_workers: bool = True,
+        prefetch_factor: Optional[int] = 2,
+        drop_last: bool = False,
+        target_device: Optional[torch.device] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """Get optimized dataloader configuration."""
+
+        # Auto-detect optimal settings based on system
+        if torch.cuda.is_available():
+            if target_device is None:
+                target_device = torch.device("cuda")
+
+            # Optimize for GPU systems
+            if num_workers == 0:
+                num_workers = min(4, torch.get_num_threads())  # Conservative default
+        else:
+            target_device = torch.device("cpu")
+            pin_memory = False  # No point pinning on CPU-only systems
+
+        return {
+            "batch_size": batch_size,
+            "num_workers": num_workers,
+            "pin_memory": pin_memory,
+            "persistent_workers": persistent_workers and num_workers > 0,
+            "prefetch_factor": prefetch_factor if num_workers > 0 else None,
+            "drop_last": drop_last,
+            "target_device": target_device,
+            "use_smart_pinning": True,
+            "non_blocking_transfer": True,
+            **kwargs,
+        }
