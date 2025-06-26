@@ -1,102 +1,153 @@
+#!/usr/bin/env python3
 """
-Training CLI module for AstroLab - Thin wrapper around training module.
+AstroLab Training CLI (Lightning Edition)
+========================================
+
+CLI for training astronomical ML models using Lightning.
 """
 
 import argparse
+import logging
 import sys
 from pathlib import Path
+from typing import Any, Dict, Optional
+
+from astro_lab.models.lightning import list_lightning_models, list_presets
+from astro_lab.training import train_model
+
+from .config import load_and_prepare_training_config
 
 
-def main():
-    """Main entry point for training command."""
+def setup_logging(verbose: bool = False) -> logging.Logger:
+    """Setup logging configuration."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)],
+    )
+    return logging.getLogger(__name__)
+
+
+def create_parser() -> argparse.ArgumentParser:
+    """Create the argument parser for training CLI."""
+    available_models = list(list_lightning_models().keys())
+    available_presets = list(list_presets().keys())
+
     parser = argparse.ArgumentParser(
-        prog="astro-lab train",
-        description="Train astronomical machine learning models",
+        description="Train astronomical ML models with AstroLab Lightning",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Usage examples:
+  astro-lab train --config myexp.yaml
+  astro-lab train --preset gaia_classifier --epochs 10 --learning-rate 0.001
+  astro-lab train --model survey_gnn --epochs 2 --dataset gaia
+""",
     )
 
-    # Config file or quick training options (new syntax)
-    config_group = parser.add_mutually_exclusive_group(required=False)
-    config_group.add_argument(
+    parser.add_argument(
         "--config",
-        "-c",
+        type=str,
+        help="Path to YAML configuration file (overrides all other options except explicit CLI overrides)",
+    )
+    parser.add_argument(
+        "--preset",
+        type=str,
+        choices=available_presets,
+        help="Use preset configuration (can be overridden by CLI parameters)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=available_models,
+        help="Model to train",
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
+        help="Survey/dataset to use",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        help="Number of training epochs",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        help="Batch size",
+    )
+    parser.add_argument(
+        "--learning-rate",
+        type=float,
+        help="Learning rate",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        help="MLflow experiment name",
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
         type=Path,
-        help="Path to configuration file (YAML)",
-    )
-    config_group.add_argument(
-        "--quick",
-        "-q",
-        nargs=2,
-        metavar=("DATASET", "MODEL"),
-        help="Quick training with dataset and model names",
-    )
-
-    # Backward compatibility for README examples
-    parser.add_argument("--dataset", help="Dataset name (backward compatibility)")
-    parser.add_argument("--model", help="Model name (backward compatibility)")
-
-    # Training parameters
-    parser.add_argument("--epochs", type=int, help="Number of training epochs")
-    parser.add_argument("--batch-size", type=int, default=32, help="Batch size")
-    parser.add_argument("--max-samples", type=int, default=1000, help="Maximum samples")
-    parser.add_argument("--learning-rate", type=float, help="Learning rate")
-    parser.add_argument("--devices", type=int, default=1, help="Number of GPUs")
-    parser.add_argument("--strategy", choices=["auto", "ddp", "fsdp"], default="auto")
-    parser.add_argument(
-        "--precision", choices=["32", "16-mixed", "bf16-mixed"], default="16-mixed"
+        help="Directory for model checkpoints",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
+        "--resume",
+        type=Path,
+        help="Resume from checkpoint",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose logging",
     )
 
-    args = parser.parse_args()
+    return parser
 
-    # Import only what we need
-    from astro_lab.training import train_from_config, train_quick
 
-    # Determine training mode with backward compatibility
-    if args.config:
-        # Train from config file
-        return train_from_config(
+def main(args=None) -> int:
+    """Main CLI function - parses arguments and calls AstroTrainer."""
+    if args is None:
+        parser = create_parser()
+        args = parser.parse_args()
+    logger = setup_logging(args.verbose)
+
+    try:
+        # CLI-Overrides sammeln
+        cli_overrides = {}
+        for key in [
+            "model",
+            "dataset",
+            "epochs",
+            "batch_size",
+            "learning_rate",
+            "experiment_name",
+            "checkpoint_dir",
+            "resume",
+        ]:
+            arg_val = getattr(args, key, None)
+            if arg_val is not None:
+                cli_overrides[key] = arg_val
+        # Config laden und vorbereiten
+        trainer_config = load_and_prepare_training_config(
             config_path=args.config,
-            epochs=args.epochs,
-            learning_rate=args.learning_rate,
-            batch_size=args.batch_size,
-            max_samples=args.max_samples,
-            devices=args.devices,
-            precision=args.precision,
+            preset=args.preset,
+            cli_overrides=cli_overrides,
         )
-    elif args.quick:
-        # Quick training (new syntax)
-        dataset, model = args.quick
-        return train_quick(
-            dataset=dataset,
-            model=model,
-            epochs=args.epochs or 10,
-            batch_size=args.batch_size,
-            max_samples=args.max_samples,
-            learning_rate=args.learning_rate or 0.001,
-            devices=args.devices,
-            precision=args.precision,
-            strategy=args.strategy,
-        )
-    elif args.dataset and args.model:
-        # Backward compatibility with README examples
-        return train_quick(
-            dataset=args.dataset,
-            model=args.model,
-            epochs=args.epochs or 10,
-            batch_size=args.batch_size,
-            max_samples=args.max_samples,
-            learning_rate=args.learning_rate or 0.001,
-            devices=args.devices,
-            precision=args.precision,
-            strategy=args.strategy,
-        )
-    else:
-        # No valid training option provided
-        parser.error("Must provide either --config, --quick, or --dataset and --model")
+        if not trainer_config.get("model") and not args.preset:
+            logger.error(
+                "Must specify either --model, --preset or --config with model defined."
+            )
+            return 1
+        success = train_model(trainer_config)
+        return 0 if success else 1
+
+    except Exception as e:
+        logger.error(f"Training failed: {e}")
+        return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    exit(main())
