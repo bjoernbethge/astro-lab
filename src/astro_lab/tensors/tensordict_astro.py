@@ -8,13 +8,18 @@ native PyTorch Integration and hierarchical data structures.
 
 from __future__ import annotations
 
+import gc
 import math
+import weakref
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
+
+from ..memory import register_for_cleanup
 
 
 class AstroTensorDict(TensorDict):
@@ -38,6 +43,52 @@ class AstroTensorDict(TensorDict):
         # Add tensor type information
         if "tensor_type" not in self._metadata:
             self._metadata["tensor_type"] = self.__class__.__name__
+
+        # Register for memory management
+        register_for_cleanup(self)
+
+    def _cleanup_metadata(self):
+        """Clean up metadata containing large objects."""
+        if hasattr(self, "_metadata"):
+            for key in list(self._metadata.keys()):
+                if isinstance(self._metadata[key], (torch.Tensor, np.ndarray)):
+                    del self._metadata[key]
+
+    def clear_temp_tensors(self):
+        """Clear temporary tensors to prevent memory leaks."""
+        temp_keys = [key for key in self.keys() if key.startswith("_temp_")]
+        for key in temp_keys:
+            del self[key]
+
+    def optimize_memory(self):
+        """Optimize memory usage by clearing temporary data and forcing GC if needed."""
+        self.clear_temp_tensors()
+
+        # Force garbage collection if memory usage is high
+        if self.memory_info()["total_mb"] > 100:  # > 100MB
+            gc.collect()
+
+    def cleanup(self):
+        """Explicit cleanup method."""
+        try:
+            # Clear all data
+            self.clear()
+
+            # Clear metadata
+            self._cleanup_metadata()
+
+            # Force garbage collection
+            gc.collect()
+
+        except Exception as e:
+            print(f"Warning: Error during cleanup: {e}")
+
+    def __del__(self):
+        """Destructor to ensure cleanup."""
+        try:
+            self.cleanup()
+        except:
+            pass  # Ignore errors during destruction
 
     @property
     def meta(self) -> Dict[str, Any]:
