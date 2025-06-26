@@ -2,33 +2,22 @@
 AstroLab Utilities - Core Utility Functions
 ==========================================
 
-Provides core utility functions for configuration, visualization,
-and data processing in the AstroLab framework.
+Provides core utility functions for configuration and numerical helper functions.
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict
 
 import numpy as np
 import torch
-import torch_geometric
-import yaml
 
-# DO NOT import blender automatically - only when explicitly needed
-# DO NOT import viz functions automatically - they load Blender modules
-# Import them manually when needed: from astro_lab.utils.viz import ...
 # Import core utility modules directly
-from . import config, viz
+from . import config
 
 logger = logging.getLogger(__name__)
 
-# Import graph utilities
-from .viz.graph import (
-    calculate_graph_metrics,
-    create_spatial_graph,
-    spatial_distance_matrix,
-)
+# Configuration utilities
+from .config import ConfigLoader, get_survey_config, load_experiment_config
 
 
 # Core utility functions
@@ -56,45 +45,9 @@ def setup_logging(level: int = logging.INFO) -> None:
     )
 
 
-# Base exports - always available (minimal to avoid Blender loading)
-__all__ = [
-    "config",
-    "viz",
-    "get_utils_info",
-    "calculate_volume",
-    "calculate_mean_density",
-    "create_spatial_graph",
-    "calculate_graph_metrics",
-    "spatial_distance_matrix",
-    "get_device",
-    "set_random_seed",
-    "setup_logging",
-]
-
-
-def get_utils_info() -> Dict[str, Any]:
-    """Get information about available utilities."""
-    # Check blender availability WITHOUT importing our blender module
-    blender_available = False
-    try:
-        import bpy  # Direct check without loading our blender module
-
-        blender_available = True
-    except ImportError:
-        pass
-
-    return {
-        "config_available": True,
-        "viz_available": True,
-        "blender_available": blender_available,
-        "torch_geometric_available": True,
-        "graph_available": True,
-    }
-
-
 def calculate_volume(coords: "np.ndarray | torch.Tensor") -> float:
     """Calculates the volume of the 3D cuboid enclosing all points."""
-    if hasattr(coords, "detach"):
+    if isinstance(coords, torch.Tensor):
         coords = coords.detach().cpu().numpy()
     x_min, x_max = coords[:, 0].min(), coords[:, 0].max()
     y_min, y_max = coords[:, 1].min(), coords[:, 1].max()
@@ -107,3 +60,27 @@ def calculate_mean_density(coords: "np.ndarray | torch.Tensor") -> float:
     n = coords.shape[0]
     vol = calculate_volume(coords)
     return n / vol if vol > 0 else float("nan")
+
+
+def get_utils_info() -> Dict[str, Any]:
+    """Get information about available utilities."""
+    return {
+        "config_available": True,
+        "visualization_in_widgets": True,
+    }
+
+
+# Base exports - clean and focused
+__all__ = [
+    # Configuration
+    "ConfigLoader",
+    "load_experiment_config",
+    "get_survey_config",
+    # Core utilities
+    "get_utils_info",
+    "calculate_volume",
+    "calculate_mean_density",
+    "get_device",
+    "set_random_seed",
+    "setup_logging",
+]

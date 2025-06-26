@@ -14,6 +14,7 @@ import yaml
 
 from astro_lab.data.config import data_config
 
+
 class ConfigLoader:
     """Load and manage AstroLab configurations with automatic path setup."""
 
@@ -74,13 +75,17 @@ class ConfigLoader:
         # This ensures consistency across all experiments
         if "mlflow" not in self.config:
             self.config["mlflow"] = {}
-        
+
         # Update tracking URI to use experiment-specific path
-        self.config["mlflow"]["tracking_uri"] = f"file://{exp_paths['mlruns'].absolute()}"
-        
+        self.config["mlflow"]["tracking_uri"] = (
+            f"file://{exp_paths['mlruns'].absolute()}"
+        )
+
         # Also set artifact location for MLflow
         if "artifact_location" not in self.config["mlflow"]:
-            self.config["mlflow"]["artifact_location"] = f"file://{exp_paths['artifacts'].absolute()}"
+            self.config["mlflow"]["artifact_location"] = (
+                f"file://{exp_paths['artifacts'].absolute()}"
+            )
 
         # Update checkpoint directory (only if checkpoints section exists)
         if "checkpoints" in self.config:
@@ -129,6 +134,9 @@ class ConfigLoader:
         with open(survey_config_path, "r", encoding="utf-8") as f:
             survey_config = yaml.safe_load(f)
 
+        if survey_config is None or "survey" not in survey_config:
+            raise ValueError(f"Invalid survey config structure in {survey_config_path}")
+
         return survey_config["survey"]
 
     def list_available_surveys(self) -> List[str]:
@@ -153,15 +161,17 @@ class ConfigLoader:
         if output_path is None:
             exp_name = self.config["mlflow"]["experiment_name"]
             # Save to configs directory, not experiments
-            output_path = data_config.configs_dir / f"{exp_name}.yaml"
+            output_file = data_config.configs_dir / f"{exp_name}.yaml"
+        else:
+            output_file = Path(output_path)
 
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        with open(output_path, "w", encoding="utf-8") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             yaml.dump(self.config, f, default_flow_style=False, indent=2)
 
-        print(f"💾 Config saved to: {output_path}")
+        print(f"💾 Config saved to: {output_file}")
+
 
 def load_experiment_config(
     experiment_name: str, config_file: Optional[str] = None
@@ -179,6 +189,7 @@ def load_experiment_config(
     loader = ConfigLoader(config_file)
     return loader.load_config(experiment_name)
 
+
 def load_survey_config(survey: str) -> Dict[str, Any]:
     """
     Convenience function to load survey configuration.
@@ -191,6 +202,7 @@ def load_survey_config(survey: str) -> Dict[str, Any]:
     """
     loader = ConfigLoader()
     return loader.get_survey_config(survey)
+
 
 def setup_experiment_from_config(config_path: str, experiment_name: str):
     """
@@ -213,56 +225,60 @@ def setup_experiment_from_config(config_path: str, experiment_name: str):
 
     return config
 
+
 def validate_config_integration(config_path: str = "configs/default.yaml") -> bool:
     """
     Validate that config integration works correctly.
-    
+
     Args:
         config_path: Path to config file to test
-        
+
     Returns:
         True if validation passes, False otherwise
     """
     try:
         print("🔍 Validating config integration...")
-        
+
         # Test 1: Load config
         loader = ConfigLoader(config_path)
         config = loader.load_config("test_experiment")
-        
+
         # Test 2: Check MLflow URI
         mlflow_uri = config.get("mlflow", {}).get("tracking_uri", "")
         if not mlflow_uri.startswith("file://"):
             print(f"❌ Invalid MLflow URI format: {mlflow_uri}")
             return False
-            
+
         # Test 3: Check if URI points to data/experiments
-        if "data/experiments" not in mlflow_uri and "data\\experiments" not in mlflow_uri:
+        if (
+            "data/experiments" not in mlflow_uri
+            and "data\\experiments" not in mlflow_uri
+        ):
             print(f"❌ MLflow URI doesn't point to data/experiments: {mlflow_uri}")
             return False
-            
+
         # Test 4: Check environment variable
         env_uri = os.environ.get("MLFLOW_TRACKING_URI", "")
         if env_uri != mlflow_uri:
             print(f"❌ Environment variable mismatch: {env_uri} != {mlflow_uri}")
             return False
-            
+
         # Test 5: Check experiment directories exist
         exp_name = config.get("mlflow", {}).get("experiment_name", "")
         exp_paths = data_config.get_experiment_paths(exp_name)
-        
+
         for path_name, path in exp_paths.items():
             if not path.exists():
                 print(f"❌ Experiment directory missing: {path}")
                 return False
-                
+
         print("✅ Config integration validation passed!")
         print(f"   - MLflow URI: {mlflow_uri}")
         print(f"   - Experiment: {exp_name}")
         print(f"   - Directories: {list(exp_paths.keys())}")
-        
+
         return True
-        
+
     except Exception as e:
         print(f"❌ Config integration validation failed: {e}")
         return False
