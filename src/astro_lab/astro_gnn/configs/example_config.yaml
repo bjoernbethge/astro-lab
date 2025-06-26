@@ -1,0 +1,43 @@
+# AstroGNN Beispiel-Konfiguration
+# Für astronomische Punktwolken-Klassifikation
+
+# Experiment-Einstellungen
+experiment_name: "stellar_classification_experiment"
+seed: 42
+device: "cuda"  # cuda, cpu, oder auto
+
+# Modell-Konfiguration
+model:
+  input_features: 3  # x, y, z Koordinaten
+  hidden_dim: 128    # Versteckte Layer Dimension
+  output_classes: 7  # Sterntypen: O, B, A, F, G, K, M
+  num_layers: 3      # Anzahl PointNet++ Layer
+  dropout: 0.1       # Dropout Rate
+  k_neighbors: 16    # k für k-NN Graph
+  aggregation: "max" # Aggregations-Methode: max, mean, add
+
+# Daten-Konfiguration  
+data:
+  batch_size: 32
+  num_workers: 4
+  train_split: 0.7
+  val_split: 0.15
+  test_split: 0.15
+  num_points: 1024   # Punkte pro Punktwolke
+  normalize: true    # Normalisiere auf Einheitssphäre
+  augmentation: true # Data Augmentation
+
+# Training-Konfiguration
+training:
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  scheduler: "cosine"  # cosine, step, plateau
+  patience: 10         # Early Stopping Patience
+  min_lr: 0.000001     # Minimale Learning Rate
+  gradient_clip: 1.0   # Gradient Clipping
+
+# Pfade
+data_path: "./data/astro_pointclouds"
+output_path: "./outputs"
+checkpoint_path: null  # Optional: Pfad zu vorherigem Checkpoint
