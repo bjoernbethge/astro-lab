@@ -15,25 +15,31 @@ logger = logging.getLogger(__name__)
 
 def create_plotly_visualization(survey_tensor: Any, **config) -> Any:
     """
-    Create Plotly visualization for SurveyTensor.
+    Create Plotly visualization for SurveyTensorDict.
 
     Args:
-        survey_tensor: SurveyTensor object
+        survey_tensor: SurveyTensorDict object
         **config: Configuration options
 
     Returns:
         Plotly figure object
     """
-    # Extract spatial coordinates
-    if hasattr(survey_tensor, "get_spatial_tensor"):
+    # Extract spatial coordinates from SurveyTensorDict
+    if hasattr(survey_tensor, "spatial") and "coordinates" in survey_tensor["spatial"]:
+        coords = survey_tensor["spatial"]["coordinates"]
+        logger.info(f"✅ Extracted 3D coordinates for Plotly: {coords.shape}")
+    elif hasattr(survey_tensor, "get_spatial_tensor"):
+        # Fallback for old API
         spatial_tensor = survey_tensor.get_spatial_tensor()
         if hasattr(spatial_tensor, "cartesian"):
             coords = spatial_tensor.cartesian
-            logger.info(f"✅ Extracted 3D coordinates for Plotly: {coords.shape}")
+            logger.info(
+                f"✅ Extracted 3D coordinates for Plotly (legacy): {coords.shape}"
+            )
         else:
-            raise ValueError("SurveyTensor has no cartesian coordinates")
+            raise ValueError("SurveyTensorDict has no cartesian coordinates")
     else:
-        raise ValueError("SurveyTensor has no spatial tensor")
+        raise ValueError("SurveyTensorDict has no spatial data")
 
     # Limit points for web visualization
     max_points = config.get("max_points", 10000)
