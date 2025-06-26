@@ -36,22 +36,9 @@ except ImportError:
     blender_memory_context = None
     bpy_object_context = None
 
+from astro_lab.memory import memory_management
+
 logger = logging.getLogger(__name__)
-
-
-@contextmanager
-def memory_management():
-    """Context manager for proper memory management."""
-    try:
-        yield
-    finally:
-        # Clear CUDA cache if available
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        # Force garbage collection
-        import gc
-
-        gc.collect()
 
 
 class AstroLabWidget:
