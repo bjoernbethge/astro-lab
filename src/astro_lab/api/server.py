@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 from astro_lab.data import AstroDataModule, list_available_catalogs
-from astro_lab.models.lightning import list_lightning_models, list_presets
+from astro_lab.models.core import list_lightning_models, list_presets
 from astro_lab.training import AstroTrainer
 from astro_lab.cli.config import load_and_prepare_training_config
 
