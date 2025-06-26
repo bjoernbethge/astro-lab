@@ -170,8 +170,7 @@ class SurveyGraphDataset(InMemoryDataset):
     def _dataframe_to_survey_tensor(self, df: pl.DataFrame) -> SurveyTensorDict:
         """
         Convert a DataFrame to a SurveyTensorDict.
-        Always pass a tensor to SpatialTensorDict (not a dict),
-        and ensure all meta fields are set as in other TensorDicts.
+        Uses existing preprocessing functions for proper 3D coordinate conversion.
         """
         # Check if this is processed data (has processed column config)
         if "processed_coord_cols" in self.survey_config:
@@ -187,24 +186,26 @@ class SurveyGraphDataset(InMemoryDataset):
             mag_cols = self.survey_config.get("mag_cols", [])
             logger.info(f"📊 Using raw column config for {self.survey}")
 
-        # Extract coordinates as tensor [N, D]
-        coords = []
-        for col in coord_cols:
-            if col in df.columns:
-                coords.append(torch.tensor(df[col].to_numpy(), dtype=torch.float32))
-            else:
-                logger.warning(
-                    f"⚠️ Coordinate column '{col}' not found in DataFrame. Available: {df.columns}"
-                )
+        # Use existing preprocessing functions for proper 3D coordinate conversion
+        if self.survey == "gaia":
+            from ..preprocessing.survey_specific import GaiaPreprocessor
 
-        if not coords:
-            raise ValueError(f"No coordinate columns found in DataFrame: {coord_cols}")
+            preprocessor = GaiaPreprocessor()
+            coordinates_3d = preprocessor.extract_3d_positions(df)
+            coordinates = torch.tensor(coordinates_3d, dtype=torch.float32)
+            logger.info(
+                f"✅ Used GaiaPreprocessor for 3D coordinates: {coordinates.shape}"
+            )
+        else:
+            # Fallback: Use existing create_survey_tensordict function
+            from ..processors import create_survey_tensordict
 
-        coordinates = torch.stack(coords, dim=1)  # [N, D]
-        # If only 2D, pad to 3D with zeros (for compatibility)
-        if coordinates.shape[1] == 2:
-            zeros = torch.zeros(coordinates.shape[0], 1, dtype=coordinates.dtype)
-            coordinates = torch.cat([coordinates, zeros], dim=1)
+            survey_tensor = create_survey_tensordict(df, self.survey)
+            coordinates = survey_tensor["spatial"]["coordinates"]
+            logger.info(
+                f"✅ Used create_survey_tensordict for coordinates: {coordinates.shape}"
+            )
+
         spatial_tensor = SpatialTensorDict(coordinates=coordinates)
 
         # Extract photometric data if available
