@@ -1,12 +1,13 @@
 """
 AstroLab Data Module - High-Performance Astronomical Data Processing
 
-Modern data loading and processing for astronomical surveys using Polars, PyTorch,
-and specialized astronomical tensors. Perfect for prototyping and modern astronomical ML pipelines.
+Clean, unified data loading and processing for astronomical surveys using Polars, PyTorch,
+and specialized astronomical tensors.
 
 Quick Start:
-    from astro_lab.data import load_survey_data
-    dataset = load_survey_data("gaia", max_samples=5000)  # Done!
+    from astro_lab.data import load_survey_catalog, preprocess_survey
+    df = load_survey_catalog("gaia", max_samples=5000)
+    processed_path = preprocess_survey("gaia")
 """
 
 import logging
@@ -15,7 +16,6 @@ from pathlib import Path
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# 🌟 PURE CLEAN API - Polars-First Only
 # 🔧 CONFIGURATION SYSTEM
 from .config import (
     DataConfig,
@@ -25,28 +25,19 @@ from .config import (
     get_raw_dir,
     get_survey_paths,
 )
-from .core import (
-    AstroDataset,
-    detect_survey_type,
-    load_survey_data,
-    load_tng50_data,
-    load_tng50_temporal_data,
-)
 
-# Clean separated imports
+# 🎯 CORE CLASSES
 from .datamodule import AstroDataModule
 
 
-# Factory function
+# 🏭 FACTORY FUNCTIONS
 def create_astro_datamodule(survey: str, **kwargs) -> AstroDataModule:
     """Create AstroDataModule for given survey."""
     return AstroDataModule(survey=survey, **kwargs)
 
 
-# 🔧 MANAGER SUPPORT (for CLI compatibility)
-from .manager import (
-    AstroDataManager,
-    data_manager,
+# 🚀 LOADERS (unified loading functions)
+from .loaders import (
     download_2mass,
     download_pan_starrs,
     download_sdss,
@@ -54,24 +45,22 @@ from .manager import (
     download_wise,
     import_fits,
     import_tng50,
-    list_catalogs,
+    list_available_catalogs,
     load_catalog,
-    process_for_ml,
-)
-from .preprocessing import (
-    create_graph_from_dataframe,
+    load_survey_catalog,
 )
 
-# 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
-from .preprocessing import (
-    preprocess_catalog,
-    process_survey,
+# 🛠️ PROCESSORS (unified preprocessing functions)
+from .processors import (
+    create_survey_tensordict,
+    create_training_splits,
+    preprocess_survey,
 )
 
-# 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
+# 🛠️ UTILITY FUNCTIONS
 from .utils import (
     check_astroquery_available,
-    create_training_splits,
+    detect_survey_type,
     get_data_statistics,
     get_fits_info,
     load_fits_optimized,
@@ -83,54 +72,44 @@ from .utils import (
 # Clean exports
 __all__ = [
     # 🎯 CORE CLASSES
-    "AstroDataset",  # Universal dataset for all surveys
-    "AstroDataModule",  # Lightning integration
+    "AstroDataModule",
     # 🏭 FACTORY FUNCTIONS
-    "create_astro_datamodule",  # Universal datamodule factory
-    # 🚀 CONVENIENCE FUNCTIONS (Most Common)
-    "load_survey_data",  # Universal survey loader
-    "load_tng50_data",
-    "load_tng50_temporal_data",  # 🌟 NEW: TNG50 Temporal loader
-    # 🔗 GRAPH CREATION FUNCTIONS - NEW!
-    "create_graph_from_dataframe",  # Create graph from DataFrame
-    "detect_survey_type",  # Auto-detect survey type
-    # 🔧 CONFIGURATION
-    "DataConfig",  # New centralized config system
-    "data_config",  # Global config instance
-    "get_survey_paths",  # Get all paths for a survey
-    # 🔧 MANAGER SUPPORT (for CLI)
-    "AstroDataManager",
-    "data_manager",
+    "create_astro_datamodule",
+    # 🚀 LOADERS
+    "load_catalog",
+    "load_survey_catalog",
     "download_survey",
     "download_sdss",
     "download_2mass",
     "download_wise",
     "download_pan_starrs",
-    "list_catalogs",
-    "load_catalog",
     "import_fits",
     "import_tng50",
-    "process_for_ml",
-    # 🛠️ UTILITY FUNCTIONS (for preprocessing CLI)
+    "list_available_catalogs",
+    # 🛠️ PROCESSORS
+    "preprocess_survey",
+    "create_survey_tensordict",
     "create_training_splits",
-    "get_data_statistics",
-    "load_splits_from_parquet",
-    "save_splits_to_parquet",
+    # 🔧 CONFIGURATION
+    "DataConfig",
+    "data_config",
+    "get_survey_paths",
+    "get_data_dir",
+    "get_processed_dir",
+    "get_raw_dir",
+    # 🛠️ UTILITY FUNCTIONS
     "check_astroquery_available",
+    "get_data_statistics",
+    "get_fits_info",
     "load_fits_optimized",
     "load_fits_table_optimized",
-    "get_fits_info",
-    # 🛠️ PREPROCESSING FUNCTIONS (moved from CLI)
-    "preprocess_catalog",
-    "process_survey",
+    "load_splits_from_parquet",
+    "save_splits_to_parquet",
+    "detect_survey_type",
 ]
-
-# Feature flags
-HAS_CLEAN_API = True
-HAS_MANAGER_API = True  # Supporting data manager for CLI
 
 # Supported surveys
 SUPPORTED_SURVEYS = ["gaia", "sdss", "nsa", "linear", "tng50"]
 
 # API version
-__version__ = "2.0.0-clean"
+__version__ = "3.0.0"
