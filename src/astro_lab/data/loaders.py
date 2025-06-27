@@ -89,8 +89,12 @@ def load_survey_catalog(
             f"No catalog files found for survey '{survey}' in {data_dir}"
         )
 
-    # Use the first available file
-    catalog_path = catalog_files[0]
+    # Use the first available file (prefer parquet over fits)
+    parquet_files = [f for f in catalog_files if f.suffix == ".parquet"]
+    if parquet_files:
+        catalog_path = parquet_files[0]
+    else:
+        catalog_path = catalog_files[0]
     df = load_catalog(catalog_path)
 
     if max_samples and len(df) > max_samples:

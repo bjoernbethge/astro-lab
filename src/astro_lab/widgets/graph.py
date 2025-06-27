@@ -2,6 +2,7 @@
 Simplified graph utilities for astronomical data.
 
 Basic graph construction and analysis tools that work with the new tensor architecture.
+Includes cosmic web analysis functionality.
 """
 
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -10,7 +11,7 @@ import numpy as np
 import torch
 
 # Import PyTorch Geometric and sklearn
-from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans
+from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans, SpectralClustering
 from torch_geometric.data import Data
 
 # Import centralized graph builders
@@ -20,6 +21,7 @@ from astro_lab.data.graphs import (
     create_radius_graph,
 )
 from astro_lab.tensors import SpatialTensorDict, SurveyTensorDict
+from astro_lab.data.cosmic_web import CosmicWebAnalyzer
 
 
 def analyze_graph_structure(edge_index: torch.Tensor, num_nodes: int) -> Dict[str, Any]:
@@ -72,7 +74,8 @@ def cluster_graph_nodes(
     Args:
         coords: Node coordinates [N, D]
         edge_index: Edge index tensor [2, num_edges]
-        algorithm: Clustering algorithm ("dbscan", "agglomerative", "kmeans")
+        algorithm: Clustering algorithm ("dbscan", "agglomerative", "kmeans", 
+                                       "spectral", "meanshift", "optics", "hdbscan")
         **kwargs: Algorithm-specific parameters
 
     Returns:
@@ -90,6 +93,36 @@ def cluster_graph_nodes(
     elif algorithm == "kmeans":
         n_clusters = kwargs.get("n_clusters", 3)
         clustering = KMeans(n_clusters=n_clusters, random_state=42)
+    elif algorithm == "spectral":
+        n_clusters = kwargs.get("n_clusters", 3)
+        affinity = kwargs.get("affinity", "nearest_neighbors")
+        clustering = SpectralClustering(
+            n_clusters=n_clusters, 
+            affinity=affinity,
+            random_state=42
+        )
+    elif algorithm == "meanshift":
+        from sklearn.cluster import MeanShift
+        bandwidth = kwargs.get("bandwidth", None)
+        clustering = MeanShift(bandwidth=bandwidth)
+    elif algorithm == "optics":
+        from sklearn.cluster import OPTICS
+        min_samples = kwargs.get("min_samples", 5)
+        eps = kwargs.get("eps", None)
+        clustering = OPTICS(min_samples=min_samples, max_eps=eps)
+    elif algorithm == "hdbscan":
+        try:
+            import hdbscan
+            min_cluster_size = kwargs.get("min_cluster_size", 5)
+            min_samples = kwargs.get("min_samples", None)
+            clustering = hdbscan.HDBSCAN(
+                min_cluster_size=min_cluster_size,
+                min_samples=min_samples
+            )
+        except ImportError:
+            raise ImportError(
+                "HDBSCAN not installed. Install with: pip install hdbscan"
+            )
     else:
         raise ValueError(f"Unknown clustering algorithm: {algorithm}")
 
@@ -345,3 +378,159 @@ def cluster_and_analyze(
             "max": coords.max().item(),
         },
     }
+
+
+def analyze_cosmic_web_structure(
+    spatial_tensor: SpatialTensorDict,
+    scales: List[float] = [5.0, 10.0, 25.0, 50.0],
+    min_samples: int = 5,
+    algorithm: str = "dbscan",
+    use_existing_analyzer: bool = True,
+) -> Dict[str, Any]:
+    """
+    Analyze cosmic web structure at multiple scales.
+    
+    Args:
+        spatial_tensor: Spatial coordinates tensor
+        scales: List of clustering scales (in same units as coordinates)
+        min_samples: Minimum samples for clustering
+        algorithm: Clustering algorithm to use
+        use_existing_analyzer: Use the CosmicWebAnalyzer from data module
+        
+    Returns:
+        Dictionary with multi-scale clustering results
+    """
+    if use_existing_analyzer:
+        # Use the existing cosmic web clustering method
+        results = {
+            "scales": scales,
+            "clustering_results": {},
+            "density_analysis": None,
+            "structure_analysis": None,
+        }
+        
+        # Multi-scale clustering
+        for scale in scales:
+            labels = spatial_tensor.cosmic_web_clustering(
+                eps_pc=scale,
+                min_samples=min_samples,
+                algorithm=algorithm,
+            )
+            
+            unique_labels = torch.unique(labels)
+            n_clusters = len(unique_labels[unique_labels >= 0])
+            n_noise = (labels == -1).sum().item()
+            
+            results["clustering_results"][f"{scale}_units"] = {
+                "labels": labels,
+                "n_clusters": n_clusters,
+                "n_noise": n_noise,
+                "n_grouped": len(labels) - n_noise,
+                "grouped_fraction": (len(labels) - n_noise) / len(labels),
+            }
+            
+        # Add density analysis
+        density_counts = spatial_tensor.analyze_local_density(radius_pc=scales[0])
+        results["density_analysis"] = {
+            "counts": density_counts,
+            "mean_density": density_counts.float().mean().item(),
+            "std_density": density_counts.float().std().item(),
+        }
+        
+        # Add structure analysis
+        structure = spatial_tensor.cosmic_web_structure(grid_size_pc=scales[-1])
+        results["structure_analysis"] = structure
+        
+    else:
+        # Use cluster_and_analyze for each scale
+        coords = spatial_tensor["coordinates"]
+        results = {
+            "scales": scales,
+            "clustering_results": {},
+        }
+        
+        for scale in scales:
+            cluster_result = cluster_and_analyze(
+                coords,
+                algorithm=algorithm,
+                eps=scale,
+                min_samples=min_samples,
+            )
+            
+            results["clustering_results"][f"{scale}_units"] = cluster_result
+            
+    return results
+
+
+def cosmic_web_connectivity_analysis(
+    spatial_tensor: SpatialTensorDict,
+    cluster_labels: torch.Tensor,
+    scale: float,
+) -> Dict[str, Any]:
+    """
+    Analyze connectivity patterns in cosmic web clusters.
+    
+    Args:
+        spatial_tensor: Spatial coordinates
+        cluster_labels: Cluster assignments
+        scale: Scale at which clustering was performed
+        
+    Returns:
+        Dictionary with connectivity metrics
+    """
+    coords = spatial_tensor["coordinates"]
+    unique_labels = torch.unique(cluster_labels)
+    clusters = unique_labels[unique_labels >= 0]
+    
+    connectivity = {
+        "inter_cluster_distances": [],
+        "cluster_properties": {},
+        "filament_candidates": [],
+    }
+    
+    # Analyze each cluster
+    for label in clusters:
+        mask = cluster_labels == label
+        cluster_coords = coords[mask]
+        
+        # Cluster properties
+        center = cluster_coords.mean(dim=0)
+        radius = torch.norm(cluster_coords - center, dim=1).max().item()
+        
+        connectivity["cluster_properties"][label.item()] = {
+            "size": mask.sum().item(),
+            "center": center.tolist(),
+            "radius": radius,
+            "density": mask.sum().item() / (4/3 * np.pi * radius**3) if radius > 0 else 0,
+        }
+    
+    # Inter-cluster distances
+    cluster_centers = []
+    for label in clusters:
+        mask = cluster_labels == label
+        center = coords[mask].mean(dim=0)
+        cluster_centers.append(center)
+        
+    if len(cluster_centers) > 1:
+        cluster_centers = torch.stack(cluster_centers)
+        distances = torch.cdist(cluster_centers, cluster_centers)
+        
+        # Find potential filaments (clusters closer than 2*scale)
+        filament_threshold = 2 * scale
+        filament_pairs = torch.where(
+            (distances < filament_threshold) & (distances > 0)
+        )
+        
+        for i, j in zip(filament_pairs[0].tolist(), filament_pairs[1].tolist()):
+            if i < j:  # Avoid duplicates
+                connectivity["filament_candidates"].append({
+                    "cluster_1": clusters[i].item(),
+                    "cluster_2": clusters[j].item(),
+                    "distance": distances[i, j].item(),
+                })
+    
+    return connectivity
+
+
+# The filament detection functions have been moved to data/cosmic_web.py
+# as they are data analysis functions, not visualization functions

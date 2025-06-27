@@ -234,6 +234,140 @@ class SpatialTensorDict(AstroTensorDict):
         center_spatial = SpatialTensorDict(center.unsqueeze(0))
         separations = self.angular_separation(center_spatial)
         return torch.where(separations <= radius_deg)[0]
+    
+    def cosmic_web_clustering(
+        self, 
+        eps_pc: float = 10.0, 
+        min_samples: int = 5, 
+        algorithm: str = "dbscan"
+    ) -> torch.Tensor:
+        """
+        Perform cosmic web clustering analysis.
+        
+        Args:
+            eps_pc: Maximum distance between points in parsecs
+            min_samples: Minimum number of points to form a cluster
+            algorithm: Clustering algorithm to use (currently only 'dbscan')
+            
+        Returns:
+            Cluster labels for each point (-1 for noise)
+        """
+        from sklearn.cluster import DBSCAN
+        
+        # Convert to numpy for sklearn
+        coords = self["coordinates"].detach().cpu().numpy()
+        
+        if algorithm == "dbscan":
+            clustering = DBSCAN(eps=eps_pc, min_samples=min_samples, n_jobs=-1)
+            labels = clustering.fit_predict(coords)
+        else:
+            raise ValueError(f"Unknown clustering algorithm: {algorithm}")
+            
+        return torch.tensor(labels, device=self.device, dtype=torch.long)
+    
+    def analyze_local_density(self, radius_pc: float = 50.0) -> torch.Tensor:
+        """
+        Analyze local density around each point.
+        
+        Args:
+            radius_pc: Radius in parsecs to count neighbors
+            
+        Returns:
+            Number of neighbors within radius for each point
+        """
+        # Calculate pairwise distances
+        coords = self["coordinates"]
+        dists = torch.cdist(coords, coords)
+        
+        # Count neighbors within radius (excluding self)
+        within_radius = (dists <= radius_pc) & (dists > 0)
+        neighbor_counts = within_radius.sum(dim=1)
+        
+        return neighbor_counts
+    
+    def analyze_local_density_gpu(self, radius_pc: float = 50.0) -> torch.Tensor:
+        """
+        GPU-accelerated local density calculation using torch_cluster.
+        
+        Args:
+            radius_pc: Radius in parsecs to count neighbors
+            
+        Returns:
+            Number of neighbors within radius for each point
+        """
+        try:
+            from torch_cluster import radius_graph
+            
+            coords = self["coordinates"]
+            
+            # Create radius graph
+            edge_index = radius_graph(
+                coords, 
+                r=radius_pc, 
+                loop=False,  # Exclude self-loops
+                max_num_neighbors=None,  # No limit
+                flow='source_to_target'
+            )
+            
+            # Count neighbors for each node
+            neighbor_counts = torch.zeros(coords.shape[0], device=coords.device)
+            neighbor_counts.scatter_add_(
+                0, 
+                edge_index[0], 
+                torch.ones(edge_index.shape[1], device=coords.device)
+            )
+            
+            return neighbor_counts
+            
+        except ImportError:
+            # Fallback to CPU version
+            import warnings
+            warnings.warn(
+                "torch_cluster not available, falling back to CPU implementation",
+                ImportWarning
+            )
+            return self.analyze_local_density(radius_pc)
+    
+    def cosmic_web_structure(self, grid_size_pc: float = 100.0) -> Dict[str, torch.Tensor]:
+        """
+        Analyze cosmic web structure using a grid-based approach.
+        
+        Args:
+            grid_size_pc: Size of grid cells in parsecs
+            
+        Returns:
+            Dictionary with structure information
+        """
+        coords = self["coordinates"]
+        
+        # Get data bounds
+        min_coords = coords.min(dim=0)[0]
+        max_coords = coords.max(dim=0)[0]
+        
+        # Create grid
+        grid_dims = ((max_coords - min_coords) / grid_size_pc).ceil().long()
+        
+        # Assign points to grid cells
+        grid_indices = ((coords - min_coords) / grid_size_pc).floor().long()
+        
+        # Count points per cell
+        cell_counts = {}
+        for i in range(len(coords)):
+            cell_idx = tuple(grid_indices[i].tolist())
+            cell_counts[cell_idx] = cell_counts.get(cell_idx, 0) + 1
+            
+        # Convert to tensor format
+        occupied_cells = torch.tensor(list(cell_counts.keys()))
+        counts = torch.tensor(list(cell_counts.values()))
+        
+        return {
+            "grid_dims": grid_dims,
+            "occupied_cells": occupied_cells,
+            "cell_counts": counts,
+            "grid_size_pc": grid_size_pc,
+            "total_cells": grid_dims.prod().item(),
+            "occupied_fraction": len(occupied_cells) / grid_dims.prod().item()
+        }
 
 
 class PhotometricTensorDict(AstroTensorDict):

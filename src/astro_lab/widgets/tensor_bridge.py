@@ -345,6 +345,58 @@ class PyVistaZeroCopyBridge(ZeroCopyBridge):
     def cleanup_pyvista_mesh(self, mesh):
         """Clean up PyVista mesh."""
         _mesh_manager.safe_polydata_del(mesh)
+        
+    def cosmic_web_to_pyvista(
+        self,
+        spatial_tensor: Any,
+        cluster_labels: Optional[np.ndarray] = None,
+        density_field: Optional[torch.Tensor] = None,
+        **kwargs,
+    ):
+        """
+        Convert cosmic web data to PyVista mesh with clustering visualization.
+        
+        Args:
+            spatial_tensor: SpatialTensorDict with coordinates
+            cluster_labels: Cluster assignments from cosmic web analysis
+            density_field: Local density values
+            **kwargs: Additional parameters
+            
+        Returns:
+            PyVista PolyData with cosmic web visualization
+        """
+        import pyvista as pv
+        
+        with zero_copy_context("Cosmic Web PyVista conversion"):
+            # Extract coordinates
+            if hasattr(spatial_tensor, "__getitem__") and "coordinates" in spatial_tensor:
+                coords = spatial_tensor["coordinates"]
+            else:
+                coords = spatial_tensor
+                
+            coords = self.ensure_cpu_contiguous(coords)
+            coords = self.validate_3d_coordinates(coords)
+            coords_np = coords.numpy()
+            
+            # Create point cloud
+            mesh = pv.PolyData(coords_np)
+            
+            # Add cluster labels if provided
+            if cluster_labels is not None:
+                mesh.point_data["cluster"] = cluster_labels
+                
+            # Add density field if provided
+            if density_field is not None:
+                density_opt = self.ensure_cpu_contiguous(density_field)
+                mesh.point_data["density"] = density_opt.numpy()
+                
+            # Add point indices
+            mesh.point_data["index"] = np.arange(len(coords_np))
+            
+            # Register for cleanup
+            _mesh_manager.register_mesh(mesh)
+            
+            return mesh
 
 
 class BlenderZeroCopyBridge(ZeroCopyBridge):
@@ -397,6 +449,105 @@ class BlenderZeroCopyBridge(ZeroCopyBridge):
                 mesh.update()
 
                 return obj
+                
+    def cosmic_web_to_blender(
+        self,
+        spatial_tensor: Any,
+        cluster_labels: Optional[np.ndarray] = None,
+        name: str = "cosmic_web",
+        collection_name: str = "CosmicWeb",
+        point_size: float = 0.1,
+        **kwargs,
+    ) -> Optional[Any]:
+        """
+        Convert cosmic web data to Blender with cluster visualization.
+        
+        Args:
+            spatial_tensor: SpatialTensorDict with coordinates
+            cluster_labels: Cluster assignments
+            name: Base name for objects
+            collection_name: Collection name
+            point_size: Size of points
+            
+        Returns:
+            List of Blender objects or None
+        """
+        if albpy is None:
+            logger.warning("Blender (albpy) not available")
+            return None
+            
+        with zero_copy_context("Cosmic Web Blender conversion"):
+            with blender_memory_context():
+                # Extract coordinates
+                if hasattr(spatial_tensor, "__getitem__") and "coordinates" in spatial_tensor:
+                    coords = spatial_tensor["coordinates"]
+                else:
+                    coords = spatial_tensor
+                    
+                coords = self.ensure_cpu_contiguous(coords)
+                coords = self.validate_3d_coordinates(coords)
+                coords_np = coords.numpy()
+                
+                # Create collection
+                collection = albpy.data.collections.get(collection_name)
+                if collection is None:
+                    collection = albpy.data.collections.new(collection_name)
+                    albpy.context.scene.collection.children.link(collection)
+                
+                objects = []
+                
+                if cluster_labels is not None:
+                    # Create separate objects for each cluster
+                    unique_labels = np.unique(cluster_labels)
+                    
+                    # Create materials for clusters
+                    import colorsys
+                    n_clusters = len(unique_labels[unique_labels >= 0])
+                    
+                    for i, label in enumerate(unique_labels):
+                        mask = cluster_labels == label
+                        cluster_coords = coords_np[mask]
+                        
+                        if len(cluster_coords) == 0:
+                            continue
+                            
+                        # Create mesh for cluster
+                        cluster_name = f"{name}_cluster_{label}" if label >= 0 else f"{name}_noise"
+                        mesh = albpy.data.meshes.new(cluster_name)
+                        obj = albpy.data.objects.new(cluster_name, mesh)
+                        
+                        # Set mesh data as vertices
+                        mesh.from_pydata(cluster_coords.tolist(), [], [])
+                        mesh.update()
+                        
+                        # Create material
+                        mat = albpy.data.materials.new(name=f"mat_{cluster_name}")
+                        mat.use_nodes = True
+                        
+                        if label == -1:
+                            # Gray for noise
+                            mat.node_tree.nodes["Principled BSDF"].inputs[0].default_value = (0.5, 0.5, 0.5, 1.0)
+                        else:
+                            # Color from HSV
+                            hue = i / max(n_clusters, 1)
+                            rgb = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
+                            mat.node_tree.nodes["Principled BSDF"].inputs[0].default_value = (*rgb, 1.0)
+                            
+                        obj.data.materials.append(mat)
+                        
+                        # Add to collection
+                        collection.objects.link(obj)
+                        objects.append(obj)
+                else:
+                    # Single object for all points
+                    mesh = albpy.data.meshes.new(name)
+                    obj = albpy.data.objects.new(name, mesh)
+                    mesh.from_pydata(coords_np.tolist(), [], [])
+                    mesh.update()
+                    collection.objects.link(obj)
+                    objects.append(obj)
+                    
+                return objects
 
 
 class NumpyZeroCopyBridge(ZeroCopyBridge):
@@ -585,3 +736,129 @@ def quick_convert_tensor_to_blender(tensor: torch.Tensor, **kwargs) -> Optional[
     """Quick conversion from tensor to Blender."""
     bridge = BlenderZeroCopyBridge()
     return bridge.to_blender(tensor, **kwargs)
+
+
+def visualize_cosmic_web(
+    spatial_tensor: Any,
+    cluster_labels: Optional[np.ndarray] = None,
+    density_field: Optional[torch.Tensor] = None,
+    backend: str = "plotly",
+    **kwargs,
+) -> Any:
+    """
+    Visualize cosmic web structure with specified backend.
+    
+    Args:
+        spatial_tensor: SpatialTensorDict with coordinates
+        cluster_labels: Cluster assignments from cosmic web analysis
+        density_field: Local density values
+        backend: Visualization backend ('plotly', 'pyvista', 'blender', 'open3d')
+        **kwargs: Backend-specific parameters
+        
+    Returns:
+        Visualization object (type depends on backend)
+    """
+    if backend == "plotly":
+        # Use plotly_bridge functions
+        from .plotly_bridge import plot_cosmic_web_3d
+        return plot_cosmic_web_3d(spatial_tensor, cluster_labels, **kwargs)
+        
+    elif backend == "pyvista":
+        # Use PyVista bridge
+        bridge = PyVistaZeroCopyBridge()
+        mesh = bridge.cosmic_web_to_pyvista(
+            spatial_tensor, cluster_labels, density_field, **kwargs
+        )
+        
+        # Optional: auto-render if requested
+        if kwargs.get("show", False):
+            import pyvista as pv
+            plotter = pv.Plotter()
+            
+            if cluster_labels is not None:
+                plotter.add_mesh(
+                    mesh,
+                    scalars="cluster",
+                    point_size=kwargs.get("point_size", 5),
+                    cmap=kwargs.get("cmap", "tab20"),
+                )
+            elif density_field is not None:
+                plotter.add_mesh(
+                    mesh,
+                    scalars="density",
+                    point_size=kwargs.get("point_size", 5),
+                    cmap=kwargs.get("cmap", "hot"),
+                )
+            else:
+                plotter.add_mesh(
+                    mesh,
+                    point_size=kwargs.get("point_size", 5),
+                    color=kwargs.get("color", "white"),
+                )
+                
+            plotter.show()
+            
+        return mesh
+        
+    elif backend == "blender":
+        # Use Blender bridge
+        bridge = BlenderZeroCopyBridge()
+        return bridge.cosmic_web_to_blender(spatial_tensor, cluster_labels, **kwargs)
+        
+    elif backend == "open3d":
+        # Use Open3D (if available)
+        try:
+            import open3d as o3d
+            
+            # Extract coordinates
+            if hasattr(spatial_tensor, "__getitem__") and "coordinates" in spatial_tensor:
+                coords = spatial_tensor["coordinates"]
+            else:
+                coords = spatial_tensor
+                
+            coords = coords.cpu().numpy()
+            
+            # Create point cloud
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(coords)
+            
+            # Color by clusters if available
+            if cluster_labels is not None:
+                # Create color map
+                unique_labels = np.unique(cluster_labels)
+                n_clusters = len(unique_labels[unique_labels >= 0])
+                
+                colors = np.zeros((len(cluster_labels), 3))
+                for i, label in enumerate(unique_labels):
+                    mask = cluster_labels == label
+                    if label == -1:
+                        colors[mask] = [0.5, 0.5, 0.5]  # Gray for noise
+                    else:
+                        # Generate color
+                        hue = i / max(n_clusters, 1)
+                        import colorsys
+                        rgb = colorsys.hsv_to_rgb(hue, 0.7, 0.9)
+                        colors[mask] = rgb
+                        
+                pcd.colors = o3d.utility.Vector3dVector(colors)
+            else:
+                # Default coloring
+                pcd.paint_uniform_color([0.7, 0.7, 0.7])
+                
+            # Show if requested
+            if kwargs.get("show", False):
+                o3d.visualization.draw_geometries(
+                    [pcd],
+                    window_name=kwargs.get("window_name", "Cosmic Web - Open3D"),
+                    width=kwargs.get("width", 800),
+                    height=kwargs.get("height", 600),
+                    point_show_normal=False,
+                )
+                
+            return pcd
+            
+        except ImportError:
+            raise ImportError("Open3D not available. Install with: pip install open3d")
+            
+    else:
+        raise ValueError(f"Unsupported backend: {backend}. Choose from: plotly, pyvista, blender, open3d")
