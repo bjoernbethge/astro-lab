@@ -217,58 +217,74 @@ def create_survey_tensordict(df: pl.DataFrame, survey: str) -> SurveyTensorDict:
         y = np.cos(dec_rad) * np.sin(ra_rad)
         z = np.sin(dec_rad)
 
+        # Create [N, 3] coordinates tensor
+        coordinates = torch.stack([
+            torch.tensor(x, dtype=torch.float32),
+            torch.tensor(y, dtype=torch.float32),
+            torch.tensor(z, dtype=torch.float32)
+        ], dim=1)  # Shape: [N, 3]
+
         spatial_data = SpatialTensorDict(
-            {
-                "x": torch.tensor(x, dtype=torch.float32),
-                "y": torch.tensor(y, dtype=torch.float32),
-                "z": torch.tensor(z, dtype=torch.float32),
-            }
+            coordinates=coordinates,
+            coordinate_system="icrs",
+            unit="unit_sphere",
+            epoch=2000.0
         )
     else:
         # Default spatial data
         n_objects = len(df)
+        coordinates = torch.zeros(n_objects, 3, dtype=torch.float32)
         spatial_data = SpatialTensorDict(
-            {
-                "x": torch.zeros(n_objects, dtype=torch.float32),
-                "y": torch.zeros(n_objects, dtype=torch.float32),
-                "z": torch.zeros(n_objects, dtype=torch.float32),
-            }
+            coordinates=coordinates,
+            coordinate_system="icrs",
+            unit="unit_sphere",
+            epoch=2000.0
         )
 
     # Extract photometric data
-    mag_columns = [col for col in df.columns if "mag" in col.lower() and "_" not in col]
+    mag_columns = [col for col in df.columns if "mag" in col.lower()]
     color_columns = [
         col
         for col in df.columns
         if "_" in col and any(c in col for c in ["g", "r", "i", "bp", "rp"])
     ]
 
-    photometric_features = {}
+    # Collect magnitudes
+    magnitudes_list = []
+    bands = []
+    
     for col in mag_columns:
-        photometric_features[col] = torch.tensor(
-            df[col].to_numpy(), dtype=torch.float32
+        if col in df.columns:
+            magnitudes_list.append(torch.tensor(df[col].to_numpy(), dtype=torch.float32))
+            bands.append(col)
+    
+    # Create photometric data
+    if magnitudes_list:
+        magnitudes = torch.stack(magnitudes_list, dim=1)  # Shape: [N, B]
+        photometric_data = PhotometricTensorDict(
+            magnitudes=magnitudes,
+            bands=bands,
+            filter_system="AB",
+            is_magnitude=True
         )
-
-    for col in color_columns:
-        photometric_features[col] = torch.tensor(
-            df[col].to_numpy(), dtype=torch.float32
+    else:
+        # Create dummy photometric data if none exists
+        n_objects = len(df)
+        magnitudes = torch.zeros(n_objects, 1, dtype=torch.float32)
+        photometric_data = PhotometricTensorDict(
+            magnitudes=magnitudes,
+            bands=["dummy"],
+            filter_system="AB",
+            is_magnitude=True
         )
-
-    photometric_data = (
-        PhotometricTensorDict(photometric_features) if photometric_features else None
-    )
 
     # Create SurveyTensorDict
-    survey_dict = {
-        "spatial": spatial_data,
-        "survey_name": survey,
-        "num_objects": len(df),
-    }
-
-    if photometric_data:
-        survey_dict["photometric"] = photometric_data
-
-    return SurveyTensorDict(survey_dict)
+    return SurveyTensorDict(
+        spatial=spatial_data,
+        photometric=photometric_data,
+        survey_name=survey,
+        data_release=df.get("data_release", "unknown") if hasattr(df, "get") else "unknown"
+    )
 
 
 def create_training_splits(
