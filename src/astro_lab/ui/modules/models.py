@@ -56,12 +56,12 @@ class ModelsModule:
         # Dynamic selector based on type
         if model_type.value == "Preset":
             model_selector = mo.ui.dropdown(
-                options=list(state["available_presets"].keys()),
+                options=list(state()["available_presets"].keys()),
                 label="Select Preset",
             )
         else:
             model_selector = mo.ui.dropdown(
-                options=list(state["available_models"].keys()),
+                options=list(state()["available_models"].keys()),
                 label="Select Model",
             )
 
@@ -161,24 +161,24 @@ class ModelsModule:
         # Basic hyperparameters
         epochs = mo.ui.slider(
             value=50,
-            min=1,
-            max=500,
+            start=1,
+            stop=500,
             step=1,
-            label="Epochs",
+            label="Max Epochs",
         )
 
         batch_size = mo.ui.slider(
             value=32,
-            min=1,
-            max=256,
+            start=1,
+            stop=256,
             step=1,
             label="Batch Size",
         )
 
         learning_rate = mo.ui.number(
             value=0.001,
-            min=0.00001,
-            max=1.0,
+            start=0.00001,
+            stop=1.0,
             step=0.0001,
             label="Learning Rate",
         )
@@ -234,7 +234,7 @@ class ModelsModule:
         train_btn = mo.ui.button(
             "🚀 Start Training",
             on_click=lambda: self._start_training(model_type, model_name),
-            disabled=state["training_status"] == "training" or not model_name,
+            disabled=state()["training_status"] == "training" or not model_name,
             variant="primary",
         )
 
@@ -242,7 +242,7 @@ class ModelsModule:
         stop_btn = mo.ui.button(
             "⏹️ Stop Training",
             on_click=self._stop_training,
-            disabled=state["training_status"] != "training",
+            disabled=state()["training_status"] != "training",
             variant="danger",
         )
 
@@ -250,7 +250,7 @@ class ModelsModule:
         resume_btn = mo.ui.button(
             "▶️ Resume",
             on_click=self._resume_training,
-            disabled=state["training_status"] != "stopped",
+            disabled=state()["training_status"] != "stopped",
         )
 
         return mo.hstack([train_btn, stop_btn, resume_btn])
@@ -258,8 +258,8 @@ class ModelsModule:
     def _create_training_status(self) -> mo.Html:
         """Create training status display."""
         state = self.state()
-        status = state["training_status"]
-        progress = state["training_progress"]
+        status = state()["training_status"]
+        progress = state()["training_progress"]
 
         # Status indicator
         status_emoji = {

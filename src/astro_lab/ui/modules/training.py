@@ -43,43 +43,37 @@ def training_dashboard() -> mo.Html:
         label="Model Type",
     )
 
-    # Dynamic model selector
-    if model_type.value == "preset":
-        available = list(list_presets().keys())
-        model_select = mo.ui.dropdown(
-            options=available,
-            value=available[0] if available else None,
-            label="Select Preset",
-        )
-    else:
-        available = list(list_lightning_models().keys())
-        model_select = mo.ui.dropdown(
-            options=available,
-            value=available[0] if available else None,
-            label="Select Model",
-        )
+    # Default model selector (wird über Callbacks angepasst)
+    available_presets = list(list_presets().keys())
+    available_models = list(list_lightning_models().keys())
+
+    model_select = mo.ui.dropdown(
+        options=available_presets if available_presets else ["No models available"],
+        value=available_presets[0] if available_presets else None,
+        label="Select Model",
+    )
 
     # Training parameters
     epochs = mo.ui.slider(
-        value=50,
-        min=1,
-        max=500,
+        value=10,
+        start=1,
+        stop=500,
         step=1,
         label="Epochs",
     )
 
     learning_rate = mo.ui.number(
         value=0.001,
-        min=0.00001,
-        max=1.0,
-        step=0.0001,
+        start=0.00001,
+        stop=1.0,
+        step=0.00001,
         label="Learning Rate",
     )
 
     batch_size = mo.ui.slider(
         value=32,
-        min=1,
-        max=256,
+        start=1,
+        stop=256,
         step=1,
         label="Batch Size",
     )
@@ -98,21 +92,33 @@ def training_dashboard() -> mo.Html:
             mo.output.append(mo.md("❌ No DataModule loaded! Load data first."))
             return
 
+        # Safe value access
+        model_type_val = model_type.value if hasattr(model_type, "value") else "preset"
+        epochs_val = int(epochs.value) if hasattr(epochs, "value") else 10
+        lr_val = (
+            float(learning_rate.value) if hasattr(learning_rate, "value") else 0.001
+        )
+        batch_size_val = int(batch_size.value) if hasattr(batch_size, "value") else 32
+        optimizer_val = optimizer.value if hasattr(optimizer, "value") else "adamw"
+        model_select_val = (
+            model_select.value if hasattr(model_select, "value") else None
+        )
+
         # Prepare config
         config = {
-            "max_epochs": epochs.value,
-            "learning_rate": learning_rate.value,
-            "batch_size": batch_size.value,
-            "optimizer": optimizer.value,
+            "max_epochs": epochs_val,
+            "learning_rate": lr_val,
+            "batch_size": batch_size_val,
+            "optimizer": optimizer_val,
             "dataset": dm.survey,
             "num_workers": 0,  # For laptop
             "precision": "16-mixed",
         }
 
-        if model_type.value == "preset":
-            config["preset"] = model_select.value
+        if model_type_val == "preset":
+            config["preset"] = model_select_val
         else:
-            config["model"] = model_select.value
+            config["model"] = model_select_val
 
         try:
             # Create trainer
@@ -149,10 +155,9 @@ def training_dashboard() -> mo.Html:
             mo.output.append(mo.md(f"❌ Error: {str(e)}"))
 
     train_btn = mo.ui.button(
-        "🚀 Start Training",
+        label="🚀 Start Training",
         on_click=start_training,
-        disabled=state()["training_active"],
-        kind="primary",
+        kind="success",
     )
 
     # Display current status
@@ -221,39 +226,26 @@ def model_selector() -> mo.Html:
 
     # Preset cards
     preset_cards = []
-    for name, preset in presets.items():
-        card = mo.Html(f"""
-        <div class="model-card" style="cursor: pointer; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; margin: 0.5rem;">
-            <h4>{name}</h4>
-            <p>{preset.get("description", "No description")}</p>
-            <p><small>Model: {preset.get("model_name", "Unknown")}</small></p>
-        </div>
-        """)
-        preset_cards.append(
-            mo.ui.button(
-                card,
-                on_click=lambda n=name: show_model_info("preset", n),
-                kind="neutral",
-                full_width=True,
-            )
+    for name, description in presets.items():
+        btn = mo.ui.button(
+            label=f"{name}",
+            on_click=lambda n=name: show_model_info("preset", n),
+            kind="neutral",
+            full_width=True,
         )
+        preset_cards.append(mo.vstack([btn, mo.md(f"*{description}*")]))
 
     # Model cards
     model_cards = []
     for name, model_class in models.items():
-        card = mo.Html(f"""
-        <div class="model-card" style="cursor: pointer; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; margin: 0.5rem;">
-            <h4>{name}</h4>
-            <p>{model_class.__doc__ or "No description"}</p>
-        </div>
-        """)
+        btn = mo.ui.button(
+            label=f"{name}",
+            on_click=lambda n=name: show_model_info("model", n),
+            kind="neutral",
+            full_width=True,
+        )
         model_cards.append(
-            mo.ui.button(
-                card,
-                on_click=lambda n=name: show_model_info("model", n),
-                kind="neutral",
-                full_width=True,
-            )
+            mo.vstack([btn, mo.md(f"*{model_class.__doc__ or 'No description'}*")])
         )
 
     # Info display
@@ -311,7 +303,7 @@ def experiment_tracker() -> mo.Html:
             mo.output.append(mo.md(f"⚠️ MLflow error: {str(e)}"))
 
     refresh_btn = mo.ui.button(
-        "🔄 Refresh",
+        label="🔄 Refresh",
         on_click=refresh_experiments,
     )
 
