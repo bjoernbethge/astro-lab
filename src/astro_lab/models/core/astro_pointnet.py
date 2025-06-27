@@ -58,36 +58,67 @@ class PointNetEncoder(nn.Module):
                 output_dim=hidden_dim,
                 hidden_dims=[hidden_dim // 2],
                 activation="relu",
-                batch_norm=use_batch_norm,
+                batch_norm=False,  # Disable BatchNorm
+                layer_norm=use_batch_norm,  # Use LayerNorm if normalization requested
                 dropout=dropout,
             )
             self.point_layers.append(layer)
 
         # Global feature transformation
-        self.global_transform = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim) if use_batch_norm else nn.Identity(),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_dim, hidden_dim),
-        )
+        if use_batch_norm:
+            # Use LayerNorm instead of BatchNorm for single-sample compatibility
+            self.global_transform = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.LayerNorm(hidden_dim),  # Works with any batch size
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, hidden_dim),
+            )
+        else:
+            self.global_transform = nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(dropout),
+                nn.Linear(hidden_dim, hidden_dim),
+            )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, batch: Optional[Tensor] = None) -> Tensor:
         """
         Forward pass through PointNet encoder.
 
         Args:
-            x: Point cloud features [N, P, F] where N=batch, P=points, F=features
+            x: Point cloud features [N, F] or [B, P, F] where N=total points, B=batch, P=points, F=features
+            batch: Batch indices for graph batching (optional)
 
         Returns:
-            Global features [N, hidden_dim]
+            Global features [B, hidden_dim]
         """
+        # Handle different input formats
+        if x.dim() == 2 and batch is not None:
+            # Graph batch format [N, F] with batch indices
+            # Convert to point cloud format [B, P, F]
+            unique_batches = torch.unique(batch)
+            batch_size = len(unique_batches)
+            max_points = torch.bincount(batch).max().item()
+            
+            x_batched = torch.zeros(batch_size, max_points, x.size(1), device=x.device)
+            for i, b in enumerate(unique_batches):
+                mask = batch == b
+                points = x[mask]
+                x_batched[i, :points.size(0)] = points
+            
+            x = x_batched
+        elif x.dim() == 2:
+            # Single point cloud [P, F] -> [1, P, F]
+            x = x.unsqueeze(0)
+        
+        # Now x is [B, P, F]
         # Point-wise feature extraction
         for layer in self.point_layers:
             x = layer(x)
 
         # Global max pooling (permutation invariant)
-        global_features = torch.max(x, dim=1)[0]  # [N, hidden_dim]
+        global_features = torch.max(x, dim=1)[0]  # [B, hidden_dim]
 
         # Global feature transformation
         global_features = self.global_transform(global_features)
@@ -208,9 +239,19 @@ class AstroPointNet(AstroLightningMixin, LightningModule):
 
         Args:
             data: PyG Data object with x, edge_index, batch
+                  - x: Node features [N, num_features] 
+                  - edge_index: Edge connectivity [2, E]
+                  - batch: Batch assignment for nodes [N] (optional)
 
         Returns:
-            Node-level predictions [N, num_classes] or [N, output_dim]
+            Predictions based on task type:
+            - point_classification: [B, num_classes] where B is number of graphs
+            - point_segmentation: [N, num_classes] where N is number of nodes
+            - point_registration: [B, 12] transformation matrices
+            
+        Expected shapes:
+            - For graph-level tasks (point_classification): targets should be [B]
+            - For node-level tasks (point_segmentation): targets should be [N]
         """
         x, edge_index = data.x, data.edge_index
         batch = getattr(data, "batch", None)
@@ -219,6 +260,8 @@ class AstroPointNet(AstroLightningMixin, LightningModule):
         logger.info(
             f"[AstroPointNet] Forward: x.shape={x.shape}, expected num_features={self.num_features}"
         )
+        
+        # Validate input features
         assert x.shape[1] == self.num_features, (
             f"Input feature mismatch: x.shape[1]={x.shape[1]}, expected={self.num_features}"
         )
@@ -226,25 +269,55 @@ class AstroPointNet(AstroLightningMixin, LightningModule):
         if batch is None:
             # Single graph - create batch indices
             batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+            logger.info(f"[AstroPointNet] Single graph mode, created batch indices")
 
-        # Reshape for PointNet: [N, F] -> [1, N, F] where N=num_nodes, F=num_features
-        # Treat each node as a "point" in the point cloud
-        x = x.unsqueeze(0)  # [1, N, F]
+        # PointNet encoding with batch support
+        global_features = self.pointnet_encoder(x, batch)  # [B, hidden_dim]
+        
+        # Log shapes for debugging
+        unique_batches = torch.unique(batch)
+        logger.info(
+            f"[AstroPointNet] Batch info: {len(unique_batches)} graphs, "
+            f"global_features.shape={global_features.shape}"
+        )
 
-        # PointNet encoding
-        global_features = self.pointnet_encoder(x)  # [1, hidden_dim]
-
-        # For node-level tasks, we need to expand back to node-level
+        # Task-specific output
         if self.task == "point_classification":
             # Global classification - use global features directly
-            return self.output_head(global_features)
+            output = self.output_head(global_features)
+            logger.info(
+                f"[AstroPointNet] point_classification output shape: {output.shape} "
+                f"(expecting targets shape: [{output.shape[0]}])"
+            )
+            return output
+            
         elif self.task == "point_segmentation":
-            # Node-level segmentation - expand global features to all nodes
-            global_features = global_features.expand(x.size(1), -1)  # [N, hidden_dim]
-            return self.output_head(global_features)
+            # Node-level segmentation - need to map back to nodes
+            # Create mapping from nodes to their batch
+            node_features = []
+            for i, b in enumerate(unique_batches):
+                mask = batch == b
+                num_nodes = mask.sum()
+                # Expand global features to all nodes in this batch
+                expanded = global_features[i:i+1].expand(num_nodes, -1)
+                node_features.append(expanded)
+            
+            node_features = torch.cat(node_features, dim=0)  # [N, hidden_dim]
+            output = self.output_head(node_features)
+            logger.info(
+                f"[AstroPointNet] point_segmentation output shape: {output.shape} "
+                f"(expecting targets shape: [{output.shape[0]}])"
+            )
+            return output
+            
         elif self.task == "point_registration":
             # Registration - use global features
-            return self.output_head(global_features)
+            output = self.output_head(global_features)
+            logger.info(
+                f"[AstroPointNet] point_registration output shape: {output.shape}"
+            )
+            return output
+            
         else:
             raise ValueError(f"Unknown task: {self.task}")
 
@@ -256,19 +329,17 @@ class AstroPointNet(AstroLightningMixin, LightningModule):
             data: PyG Data object
 
         Returns:
-            Point cloud embeddings [N, hidden_dim]
+            Point cloud embeddings [B, hidden_dim]
         """
         x = data.x
+        batch = getattr(data, "batch", None)
 
-        # Reshape if needed
-        if x.dim() == 2:
-            N = 1
-            x = x.unsqueeze(0)
-        else:
-            N = x.size(0)
+        if batch is None:
+            # Single graph - create batch indices
+            batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
 
         # PointNet encoding (without final output head)
-        global_features = self.pointnet_encoder(x)
+        global_features = self.pointnet_encoder(x, batch)
 
         return global_features
 
