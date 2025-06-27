@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-AstroLab Training CLI (Lightning Edition)
-========================================
+AstroLab Training CLI (Lightning Edition) - Simplified 2025
+=========================================================
 
 CLI for training astronomical ML models using Lightning.
+Jetzt minimal, robust und benutzerfreundlich!
 """
 
 import argparse
@@ -12,7 +13,14 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from astro_lab.models.core import list_lightning_models, list_presets
+import torch
+
+try:
+    torch.set_float32_matmul_precision("high")
+except Exception:
+    pass
+
+from astro_lab.models.core import list_presets
 from astro_lab.training import train_model
 
 from .config import load_and_prepare_training_config
@@ -29,191 +37,141 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
 
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create the argument parser for training CLI."""
-    available_models = list(list_lightning_models().keys())
-    available_presets = list(list_presets().keys())
-
+    """Create the argument parser for training CLI (minimal version)."""
     parser = argparse.ArgumentParser(
-        description="Train astronomical ML models with AstroLab Lightning",
+        description="Train astronomical ML models with AstroLab (2025 minimal edition)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Usage examples:
-  astro-lab train --config myexp.yaml
-  astro-lab train --preset gaia_fast --epochs 10
-  astro-lab train --model survey_gnn --dataset gaia --epochs 2
-  astro-lab train --model gaia_classifier --dataset gaia --batch-size 64 --learning-rate 0.001
+Beispiele:
+  python -m src.astro_lab.cli.train --preset graph_classifier_small --dataset gaia
+  python -m src.astro_lab.cli.train --preset node_classifier_medium --dataset sdss --epochs 10
+  python -m src.astro_lab.cli.train --list-presets
 """,
-    )
-
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to YAML configuration file (overrides all other options except explicit CLI overrides)",
     )
     parser.add_argument(
         "--preset",
         type=str,
-        choices=available_presets,
-        help="Use preset configuration (can be overridden by CLI parameters)",
-    )
-    parser.add_argument(
-        "--model",
-        type=str,
-        choices=available_models,
-        help="Model to train",
+        help="Name des Model-Presets (z.B. graph_classifier_small, node_classifier_medium)",
     )
     parser.add_argument(
         "--dataset",
         type=str,
+        default="gaia",
         choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
-        help="Survey/dataset to use",
+        help="Datensatz (default: gaia)",
     )
     parser.add_argument(
         "--epochs",
         type=int,
-        help="Number of training epochs",
+        default=None,
+        help="Anzahl Trainings-Epochen (optional, überschreibt Preset)",
     )
     parser.add_argument(
-        "--batch-size",
-        type=int,
-        help="Batch size for training",
-    )
-    parser.add_argument(
-        "--learning-rate",
-        type=float,
-        help="Learning rate",
-    )
-    parser.add_argument(
-        "--weight-decay",
-        type=float,
-        help="Weight decay for regularization",
-    )
-    parser.add_argument(
-        "--optimizer",
-        type=str,
-        choices=["adamw", "adam", "sgd", "rmsprop"],
-        help="Optimizer to use",
-    )
-    parser.add_argument(
-        "--scheduler",
-        type=str,
-        choices=["cosine", "step", "exponential", "onecycle", "none"],
-        help="Learning rate scheduler",
-    )
-    parser.add_argument(
-        "--precision",
-        type=str,
-        choices=["16-mixed", "bf16-mixed", "32-true"],
-        help="Training precision (16-mixed recommended for RTX 4070)",
-    )
-    parser.add_argument(
-        "--gradient-clip-val",
-        type=float,
-        help="Gradient clipping value",
-    )
-    parser.add_argument(
-        "--accumulate-grad-batches",
-        type=int,
-        help="Number of batches to accumulate gradients",
-    )
-    parser.add_argument(
-        "--experiment-name",
-        type=str,
-        help="MLflow experiment name",
-    )
-    parser.add_argument(
-        "--checkpoint-dir",
-        type=Path,
-        help="Directory for model checkpoints",
-    )
-    parser.add_argument(
-        "--resume",
-        type=Path,
-        help="Resume from checkpoint",
-    )
-    parser.add_argument(
-        "--num-workers",
-        type=int,
-        help="Number of data loader workers",
-    )
-    parser.add_argument(
-        "--max-samples",
-        type=int,
-        help="Maximum number of samples to use (for testing)",
-    )
-    parser.add_argument(
-        "--early-stopping-patience",
-        type=int,
-        help="Early stopping patience",
-    )
-    parser.add_argument(
-        "--fast-dev-run",
+        "--list-presets",
         action="store_true",
-        help="Run a fast development test (1 batch)",
+        help="Zeigt alle verfügbaren Presets mit Beschreibung",
     )
     parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
-        help="Verbose logging",
+        help="Verbose output",
     )
-
     return parser
 
 
+def print_presets():
+    presets = list_presets()
+    print("\nVerfügbare Presets:")
+    for name, desc in presets.items():
+        print(f"  {name:28} {desc}")
+    print(
+        "\nBeispiel: python -m src.astro_lab.cli.train --preset graph_classifier_small --dataset gaia\n"
+    )
+
+
 def main(args=None) -> int:
-    """Main CLI function - parses arguments and calls AstroTrainer."""
+    """Main CLI function - minimal, robust, preset-basiert."""
     if args is None:
         parser = create_parser()
         args = parser.parse_args()
 
     logger = setup_logging(args.verbose)
 
+    if hasattr(args, "list_presets") and args.list_presets:
+        print_presets()
+        return 0
+
+    # Unterstützung für beide CLI-Varianten
+    preset = getattr(args, "preset", None)
+    model = getattr(args, "model", None)
+
+    # Wenn --model verwendet wurde, verwende es als Preset
+    if model and not preset:
+        preset = model
+
+    if not preset:
+        logger.error(
+            "❌ Du musst ein Preset/Model mit --preset oder --model angeben! Beispiel: --preset graph_classifier_small"
+        )
+        print_presets()
+        return 1
+
+    # Hardware defaults
+    if torch.cuda.is_available():
+        accelerator = "gpu"
+        precision = "16-mixed"
+        num_workers = getattr(args, "num_workers", 4)
+    else:
+        accelerator = "cpu"
+        precision = "32-true"
+        num_workers = 0
+
+    # Preset-Config laden und überschreiben
+    cli_overrides = {
+        "dataset": getattr(args, "dataset", "gaia"),
+        "accelerator": accelerator,
+        "precision": precision,
+        "num_workers": num_workers,
+    }
+
+    # Zusätzliche CLI-Argumente verarbeiten
+    if hasattr(args, "epochs") and args.epochs:
+        cli_overrides["epochs"] = args.epochs
+    if hasattr(args, "batch_size") and args.batch_size:
+        cli_overrides["batch_size"] = args.batch_size
+    if hasattr(args, "learning_rate") and args.learning_rate:
+        cli_overrides["learning_rate"] = args.learning_rate
+    if hasattr(args, "max_samples") and args.max_samples:
+        cli_overrides["max_samples"] = args.max_samples
+    if hasattr(args, "devices") and args.devices:
+        cli_overrides["devices"] = args.devices
+    if hasattr(args, "precision") and args.precision:
+        cli_overrides["precision"] = args.precision
+    if hasattr(args, "num_features") and args.num_features:
+        cli_overrides["num_features"] = args.num_features
+
+    config = load_and_prepare_training_config(
+        preset=preset, cli_overrides=cli_overrides
+    )
+
+    logger.info(
+        f"Training mit Preset '{preset}' auf Datensatz '{cli_overrides['dataset']}' für {config.get('epochs', 10)} Epochen"
+    )
+    logger.info(
+        f"Hardware: {accelerator}, Precision: {precision}, num_workers: {num_workers}"
+    )
+    logger.info(f"Alle Parameter: {config}")
+
     try:
-        # CLI-Overrides sammeln - erweiterte Liste von Parametern
-        cli_overrides = {}
-        for key in [
-            "model",
-            "dataset",
-            "epochs",
-            "batch_size",
-            "learning_rate",
-            "weight_decay",
-            "optimizer",
-            "scheduler",
-            "precision",
-            "gradient_clip_val",
-            "accumulate_grad_batches",
-            "experiment_name",
-            "checkpoint_dir",
-            "resume",
-            "num_workers",
-            "max_samples",
-            "early_stopping_patience",
-            "fast_dev_run",
-        ]:
-            if hasattr(args, key) and getattr(args, key) is not None:
-                cli_overrides[key] = getattr(args, key)
-
-        logger.info(f"[CLI] CLI overrides: {cli_overrides}")
-
-        # Load and prepare configuration
-        config = load_and_prepare_training_config(
-            config_path=args.config,
-            preset=getattr(args, "preset", None),
-            cli_overrides=cli_overrides,
-        )
-
-        logger.info(
-            f"[CLI] Final config: num_features={config.get('num_features', 'NOT_SET')}"
-        )
-
-        # Start training
         success = train_model(config)
         return 0 if success else 1
-
     except Exception as e:
-        logger.error(f"Training failed: {e}")
+        logger.error(f"Training fehlgeschlagen: {e}")
+        if getattr(args, "verbose", False):
+            import traceback
+
+            traceback.print_exc()
         return 1
 
 
