@@ -21,6 +21,7 @@ docs/auto/
 
 # Data and results
 data/
+project_documentation/
 results/
 *.log
 
