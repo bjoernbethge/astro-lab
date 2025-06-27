@@ -547,6 +547,10 @@ We welcome contributions to cosmic web analysis features! See our [contribution 
 - Extending survey support
 - Improving performance with GPU acceleration
 
+## 🙏 Acknowledgments
+
+Special thanks to the **Astro Graph Agent Team** for their invaluable contributions to the advanced visualization modules and cosmic web analysis features. Their expertise in astronomical data visualization and graph neural networks has been instrumental in making AstroLab a comprehensive Astro GNN laboratory.
+
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
