@@ -20,7 +20,6 @@ from .modules import (
     clustering_visualizer,
     cosmograph_viewer,
     # Data modules
-    data_explorer,
     data_loader,
     experiment_tracker,
     gpu_monitor,
@@ -156,7 +155,7 @@ class AstroLabDashboard:
             [
                 mo.tabs(
                     {
-                        "📂 Explorer": data_explorer(),
+                        "📂 Explorer": data_loader(),
                         "🔄 Loader": data_loader(),
                         "📁 Catalogs": catalog_manager(),
                     }
@@ -429,7 +428,7 @@ def create_compact_dashboard() -> mo.Html:
                 {
                     "📊 Data": mo.vstack(
                         [
-                            data_explorer(),
+                            data_loader(),
                             data_loader(),
                         ]
                     ),
@@ -462,7 +461,7 @@ def create_demo_dashboard() -> mo.Html:
         """),
             mo.tabs(
                 {
-                    "1️⃣ Load Data": data_explorer(),
+                    "1️⃣ Load Data": data_loader(),
                     "2️⃣ Visualize": plot_creator(),
                     "3️⃣ Train Model": training_dashboard(),
                     "4️⃣ Analyze": analysis_panel(),
