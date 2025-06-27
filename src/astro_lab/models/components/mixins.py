@@ -31,7 +31,26 @@ class TrainingMixin:
         target = getattr(batch, "y", None)
         pred = self(data)
         loss = self.criterion(pred, target)
-        self.log("train_loss", loss, prog_bar=True)
+
+        # Get batch size from the batch object - robust handling
+        batch_size = 1  # Default fallback
+        if hasattr(batch, "batch") and batch.batch is not None:
+            # Graph batch - count unique batch indices
+            batch_size = len(torch.unique(batch.batch))
+        elif hasattr(batch, "ptr") and batch.ptr is not None:
+            # Alternative batch representation
+            batch_size = len(batch.ptr) - 1
+        elif target is not None and target.dim() > 0:
+            # Use target size as fallback
+            batch_size = target.size(0)
+        elif hasattr(batch, "num_graphs"):
+            # PyG Batch object
+            batch_size = batch.num_graphs
+        elif hasattr(batch, "x") and batch.x is not None:
+            # Single graph - use number of nodes
+            batch_size = batch.x.size(0)
+
+        self.log("train_loss", loss, prog_bar=True, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch, batch_idx: int) -> None:
@@ -40,13 +59,33 @@ class TrainingMixin:
         target = getattr(batch, "y", None)
         pred = self(data)
         loss = self.criterion(pred, target)
-        self.log("val_loss", loss, prog_bar=True)
+
+        # Get batch size from the batch object - robust handling
+        batch_size = 1  # Default fallback
+        if hasattr(batch, "batch") and batch.batch is not None:
+            # Graph batch - count unique batch indices
+            batch_size = len(torch.unique(batch.batch))
+        elif hasattr(batch, "ptr") and batch.ptr is not None:
+            # Alternative batch representation
+            batch_size = len(batch.ptr) - 1
+        elif target is not None and target.dim() > 0:
+            # Use target size as fallback
+            batch_size = target.size(0)
+        elif hasattr(batch, "num_graphs"):
+            # PyG Batch object
+            batch_size = batch.num_graphs
+        elif hasattr(batch, "x") and batch.x is not None:
+            # Single graph - use number of nodes
+            batch_size = batch.x.size(0)
+
+        self.log("val_loss", loss, prog_bar=True, batch_size=batch_size)
+
         if self.task.endswith("classification") or self.task.endswith("segmentation"):
             acc = (pred.argmax(dim=1) == target).float().mean()
-            self.log("val_acc", acc, prog_bar=True)
+            self.log("val_acc", acc, prog_bar=True, batch_size=batch_size)
         elif self.task.endswith("regression") or self.task == "forecasting":
             mae = torch.abs(pred - target).mean()
-            self.log("val_mae", mae, prog_bar=True)
+            self.log("val_mae", mae, prog_bar=True, batch_size=batch_size)
 
     def test_step(self, batch, batch_idx: int) -> None:
         """Generic test step for all AstroLab models."""
@@ -54,13 +93,33 @@ class TrainingMixin:
         target = getattr(batch, "y", None)
         pred = self(data)
         loss = self.criterion(pred, target)
-        self.log("test_loss", loss)
+
+        # Get batch size from the batch object - robust handling
+        batch_size = 1  # Default fallback
+        if hasattr(batch, "batch") and batch.batch is not None:
+            # Graph batch - count unique batch indices
+            batch_size = len(torch.unique(batch.batch))
+        elif hasattr(batch, "ptr") and batch.ptr is not None:
+            # Alternative batch representation
+            batch_size = len(batch.ptr) - 1
+        elif target is not None and target.dim() > 0:
+            # Use target size as fallback
+            batch_size = target.size(0)
+        elif hasattr(batch, "num_graphs"):
+            # PyG Batch object
+            batch_size = batch.num_graphs
+        elif hasattr(batch, "x") and batch.x is not None:
+            # Single graph - use number of nodes
+            batch_size = batch.x.size(0)
+
+        self.log("test_loss", loss, batch_size=batch_size)
+
         if self.task.endswith("classification") or self.task.endswith("segmentation"):
             acc = (pred.argmax(dim=1) == target).float().mean()
-            self.log("test_acc", acc)
+            self.log("test_acc", acc, batch_size=batch_size)
         elif self.task.endswith("regression") or self.task == "forecasting":
             mae = torch.abs(pred - target).mean()
-            self.log("test_mae", mae)
+            self.log("test_mae", mae, batch_size=batch_size)
 
 
 class OptimizerMixin:
