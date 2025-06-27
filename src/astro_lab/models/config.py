@@ -184,6 +184,7 @@ PRESETS = {
         temporal_conv_type="gru",
         sequence_length=10,
         learning_rate=0.001,
+        model_params={"num_features": 64, "conv_type": "gcn", "use_batch_norm": False},  # Disable batch norm for stability
     ),
     "temporal_classifier_medium": AstroTemporalGNNConfig(
         task="time_series_classification",

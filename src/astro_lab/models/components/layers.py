@@ -36,8 +36,9 @@ def create_mlp(
     dropout: float = 0.1,
     activation: str = "relu",
     batch_norm: bool = False,
+    layer_norm: bool = False,
 ) -> nn.Module:
-    """Create simple MLP."""
+    """Create simple MLP with optional normalization."""
     if hidden_dims is None:
         hidden_dims = [input_dim // 2]
 
@@ -50,6 +51,8 @@ def create_mlp(
 
         if batch_norm:
             layers.append(nn.BatchNorm1d(hidden_dim))
+        elif layer_norm:
+            layers.append(nn.LayerNorm(hidden_dim))
 
         layers.append(get_activation(activation))
 
