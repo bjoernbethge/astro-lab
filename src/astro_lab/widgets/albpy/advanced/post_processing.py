@@ -1,19 +1,8 @@
 """
- Post-Processing for Astronomical Visualization
-======================================================
+Advanced post-processing for astronomical data visualization.
 
-Cinematic post-processing effects for astronomical scenes:
-- Lens flares and optical effects
-- Color grading and tone mapping
-- Motion blur and depth of field
-- Artistic filters and grain
-- Star glow and scattering
-
-Optimized for EEVEE Next compositor.
-
-Author: Astro-Graph Agent
-Version: 1.0.0
-Blender: 4.4+
+This module provides post-processing effects for cosmic web structures,
+including scientific color mapping, data enhancement, and visualization optimization.
 """
 
 # pyright: reportAttributeAccessIssue=false
@@ -40,6 +29,8 @@ warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
 
 # NumPy and mathutils are already imported above
+
+# Author: Bjoern Bethge
 
 
 class PostProcessingSuite:

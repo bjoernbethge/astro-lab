@@ -1,19 +1,8 @@
 """
-Blender 4.4 Procedural Astronomical Geometry Module
-==================================================
+Advanced geometry nodes for astronomical data visualization.
 
-Create procedural astronomical structures using Geometry Nodes:
-- Galaxy spiral generation with stellar populations
-- HR diagram 3D visualizations
-- Stellar classification systems
-- Procedural nebula structures
-- Real-time stellar evolution
-
-Optimized for scientific accuracy and performance.
-
-Author: Astro-Graph Agent
-Version: 1.0.0
-Blender: 4.4+
+This module provides geometry node setups for cosmic web structures,
+including procedural generation, data-driven geometry, and scientific visualization.
 """
 
 # pyright: reportAttributeAccessIssue=false
@@ -35,6 +24,8 @@ from .. import numpy_compat  # noqa: F401
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+# Author: Bjoern Bethge
 
 
 class ProceduralAstronomy:

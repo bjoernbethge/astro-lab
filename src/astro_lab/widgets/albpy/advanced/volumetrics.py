@@ -1,19 +1,8 @@
 """
-Blender 4.4 Volumetric Astronomical Rendering Module
-===================================================
+Advanced volumetric rendering for astronomical data visualization.
 
-Create realistic volumetric effects for astronomy:
-- Nebula emission and absorption
-- Stellar wind dynamics
-- Galactic dust lanes
-- Planetary atmospheres with scattering
-- Interstellar medium visualization
-
-Optimized for EEVEE Next volumetric rendering.
-
-Author: Astro-Graph Agent
-Version: 1.0.0
-Blender: 4.4+
+This module provides volumetric rendering techniques for cosmic web structures,
+including density fields, emission nebulae, and 3D data visualization.
 """
 
 # pyright: reportAttributeAccessIssue=false
@@ -35,6 +24,8 @@ from .. import numpy_compat  # noqa: F401
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+# Author: Bjoern Bethge
 
 
 class VolumetricAstronomy:

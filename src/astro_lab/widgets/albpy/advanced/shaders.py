@@ -1,19 +1,8 @@
 """
- Astronomical Shaders for Blender 4.4
-==============================================
+Advanced shader development for astronomical data visualization.
 
-Create scientifically accurate shaders for astronomical objects:
-- Stellar blackbody radiation with spectral classification
-- Planetary surface materials based on composition
-- Nebula emission line spectra
-- Atmospheric scattering (Rayleigh + Mie)
-- Physically based rendering for space scenes
-
-Optimized for EEVEE Next and Cycles.
-
-Author: Astro-Graph Agent
-Version: 1.0.0
-Blender: 4.4+
+This module provides custom shaders for cosmic web structures,
+including spectral rendering, emission effects, and scientific visualization.
 """
 
 # pyright: reportAttributeAccessIssue=false
@@ -35,6 +24,8 @@ from .. import numpy_compat  # noqa: F401
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+# Author: Bjoern Bethge
 
 
 class AstronomicalShaders:

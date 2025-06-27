@@ -33,7 +33,7 @@ from .dashboard import (
 
 # Version info
 __version__ = "2.0.0"
-__author__ = "AstroLab Team"
+__author__ = "Bjoern Bethge"
 
 # Main exports
 __all__ = [

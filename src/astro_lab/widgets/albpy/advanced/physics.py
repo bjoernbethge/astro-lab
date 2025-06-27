@@ -1,19 +1,8 @@
 """
-Blender 4.4 Astronomical Physics Simulation Module
-=================================================
+Advanced physics simulation for astronomical data visualization.
 
-Create realistic physics simulations for astronomy:
-- N-body gravitational systems
-- Orbital mechanics with Keplerian elements
-- Tidal forces and resonances
-- Stellar formation and collapse
-- Binary system evolution
-
-Optimized for scientific accuracy and real-time visualization.
-
-Author: Astro-Graph Agent
-Version: 1.0.0
-Blender: 4.4+
+This module provides physics-based simulations for cosmic web structures,
+including gravitational interactions, particle dynamics, and fluid simulations.
 """
 
 # pyright: reportAttributeAccessIssue=false
@@ -35,6 +24,8 @@ from .. import numpy_compat  # noqa: F401
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
 warnings.filterwarnings("ignore", category=UserWarning, module="numpy")
+
+# Author: Bjoern Bethge
 
 
 class OrbitalMechanics:
