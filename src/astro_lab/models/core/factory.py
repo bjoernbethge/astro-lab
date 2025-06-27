@@ -38,6 +38,7 @@ def create_model(
     num_features: int,
     num_classes: int,
     task: Optional[str] = None,
+    hidden_dim: Optional[int] = None,
     **kwargs,
 ) -> Union[AstroNodeGNN, AstroGraphGNN, AstroTemporalGNN, AstroPointNet]:
     """
@@ -81,6 +82,11 @@ def create_model(
     if num_classes <= 0:
         raise ValueError(f"num_classes must be positive, got {num_classes}")
 
+    # Set hidden_dim if not provided
+    if hidden_dim is None:
+        hidden_dim = num_features
+        logger.info(f"Using hidden_dim={hidden_dim} (same as num_features)")
+
     # Create model with appropriate task validation
     try:
         if model_type == "node":
@@ -88,6 +94,7 @@ def create_model(
                 num_features=num_features,
                 num_classes=num_classes,
                 task=task,
+                hidden_dim=hidden_dim,
                 **kwargs,
             )
         elif model_type == "graph":
@@ -95,6 +102,7 @@ def create_model(
                 num_features=num_features,
                 num_classes=num_classes,
                 task=task,
+                hidden_dim=hidden_dim,
                 **kwargs,
             )
         elif model_type == "temporal":
@@ -102,6 +110,7 @@ def create_model(
                 num_features=num_features,
                 num_classes=num_classes,
                 task=task,
+                hidden_dim=hidden_dim,
                 **kwargs,
             )
         elif model_type == "point":
@@ -109,6 +118,7 @@ def create_model(
                 num_features=num_features,
                 num_classes=num_classes,
                 task=task,
+                hidden_dim=hidden_dim,
                 **kwargs,
             )
     except Exception as e:
@@ -153,7 +163,28 @@ def create_model_from_config(
     Returns:
         Configured model instance
     """
+    # Pflichtparameter, die nicht doppelt übergeben werden dürfen
+    remove_keys = [
+        "num_features",
+        "num_classes",
+        "hidden_dim",
+        "use_batch_norm",
+        "conv_type",
+        "pooling",
+        "temporal_model",
+        "sequence_length",
+        "task",
+        "learning_rate",
+        "optimizer",
+        "scheduler",
+        "weight_decay",
+        "dropout",
+        "num_layers",
+    ]
     if isinstance(config, AstroNodeGNNConfig):
+        model_params = config.model_params.copy()
+        for k in remove_keys:
+            model_params.pop(k, None)
         return create_astro_node_gnn(
             num_features=config.model_params.get("num_features", 64),
             num_classes=config.num_classes or 2,
@@ -167,9 +198,12 @@ def create_model_from_config(
             weight_decay=config.weight_decay,
             dropout=config.dropout,
             use_batch_norm=config.use_batch_norm,
-            **config.model_params,
+            **model_params,
         )
     elif isinstance(config, AstroGraphGNNConfig):
+        model_params = config.model_params.copy()
+        for k in remove_keys:
+            model_params.pop(k, None)
         return create_astro_graph_gnn(
             num_features=config.model_params.get("num_features", 64),
             num_classes=config.num_classes or 2,
@@ -184,9 +218,12 @@ def create_model_from_config(
             weight_decay=config.weight_decay,
             dropout=config.dropout,
             use_batch_norm=config.use_batch_norm,
-            **config.model_params,
+            **model_params,
         )
     elif isinstance(config, AstroTemporalGNNConfig):
+        model_params = config.model_params.copy()
+        for k in remove_keys:
+            model_params.pop(k, None)
         return create_astro_temporal_gnn(
             num_features=config.model_params.get("num_features", 64),
             num_classes=config.num_classes or 2,
@@ -202,9 +239,12 @@ def create_model_from_config(
             weight_decay=config.weight_decay,
             dropout=config.dropout,
             use_batch_norm=config.model_params.get("use_batch_norm", True),
-            **config.model_params,
+            **model_params,
         )
     elif isinstance(config, AstroPointNetConfig):
+        model_params = config.model_params.copy()
+        for k in remove_keys:
+            model_params.pop(k, None)
         return create_astro_pointnet(
             num_features=config.model_params.get("num_features", 3),
             num_classes=config.num_classes or 2,
@@ -217,7 +257,7 @@ def create_model_from_config(
             weight_decay=config.weight_decay,
             dropout=config.dropout,
             use_batch_norm=config.model_params.get("use_batch_norm", True),
-            **config.model_params,
+            **model_params,
         )
     else:
         raise ValueError(f"Unknown config type: {type(config)}")
