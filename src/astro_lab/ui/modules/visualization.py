@@ -6,27 +6,28 @@ UI components for advanced astronomical visualizations using AstroLab's
 specialized visualization systems (NOT boring standard Plotly!).
 """
 
+import logging
+from typing import Any, Dict, List, Optional, Tuple
+
 import marimo as mo
-from typing import Dict, List, Optional, Any, Tuple
 import numpy as np
 import torch
-import logging
 
 # Import AstroLab's advanced visualization systems
 from astro_lab.widgets import (
     AstroLabWidget,
     CosmographBridge,
 )
-from astro_lab.widgets.tensor_bridge import (
-    PyVistaZeroCopyBridge,
-    BlenderZeroCopyBridge,
-    transfer_to_framework,
-    visualize_cosmic_web,
-)
 from astro_lab.widgets.plotly_bridge import (
     plot_cosmic_web_3d,
     plot_density_heatmap,
     plot_multi_scale_clustering,
+)
+from astro_lab.widgets.tensor_bridge import (
+    BlenderZeroCopyBridge,
+    PyVistaZeroCopyBridge,
+    transfer_to_framework,
+    visualize_cosmic_web,
 )
 
 # Import common UI components
@@ -41,12 +42,14 @@ def plot_creator() -> mo.Html:
     No boring standard plots - only cool astronomical visualizations!
     """
     # State management
-    state, set_state = mo.state({
-        "backend": "pyvista",
-        "visualization": None,
-        "viz_config": {},
-    })
-    
+    state, set_state = mo.state(
+        {
+            "backend": "pyvista",
+            "visualization": None,
+            "viz_config": {},
+        }
+    )
+
     # Backend selector - no standard plotly option!
     backend = mo.ui.dropdown(
         options={
@@ -56,10 +59,10 @@ def plot_creator() -> mo.Html:
             "open3d": "🎯 Open3D (Point Clouds)",
             "tensor_bridge": "🔗 Zero-Copy Bridge",
         },
-        value=state["backend"],
+        value=state()["backend"],
         label="Visualization Backend",
     )
-    
+
     # Visualization type based on backend
     viz_types = {
         "pyvista": ["point_cloud", "mesh", "volume", "streamlines"],
@@ -68,22 +71,23 @@ def plot_creator() -> mo.Html:
         "open3d": ["point_cloud", "octree", "voxel_grid"],
         "tensor_bridge": ["multi_backend", "live_sync"],
     }
-    
+
+    # Default visualization type (statisch)
     viz_type = mo.ui.dropdown(
-        options=viz_types.get(backend.value, ["default"]),
-        value=viz_types.get(backend.value, ["default"])[0],
+        options=["point_cloud", "mesh", "volume", "streamlines"],
+        value="point_cloud",
         label="Visualization Type",
     )
-    
+
     # Advanced parameters
     point_size = mo.ui.slider(
         value=2.0,
-        min=0.1,
-        max=10.0,
+        start=0.1,
+        stop=10.0,
         step=0.1,
         label="Point Size",
     )
-    
+
     quality = mo.ui.dropdown(
         options={
             "draft": "🏃 Draft (Fast)",
@@ -94,7 +98,7 @@ def plot_creator() -> mo.Html:
         value="preview",
         label="Render Quality",
     )
-    
+
     # Color mapping
     color_by = mo.ui.dropdown(
         options={
@@ -109,7 +113,7 @@ def plot_creator() -> mo.Html:
         value="spectral_type",
         label="Color Mapping",
     )
-    
+
     # Advanced effects
     effects = mo.ui.multiselect(
         options=[
@@ -123,48 +127,46 @@ def plot_creator() -> mo.Html:
         value=["ambient_occlusion"],
         label="Visual Effects",
     )
-    
+
     def create_advanced_visualization():
         """Create visualization using selected backend."""
         dm = get_current_datamodule()
         if not dm:
             mo.output.append(mo.md("❌ No data loaded!"))
             return
-            
+
         try:
             mo.output.append(mo.md(f"🎨 Creating {backend.value} visualization..."))
-            
+
             # Get spatial data
-            if hasattr(dm._main_data, 'pos'):
+            if hasattr(dm._main_data, "pos"):
                 coords = dm._main_data.pos
-            elif hasattr(dm._main_data, 'x'):
+            elif hasattr(dm._main_data, "x"):
                 coords = dm._main_data.x[:, :3]  # First 3 features as coords
             else:
                 mo.output.append(mo.md("❌ No spatial data found!"))
                 return
-                
+
             # Create visualization based on backend
             if backend.value == "pyvista":
                 bridge = PyVistaZeroCopyBridge()
                 mesh = bridge.to_pyvista(coords, point_size=point_size.value)
-                
+
                 # Add effects
                 if "ambient_occlusion" in effects.value:
                     mesh.compute_normals(inplace=True)
-                    
+
                 mo.output.append(mo.md("✅ PyVista mesh created! Use external viewer."))
                 set_state(lambda s: {**s, "visualization": mesh})
-                
+
             elif backend.value == "blender":
                 bridge = BlenderZeroCopyBridge()
                 obj = bridge.to_blender(
-                    coords,
-                    name=f"astro_{viz_type.value}",
-                    collection_name="AstroLab"
+                    coords, name=f"astro_{viz_type.value}", collection_name="AstroLab"
                 )
                 mo.output.append(mo.md("✅ Blender object created!"))
                 set_state(lambda s: {**s, "visualization": obj})
-                
+
             elif backend.value == "cosmograph":
                 bridge = CosmographBridge()
                 config = {
@@ -175,43 +177,42 @@ def plot_creator() -> mo.Html:
                 viz = bridge.create_visualization(dm._main_data, config)
                 mo.output.append(mo.md("✅ Cosmograph visualization created!"))
                 mo.output.append(mo.Html(viz))
-                
+
             elif backend.value == "open3d":
                 # Use tensor bridge for Open3D
                 viz = visualize_cosmic_web(
-                    coords,
-                    backend="open3d",
-                    point_size=point_size.value,
-                    show=False
+                    coords, backend="open3d", point_size=point_size.value, show=False
                 )
                 mo.output.append(mo.md("✅ Open3D point cloud created!"))
                 set_state(lambda s: {**s, "visualization": viz})
-                
+
             elif backend.value == "tensor_bridge":
                 # Multi-backend demo
                 mo.output.append(mo.md("🔗 Creating multi-backend visualization..."))
-                
+
                 # Transfer to multiple frameworks
                 pv_mesh = transfer_to_framework(coords, "pyvista")
                 np_array = transfer_to_framework(coords, "numpy")
-                
-                mo.output.append(mo.md(f"""
+
+                mo.output.append(
+                    mo.md(f"""
                 ✅ Zero-copy transfer completed:
                 - PyVista mesh: {pv_mesh.n_points} points
                 - NumPy array: {np_array.shape}
                 - Memory overhead: ~0 bytes (zero-copy)
-                """))
-                
+                """)
+                )
+
         except Exception as e:
             mo.output.append(mo.md(f"❌ Error: {str(e)}"))
             logger.error(f"Visualization error: {e}")
-    
+
     create_btn = mo.ui.button(
-        "🚀 Create Visualization",
+        label="🚀 Create Visualization",
         on_click=create_advanced_visualization,
-        kind="primary",
+        kind="success",
     )
-    
+
     # Export options
     export_format = mo.ui.dropdown(
         options={
@@ -224,43 +225,53 @@ def plot_creator() -> mo.Html:
         value="gltf",
         label="Export Format",
     )
-    
+
     def export_visualization():
         """Export visualization to file."""
-        if state["visualization"] is None:
+        if state()["visualization"] is None:
             mo.output.append(mo.md("❌ No visualization to export!"))
             return
-            
+
         mo.output.append(mo.md(f"📤 Exporting as {export_format.value}..."))
         # Export logic would go here
         mo.output.append(mo.md("✅ Export completed!"))
-    
+
     export_btn = mo.ui.button(
-        "📤 Export",
+        label="📤 Export",
         on_click=export_visualization,
-        disabled=state["visualization"] is None,
-        kind="secondary",
+        # disabled=state()["visualization"] is None,  # Disabled property not supported
+        kind="neutral",
     )
-    
-    return mo.vstack([
-        mo.md("## 🎨 Advanced Visualization Creator"),
-        mo.md("*Create stunning astronomical visualizations with multiple backends*"),
-        backend,
-        viz_type,
-        mo.accordion({
-            "🎨 Visual Settings": mo.vstack([
-                point_size,
-                quality,
-                color_by,
-                effects,
-            ]),
-            "📤 Export Options": mo.vstack([
-                export_format,
-                export_btn,
-            ]),
-        }),
-        create_btn,
-    ])
+
+    return mo.vstack(
+        [
+            mo.md("## 🎨 Advanced Visualization Creator"),
+            mo.md(
+                "*Create stunning astronomical visualizations with multiple backends*"
+            ),
+            backend,
+            viz_type,
+            mo.accordion(
+                {
+                    "🎨 Visual Settings": mo.vstack(
+                        [
+                            point_size,
+                            quality,
+                            color_by,
+                            effects,
+                        ]
+                    ),
+                    "📤 Export Options": mo.vstack(
+                        [
+                            export_format,
+                            export_btn,
+                        ]
+                    ),
+                }
+            ),
+            create_btn,
+        ]
+    )
 
 
 def cosmic_web_visualizer() -> mo.Html:
@@ -269,12 +280,14 @@ def cosmic_web_visualizer() -> mo.Html:
     This is where the magic happens!
     """
     # State
-    state, set_state = mo.state({
-        "spatial_data": None,
-        "analysis_results": None,
-        "current_viz": None,
-    })
-    
+    state, set_state = mo.state(
+        {
+            "spatial_data": None,
+            "analysis_results": None,
+            "current_viz": None,
+        }
+    )
+
     # Visualization presets
     preset = mo.ui.dropdown(
         options={
@@ -287,17 +300,16 @@ def cosmic_web_visualizer() -> mo.Html:
         value="stellar_neighborhood",
         label="Visualization Preset",
     )
-    
+
     # Scale selector
     scale = mo.ui.slider(
         value=10.0,
-        min=0.1,
-        max=1000.0,
+        start=0.1,
+        stop=1000.0,
         step=0.1,
         label="Scale (pc/Mpc)",
-        log_scale=True,
     )
-    
+
     # Clustering parameters
     clustering_method = mo.ui.dropdown(
         options={
@@ -310,7 +322,7 @@ def cosmic_web_visualizer() -> mo.Html:
         value="dbscan",
         label="Clustering Method",
     )
-    
+
     # Visualization style
     style = mo.ui.dropdown(
         options={
@@ -323,98 +335,99 @@ def cosmic_web_visualizer() -> mo.Html:
         value="hybrid",
         label="Visualization Style",
     )
-    
+
     def analyze_cosmic_web():
         """Perform cosmic web analysis."""
         dm = get_current_datamodule()
         if not dm:
             mo.output.append(mo.md("❌ No data loaded!"))
             return
-            
+
         try:
             mo.output.append(mo.md("🔄 Analyzing cosmic web structure..."))
-            
+
             # Get spatial data
             from astro_lab.tensors import SpatialTensorDict
-            
-            if hasattr(dm._main_data, 'pos'):
+
+            if hasattr(dm._main_data, "pos"):
                 coords = dm._main_data.pos
             else:
                 coords = dm._main_data.x[:, :3]
-                
+
             spatial_tensor = SpatialTensorDict(
-                coordinates=coords,
-                coordinate_system="icrs",
-                unit="parsec"
+                coordinates=coords, coordinate_system="icrs", unit="parsec"
             )
-            
+
             # Perform analysis
             from astro_lab.data.cosmic_web import CosmicWebAnalyzer
+
             analyzer = CosmicWebAnalyzer()
-            
+
             # Multi-scale analysis
             scales = [scale.value * factor for factor in [0.5, 1.0, 2.0, 5.0]]
-            
+
             results = {
                 "spatial_tensor": spatial_tensor,
                 "scales": scales,
                 "clustering_results": {},
             }
-            
+
             for s in scales:
                 labels = spatial_tensor.cosmic_web_clustering(
-                    eps_pc=s,
-                    min_samples=5,
-                    algorithm=clustering_method.value
+                    eps_pc=s, min_samples=5, algorithm=clustering_method.value
                 )
                 results["clustering_results"][f"{s}_pc"] = {
                     "labels": labels,
                     "n_clusters": len(torch.unique(labels[labels >= 0])),
                 }
-                
-            set_state(lambda s: {
-                **s,
-                "spatial_data": spatial_tensor,
-                "analysis_results": results,
-            })
-            
+
+            set_state(
+                lambda s: {
+                    **s,
+                    "spatial_data": spatial_tensor,
+                    "analysis_results": results,
+                }
+            )
+
             mo.output.append(mo.md("✅ Cosmic web analysis completed!"))
-            
+
             # Show results
             for scale_key, res in results["clustering_results"].items():
-                mo.output.append(mo.md(f"""
-                **{scale_key}:** {res['n_clusters']} clusters found
-                """))
-                
+                mo.output.append(
+                    mo.md(f"""
+                **{scale_key}:** {res["n_clusters"]} clusters found
+                """)
+                )
+
         except Exception as e:
             mo.output.append(mo.md(f"❌ Analysis error: {str(e)}"))
-    
+
     analyze_btn = mo.ui.button(
-        "🔬 Analyze Structure",
+        label="🔬 Analyze Structure",
         on_click=analyze_cosmic_web,
-        kind="primary",
+        kind="success",
     )
-    
+
     def create_cosmic_viz():
         """Create cosmic web visualization."""
-        if state["analysis_results"] is None:
+        if state()["analysis_results"] is None:
             mo.output.append(mo.md("❌ Run analysis first!"))
             return
-            
+
         try:
             mo.output.append(mo.md("🎨 Creating cosmic web visualization..."))
-            
-            spatial_tensor = state["spatial_data"]
-            results = state["analysis_results"]
-            
+
+            spatial_tensor = state()["spatial_data"]
+            results = state()["analysis_results"]
+
             # Get cluster labels for current scale
             scale_key = f"{scale.value}_pc"
             if scale_key not in results["clustering_results"]:
                 # Use closest scale
                 scale_key = list(results["clustering_results"].keys())[0]
-                
+
             labels = results["clustering_results"][scale_key]["labels"]
-            
+
             # Create visualization based on style
             if style.value == "points":
                 fig = plot_cosmic_web_3d(
@@ -434,17 +447,18 @@ def cosmic_web_visualizer() -> mo.Html:
             elif style.value == "filaments":
                 # Detect filaments
                 from astro_lab.data.cosmic_web import CosmicWebAnalyzer
+
                 analyzer = CosmicWebAnalyzer()
                 filaments = analyzer.detect_filaments(
-                    spatial_tensor,
-                    method="mst",
-                    distance_threshold=scale.value * 2
+                    spatial_tensor, method="mst", distance_threshold=scale.value * 2
                 )
-                mo.output.append(mo.md(f"""
+                mo.output.append(
+                    mo.md(f"""
                 🌊 Filaments detected:
-                - Segments: {filaments['n_filament_segments']}
-                - Total length: {filaments['total_filament_length']:.2f}
-                """))
+                - Segments: {filaments["n_filament_segments"]}
+                - Total length: {filaments["total_filament_length"]:.2f}
+                """)
+                )
                 fig = plot_cosmic_web_3d(spatial_tensor, title="Filament Network")
             else:  # hybrid
                 fig = plot_multi_scale_clustering(
@@ -452,27 +466,29 @@ def cosmic_web_visualizer() -> mo.Html:
                     results["clustering_results"],
                     title="Multi-Scale Cosmic Web",
                 )
-                
+
             mo.output.append(mo.plotly(fig))
             set_state(lambda s: {**s, "current_viz": fig})
-            
+
         except Exception as e:
             mo.output.append(mo.md(f"❌ Visualization error: {str(e)}"))
-    
+
     viz_btn = mo.ui.button(
-        "🌌 Create Visualization",
+        label="🌌 Create Visualization",
         on_click=create_cosmic_viz,
         kind="success",
     )
-    
-    return mo.vstack([
-        mo.md("## 🌌 Cosmic Web Visualizer"),
-        mo.md("*Explore the large-scale structure of the universe*"),
-        preset,
-        mo.hstack([scale, clustering_method]),
-        style,
-        mo.hstack([analyze_btn, viz_btn]),
-    ])
+
+    return mo.vstack(
+        [
+            mo.md("## 🌌 Cosmic Web Visualizer"),
+            mo.md("*Explore the large-scale structure of the universe*"),
+            preset,
+            mo.hstack([scale, clustering_method]),
+            style,
+            mo.hstack([analyze_btn, viz_btn]),
+        ]
+    )
 
 
 def graph_creator() -> mo.Html:
@@ -492,7 +508,7 @@ def graph_creator() -> mo.Html:
         value="astronomical",
         label="Graph Construction",
     )
-    
+
     # Layout algorithm
     layout = mo.ui.dropdown(
         options={
@@ -505,16 +521,16 @@ def graph_creator() -> mo.Html:
         value="cosmic",
         label="Layout Algorithm",
     )
-    
+
     # Edge filtering
     edge_threshold = mo.ui.slider(
         value=0.5,
-        min=0.0,
-        max=1.0,
+        start=0.0,
+        stop=1.0,
         step=0.01,
         label="Edge Threshold",
     )
-    
+
     # Node sizing
     node_size_by = mo.ui.dropdown(
         options={
@@ -527,20 +543,20 @@ def graph_creator() -> mo.Html:
         value="degree",
         label="Node Size",
     )
-    
+
     def create_advanced_graph():
         """Create advanced graph visualization."""
         dm = get_current_datamodule()
         if not dm:
             mo.output.append(mo.md("❌ No data loaded!"))
             return
-            
+
         try:
             mo.output.append(mo.md("🕸️ Creating advanced graph..."))
-            
+
             # Create graph based on method
             from astro_lab.data.graphs import create_astronomical_graph
-            
+
             if method.value == "astronomical":
                 graph = create_astronomical_graph(
                     dm._main_data,
@@ -550,34 +566,38 @@ def graph_creator() -> mo.Html:
             else:
                 # Other methods...
                 graph = dm._main_data
-                
-            mo.output.append(mo.md(f"""
+
+            mo.output.append(
+                mo.md(f"""
             ✅ Graph created:
             - Nodes: {graph.num_nodes:,}
             - Edges: {graph.num_edges:,}
             - Layout: {layout.value}
-            """))
-            
+            """)
+            )
+
             # Here you would create the actual visualization
             # using the selected layout and styling options
-            
+
         except Exception as e:
             mo.output.append(mo.md(f"❌ Error: {str(e)}"))
-    
+
     create_btn = mo.ui.button(
-        "🕸️ Create Graph",
+        label="🕸️ Create Graph",
         on_click=create_advanced_graph,
-        kind="primary",
+        kind="success",
     )
-    
-    return mo.vstack([
-        mo.md("## 🕸️ Advanced Graph Creator"),
-        mo.md("*Create beautiful astronomical network visualizations*"),
-        method,
-        layout,
-        mo.hstack([edge_threshold, node_size_by]),
-        create_btn,
-    ])
+
+    return mo.vstack(
+        [
+            mo.md("## 🕸️ Advanced Graph Creator"),
+            mo.md("*Create beautiful astronomical network visualizations*"),
+            method,
+            layout,
+            mo.hstack([edge_threshold, node_size_by]),
+            create_btn,
+        ]
+    )
 
 
 def results_viewer() -> mo.Html:
@@ -597,20 +617,20 @@ def results_viewer() -> mo.Html:
         value="clustering_3d",
         label="Result Type",
     )
-    
+
     # Interactive controls
     dimension_x = mo.ui.dropdown(
         options=["PC1", "PC2", "PC3", "UMAP1", "UMAP2", "tSNE1", "tSNE2"],
         value="PC1",
         label="X Dimension",
     )
-    
+
     dimension_y = mo.ui.dropdown(
         options=["PC1", "PC2", "PC3", "UMAP1", "UMAP2", "tSNE1", "tSNE2"],
         value="PC2",
         label="Y Dimension",
     )
-    
+
     color_metric = mo.ui.dropdown(
         options={
             "cluster": "Cluster ID",
@@ -622,15 +642,16 @@ def results_viewer() -> mo.Html:
         value="cluster",
         label="Color By",
     )
-    
+
     def load_and_visualize():
         """Load and visualize results."""
         mo.output.append(mo.md(f"🔄 Loading {result_type.value}..."))
-        
+
         # This would load actual results from experiments
         # For now, show a placeholder
-        mo.output.append(mo.md(f"""
-        ### {result_type.value.replace('_', ' ').title()}
+        mo.output.append(
+            mo.md(f"""
+        ### {result_type.value.replace("_", " ").title()}
         
         🎨 Interactive visualization would appear here with:
         - X axis: {dimension_x.value}
@@ -642,22 +663,25 @@ def results_viewer() -> mo.Html:
         - 🔍 Zoom and pan
         - 📸 Export snapshots
         - 🎯 Click to select
-        """))
-    
+        """)
+        )
+
     load_btn = mo.ui.button(
-        "📊 Load & Visualize",
+        label="📊 Load & Visualize",
         on_click=load_and_visualize,
-        kind="primary",
+        kind="success",
     )
-    
-    return mo.vstack([
-        mo.md("## 📊 Interactive Results Viewer"),
-        mo.md("*Explore your results with style*"),
-        result_type,
-        mo.hstack([dimension_x, dimension_y]),
-        color_metric,
-        load_btn,
-    ])
+
+    return mo.vstack(
+        [
+            mo.md("## 📊 Interactive Results Viewer"),
+            mo.md("*Explore your results with style*"),
+            result_type,
+            mo.hstack([dimension_x, dimension_y]),
+            color_metric,
+            load_btn,
+        ]
+    )
 
 
 def graph_visualizer() -> mo.Html:
@@ -681,16 +705,18 @@ def cosmograph_viewer() -> mo.Html:
         available = True
     except Exception:
         available = False
-    
+
     if not available:
-        return mo.vstack([
-            mo.md("## 🌌 Cosmograph Viewer"),
-            mo.callout(
-                "Cosmograph not available. Install with: `pip install cosmograph`",
-                kind="warn"
-            ),
-        ])
-    
+        return mo.vstack(
+            [
+                mo.md("## 🌌 Cosmograph Viewer"),
+                mo.callout(
+                    "Cosmograph not available. Install with: `pip install cosmograph`",
+                    kind="warn",
+                ),
+            ]
+        )
+
     # Configuration
     config = mo.ui.code_editor(
         value="""{
@@ -704,7 +730,7 @@ def cosmograph_viewer() -> mo.Html:
         language="json",
         label="Cosmograph Configuration",
     )
-    
+
     # Performance settings
     performance = mo.ui.dropdown(
         options={
@@ -715,42 +741,47 @@ def cosmograph_viewer() -> mo.Html:
         value="balanced",
         label="Performance Mode",
     )
-    
+
     def create_cosmograph_viz():
         """Create Cosmograph visualization."""
         dm = get_current_datamodule()
         if not dm:
             mo.output.append(mo.md("❌ No graph data loaded!"))
             return
-            
+
         try:
             import json
+
             config_dict = json.loads(config.value)
             config_dict["renderMode"] = performance.value
-            
+
             mo.output.append(mo.md("🌌 Creating Cosmograph visualization..."))
-            
+
             viz = bridge.create_visualization(dm._main_data, config_dict)
             mo.output.append(mo.Html(viz))
-            
+
         except Exception as e:
             mo.output.append(mo.md(f"❌ Error: {str(e)}"))
-    
+
     create_btn = mo.ui.button(
-        "🌌 Create Cosmograph",
+        label="🌌 Create Cosmograph",
         on_click=create_cosmograph_viz,
-        kind="primary",
+        kind="success",
     )
-    
-    return mo.vstack([
-        mo.md("## 🌌 Cosmograph Viewer"),
-        mo.md("*Visualize massive astronomical networks*"),
-        performance,
-        mo.accordion({
-            "⚙️ Configuration": config,
-        }),
-        create_btn,
-    ])
+
+    return mo.vstack(
+        [
+            mo.md("## 🌌 Cosmograph Viewer"),
+            mo.md("*Visualize massive astronomical networks*"),
+            performance,
+            mo.accordion(
+                {
+                    "⚙️ Configuration": config,
+                }
+            ),
+            create_btn,
+        ]
+    )
 
 
 # Export all components
