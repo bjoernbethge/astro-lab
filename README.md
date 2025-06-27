@@ -1,6 +1,6 @@
 # 🌌 AstroLab - Astronomical Machine Learning Framework
 
-A comprehensive framework for astronomical data analysis, machine learning, and interactive 3D visualization with advanced cosmic web analysis capabilities.
+A comprehensive framework for astronomical data analysis, machine learning, and interactive 3D visualization with advanced **cosmic web analysis** capabilities across multiple astronomical scales.
 
 ## 🚀 Quick Start
 
@@ -17,84 +17,109 @@ uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/
 # Process data (recommended first step)
 astro-lab process --surveys gaia --max-samples 1000
 
+# Analyze cosmic web structure
+astro-lab cosmic-web gaia --max-samples 10000 --clustering-scales 5 10 25 --visualize
+
 # Start interactive development environment
-marimo edit
+marimo run src/astro_lab/ui/app.py
 ```
 
 ## 🌟 Key Features
 
 ### 🔬 **Multi-Survey Data Integration**
-- **Gaia DR3**: Stellar catalogs with proper motions
-- **SDSS**: Galaxy surveys and spectra  
-- **NSA**: Galaxy catalogs with distances
-- **TNG50**: Cosmological simulations
-- **NASA Exoplanet Archive**: Confirmed exoplanets with Gaia crossmatching
-- **LINEAR**: Asteroid light curves
+- **Gaia DR3**: Stellar catalogs with proper motions and cosmic web clustering
+- **SDSS**: Galaxy surveys and spectra with large-scale structure analysis
+- **NSA**: Galaxy catalogs with distances and cosmic web visualization  
+- **TNG50**: Cosmological simulations with filament detection
+- **NASA Exoplanet Archive**: Confirmed exoplanets with host star clustering
+- **LINEAR**: Asteroid light curves with orbital family analysis
 
-### 🧠 ** Machine Learning**
-- **Graph Neural Networks**: For spatial astronomical structures
-- **Automatic Class Detection**: From training data
+### 🧠 **Machine Learning**
+- **Graph Neural Networks**: Specialized for spatial astronomical structures
+- **Automatic Class Detection**: From training data with cosmic web features
 - **Hyperparameter Optimization**: With Optuna integration
 - **Experiment Tracking**: MLflow for reproducible research
 - **GPU Acceleration**: CUDA-optimized PyTorch workflows
 
-### 🌌 **Cosmic Web Analysis**
-- **Multi-scale clustering** across stellar and cosmological scales
-- **Adaptive density-based analysis** for all survey types
-- **Real-time cosmic web visualization** with CosmographBridge
-- **Survey-specific color mapping** and physics simulation
+### 🌌 **Advanced Cosmic Web Analysis**
 
-### 🎨 **Interactive 3D Visualization**
-- **CosmographBridge**: Seamless integration with cosmic web analysis
+#### **Multi-Scale Structure Detection**
+- **Stellar Scale**: Local galactic disk structure (1-100 parsecs)
+- **Galactic Scale**: Galaxy clusters and superclusters (1-100 Megaparsecs)  
+- **Exoplanet Scale**: Stellar neighborhoods and associations (10-500 parsecs)
+- **Adaptive Clustering**: DBSCAN, K-means, Hierarchical, and Spectral methods
+- **Filament Detection**: MST, Morse theory, and Hessian eigenvalue analysis
+
+#### **Interactive 3D Visualization**
+- **CosmographBridge**: Real-time cosmic web visualization with physics simulation
 - **Survey-specific colors**: Gold for stars, blue for galaxies, green for simulations
-- **Real-time physics**: Gravity and repulsion simulation
-- **Blender Integration**:  3D rendering capabilities
+- **Multi-backend support**: PyVista, Open3D, Blender, and Plotly integration
+- **Live tensor sync**: Real-time updates between analysis and visualization
+
+#### **Specialized Tensor Operations**
+```python
+from astro_lab.tensors import SpatialTensorDict
+
+# Create spatial tensor with coordinate system support
+spatial = SpatialTensorDict(coordinates, coordinate_system="icrs", unit="parsec")
+
+# Multi-scale cosmic web clustering  
+labels = spatial.cosmic_web_clustering(eps_pc=10.0, min_samples=5)
+
+# Grid-based structure analysis
+structure = spatial.cosmic_web_structure(grid_size_pc=100.0)
+
+# Local density computation
+density = spatial.analyze_local_density(radius_pc=50.0)
+```
 
 ## 📚 Documentation & API Reference
 
-The complete, up-to-date documentation (including all modules, classes, and functions) is available as a modern website:
+The complete, up-to-date documentation is available as a modern website:
 
-- **[API Reference](./api/astro_lab/)**
+- **[API Reference](./docs/api/astro_lab/)**
+- **[Cosmic Web Guide](./docs/cosmic_web_guide.md)**
 - **[User Guide & Examples](./examples/README.md)**
 
 All code is fully documented with mkdocstrings and includes automatic class inheritance diagrams, usage examples, and configuration options.
 
-> **Note:** All previous Markdown guides have been replaced by the new API documentation and modular navigation.
-
 ## 🛠️ CLI Reference
+
+### Cosmic Web Analysis
+```bash
+# Multi-scale stellar structure analysis
+astro-lab cosmic-web gaia --max-samples 100000 --clustering-scales 5 10 25 50 --visualize
+
+# Large-scale galaxy structure  
+astro-lab cosmic-web nsa --clustering-scales 5 10 20 50 --redshift-limit 0.15
+
+# Exoplanet host star clustering
+astro-lab cosmic-web exoplanet --clustering-scales 10 25 50 100 200 --min-samples 3
+```
 
 ### Data Processing
 ```bash
-# Process all surveys
+# Process all surveys with cosmic web features
 astro-lab process
 
-# Process specific surveys
+# Process specific surveys with spatial indexing
 astro-lab process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
 
-#  processing
-astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --splits
-astro-lab preprocess stats data/gaia_catalog.parquet
-astro-lab preprocess browse --survey gaia --details
+# Preprocess with cosmic web metadata
+astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --spatial-index
 ```
 
 ### Training & Optimization
 ```bash
-# Create configuration
-astro-lab config create -o my_experiment.yaml
+# Create configuration with cosmic web features
+astro-lab config create -o my_experiment.yaml --features cosmic-web
 
-# Training
-astro-lab train -c my_experiment.yaml
-astro-lab train --dataset gaia --model gaia_classifier --epochs 50
+# Training with spatial features
+astro-lab train -c my_experiment.yaml --spatial-features
+astro-lab train --dataset gaia --model astro_graph_gnn --epochs 50
 
-# Hyperparameter optimization
-astro-lab optimize config.yaml --trials 50
-```
-
-### Configuration Management
-```bash
-# Show available configurations
-astro-lab config surveys
-astro-lab config show gaia
+# Hyperparameter optimization for cosmic web models
+astro-lab optimize config.yaml --trials 50 --spatial-aware
 ```
 
 ## 🏗️ Architecture
@@ -103,125 +128,204 @@ astro-lab config show gaia
 ```
 astro-lab/
 ├── src/astro_lab/
-│   ├── cli/           # Command-line interface
-│   ├── data/          # Data loading and processing
-│   ├── models/        # Neural network architectures
-│   ├── training/      # Training framework
-│   ├── tensors/       # Specialized tensor types
-│   └── utils/         # Utilities and visualization
-├── configs/           # Configuration files
-├── docs/              # Documentation
-└── examples/          # Example scripts
+│   ├── cli/
+│   │   └── cosmic_web.py      # Cosmic web CLI interface
+│   ├── data/
+│   │   └── cosmic_web.py      # Core cosmic web analysis
+│   ├── tensors/
+│   │   └── tensordict_astro.py # Spatial tensor operations  
+│   ├── widgets/
+│   │   ├── cosmograph_bridge.py   # Interactive visualization
+│   │   ├── graph.py               # Graph analysis functions
+│   │   └── plotly_bridge.py       # 3D plotting
+│   ├── ui/modules/
+│   │   ├── cosmic_web.py      # UI for cosmic web analysis
+│   │   ├── analysis.py        # Interactive analysis tools
+│   │   └── visualization.py   # Visualization interface
+│   ├── models/core/           # GNN models for spatial data
+│   └── training/              # Training framework
+├── configs/                   # Configuration files
+├── docs/
+│   └── cosmic_web_guide.md    # Comprehensive cosmic web guide
+└── examples/                  # Example scripts
 ```
 
 ### Key Dependencies
-- **PyTorch 2.7.1+cu128**: GPU-accelerated deep learning
+- **PyTorch 2.7.1+cu128**: GPU-accelerated deep learning with geometric extensions
+- **PyTorch Geometric**: Graph neural networks for cosmic web analysis
 - **Lightning 2.5.1**: Training framework with MLflow integration
 - **Polars 1.31.0**: High-performance data processing
-- **AstroPy 7.1.0**: Astronomical calculations
-- **Cosmograph**: Interactive graph visualization
-- **Blender** (optional):  3D rendering
+- **AstroPy 7.1.0**: Astronomical calculations and coordinate systems
+- **Cosmograph**: Interactive graph visualization with physics simulation
+- **Marimo**: Reactive notebooks for interactive analysis
+- **scikit-learn**: Clustering algorithms (DBSCAN, K-means, etc.)
 
 ## 🎯 Use Cases
 
-### Stellar Classification
+### Stellar Structure Analysis
 ```python
-from astro_lab.models.factory import ModelFactory
+from astro_lab.data.cosmic_web import analyze_gaia_cosmic_web
 
-model = ModelFactory.create_survey_model(
-    survey="gaia",
-    task="stellar_classification",
-    hidden_dim=128,
-    num_classes=8
+# Analyze local stellar neighborhoods
+results = analyze_gaia_cosmic_web(
+    max_samples=100000,
+    magnitude_limit=12.0,
+    clustering_scales=[5.0, 10.0, 25.0, 50.0],  # parsecs
+    min_samples=5
+)
+
+print(f"Found {results['n_stars']} stars")
+for scale, stats in results['clustering_results'].items():
+    print(f"{scale}: {stats['n_clusters']} clusters, {stats['grouped_fraction']:.1%} grouped")
+```
+
+### Galaxy Cluster Analysis
+```python
+from astro_lab.data.cosmic_web import analyze_nsa_cosmic_web
+
+# Large-scale structure analysis
+results = analyze_nsa_cosmic_web(
+    redshift_limit=0.15,
+    clustering_scales=[5.0, 10.0, 20.0, 50.0],  # Mpc
+    min_samples=5
 )
 ```
 
-### Galaxy Morphology Analysis
+### Interactive Cosmic Web Visualization
 ```python
-from astro_lab.data.core import create_cosmic_web_loader
+from astro_lab.widgets.cosmograph_bridge import CosmographBridge
+from astro_lab.data.cosmic_web import CosmicWebAnalyzer
 
-results = create_cosmic_web_loader(
-    survey="sdss",
-    max_samples=1000,
-    scales_mpc=[10.0, 20.0, 50.0]
-)
-```
-
-### Interactive Visualization
-```python
-from astro_lab.data.core import create_cosmic_web_loader
-from astro_lab.utils.viz import CosmographBridge
-
-# Load and analyze Gaia stellar data
-results = create_cosmic_web_loader(survey="gaia", max_samples=500)
+# Load and analyze data
+analyzer = CosmicWebAnalyzer()
+results = analyzer.analyze_gaia_cosmic_web(max_samples=10000)
 
 # Create interactive 3D visualization
 bridge = CosmographBridge()
 widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+
+# Display with physics simulation and survey-specific colors
+widget.show()  # Gold points for Gaia stars with real-time clustering
+```
+
+### Advanced Filament Detection
+```python
+from astro_lab.tensors import SpatialTensorDict
+from astro_lab.data.cosmic_web import CosmicWebAnalyzer
+
+# Create spatial tensor
+spatial = SpatialTensorDict(coordinates, coordinate_system="icrs", unit="parsec")
+
+# Detect filamentary structures
+analyzer = CosmicWebAnalyzer()
+filaments = analyzer.detect_filaments(
+    spatial, 
+    method="mst",  # or "morse_theory", "hessian"
+    n_neighbors=20,
+    distance_threshold=10.0
+)
+
+print(f"Detected {filaments['n_filament_segments']} filament segments")
+print(f"Total filament length: {filaments['total_filament_length']:.1f} pc")
+```
+
+### Multi-Backend Visualization
+```python
+from astro_lab.widgets.tensor_bridge import create_tensor_bridge
+
+# Create visualization bridge
+bridge = create_tensor_bridge(backend="cosmograph")  # or "pyvista", "blender"
+
+# Visualize cosmic web with clustering
+viz = bridge.cosmic_web_to_backend(
+    spatial_tensor=spatial,
+    cluster_labels=labels,
+    point_size=2.0,
+    show_filaments=True
+)
 ```
 
 ## 🔧 Development
 
 ### Interactive Development
 ```bash
-# Start Marimo reactive notebook
-uv run marimo edit
+# Start Marimo reactive notebook with cosmic web UI
+uv run marimo run src/astro_lab/ui/app.py
 
-# Start Jupyter Lab
-uv run jupyter lab
-
-# Launch MLflow UI
+# Launch MLflow UI for experiment tracking
 uv run mlflow ui --backend-store-uri ./data/experiments
 ```
 
-### Testing
+### Testing Cosmic Web Features
 ```bash
-# Run all tests
+# Test cosmic web analysis
+python test_cosmic_web.py
+
+# Run full test suite
 uv run pytest -v
 
-# Run specific test categories
-uv run pytest test/models/ -v
-uv run pytest test/tensors/ -v
+# Test specific cosmic web components
+uv run pytest test/test_cosmic_web.py -v
+uv run pytest src/astro_lab/tensors/ -v -k cosmic_web
 ```
 
 ## 🐳 Docker Support
 
 ### Quick Start with Docker
 ```bash
-# Build and start the container
+# Build and start the container with cosmic web support
 docker-compose -f docker/docker-compose.yaml up -d
 
 # Access services
 open http://localhost:5000  # MLflow UI
-open http://localhost:2718  # Marimo (if started)
+open http://localhost:2718  # Marimo UI with cosmic web analysis
 
-# Run CLI commands in container
-docker-compose -f docker/docker-compose.yaml exec astro-lab python -m astro_lab.cli process
+# Run cosmic web analysis in container
+docker-compose -f docker/docker-compose.yaml exec astro-lab python -m astro_lab.cli cosmic-web gaia --max-samples 1000
 ```
 
 ## 📊 Experiment Tracking
 
-All experiments are automatically tracked with MLflow:
-- **Metrics**: Training/validation accuracy, loss curves
-- **Parameters**: Hyperparameters, model configurations
-- **Artifacts**: Model checkpoints, visualizations
-- **Reproducibility**: Complete experiment snapshots
+All cosmic web analyses are automatically tracked with MLflow:
+
+```python
+# Results are logged with cosmic web metadata
+- clustering_scales: [5.0, 10.0, 25.0, 50.0]
+- survey_type: "gaia" 
+- n_clusters_per_scale: {5.0: 125, 10.0: 89, 25.0: 45, 50.0: 12}
+- filament_detection_method: "mst"
+- visualization_backend: "cosmograph"
+```
+
+## 🎨 Visualization Gallery
+
+### Supported Backends
+- **Cosmograph**: Interactive 3D with physics simulation and survey-specific colors
+- **PyVista**: High-quality 3D rendering with filament visualization  
+- **Plotly**: Web-based interactive plots with multi-scale clustering
+- **Blender**: Professional 3D rendering and animation via albpy integration
+- **Open3D**: Real-time point cloud visualization with octree support
+
+### Example Visualizations
+- **Gaia stellar neighborhoods**: Gold points with gravitational clustering
+- **NSA galaxy superclusters**: Blue points with large-scale structure
+- **TNG50 cosmic web**: Green points with dark matter filaments
+- **Exoplanet host clusters**: Magenta points with stellar associations
 
 ## 🤝 Contributing
 
-See our [Development Guide](docs/DEVGUIDE.md) for detailed contribution guidelines.
+We welcome contributions to cosmic web analysis features! See our [contribution guidelines](CONTRIBUTING.md) for details on:
+
+- Adding new filament detection algorithms
+- Implementing additional clustering methods  
+- Creating visualization backends
+- Extending survey support
+- Improving performance with GPU acceleration
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- **Gaia Collaboration** for stellar data
-- **SDSS Collaboration** for galaxy surveys
-- **IllustrisTNG** for cosmological simulations
-- **NASA Exoplanet Archive** for exoplanet data
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**Ready to explore the cosmos?** Start with `astro-lab process` or jump into the [API Reference](./api/astro_lab/)! 
+**AstroLab** - Bridging astronomy and machine learning with advanced cosmic web analysis across all scales of the universe. 🌌✨ 
