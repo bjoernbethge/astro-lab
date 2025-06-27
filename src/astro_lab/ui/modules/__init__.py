@@ -6,33 +6,32 @@ Modular UI components that directly integrate with AstroLab backend.
 Each module uses the actual AstroLab classes and methods.
 """
 
-from .data import data_explorer, data_loader, catalog_manager
-from .training import training_dashboard, model_selector, experiment_tracker
-from .visualization import (
-    plot_creator, 
-    results_viewer, 
-    graph_visualizer,
-    graph_creator,
-    clustering_visualizer,
-    cosmograph_viewer,
-)
 from .analysis import (
-    analysis_panel, 
-    clustering_tool, 
-    statistics_viewer, 
+    analysis_panel,
+    clustering_tool,
+    statistics_viewer,
     subgraph_sampler,
 )
+from .cosmic_web import comparison_tool, connectivity_analyzer, cosmic_web_panel
+from .data import catalog_manager, data_loader
 from .monitoring import (
-    system_monitor, 
-    gpu_monitor, 
+    gpu_monitor,
     mlflow_dashboard,
+    system_monitor,
     training_monitor,
 )
-from .cosmic_web import cosmic_web_panel, connectivity_analyzer, comparison_tool
+from .training import experiment_tracker, model_selector, training_dashboard
+from .visualization import (
+    clustering_visualizer,
+    cosmograph_viewer,
+    graph_creator,
+    graph_visualizer,
+    plot_creator,
+    results_viewer,
+)
 
 __all__ = [
     # Data modules
-    "data_explorer",
     "data_loader",
     "catalog_manager",
     # Training modules
@@ -41,7 +40,7 @@ __all__ = [
     "experiment_tracker",
     # Visualization modules
     "plot_creator",
-    "results_viewer", 
+    "results_viewer",
     "graph_visualizer",
     "graph_creator",
     "clustering_visualizer",
