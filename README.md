@@ -177,13 +177,13 @@ astro-lab cosmic-web gaia --catalog-path ./my_catalog.fits --output-dir ./result
 
 ### Supported Surveys
 All commands support these astronomical surveys:
-- `gaia`: Gaia DR3 stellar catalog
-- `sdss`: Sloan Digital Sky Survey  
-- `nsa`: NASA-Sloan Atlas galaxy catalog
-- `tng50`: TNG50 cosmological simulation
-- `exoplanet`: NASA Exoplanet Archive
-- `rrlyrae`: RR Lyrae variable stars
-- `linear`: LINEAR asteroid survey
+- `gaia`: [Gaia DR3](https://www.cosmos.esa.int/web/gaia/dr3) stellar catalog
+- `sdss`: [Sloan Digital Sky Survey](https://www.sdss.org/)  
+- `nsa`: [NASA-Sloan Atlas](http://nsatlas.org/) galaxy catalog
+- `tng50`: [TNG50](https://www.tng-project.org/) cosmological simulation
+- `exoplanet`: [NASA Exoplanet Archive](https://exoplanetarchive.ipac.caltech.edu/)
+- `rrlyrae`: [RR Lyrae](https://www.sdss.org/dr17/spectro/vac/) variable stars
+- `linear`: [LINEAR](https://en.wikipedia.org/wiki/Lincoln_Near-Earth_Asteroid_Research) asteroid survey
 
 ## 🔧 Setup Scripts
 
@@ -400,6 +400,39 @@ astro-lab/
 - **Cosmograph**: Interactive graph visualization with physics simulation
 - **Marimo**: Reactive notebooks for interactive analysis
 - **scikit-learn**: Clustering algorithms (DBSCAN, K-means, etc.)
+
+## 🛠️ Modern Framework Stack
+
+AstroLab is built on cutting-edge frameworks and libraries for astronomical machine learning:
+
+### **Core ML/DL Frameworks**
+- **[PyTorch](https://pytorch.org/)** - GPU-accelerated deep learning with CUDA support
+- **[PyTorch Geometric](https://pytorch-geometric.readthedocs.io/)** - Graph neural networks for spatial data
+- **[PyTorch Lightning](https://lightning.ai/)** - Professional training framework with MLflow integration
+- **[Optuna](https://optuna.org/)** - Hyperparameter optimization and experiment tracking
+
+### **Data Processing & Visualization**
+- **[Polars](https://pola.rs/)** - Lightning-fast data processing with Rust backend
+- **[Plotly](https://plotly.com/python/)** - Interactive web-based visualizations
+- **[PyVista](https://docs.pyvista.org/)** - 3D scientific visualization
+- **[Open3D](http://www.open3d.org/)** - Real-time 3D point cloud processing
+
+### **Astronomical Libraries**
+- **[AstroPy](https://www.astropy.org/)** - Core astronomical calculations and coordinate systems
+- **[AstromL](https://www.astroml.org/)** - Machine learning for astronomy
+- **[AstroQuery](https://astroquery.readthedocs.io/)** - Astronomical data access
+- **[SDSS Access](https://sdss-access.readthedocs.io/)** - Sloan Digital Sky Survey data
+
+### **Interactive Development**
+- **[Marimo](https://marimo.io/)** - Reactive Python notebooks for interactive analysis
+- **[Cosmograph](https://cosmograph.app/)** - Interactive graph visualization with physics simulation
+- **[Blender Python API](https://docs.blender.org/api/current/)** - Professional 3D rendering and animation
+
+### **Development Tools**
+- **[UV](https://docs.astral.sh/uv/)** - Fast Python package manager and resolver
+- **[Ruff](https://docs.astral.sh/ruff/)** - Extremely fast Python linter
+- **[MyPy](https://mypy-lang.org/)** - Static type checking for Python
+- **[Pre-commit](https://pre-commit.com/)** - Git hooks for code quality
 
 ## 🎯 Use Cases
 
