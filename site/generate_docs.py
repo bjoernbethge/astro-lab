@@ -264,7 +264,16 @@ def update_documentation():
 
 def serve_docs():
     """Start development server for documentation."""
-    run_command("uv run mkdocs serve", check=False)
+    print("Starting mkdocs development server...")
+    print("The server will be available at http://127.0.0.1:8000")
+    print("Press Ctrl+C to stop the server")
+    print("-" * 50)
+
+    # Run mkdocs serve without capturing output so user can see it
+    try:
+        subprocess.run("uv run mkdocs serve", shell=True, check=False)
+    except KeyboardInterrupt:
+        print("\nServer stopped by user")
 
 
 def deploy_docs():

@@ -616,29 +616,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../astro_lab.models.lightning/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    astro_lab.models.lightning
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../astro_lab.tensors/" class="md-nav__link">
         
   
@@ -2310,30 +2287,7 @@ Each module uses the actual AstroLab classes and methods.</p>
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\ui\modules\training.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">261</span>
-<span class="normal">262</span>
-<span class="normal">263</span>
-<span class="normal">264</span>
-<span class="normal">265</span>
-<span class="normal">266</span>
-<span class="normal">267</span>
-<span class="normal">268</span>
-<span class="normal">269</span>
-<span class="normal">270</span>
-<span class="normal">271</span>
-<span class="normal">272</span>
-<span class="normal">273</span>
-<span class="normal">274</span>
-<span class="normal">275</span>
-<span class="normal">276</span>
-<span class="normal">277</span>
-<span class="normal">278</span>
-<span class="normal">279</span>
-<span class="normal">280</span>
-<span class="normal">281</span>
-<span class="normal">282</span>
-<span class="normal">283</span>
-<span class="normal">284</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">284</span>
 <span class="normal">285</span>
 <span class="normal">286</span>
 <span class="normal">287</span>
@@ -2365,14 +2319,49 @@ Each module uses the actual AstroLab classes and methods.</p>
 <span class="normal">313</span>
 <span class="normal">314</span>
 <span class="normal">315</span>
-<span class="normal">316</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">experiment_tracker</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">:</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">experiment_tracker</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;MLflow experiment tracker.&quot;&quot;&quot;</span>
     <span class="c1"># State</span>
-    <span class="n">state</span><span class="p">,</span> <span class="n">set_state</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">state</span><span class="p">({</span>
-        <span class="s2">&quot;experiments&quot;</span><span class="p">:</span> <span class="p">[],</span>
-        <span class="s2">&quot;runs&quot;</span><span class="p">:</span> <span class="p">[],</span>
-        <span class="s2">&quot;selected_run&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="p">})</span>
+    <span class="n">state</span><span class="p">,</span> <span class="n">set_state</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">state</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;experiments&quot;</span><span class="p">:</span> <span class="p">[],</span>
+            <span class="s2">&quot;runs&quot;</span><span class="p">:</span> <span class="p">[],</span>
+            <span class="s2">&quot;selected_run&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">refresh_experiments</span><span class="p">():</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Refresh MLflow experiments.&quot;&quot;&quot;</span>
@@ -2384,7 +2373,7 @@ Each module uses the actual AstroLab classes and methods.</p>
             <span class="n">all_runs</span> <span class="o">=</span> <span class="p">[]</span>
             <span class="k">for</span> <span class="n">exp</span> <span class="ow">in</span> <span class="n">experiments</span><span class="p">:</span>
                 <span class="n">runs</span> <span class="o">=</span> <span class="n">mlflow</span><span class="o">.</span><span class="n">search_runs</span><span class="p">(</span><span class="n">experiment_ids</span><span class="o">=</span><span class="p">[</span><span class="n">exp</span><span class="o">.</span><span class="n">experiment_id</span><span class="p">])</span>
-                <span class="n">all_runs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">runs</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="s1">&#39;records&#39;</span><span class="p">))</span>
+                <span class="n">all_runs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">runs</span><span class="o">.</span><span class="n">to_dict</span><span class="p">(</span><span class="s2">&quot;records&quot;</span><span class="p">))</span>
 
             <span class="n">set_state</span><span class="p">(</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span><span class="o">**</span><span class="n">s</span><span class="p">,</span> <span class="s2">&quot;runs&quot;</span><span class="p">:</span> <span class="n">all_runs</span><span class="p">[:</span><span class="mi">20</span><span class="p">]})</span>  <span class="c1"># Last 20 runs</span>
             <span class="n">mo</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;✅ Found </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">all_runs</span><span class="p">)</span><span class="si">}</span><span class="s2"> runs&quot;</span><span class="p">))</span>
@@ -2403,24 +2392,32 @@ Each module uses the actual AstroLab classes and methods.</p>
         <span class="c1"># Create simplified table data</span>
         <span class="n">table_data</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">run</span> <span class="ow">in</span> <span class="n">runs</span><span class="p">:</span>
-            <span class="n">table_data</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
-                <span class="s2">&quot;run_id&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;run_id&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)[:</span><span class="mi">8</span><span class="p">],</span>
-                <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;params.model&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;dataset&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;params.dataset&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">),</span>
-                <span class="s2">&quot;val_loss&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;metrics.val_loss&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;metrics.val_loss&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;N/A&quot;</span><span class="p">,</span>
-                <span class="s2">&quot;val_acc&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;metrics.val_acc&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;metrics.val_acc&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="s2">&quot;N/A&quot;</span><span class="p">,</span>
-            <span class="p">})</span>
+            <span class="n">table_data</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;run_id&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;run_id&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">)[:</span><span class="mi">8</span><span class="p">],</span>
+                    <span class="s2">&quot;status&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;status&quot;</span><span class="p">,</span> <span class="s2">&quot;&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;model&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;params.model&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;dataset&quot;</span><span class="p">:</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;params.dataset&quot;</span><span class="p">,</span> <span class="s2">&quot;Unknown&quot;</span><span class="p">),</span>
+                    <span class="s2">&quot;val_loss&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;metrics.val_loss&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metrics.val_loss&quot;</span><span class="p">)</span>
+                    <span class="k">else</span> <span class="s2">&quot;N/A&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;val_acc&quot;</span><span class="p">:</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;metrics.val_acc&#39;</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="si">:</span><span class="s2">.3f</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="k">if</span> <span class="n">run</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;metrics.val_acc&quot;</span><span class="p">)</span>
+                    <span class="k">else</span> <span class="s2">&quot;N/A&quot;</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
 
         <span class="n">runs_table</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">ui</span><span class="o">.</span><span class="n">table</span><span class="p">(</span><span class="n">table_data</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">runs_table</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;*No runs found. Train a model to create runs.*&quot;</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span>
-        <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;## 📊 Experiment Tracker&quot;</span><span class="p">),</span>
-        <span class="n">refresh_btn</span><span class="p">,</span>
-        <span class="n">runs_table</span><span class="p">,</span>
-    <span class="p">])</span>
+    <span class="k">return</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;## 📊 Experiment Tracker&quot;</span><span class="p">),</span>
+            <span class="n">refresh_btn</span><span class="p">,</span>
+            <span class="n">runs_table</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2826,20 +2823,7 @@ Each module uses the actual AstroLab classes and methods.</p>
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\ui\modules\training.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">174</span>
-<span class="normal">175</span>
-<span class="normal">176</span>
-<span class="normal">177</span>
-<span class="normal">178</span>
-<span class="normal">179</span>
-<span class="normal">180</span>
-<span class="normal">181</span>
-<span class="normal">182</span>
-<span class="normal">183</span>
-<span class="normal">184</span>
-<span class="normal">185</span>
-<span class="normal">186</span>
-<span class="normal">187</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">187</span>
 <span class="normal">188</span>
 <span class="normal">189</span>
 <span class="normal">190</span>
@@ -2910,13 +2894,38 @@ Each module uses the actual AstroLab classes and methods.</p>
 <span class="normal">255</span>
 <span class="normal">256</span>
 <span class="normal">257</span>
-<span class="normal">258</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">model_selector</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">:</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">model_selector</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Model selector with detailed information.&quot;&quot;&quot;</span>
     <span class="c1"># State</span>
-    <span class="n">state</span><span class="p">,</span> <span class="n">set_state</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">state</span><span class="p">({</span>
-        <span class="s2">&quot;selected_model&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="s2">&quot;model_info&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-    <span class="p">})</span>
+    <span class="n">state</span><span class="p">,</span> <span class="n">set_state</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">state</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;selected_model&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;model_info&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
 
     <span class="c1"># Model lists</span>
     <span class="n">presets</span> <span class="o">=</span> <span class="n">list_presets</span><span class="p">()</span>
@@ -2925,19 +2934,23 @@ Each module uses the actual AstroLab classes and methods.</p>
     <span class="k">def</span><span class="w"> </span><span class="nf">show_model_info</span><span class="p">(</span><span class="n">model_type</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;Show detailed model information.&quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">model_type</span> <span class="o">==</span> <span class="s2">&quot;preset&quot;</span><span class="p">:</span>
-            <span class="n">info</span> <span class="o">=</span> <span class="n">MODEL_PRESETS</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="p">{})</span>
-            <span class="n">set_state</span><span class="p">(</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span>
-                <span class="o">**</span><span class="n">s</span><span class="p">,</span>
-                <span class="s2">&quot;selected_model&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
-                <span class="s2">&quot;model_info&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">,</span>
-            <span class="p">})</span>
+            <span class="n">info</span> <span class="o">=</span> <span class="n">get_preset</span><span class="p">(</span><span class="n">model_name</span><span class="p">)</span>
+            <span class="n">set_state</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="o">**</span><span class="n">s</span><span class="p">,</span>
+                    <span class="s2">&quot;selected_model&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
+                    <span class="s2">&quot;model_info&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">info</span> <span class="o">=</span> <span class="n">models</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">model_name</span><span class="p">,</span> <span class="p">{})</span>
-            <span class="n">set_state</span><span class="p">(</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span>
-                <span class="o">**</span><span class="n">s</span><span class="p">,</span>
-                <span class="s2">&quot;selected_model&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
-                <span class="s2">&quot;model_info&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">},</span>
-            <span class="p">})</span>
+            <span class="n">set_state</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="o">**</span><span class="n">s</span><span class="p">,</span>
+                    <span class="s2">&quot;selected_model&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span>
+                    <span class="s2">&quot;model_info&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;name&quot;</span><span class="p">:</span> <span class="n">model_name</span><span class="p">,</span> <span class="s2">&quot;description&quot;</span><span class="p">:</span> <span class="n">info</span><span class="p">},</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
 
     <span class="c1"># Preset cards</span>
     <span class="n">preset_cards</span> <span class="o">=</span> <span class="p">[]</span>
@@ -2945,8 +2958,8 @@ Each module uses the actual AstroLab classes and methods.</p>
         <span class="n">card</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
 <span class="s2">        &lt;div class=&quot;model-card&quot; style=&quot;cursor: pointer; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; margin: 0.5rem;&quot;&gt;</span>
 <span class="s2">            &lt;h4&gt;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&lt;/h4&gt;</span>
-<span class="s2">            &lt;p&gt;</span><span class="si">{</span><span class="n">preset</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;description&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;No description&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&lt;/p&gt;</span>
-<span class="s2">            &lt;p&gt;&lt;small&gt;Model: </span><span class="si">{</span><span class="n">preset</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;model_name&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;Unknown&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">&lt;/small&gt;&lt;/p&gt;</span>
+<span class="s2">            &lt;p&gt;</span><span class="si">{</span><span class="n">preset</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;description&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;No description&quot;</span><span class="p">)</span><span class="si">}</span><span class="s2">&lt;/p&gt;</span>
+<span class="s2">            &lt;p&gt;&lt;small&gt;Model: </span><span class="si">{</span><span class="n">preset</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;model_name&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;Unknown&quot;</span><span class="p">)</span><span class="si">}</span><span class="s2">&lt;/small&gt;&lt;/p&gt;</span>
 <span class="s2">        &lt;/div&gt;</span>
 <span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
         <span class="n">preset_cards</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
@@ -2964,7 +2977,7 @@ Each module uses the actual AstroLab classes and methods.</p>
         <span class="n">card</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
 <span class="s2">        &lt;div class=&quot;model-card&quot; style=&quot;cursor: pointer; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; margin: 0.5rem;&quot;&gt;</span>
 <span class="s2">            &lt;h4&gt;</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">&lt;/h4&gt;</span>
-<span class="s2">            &lt;p&gt;</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__doc__</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s1">&#39;No description&#39;</span><span class="si">}</span><span class="s2">&lt;/p&gt;</span>
+<span class="s2">            &lt;p&gt;</span><span class="si">{</span><span class="n">model_class</span><span class="o">.</span><span class="vm">__doc__</span><span class="w"> </span><span class="ow">or</span><span class="w"> </span><span class="s2">&quot;No description&quot;</span><span class="si">}</span><span class="s2">&lt;/p&gt;</span>
 <span class="s2">        &lt;/div&gt;</span>
 <span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
         <span class="n">model_cards</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
@@ -2980,21 +2993,25 @@ Each module uses the actual AstroLab classes and methods.</p>
     <span class="n">info</span> <span class="o">=</span> <span class="n">state</span><span class="p">()[</span><span class="s2">&quot;model_info&quot;</span><span class="p">]</span>
     <span class="k">if</span> <span class="n">info</span><span class="p">:</span>
         <span class="n">info_display</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&quot;&quot;</span>
-<span class="s2">        ### Selected: </span><span class="si">{</span><span class="n">state</span><span class="p">()[</span><span class="s1">&#39;selected_model&#39;</span><span class="p">]</span><span class="si">}</span>
+<span class="s2">        ### Selected: </span><span class="si">{</span><span class="n">state</span><span class="p">()[</span><span class="s2">&quot;selected_model&quot;</span><span class="p">]</span><span class="si">}</span>
 
 <span class="s2">        </span><span class="si">{</span><span class="n">yaml</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">info</span><span class="p">,</span><span class="w"> </span><span class="n">default_flow_style</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span><span class="si">}</span>
 <span class="s2">        &quot;&quot;&quot;</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">info_display</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;*Select a model to see details*&quot;</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span>
-        <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;## 🎯 Model Selector&quot;</span><span class="p">),</span>
-        <span class="n">mo</span><span class="o">.</span><span class="n">tabs</span><span class="p">({</span>
-            <span class="s2">&quot;🚀 Presets&quot;</span><span class="p">:</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">preset_cards</span><span class="p">),</span>
-            <span class="s2">&quot;🏗️ Models&quot;</span><span class="p">:</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">model_cards</span><span class="p">),</span>
-        <span class="p">}),</span>
-        <span class="n">info_display</span><span class="p">,</span>
-    <span class="p">])</span>
+    <span class="k">return</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;## 🎯 Model Selector&quot;</span><span class="p">),</span>
+            <span class="n">mo</span><span class="o">.</span><span class="n">tabs</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;🚀 Presets&quot;</span><span class="p">:</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">preset_cards</span><span class="p">),</span>
+                    <span class="s2">&quot;🏗️ Models&quot;</span><span class="p">:</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">model_cards</span><span class="p">),</span>
+                <span class="p">}</span>
+            <span class="p">),</span>
+            <span class="n">info_display</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -3694,10 +3711,7 @@ Each module uses the actual AstroLab classes and methods.</p>
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\ui\modules\training.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 25</span>
-<span class="normal"> 26</span>
-<span class="normal"> 27</span>
-<span class="normal"> 28</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 28</span>
 <span class="normal"> 29</span>
 <span class="normal"> 30</span>
 <span class="normal"> 31</span>
@@ -3840,14 +3854,29 @@ Each module uses the actual AstroLab classes and methods.</p>
 <span class="normal">168</span>
 <span class="normal">169</span>
 <span class="normal">170</span>
-<span class="normal">171</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">training_dashboard</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">:</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">training_dashboard</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">mo</span><span class="o">.</span><span class="n">Html</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Main training dashboard using AstroTrainer.&quot;&quot;&quot;</span>
     <span class="c1"># State</span>
-    <span class="n">state</span><span class="p">,</span> <span class="n">set_state</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">state</span><span class="p">({</span>
-        <span class="s2">&quot;trainer&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="s2">&quot;training_active&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
-        <span class="s2">&quot;training_config&quot;</span><span class="p">:</span> <span class="p">{},</span>
-    <span class="p">})</span>
+    <span class="n">state</span><span class="p">,</span> <span class="n">set_state</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">state</span><span class="p">(</span>
+        <span class="p">{</span>
+            <span class="s2">&quot;trainer&quot;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="s2">&quot;training_active&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="s2">&quot;training_config&quot;</span><span class="p">:</span> <span class="p">{},</span>
+        <span class="p">}</span>
+    <span class="p">)</span>
 
     <span class="c1"># Model selection</span>
     <span class="n">model_type</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">ui</span><span class="o">.</span><span class="n">radio</span><span class="p">(</span>
@@ -3932,12 +3961,14 @@ Each module uses the actual AstroLab classes and methods.</p>
             <span class="n">trainer</span> <span class="o">=</span> <span class="n">AstroTrainer</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
             <span class="n">trainer</span><span class="o">.</span><span class="n">datamodule</span> <span class="o">=</span> <span class="n">dm</span>  <span class="c1"># Use existing DataModule</span>
 
-            <span class="n">set_state</span><span class="p">(</span><span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span>
-                <span class="o">**</span><span class="n">s</span><span class="p">,</span>
-                <span class="s2">&quot;trainer&quot;</span><span class="p">:</span> <span class="n">trainer</span><span class="p">,</span>
-                <span class="s2">&quot;training_active&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
-                <span class="s2">&quot;training_config&quot;</span><span class="p">:</span> <span class="n">config</span><span class="p">,</span>
-            <span class="p">})</span>
+            <span class="n">set_state</span><span class="p">(</span>
+                <span class="k">lambda</span> <span class="n">s</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="o">**</span><span class="n">s</span><span class="p">,</span>
+                    <span class="s2">&quot;trainer&quot;</span><span class="p">:</span> <span class="n">trainer</span><span class="p">,</span>
+                    <span class="s2">&quot;training_active&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+                    <span class="s2">&quot;training_config&quot;</span><span class="p">:</span> <span class="n">config</span><span class="p">,</span>
+                <span class="p">}</span>
+            <span class="p">)</span>
 
             <span class="n">mo</span><span class="o">.</span><span class="n">output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;🚀 Starting training...&quot;</span><span class="p">))</span>
 
@@ -3974,19 +4005,25 @@ Each module uses the actual AstroLab classes and methods.</p>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">status</span> <span class="o">=</span> <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;⏸️ **Ready to train**&quot;</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span>
-        <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;## 🤖 Training Dashboard&quot;</span><span class="p">),</span>
-        <span class="n">mo</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">model_type</span><span class="p">,</span> <span class="n">model_select</span><span class="p">]),</span>
-        <span class="n">mo</span><span class="o">.</span><span class="n">accordion</span><span class="p">({</span>
-            <span class="s2">&quot;⚙️ Training Parameters&quot;</span><span class="p">:</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span>
-                <span class="n">epochs</span><span class="p">,</span>
-                <span class="n">learning_rate</span><span class="p">,</span>
-                <span class="n">mo</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">]),</span>
-            <span class="p">])</span>
-        <span class="p">}),</span>
-        <span class="n">train_btn</span><span class="p">,</span>
-        <span class="n">status</span><span class="p">,</span>
-    <span class="p">])</span>
+    <span class="k">return</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="n">mo</span><span class="o">.</span><span class="n">md</span><span class="p">(</span><span class="s2">&quot;## 🤖 Training Dashboard&quot;</span><span class="p">),</span>
+            <span class="n">mo</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">model_type</span><span class="p">,</span> <span class="n">model_select</span><span class="p">]),</span>
+            <span class="n">mo</span><span class="o">.</span><span class="n">accordion</span><span class="p">(</span>
+                <span class="p">{</span>
+                    <span class="s2">&quot;⚙️ Training Parameters&quot;</span><span class="p">:</span> <span class="n">mo</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span>
+                        <span class="p">[</span>
+                            <span class="n">epochs</span><span class="p">,</span>
+                            <span class="n">learning_rate</span><span class="p">,</span>
+                            <span class="n">mo</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">optimizer</span><span class="p">]),</span>
+                        <span class="p">]</span>
+                    <span class="p">)</span>
+                <span class="p">}</span>
+            <span class="p">),</span>
+            <span class="n">train_btn</span><span class="p">,</span>
+            <span class="n">status</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

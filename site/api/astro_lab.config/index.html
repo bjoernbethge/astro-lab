@@ -557,15 +557,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#astro_lab.config.distribute_config_parameters" class="md-nav__link">
-    <span class="md-ellipsis">
-      distribute_config_parameters
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#astro_lab.config.get_data_params" class="md-nav__link">
     <span class="md-ellipsis">
       get_data_params
@@ -587,15 +578,6 @@
   <a href="#astro_lab.config.get_mlflow_params" class="md-nav__link">
     <span class="md-ellipsis">
       get_mlflow_params
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#astro_lab.config.get_optuna_params" class="md-nav__link">
-    <span class="md-ellipsis">
-      get_optuna_params
     </span>
   </a>
   
@@ -665,15 +647,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#astro_lab.config.print_parameter_distribution" class="md-nav__link">
-    <span class="md-ellipsis">
-      print_parameter_distribution
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#astro_lab.config.register_survey" class="md-nav__link">
     <span class="md-ellipsis">
       register_survey
@@ -686,15 +659,6 @@
   <a href="#astro_lab.config.setup_experiment_from_config" class="md-nav__link">
     <span class="md-ellipsis">
       setup_experiment_from_config
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#astro_lab.config.validate_parameter_conflicts" class="md-nav__link">
-    <span class="md-ellipsis">
-      validate_parameter_conflicts
     </span>
   </a>
   
@@ -842,29 +806,6 @@
   
   <span class="md-ellipsis">
     astro_lab.models.core
-    
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../astro_lab.models.lightning/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    astro_lab.models.lightning
     
   </span>
   
@@ -1091,7 +1032,7 @@
     <div class="doc doc-contents first">
 
         <h3 id="astro_lab.config--astrolab-configuration-management">AstroLab Configuration Management<a class="headerlink" href="#astro_lab.config--astrolab-configuration-management" title="Permanent link">&para;</a></h3>
-<p>Centralized configuration management with automatic path setup and experiment organization.</p>
+<p>Simple configuration management with automatic path setup.</p>
 
           
 
@@ -1120,7 +1061,7 @@
             <td><code><span title="astro_lab.config.params">params</span></code></td>
             <td>
               <div class="doc-md-description">
-                <p>Centralized Parameter Distribution for AstroLab</p>
+                <p>Simple Parameter Management for AstroLab</p>
               </div>
             </td>
           </tr>
@@ -1171,18 +1112,10 @@
       </thead>
       <tbody>
             <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="distribute_config_parameters (astro_lab.config.distribute_config_parameters)" href="#astro_lab.config.distribute_config_parameters">distribute_config_parameters</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Distributes configuration parameters to the appropriate components.</p>
-                </div>
-              </td>
-            </tr>
-            <tr class="doc-section-item">
               <td><code><a class="autorefs autorefs-internal" title="get_data_params (astro_lab.config.get_data_params)" href="#astro_lab.config.get_data_params">get_data_params</a></code></td>
               <td>
                 <div class="doc-md-description">
-                  <p>Extracts only Data parameters.</p>
+                  <p>Extract data parameters from config.</p>
                 </div>
               </td>
             </tr>
@@ -1190,7 +1123,7 @@
               <td><code><a class="autorefs autorefs-internal" title="get_lightning_params (astro_lab.config.get_lightning_params)" href="#astro_lab.config.get_lightning_params">get_lightning_params</a></code></td>
               <td>
                 <div class="doc-md-description">
-                  <p>Extracts only Lightning parameters.</p>
+                  <p>Extract Lightning model parameters from config.</p>
                 </div>
               </td>
             </tr>
@@ -1198,15 +1131,7 @@
               <td><code><a class="autorefs autorefs-internal" title="get_mlflow_params (astro_lab.config.get_mlflow_params)" href="#astro_lab.config.get_mlflow_params">get_mlflow_params</a></code></td>
               <td>
                 <div class="doc-md-description">
-                  <p>Extracts only MLflow parameters.</p>
-                </div>
-              </td>
-            </tr>
-            <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="get_optuna_params (astro_lab.config.get_optuna_params)" href="#astro_lab.config.get_optuna_params">get_optuna_params</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Extracts only Optuna parameters.</p>
+                  <p>Extract MLflow parameters from config.</p>
                 </div>
               </td>
             </tr>
@@ -1246,7 +1171,7 @@
               <td><code><a class="autorefs autorefs-internal" title="get_trainer_params (astro_lab.config.get_trainer_params)" href="#astro_lab.config.get_trainer_params">get_trainer_params</a></code></td>
               <td>
                 <div class="doc-md-description">
-                  <p>Extracts only Trainer parameters.</p>
+                  <p>Extract trainer parameters from config.</p>
                 </div>
               </td>
             </tr>
@@ -1267,14 +1192,6 @@
               </td>
             </tr>
             <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="print_parameter_distribution (astro_lab.config.print_parameter_distribution)" href="#astro_lab.config.print_parameter_distribution">print_parameter_distribution</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Debug function: Shows parameter distribution.</p>
-                </div>
-              </td>
-            </tr>
-            <tr class="doc-section-item">
               <td><code><a class="autorefs autorefs-internal" title="register_survey (astro_lab.config.register_survey)" href="#astro_lab.config.register_survey">register_survey</a></code></td>
               <td>
                 <div class="doc-md-description">
@@ -1287,14 +1204,6 @@
               <td>
                 <div class="doc-md-description">
                   <p>Set up experiment directories and environment from config file.</p>
-                </div>
-              </td>
-            </tr>
-            <tr class="doc-section-item">
-              <td><code><a class="autorefs autorefs-internal" title="validate_parameter_conflicts (astro_lab.config.validate_parameter_conflicts)" href="#astro_lab.config.validate_parameter_conflicts">validate_parameter_conflicts</a></code></td>
-              <td>
-                <div class="doc-md-description">
-                  <p>Validates configuration for parameter conflicts.</p>
                 </div>
               </td>
             </tr>
@@ -1372,7 +1281,8 @@
 
               <details class="quote">
                 <summary>Source code in <code>src\astro_lab\config\loader.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">18</span>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">17</span>
+<span class="normal">18</span>
 <span class="normal">19</span>
 <span class="normal">20</span>
 <span class="normal">21</span>
@@ -1436,7 +1346,13 @@
 <span class="normal">79</span>
 <span class="normal">80</span>
 <span class="normal">81</span>
-<span class="normal">82</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ConfigLoader</span><span class="p">:</span>
+<span class="normal">82</span>
+<span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">ConfigLoader</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Load and manage AstroLab configurations with automatic path setup.&quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
@@ -1462,14 +1378,18 @@
         <span class="n">config_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_file</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="n">config_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
             <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Config file not found: </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
         <span class="k">if</span> <span class="n">experiment_name</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">experiment_name</span>
+
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
             <span class="n">exp_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span>
             <span class="n">data_config</span><span class="o">.</span><span class="n">ensure_experiment_directories</span><span class="p">(</span><span class="n">exp_name</span><span class="p">)</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">_update_paths</span><span class="p">()</span>
+
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="ow">or</span> <span class="p">{}</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_update_paths</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
@@ -1478,6 +1398,7 @@
             <span class="k">return</span>
         <span class="n">exp_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span>
         <span class="n">exp_paths</span> <span class="o">=</span> <span class="n">data_config</span><span class="o">.</span><span class="n">get_experiment_paths</span><span class="p">(</span><span class="n">exp_name</span><span class="p">)</span>
+
         <span class="k">if</span> <span class="s2">&quot;checkpoints&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;checkpoints&quot;</span><span class="p">][</span><span class="s2">&quot;dir&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">exp_paths</span><span class="p">[</span><span class="s2">&quot;checkpoints&quot;</span><span class="p">])</span>
         <span class="k">if</span> <span class="s2">&quot;data&quot;</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
@@ -1492,11 +1413,13 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Config not loaded. Call load_config() first.&quot;</span><span class="p">)</span>
+
         <span class="k">if</span> <span class="n">output_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="n">exp_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span>
             <span class="n">output_file</span> <span class="o">=</span> <span class="n">data_config</span><span class="o">.</span><span class="n">configs_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">exp_name</span><span class="si">}</span><span class="s2">.yaml&quot;</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">output_file</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+
         <span class="n">output_file</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">yaml</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">default_flow_style</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
@@ -1589,7 +1512,8 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\loader.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">31</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">30</span>
+<span class="normal">31</span>
 <span class="normal">32</span>
 <span class="normal">33</span>
 <span class="normal">34</span>
@@ -1610,7 +1534,10 @@
 <span class="normal">49</span>
 <span class="normal">50</span>
 <span class="normal">51</span>
-<span class="normal">52</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">experiment_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">experiment_name</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Load configuration and set up experiment paths.</span>
 
@@ -1623,14 +1550,18 @@
     <span class="n">config_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config_file</span><span class="p">)</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="n">config_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
         <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Config file not found: </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="s2">&quot;r&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
     <span class="k">if</span> <span class="n">experiment_name</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">experiment_name</span>
+
     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
         <span class="n">exp_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span>
         <span class="n">data_config</span><span class="o">.</span><span class="n">ensure_experiment_directories</span><span class="p">(</span><span class="n">exp_name</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_update_paths</span><span class="p">()</span>
+
     <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="ow">or</span> <span class="p">{}</span>
 </code></pre></div></td></tr></table></div>
             </details>
@@ -1688,11 +1619,7 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\loader.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">65</span>
-<span class="normal">66</span>
-<span class="normal">67</span>
-<span class="normal">68</span>
-<span class="normal">69</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">69</span>
 <span class="normal">70</span>
 <span class="normal">71</span>
 <span class="normal">72</span>
@@ -1705,7 +1632,13 @@
 <span class="normal">79</span>
 <span class="normal">80</span>
 <span class="normal">81</span>
-<span class="normal">82</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+<span class="normal">82</span>
+<span class="normal">83</span>
+<span class="normal">84</span>
+<span class="normal">85</span>
+<span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_path</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Save current configuration to file.</span>
 
@@ -1714,11 +1647,13 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Config not loaded. Call load_config() first.&quot;</span><span class="p">)</span>
+
     <span class="k">if</span> <span class="n">output_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">exp_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;experiment_name&quot;</span><span class="p">]</span>
         <span class="n">output_file</span> <span class="o">=</span> <span class="n">data_config</span><span class="o">.</span><span class="n">configs_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">exp_name</span><span class="si">}</span><span class="s2">.yaml&quot;</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">output_file</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">output_path</span><span class="p">)</span>
+
     <span class="n">output_file</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
     <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="s2">&quot;w&quot;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
         <span class="n">yaml</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="n">default_flow_style</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">indent</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
@@ -1741,230 +1676,6 @@
 <div class="doc doc-object doc-function">
 
 
-<h3 id="astro_lab.config.distribute_config_parameters" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">distribute_config_parameters</span>
-
-
-<a href="#astro_lab.config.distribute_config_parameters" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">]]</span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Distributes configuration parameters to the appropriate components.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>config</code>
-            </td>
-            <td>
-                  <code><span title="typing.Dict">Dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Complete configuration dictionary</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="typing.Dict">Dict</span>[<span title="str">str</span>, <span title="typing.Dict">Dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Dictionary with categorized parameters</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-          
-
-            <details class="quote">
-              <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 77</span>
-<span class="normal"> 78</span>
-<span class="normal"> 79</span>
-<span class="normal"> 80</span>
-<span class="normal"> 81</span>
-<span class="normal"> 82</span>
-<span class="normal"> 83</span>
-<span class="normal"> 84</span>
-<span class="normal"> 85</span>
-<span class="normal"> 86</span>
-<span class="normal"> 87</span>
-<span class="normal"> 88</span>
-<span class="normal"> 89</span>
-<span class="normal"> 90</span>
-<span class="normal"> 91</span>
-<span class="normal"> 92</span>
-<span class="normal"> 93</span>
-<span class="normal"> 94</span>
-<span class="normal"> 95</span>
-<span class="normal"> 96</span>
-<span class="normal"> 97</span>
-<span class="normal"> 98</span>
-<span class="normal"> 99</span>
-<span class="normal">100</span>
-<span class="normal">101</span>
-<span class="normal">102</span>
-<span class="normal">103</span>
-<span class="normal">104</span>
-<span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span>
-<span class="normal">108</span>
-<span class="normal">109</span>
-<span class="normal">110</span>
-<span class="normal">111</span>
-<span class="normal">112</span>
-<span class="normal">113</span>
-<span class="normal">114</span>
-<span class="normal">115</span>
-<span class="normal">116</span>
-<span class="normal">117</span>
-<span class="normal">118</span>
-<span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span>
-<span class="normal">127</span>
-<span class="normal">128</span>
-<span class="normal">129</span>
-<span class="normal">130</span>
-<span class="normal">131</span>
-<span class="normal">132</span>
-<span class="normal">133</span>
-<span class="normal">134</span>
-<span class="normal">135</span>
-<span class="normal">136</span>
-<span class="normal">137</span>
-<span class="normal">138</span>
-<span class="normal">139</span>
-<span class="normal">140</span>
-<span class="normal">141</span>
-<span class="normal">142</span>
-<span class="normal">143</span>
-<span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span>
-<span class="normal">149</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Distributes configuration parameters to the appropriate components.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        config: Complete configuration dictionary</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        Dictionary with categorized parameters</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="p">{</span>
-        <span class="s2">&quot;trainer&quot;</span><span class="p">:</span> <span class="p">{},</span>
-        <span class="s2">&quot;lightning&quot;</span><span class="p">:</span> <span class="p">{},</span>
-        <span class="s2">&quot;optuna&quot;</span><span class="p">:</span> <span class="p">{},</span>
-        <span class="s2">&quot;mlflow&quot;</span><span class="p">:</span> <span class="p">{},</span>
-        <span class="s2">&quot;data&quot;</span><span class="p">:</span> <span class="p">{},</span>
-        <span class="s2">&quot;excluded&quot;</span><span class="p">:</span> <span class="p">{},</span>
-    <span class="p">}</span>
-
-    <span class="c1"># Training section -&gt; Trainer + Lightning</span>
-    <span class="k">if</span> <span class="s2">&quot;training&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
-        <span class="n">training_config</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;training&quot;</span><span class="p">]</span>
-        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">training_config</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">TRAINER_PARAMS</span><span class="p">:</span>
-                <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;trainer&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-            <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">LIGHTNING_PARAMS</span><span class="p">:</span>
-                <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-            <span class="c1"># Ignore unknown training params</span>
-
-    <span class="c1"># Handle direct CLI parameters (epochs -&gt; max_epochs mapping)</span>
-    <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">config</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="k">if</span> <span class="n">key</span> <span class="o">==</span> <span class="s2">&quot;epochs&quot;</span><span class="p">:</span>
-            <span class="c1"># Map epochs to max_epochs for trainer</span>
-            <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;trainer&quot;</span><span class="p">][</span><span class="s2">&quot;max_epochs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-        <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">TRAINER_PARAMS</span><span class="p">:</span>
-            <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;trainer&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-        <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">LIGHTNING_PARAMS</span><span class="p">:</span>
-            <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-        <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">DATA_PARAMS</span><span class="p">:</span>
-            <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-
-    <span class="c1"># MLflow section</span>
-    <span class="k">if</span> <span class="s2">&quot;mlflow&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
-        <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;mlflow&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;mlflow&quot;</span><span class="p">])</span>
-
-    <span class="c1"># Data section</span>
-    <span class="k">if</span> <span class="s2">&quot;data&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
-        <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">])</span>
-
-    <span class="c1"># Optimization section -&gt; Optuna + Excluded</span>
-    <span class="k">if</span> <span class="s2">&quot;optimization&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
-        <span class="n">opt_config</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;optimization&quot;</span><span class="p">]</span>
-        <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">opt_config</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">EXCLUDED_PARAMS</span><span class="p">:</span>
-                <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;excluded&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-            <span class="k">elif</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">OPTUNA_PARAMS</span><span class="p">:</span>
-                <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;optuna&quot;</span><span class="p">][</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">value</span>
-
-    <span class="c1"># Model section -&gt; Lightning (model parameters)</span>
-    <span class="k">if</span> <span class="s2">&quot;model&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
-        <span class="n">model_config</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span>
-        <span class="c1"># Model type and params go to Lightning</span>
-        <span class="k">if</span> <span class="s2">&quot;type&quot;</span> <span class="ow">in</span> <span class="n">model_config</span><span class="p">:</span>
-            <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">][</span><span class="s2">&quot;model_type&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">model_config</span><span class="p">[</span><span class="s2">&quot;type&quot;</span><span class="p">]</span>
-        <span class="k">if</span> <span class="s2">&quot;params&quot;</span> <span class="ow">in</span> <span class="n">model_config</span><span class="p">:</span>
-            <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">model_config</span><span class="p">[</span><span class="s2">&quot;params&quot;</span><span class="p">])</span>
-
-    <span class="c1"># Modellname auf Top-Level</span>
-    <span class="k">if</span> <span class="s2">&quot;model&quot;</span> <span class="ow">in</span> <span class="n">config</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">],</span> <span class="nb">str</span><span class="p">):</span>
-        <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;trainer&quot;</span><span class="p">][</span><span class="s2">&quot;model&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span>
-        <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">][</span><span class="s2">&quot;model&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span>
-
-    <span class="k">return</span> <span class="n">distributed</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
 <h3 id="astro_lab.config.get_data_params" class="doc doc-heading">
             <span class="doc doc-object-name doc-function-name">get_data_params</span>
 
@@ -1975,19 +1686,51 @@
 
     <div class="doc doc-contents ">
 
-        <p>Extracts only Data parameters.</p>
+        <p>Extract data parameters from config.</p>
 
           
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">206</span>
-<span class="normal">207</span>
-<span class="normal">208</span>
-<span class="normal">209</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_data_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts only Data parameters.&quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;data&quot;</span><span class="p">]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">64</span>
+<span class="normal">65</span>
+<span class="normal">66</span>
+<span class="normal">67</span>
+<span class="normal">68</span>
+<span class="normal">69</span>
+<span class="normal">70</span>
+<span class="normal">71</span>
+<span class="normal">72</span>
+<span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span>
+<span class="normal">80</span>
+<span class="normal">81</span>
+<span class="normal">82</span>
+<span class="normal">83</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_data_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract data parameters from config.&quot;&quot;&quot;</span>
+    <span class="n">data_params</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Direct data parameters</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;dataset&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;data_dir&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;batch_size&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;num_workers&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;max_samples&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;return_tensor&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;split_ratios&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;shuffle&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;pin_memory&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+            <span class="n">data_params</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">data_params</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2007,19 +1750,57 @@
 
     <div class="doc doc-contents ">
 
-        <p>Extracts only Lightning parameters.</p>
+        <p>Extract Lightning model parameters from config.</p>
 
           
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">188</span>
-<span class="normal">189</span>
-<span class="normal">190</span>
-<span class="normal">191</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_lightning_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts only Lightning parameters.&quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">39</span>
+<span class="normal">40</span>
+<span class="normal">41</span>
+<span class="normal">42</span>
+<span class="normal">43</span>
+<span class="normal">44</span>
+<span class="normal">45</span>
+<span class="normal">46</span>
+<span class="normal">47</span>
+<span class="normal">48</span>
+<span class="normal">49</span>
+<span class="normal">50</span>
+<span class="normal">51</span>
+<span class="normal">52</span>
+<span class="normal">53</span>
+<span class="normal">54</span>
+<span class="normal">55</span>
+<span class="normal">56</span>
+<span class="normal">57</span>
+<span class="normal">58</span>
+<span class="normal">59</span>
+<span class="normal">60</span>
+<span class="normal">61</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_lightning_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract Lightning model parameters from config.&quot;&quot;&quot;</span>
+    <span class="n">lightning_params</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Direct Lightning parameters</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;learning_rate&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;weight_decay&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;optimizer&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;scheduler&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;warmup_steps&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;beta1&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;beta2&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;eps&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+            <span class="n">lightning_params</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+
+    <span class="c1"># Model parameters</span>
+    <span class="k">if</span> <span class="s2">&quot;model&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+        <span class="n">lightning_params</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;model&quot;</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">lightning_params</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2039,51 +1820,27 @@
 
     <div class="doc doc-contents ">
 
-        <p>Extracts only MLflow parameters.</p>
+        <p>Extract MLflow parameters from config.</p>
 
           
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">200</span>
-<span class="normal">201</span>
-<span class="normal">202</span>
-<span class="normal">203</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_mlflow_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts only MLflow parameters.&quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;mlflow&quot;</span><span class="p">]</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">86</span>
+<span class="normal">87</span>
+<span class="normal">88</span>
+<span class="normal">89</span>
+<span class="normal">90</span>
+<span class="normal">91</span>
+<span class="normal">92</span>
+<span class="normal">93</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_mlflow_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract MLflow parameters from config.&quot;&quot;&quot;</span>
+    <span class="n">mlflow_params</span> <span class="o">=</span> <span class="p">{}</span>
 
-</div>
+    <span class="k">if</span> <span class="s2">&quot;mlflow&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+        <span class="n">mlflow_params</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">config</span><span class="p">[</span><span class="s2">&quot;mlflow&quot;</span><span class="p">])</span>
 
-<div class="doc doc-object doc-function">
-
-
-<h3 id="astro_lab.config.get_optuna_params" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">get_optuna_params</span>
-
-
-<a href="#astro_lab.config.get_optuna_params" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">get_optuna_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">]</span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Extracts only Optuna parameters.</p>
-
-          
-
-            <details class="quote">
-              <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">194</span>
-<span class="normal">195</span>
-<span class="normal">196</span>
-<span class="normal">197</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_optuna_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts only Optuna parameters.&quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;optuna&quot;</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">mlflow_params</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2109,13 +1866,13 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\surveys.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">142</span>
-<span class="normal">143</span>
-<span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">73</span>
+<span class="normal">74</span>
+<span class="normal">75</span>
+<span class="normal">76</span>
+<span class="normal">77</span>
+<span class="normal">78</span>
+<span class="normal">79</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get configuration for a specific survey.&quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">survey</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">SURVEY_CONFIGS</span><span class="p">:</span>
         <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
@@ -2147,10 +1904,10 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\surveys.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">178</span>
-<span class="normal">179</span>
-<span class="normal">180</span>
-<span class="normal">181</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_coordinates</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_coordinates</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get coordinate columns for a survey.&quot;&quot;&quot;</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;coord_cols&quot;</span><span class="p">]</span>
@@ -2179,15 +1936,15 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\surveys.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">167</span>
-<span class="normal">168</span>
-<span class="normal">169</span>
-<span class="normal">170</span>
-<span class="normal">171</span>
-<span class="normal">172</span>
-<span class="normal">173</span>
-<span class="normal">174</span>
-<span class="normal">175</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_features</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_features</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get all feature columns for a survey.&quot;&quot;&quot;</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">)</span>
     <span class="n">features</span> <span class="o">=</span> <span class="p">(</span>
@@ -2221,10 +1978,10 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\surveys.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">184</span>
-<span class="normal">185</span>
-<span class="normal">186</span>
-<span class="normal">187</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_magnitudes</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_survey_magnitudes</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Get magnitude columns for a survey.&quot;&quot;&quot;</span>
     <span class="n">config</span> <span class="o">=</span> <span class="n">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;mag_cols&quot;</span><span class="p">]</span>
@@ -2247,19 +2004,63 @@
 
     <div class="doc doc-contents ">
 
-        <p>Extracts only Trainer parameters.</p>
+        <p>Extract trainer parameters from config.</p>
 
           
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">182</span>
-<span class="normal">183</span>
-<span class="normal">184</span>
-<span class="normal">185</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_trainer_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extracts only Trainer parameters.&quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;trainer&quot;</span><span class="p">]</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span>
+<span class="normal">25</span>
+<span class="normal">26</span>
+<span class="normal">27</span>
+<span class="normal">28</span>
+<span class="normal">29</span>
+<span class="normal">30</span>
+<span class="normal">31</span>
+<span class="normal">32</span>
+<span class="normal">33</span>
+<span class="normal">34</span>
+<span class="normal">35</span>
+<span class="normal">36</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_trainer_params</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract trainer parameters from config.&quot;&quot;&quot;</span>
+    <span class="n">trainer_params</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="c1"># Map common parameters</span>
+    <span class="k">if</span> <span class="s2">&quot;epochs&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+        <span class="n">trainer_params</span><span class="p">[</span><span class="s2">&quot;max_epochs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;epochs&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="s2">&quot;max_epochs&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+        <span class="n">trainer_params</span><span class="p">[</span><span class="s2">&quot;max_epochs&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;max_epochs&quot;</span><span class="p">]</span>
+
+    <span class="c1"># Direct trainer parameters</span>
+    <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">[</span>
+        <span class="s2">&quot;accelerator&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;devices&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;precision&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;gradient_clip_val&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;accumulate_grad_batches&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;log_every_n_steps&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;val_check_interval&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;check_val_every_n_epoch&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;num_sanity_val_steps&quot;</span><span class="p">,</span>
+    <span class="p">]:</span>
+        <span class="k">if</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
+            <span class="n">trainer_params</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">trainer_params</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2357,21 +2158,21 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\loader.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">85</span>
-<span class="normal">86</span>
-<span class="normal">87</span>
-<span class="normal">88</span>
-<span class="normal">89</span>
-<span class="normal">90</span>
-<span class="normal">91</span>
-<span class="normal">92</span>
-<span class="normal">93</span>
-<span class="normal">94</span>
-<span class="normal">95</span>
-<span class="normal">96</span>
-<span class="normal">97</span>
-<span class="normal">98</span>
-<span class="normal">99</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_experiment_config</span><span class="p">(</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_experiment_config</span><span class="p">(</span>
     <span class="n">experiment_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config_file</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -2465,18 +2266,19 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\loader.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">102</span>
-<span class="normal">103</span>
-<span class="normal">104</span>
-<span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span>
-<span class="normal">108</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">108</span>
 <span class="normal">109</span>
 <span class="normal">110</span>
 <span class="normal">111</span>
 <span class="normal">112</span>
-<span class="normal">113</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">load_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convenience function to load survey configuration.</span>
 
@@ -2486,70 +2288,9 @@
 <span class="sd">    Returns:</span>
 <span class="sd">        Survey configuration dictionary</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">loader</span> <span class="o">=</span> <span class="n">ConfigLoader</span><span class="p">()</span>
-    <span class="k">return</span> <span class="n">loader</span><span class="o">.</span><span class="n">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">.surveys</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_survey_config</span>
 
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="astro_lab.config.print_parameter_distribution" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">print_parameter_distribution</span>
-
-
-<a href="#astro_lab.config.print_parameter_distribution" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">print_parameter_distribution</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Debug function: Shows parameter distribution.</p>
-
-          
-
-            <details class="quote">
-              <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">250</span>
-<span class="normal">251</span>
-<span class="normal">252</span>
-<span class="normal">253</span>
-<span class="normal">254</span>
-<span class="normal">255</span>
-<span class="normal">256</span>
-<span class="normal">257</span>
-<span class="normal">258</span>
-<span class="normal">259</span>
-<span class="normal">260</span>
-<span class="normal">261</span>
-<span class="normal">262</span>
-<span class="normal">263</span>
-<span class="normal">264</span>
-<span class="normal">265</span>
-<span class="normal">266</span>
-<span class="normal">267</span>
-<span class="normal">268</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">print_parameter_distribution</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Debug function: Shows parameter distribution.&quot;&quot;&quot;</span>
-    <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;🔧 Parameter Distribution:&quot;</span><span class="p">)</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">40</span><span class="p">)</span>
-
-    <span class="k">for</span> <span class="n">category</span><span class="p">,</span> <span class="n">params</span> <span class="ow">in</span> <span class="n">distributed</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-        <span class="k">if</span> <span class="n">params</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">📋 </span><span class="si">{</span><span class="n">category</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span><span class="si">}</span><span class="s2">:&quot;</span><span class="p">)</span>
-            <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">params</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   • </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-
-    <span class="c1"># Validation</span>
-    <span class="n">is_valid</span><span class="p">,</span> <span class="n">error</span> <span class="o">=</span> <span class="n">validate_parameter_conflicts</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-    <span class="k">if</span> <span class="ow">not</span> <span class="n">is_valid</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">❌ Validation Error: </span><span class="si">{</span><span class="n">error</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">✅ Configuration is valid&quot;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">get_survey_config</span><span class="p">(</span><span class="n">survey</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2575,15 +2316,15 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\surveys.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">156</span>
-<span class="normal">157</span>
-<span class="normal">158</span>
-<span class="normal">159</span>
-<span class="normal">160</span>
-<span class="normal">161</span>
-<span class="normal">162</span>
-<span class="normal">163</span>
-<span class="normal">164</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">register_survey</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">87</span>
+<span class="normal">88</span>
+<span class="normal">89</span>
+<span class="normal">90</span>
+<span class="normal">91</span>
+<span class="normal">92</span>
+<span class="normal">93</span>
+<span class="normal">94</span>
+<span class="normal">95</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">register_survey</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Register a new survey configuration.&quot;&quot;&quot;</span>
     <span class="n">required_keys</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;name&quot;</span><span class="p">,</span> <span class="s2">&quot;coord_cols&quot;</span><span class="p">,</span> <span class="s2">&quot;mag_cols&quot;</span><span class="p">,</span> <span class="s2">&quot;extra_cols&quot;</span><span class="p">]</span>
     <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="n">required_keys</span><span class="p">:</span>
@@ -2664,14 +2405,7 @@
 
             <details class="quote">
               <summary>Source code in <code>src\astro_lab\config\loader.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">116</span>
-<span class="normal">117</span>
-<span class="normal">118</span>
-<span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">123</span>
 <span class="normal">124</span>
 <span class="normal">125</span>
 <span class="normal">126</span>
@@ -2683,7 +2417,14 @@
 <span class="normal">132</span>
 <span class="normal">133</span>
 <span class="normal">134</span>
-<span class="normal">135</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">setup_experiment_from_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">experiment_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">setup_experiment_from_config</span><span class="p">(</span><span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">experiment_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Set up experiment directories and environment from config file.</span>
 
@@ -2703,156 +2444,6 @@
     <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;   - Config saved: </span><span class="si">{</span><span class="n">data_config</span><span class="o">.</span><span class="n">configs_dir</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">experiment_name</span><span class="si">}</span><span class="s1">.yaml&#39;</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
     <span class="k">return</span> <span class="n">config</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="astro_lab.config.validate_parameter_conflicts" class="doc doc-heading">
-            <span class="doc doc-object-name doc-function-name">validate_parameter_conflicts</span>
-
-
-<a href="#astro_lab.config.validate_parameter_conflicts" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><span class="nf">validate_parameter_conflicts</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n"><span title="typing.Dict">Dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Tuple">Tuple</span></span><span class="p">[</span><span class="n"><span title="bool">bool</span></span><span class="p">,</span> <span class="n"><span title="str">str</span></span><span class="p">]</span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Validates configuration for parameter conflicts.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>config</code>
-            </td>
-            <td>
-                  <code><span title="typing.Dict">Dict</span>[<span title="str">str</span>, <span title="typing.Any">Any</span>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>Configuration to validate</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-    <p><span class="doc-section-title">Returns:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Type</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="typing.Tuple">Tuple</span>[<span title="bool">bool</span>, <span title="str">str</span>]</code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>(is_valid, error_message)</p>
-              </div>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-          
-
-            <details class="quote">
-              <summary>Source code in <code>src\astro_lab\config\params.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">212</span>
-<span class="normal">213</span>
-<span class="normal">214</span>
-<span class="normal">215</span>
-<span class="normal">216</span>
-<span class="normal">217</span>
-<span class="normal">218</span>
-<span class="normal">219</span>
-<span class="normal">220</span>
-<span class="normal">221</span>
-<span class="normal">222</span>
-<span class="normal">223</span>
-<span class="normal">224</span>
-<span class="normal">225</span>
-<span class="normal">226</span>
-<span class="normal">227</span>
-<span class="normal">228</span>
-<span class="normal">229</span>
-<span class="normal">230</span>
-<span class="normal">231</span>
-<span class="normal">232</span>
-<span class="normal">233</span>
-<span class="normal">234</span>
-<span class="normal">235</span>
-<span class="normal">236</span>
-<span class="normal">237</span>
-<span class="normal">238</span>
-<span class="normal">239</span>
-<span class="normal">240</span>
-<span class="normal">241</span>
-<span class="normal">242</span>
-<span class="normal">243</span>
-<span class="normal">244</span>
-<span class="normal">245</span>
-<span class="normal">246</span>
-<span class="normal">247</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">validate_parameter_conflicts</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Validates configuration for parameter conflicts.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        config: Configuration to validate</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        (is_valid, error_message)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">try</span><span class="p">:</span>
-        <span class="n">distributed</span> <span class="o">=</span> <span class="n">distribute_config_parameters</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
-
-        <span class="c1"># Check for missing critical parameters</span>
-        <span class="k">if</span> <span class="s2">&quot;learning_rate&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">distributed</span><span class="p">[</span><span class="s2">&quot;lightning&quot;</span><span class="p">]:</span>
-            <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="s2">&quot;learning_rate missing in configuration&quot;</span>
-
-        <span class="c1"># Check for Optuna-specific conflicts</span>
-        <span class="k">if</span> <span class="s2">&quot;optimization&quot;</span> <span class="ow">in</span> <span class="n">config</span><span class="p">:</span>
-            <span class="n">opt_config</span> <span class="o">=</span> <span class="n">config</span><span class="p">[</span><span class="s2">&quot;optimization&quot;</span><span class="p">]</span>
-            <span class="k">if</span> <span class="s2">&quot;search_space&quot;</span> <span class="ow">in</span> <span class="n">opt_config</span><span class="p">:</span>
-                <span class="n">search_space</span> <span class="o">=</span> <span class="n">opt_config</span><span class="p">[</span><span class="s2">&quot;search_space&quot;</span><span class="p">]</span>
-
-                <span class="c1"># Validate learning_rate range</span>
-                <span class="k">if</span> <span class="s2">&quot;learning_rate&quot;</span> <span class="ow">in</span> <span class="n">search_space</span><span class="p">:</span>
-                    <span class="n">lr_config</span> <span class="o">=</span> <span class="n">search_space</span><span class="p">[</span><span class="s2">&quot;learning_rate&quot;</span><span class="p">]</span>
-                    <span class="k">if</span> <span class="n">lr_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;low&quot;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">lr_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;high&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">):</span>
-                        <span class="k">return</span> <span class="p">(</span>
-                            <span class="kc">False</span><span class="p">,</span>
-                            <span class="sa">f</span><span class="s2">&quot;learning_rate: low (</span><span class="si">{</span><span class="n">lr_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;low&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">) &gt;= high (</span><span class="si">{</span><span class="n">lr_config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;high&#39;</span><span class="p">)</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">,</span>
-                        <span class="p">)</span>
-
-        <span class="k">return</span> <span class="kc">True</span><span class="p">,</span> <span class="s2">&quot;&quot;</span>
-
-    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-        <span class="k">return</span> <span class="kc">False</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Validation error: </span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
