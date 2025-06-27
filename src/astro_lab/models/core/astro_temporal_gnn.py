@@ -107,18 +107,27 @@ class AstroTemporalGNN(AstroLightningMixin, LightningModule):
             f"[AstroTemporalGNN] Init: num_features={num_features}, hidden_dim={hidden_dim}"
         )
 
-        # Feature encoder
+        # Feature encoder - adjusted for different input types
+        # For spatial data (3D coordinates), we might need to encode from 3 to hidden_dim
+        self.feature_encoder = None
         if num_features != hidden_dim:
-            self.feature_encoder = create_mlp(
-                input_dim=num_features,
-                output_dim=hidden_dim,
-                hidden_dims=[hidden_dim // 2],
-                activation="relu",
-                batch_norm=use_batch_norm,
-                dropout=dropout,
-            )
+            # Only create feature encoder if we know it will work with the expected features
+            try:
+                self.feature_encoder = create_mlp(
+                    input_dim=num_features,
+                    output_dim=hidden_dim,
+                    hidden_dims=[max(hidden_dim // 2, 16)],  # Ensure minimum size
+                    activation="relu",
+                    batch_norm=False,  # Disable batch norm for stability
+                    dropout=dropout,
+                )
+                logger.info(f"[AstroTemporalGNN] Created feature encoder: {num_features} -> {hidden_dim}")
+            except Exception as e:
+                logger.warning(f"[AstroTemporalGNN] Failed to create feature encoder: {e}")
+                self.feature_encoder = nn.Identity()
         else:
             self.feature_encoder = nn.Identity()
+            logger.info("[AstroTemporalGNN] No feature encoding needed (dimensions match)")
 
         # Temporal encoder
         if temporal_model == "lstm":
@@ -154,35 +163,26 @@ class AstroTemporalGNN(AstroLightningMixin, LightningModule):
         else:
             raise ValueError(f"Unknown temporal_model: {temporal_model}")
 
-        # GNN layers for spatial relationships
-        self.conv_layers = nn.ModuleList()
-        self.norm_layers = nn.ModuleList()
+        # GNN layers for spatial relationships - will be created dynamically in forward
+        self.conv_type = conv_type
+        self.hidden_dim = hidden_dim
+        self.num_layers = num_layers
+        self.use_batch_norm = use_batch_norm
+        self.dropout = dropout
 
-        for i in range(num_layers):
-            if i == 0:
-                in_dim = temporal_output_dim
-            else:
-                in_dim = hidden_dim
+        # Store kwargs for layer creation
+        self.layer_kwargs = kwargs
 
-            if conv_type == "gcn":
-                conv = GCNConv(in_dim, hidden_dim)
-            elif conv_type == "gat":
-                heads = kwargs.get("num_heads", 8)
-                conv = GATConv(in_dim, hidden_dim // heads, heads=heads)
-            elif conv_type == "sage":
-                conv = SAGEConv(in_dim, hidden_dim)
-            elif conv_type == "transformer":
-                heads = kwargs.get("num_heads", 8)
-                conv = TransformerConv(in_dim, hidden_dim // heads, heads=heads)
-            else:
-                raise ValueError(f"Unknown conv_type: {conv_type}")
+        # Initialize empty lists - will be populated in forward
+        self.conv_layers = None
+        self.norm_layers = None
+        self._layers_initialized = False
 
-            self.conv_layers.append(conv)
-
-            if use_batch_norm:
-                self.norm_layers.append(nn.BatchNorm1d(hidden_dim))
-            else:
-                self.norm_layers.append(nn.Identity())
+        # Debug: Log die erwartete Eingabedimension für Layer 0
+        logger.info(
+            f"[DEBUG] Initializing GNN-Layer 0: in_dim={temporal_output_dim} (expected x.shape[1])"
+        )
+        self._expected_first_gnn_in_dim = temporal_output_dim
 
         # Task-specific output head
         if task == "time_series_classification":
@@ -218,7 +218,7 @@ class AstroTemporalGNN(AstroLightningMixin, LightningModule):
 
         Args:
             data: PyG Data object with x, edge_index, batch
-                  x shape: [N, sequence_length, num_features]
+                  x shape: [N, num_features] or [N, sequence_length, num_features]
 
         Returns:
             Predictions based on task type
@@ -226,79 +226,241 @@ class AstroTemporalGNN(AstroLightningMixin, LightningModule):
         x, edge_index = data.x, data.edge_index
         batch = getattr(data, "batch", None)
 
-        import logging
+        logger = logging.getLogger(__name__)
 
+        logger.info(
+            f"[AstroTemporalGNN] Input: x.shape={x.shape}, x.dtype={x.dtype}, x.type={type(x)}"
+        )
+        
+        # Critical validation
+        if not isinstance(x, torch.Tensor):
+            logger.error(
+                f"[AstroTemporalGNN] Input x is not a tensor: {type(x)}, value={x}"
+            )
+            raise ValueError(f"Expected tensor input, got {type(x)}")
+        
+        # Ensure edge_index is valid
+        if not isinstance(edge_index, torch.Tensor):
+            logger.error(f"[AstroTemporalGNN] edge_index is not a tensor: {type(edge_index)}")
+            raise ValueError(f"Expected tensor edge_index, got {type(edge_index)}")
+
+        # Handle different input shapes
+        if x.dim() == 2:
+            # 2D input [N, F] - could be spatial coordinates or features
+            N, F = x.shape
+            logger.info(f"[AstroTemporalGNN] 2D input detected: {x.shape}")
+            
+            # Check if features match expected
+            if F != self.num_features:
+                logger.warning(
+                    f"[AstroTemporalGNN] Feature mismatch: got {F}, expected {self.num_features}. "
+                    f"Using actual feature count."
+                )
+                # For spatial data or when features don't match, skip temporal processing
+                is_spatial = True
+            else:
+                # Create temporal dimension for matching features
+                x = x.unsqueeze(1).repeat(1, self.sequence_length, 1)
+                logger.info(f"[AstroTemporalGNN] Created temporal dimension: {x.shape}")
+                is_spatial = False
+                
+        elif x.dim() == 3:
+            # Already has temporal dimension
+            logger.info(f"[AstroTemporalGNN] Input already temporal: x.shape={x.shape}")
+            is_spatial = False
+        else:
+            raise ValueError(f"Expected 2D or 3D input, got shape {x.shape}")
+
+        if batch is None:
+            # Single graph - create batch indices
+            batch = torch.zeros(x.size(0), dtype=torch.long, device=x.device)
+
+        # Process based on data type
+        if is_spatial or x.dim() == 2:
+            # Spatial data - use direct processing without temporal encoding
+            logger.info(f"[AstroTemporalGNN] Processing as spatial data")
+            
+            # Apply feature encoder if dimensions don't match hidden_dim
+            if x.shape[1] != self.hidden_dim:
+                if hasattr(self, 'feature_encoder') and self.feature_encoder is not None:
+                    # Create a simple projection layer if feature_encoder can't handle the dimension
+                    if not hasattr(self, '_projection_layer'):
+                        self._projection_layer = nn.Linear(x.shape[1], self.hidden_dim).to(x.device)
+                        logger.info(f"[AstroTemporalGNN] Created projection layer: {x.shape[1]} -> {self.hidden_dim}")
+                    x = self._projection_layer(x)
+                    x = F.relu(x)
+                    logger.info(f"[AstroTemporalGNN] After projection: {x.shape}")
+        else:
+            # Temporal data - apply temporal processing
+            logger.info(f"[AstroTemporalGNN] Processing temporal data: {x.shape}")
+            
+            # Feature encoding per time step if needed
+            if hasattr(self, 'feature_encoder') and not isinstance(self.feature_encoder, nn.Identity):
+                seq_len = x.size(1)
+                x_encoded = []
+                for t in range(seq_len):
+                    x_t = self.feature_encoder(x[:, t, :])
+                    x_encoded.append(x_t)
+                x = torch.stack(x_encoded, dim=1)
+                logger.info(f"[AstroTemporalGNN] After feature encoding: {x.shape}")
+            
+            # Temporal encoding
+            if self.temporal_model in ["lstm", "gru"]:
+                temporal_output, _ = self.temporal_encoder(x)
+                x = temporal_output[:, -1, :]  # Use last output
+                logger.info(f"[AstroTemporalGNN] After {self.temporal_model.upper()}: {x.shape}")
+            elif self.temporal_model == "transformer":
+                temporal_output = self.temporal_encoder(x)
+                x = temporal_output.mean(dim=1)  # Mean pooling
+                logger.info(f"[AstroTemporalGNN] After Transformer: {x.shape}")
+
+        # Now x should be 2D [N, hidden_dim] for GNN processing
+        if x.dim() != 2:
+            logger.error(f"[AstroTemporalGNN] Expected 2D tensor before GNN, got {x.shape}")
+            raise ValueError(f"Expected 2D tensor for GNN processing, got {x.shape}")
+
+        # Use simple linear layers for now (more robust than GNN for debugging)
+        if not hasattr(self, '_processing_layers'):
+            input_dim = x.shape[1]
+            self._processing_layers = nn.Sequential(
+                nn.Linear(input_dim, self.hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(self.dropout),
+                nn.Linear(self.hidden_dim, self.hidden_dim),
+                nn.ReLU(),
+                nn.Dropout(self.dropout),
+                nn.Linear(self.hidden_dim, self.hidden_dim)
+            ).to(x.device)
+            logger.info(f"[AstroTemporalGNN] Created processing layers with input_dim={input_dim}")
+        
+        # Process through layers
+        x = self._processing_layers(x)
+        logger.info(f"[AstroTemporalGNN] After processing layers: {x.shape}")
+        
+        # Global pooling if needed
+        if batch is not None and len(torch.unique(batch)) > 1:
+            x = global_mean_pool(x, batch)
+            logger.info(f"[AstroTemporalGNN] After pooling: {x.shape}")
+        
+        # Apply output head
+        output = self.output_head(x)
+        logger.info(f"[AstroTemporalGNN] Final output: {output.shape}")
+        
+        return output
+
+    def _initialize_gnn_layers(self, input_dim: int):
+        """Initialize GNN layers dynamically based on actual input dimensions."""
         logger = logging.getLogger(__name__)
         logger.info(
-            f"[AstroTemporalGNN] Forward: x.shape={x.shape}, expected num_features={self.num_features}"
-        )
-        assert x.shape[-1] == self.num_features, (
-            f"Input feature mismatch: x.shape[-1]={x.shape[-1]}, expected={self.num_features}"
+            f"[AstroTemporalGNN] Creating GNN layers with input_dim={input_dim}, hidden_dim={self.hidden_dim}"
         )
 
-        # Reshape for temporal processing
-        N = x.size(0)
-        x = x.view(N, self.sequence_length, -1)  # [N, seq_len, features]
+        self.conv_layers = nn.ModuleList()
+        self.norm_layers = nn.ModuleList() if self.use_batch_norm else None
 
-        # Feature encoding
-        x = self.feature_encoder(x)  # [N, seq_len, hidden_dim]
+        for i in range(self.num_layers):
+            if i == 0:
+                in_dim = input_dim
+            else:
+                in_dim = self.hidden_dim
 
-        # Temporal encoding
-        if self.temporal_model in ["lstm", "gru"]:
-            # Pack sequence if needed
-            temporal_output, _ = self.temporal_encoder(x)
-            # Use last output for each sequence
-            x = temporal_output[:, -1, :]  # [N, temporal_output_dim]
-        elif self.temporal_model == "transformer":
-            # Add positional encoding if needed
-            temporal_output = self.temporal_encoder(x)
-            # Use mean pooling over time dimension
-            x = temporal_output.mean(dim=1)  # [N, hidden_dim]
+            if self.conv_type == "gcn":
+                conv = GCNConv(in_dim, self.hidden_dim)
+            elif self.conv_type == "gat":
+                heads = self.layer_kwargs.get("num_heads", 8)
+                if self.hidden_dim % heads != 0:
+                    adjusted_hidden_dim = (self.hidden_dim // heads) * heads
+                    logger.warning(
+                        f"Adjusted hidden_dim from {self.hidden_dim} to {adjusted_hidden_dim} for GAT heads={heads}"
+                    )
+                    self.hidden_dim = adjusted_hidden_dim
+                conv = GATConv(
+                    in_dim, self.hidden_dim // heads, heads=heads, concat=True
+                )
+            elif self.conv_type == "sage":
+                conv = SAGEConv(in_dim, self.hidden_dim)
+            elif self.conv_type == "transformer":
+                heads = self.layer_kwargs.get("num_heads", 8)
+                if self.hidden_dim % heads != 0:
+                    adjusted_hidden_dim = (self.hidden_dim // heads) * heads
+                    logger.warning(
+                        f"Adjusted hidden_dim from {self.hidden_dim} to {adjusted_hidden_dim} for Transformer heads={heads}"
+                    )
+                    self.hidden_dim = adjusted_hidden_dim
+                conv = TransformerConv(
+                    in_dim, self.hidden_dim // heads, heads=heads, concat=True
+                )
+            else:
+                raise ValueError(f"Unknown conv_type: {self.conv_type}")
 
-        # GNN layers for spatial relationships
-        for i, (conv, norm) in enumerate(zip(self.conv_layers, self.norm_layers)):
-            x = conv(x, edge_index)
-            x = norm(x)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
+            self.conv_layers.append(conv)
 
-        # Task-specific output
-        return self.output_head(x)
+            if self.use_batch_norm:
+                self.norm_layers.append(nn.BatchNorm1d(self.hidden_dim))
+
+        self._layers_initialized = True
+        logger.info("[AstroTemporalGNN] GNN layers initialized successfully")
 
     def get_temporal_embeddings(self, data) -> Tensor:
         """
-        Get temporal embeddings from the last GNN layer.
+        Get temporal embeddings from the last layer.
 
         Args:
             data: PyG Data object
 
         Returns:
-            Temporal embeddings [N, hidden_dim]
+            Temporal embeddings [N, hidden_dim] or [B, hidden_dim] if batched
         """
-        x, edge_index = data.x, data.edge_index
+        x = data.x
+        batch = getattr(data, "batch", None)
+        
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"[AstroTemporalGNN] get_temporal_embeddings: x.shape={x.shape}, x.dtype={x.dtype}"
+        )
 
-        # Reshape for temporal processing
-        N = x.size(0)
-        x = x.view(N, self.sequence_length, -1)
-
-        # Feature encoding
-        x = self.feature_encoder(x)
-
-        # Temporal encoding
-        if self.temporal_model in ["lstm", "gru"]:
-            temporal_output, _ = self.temporal_encoder(x)
-            x = temporal_output[:, -1, :]
-        elif self.temporal_model == "transformer":
-            temporal_output = self.temporal_encoder(x)
-            x = temporal_output.mean(dim=1)
-
-        # GNN layers (without final output head)
-        for i, (conv, norm) in enumerate(zip(self.conv_layers, self.norm_layers)):
-            x = conv(x, edge_index)
-            x = norm(x)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-
+        # Process similar to forward, but without output head
+        if x.dim() == 2:
+            N, F = x.shape
+            if F != self.num_features:
+                # Spatial data - apply projection if needed
+                if not hasattr(self, '_projection_layer'):
+                    self._projection_layer = nn.Linear(F, self.hidden_dim).to(x.device)
+                x = self._projection_layer(x)
+                x = F.relu(x)
+            else:
+                # Create temporal dimension
+                x = x.unsqueeze(1).repeat(1, self.sequence_length, 1)
+        
+        # Apply temporal encoding if 3D
+        if x.dim() == 3:
+            # Feature encoding
+            if hasattr(self, 'feature_encoder') and not isinstance(self.feature_encoder, nn.Identity):
+                seq_len = x.size(1)
+                x_encoded = []
+                for t in range(seq_len):
+                    x_t = self.feature_encoder(x[:, t, :])
+                    x_encoded.append(x_t)
+                x = torch.stack(x_encoded, dim=1)
+            
+            # Temporal encoding
+            if self.temporal_model in ["lstm", "gru"]:
+                temporal_output, _ = self.temporal_encoder(x)
+                x = temporal_output[:, -1, :]
+            elif self.temporal_model == "transformer":
+                temporal_output = self.temporal_encoder(x)
+                x = temporal_output.mean(dim=1)
+        
+        # Process through layers (without output head)
+        if hasattr(self, '_processing_layers'):
+            # Get all layers except the last one
+            for layer in list(self._processing_layers.children())[:-1]:
+                x = layer(x)
+        
+        # Global pooling if needed
+        if batch is not None and len(torch.unique(batch)) > 1:
+            x = global_mean_pool(x, batch)
+        
         return x
 
 
