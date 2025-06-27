@@ -1,6 +1,6 @@
-# 🌌 AstroLab - Astronomical Machine Learning Framework
+# 🌌 AstroLab - Astro GNN Laboratory for Cosmic Web Exploration
 
-A comprehensive framework for astronomical data analysis, machine learning, and interactive 3D visualization with advanced **cosmic web analysis** capabilities across multiple astronomical scales.
+A comprehensive **Astro GNN laboratory** for exploring cosmic web structures through graph neural networks, astronomical data analysis, and interactive 3D visualization across multiple astronomical scales.
 
 ## 🚀 Quick Start
 
@@ -24,6 +24,27 @@ astro-lab cosmic-web gaia --max-samples 10000 --clustering-scales 5 10 25 --visu
 marimo run src/astro_lab/ui/app.py
 ```
 
+## 🧠 Astro GNN Models & Tasks
+
+### **Core GNN Models**
+- **AstroGraphGNN**: Spatial graph neural networks for cosmic web structure detection
+- **AstroNodeGNN**: Node classification for stellar/galaxy properties
+- **AstroPointNet**: Point cloud processing for 3D astronomical data
+- **AstroTemporalGNN**: Time-series analysis for variable objects
+
+### **Primary Tasks**
+- **Cosmic Web Clustering**: Multi-scale structure detection (stellar to galactic scales)
+- **Filament Detection**: MST, Morse theory, and Hessian eigenvalue analysis
+- **Stellar Classification**: Spectral type and evolutionary stage prediction
+- **Galaxy Morphology**: Shape and structure classification
+- **Exoplanet Host Analysis**: Stellar neighborhood clustering
+- **Temporal Variability**: Light curve analysis and period detection
+
+### **Multi-Scale Analysis**
+- **Stellar Scale** (1-100 parsecs): Local galactic disk structure
+- **Galactic Scale** (1-100 Megaparsecs): Galaxy clusters and superclusters  
+- **Exoplanet Scale** (10-500 parsecs): Stellar neighborhoods and associations
+
 ## 🌟 Key Features
 
 ### 🔬 **Multi-Survey Data Integration**
@@ -34,21 +55,7 @@ marimo run src/astro_lab/ui/app.py
 - **NASA Exoplanet Archive**: Confirmed exoplanets with host star clustering
 - **LINEAR**: Asteroid light curves with orbital family analysis
 
-### 🧠 **Machine Learning**
-- **Graph Neural Networks**: Specialized for spatial astronomical structures
-- **Automatic Class Detection**: From training data with cosmic web features
-- **Hyperparameter Optimization**: With Optuna integration
-- **Experiment Tracking**: MLflow for reproducible research
-- **GPU Acceleration**: CUDA-optimized PyTorch workflows
-
 ### 🌌 **Advanced Cosmic Web Analysis**
-
-#### **Multi-Scale Structure Detection**
-- **Stellar Scale**: Local galactic disk structure (1-100 parsecs)
-- **Galactic Scale**: Galaxy clusters and superclusters (1-100 Megaparsecs)  
-- **Exoplanet Scale**: Stellar neighborhoods and associations (10-500 parsecs)
-- **Adaptive Clustering**: DBSCAN, K-means, Hierarchical, and Spectral methods
-- **Filament Detection**: MST, Morse theory, and Hessian eigenvalue analysis
 
 #### **Interactive 3D Visualization**
 - **CosmographBridge**: Real-time cosmic web visualization with physics simulation
@@ -79,7 +86,8 @@ The complete, up-to-date documentation is available as a modern website:
 
 - **[API Reference](./docs/api/astro_lab/)**
 - **[Cosmic Web Guide](./docs/cosmic_web_guide.md)**
-- **[User Guide & Examples](./examples/README.md)**
+- **[Model Documentation](./docs/api/astro_lab.models.md)**
+- **[Training Guide](./docs/api/astro_lab.training.md)**
 
 All code is fully documented with mkdocstrings and includes automatic class inheritance diagrams, usage examples, and configuration options.
 
@@ -99,17 +107,6 @@ astro-lab --help
 
 # Get help for specific commands
 astro-lab <command> --help
-```
-
-### Data Download
-```bash
-# Download survey data (standalone module)
-python -m astro_lab.cli.download --survey gaia --magnitude-limit 12.0 --region all_sky
-python -m astro_lab.cli.download --survey sdss --verbose
-python -m astro_lab.cli.download --survey 2mass --region lmc
-
-# List available datasets
-python -m astro_lab.cli.download --list
 ```
 
 ### Data Processing
@@ -331,18 +328,17 @@ uv run mkdocs gh-deploy --force
 The documentation system automatically generates:
 - **API Reference**: Complete code documentation with inheritance diagrams
 - **Cosmic Web Guide**: Comprehensive analysis tutorials
-- **User Guide**: Examples and tutorials
+- **Model Documentation**: GNN architecture and training guides
 - **Configuration Reference**: All survey and model configurations
 
-## 🤖 Automation and Fabric Scripts
+## 🤖 Automation and UI Scripts
 
-**Note**: This repository does not currently use Fabric (Python remote execution library) for automation. Instead, automation is handled through:
+AstroLab automation is handled through:
 
 1. **Setup Scripts**: `setup.sh` and `setup.ps1` for environment setup
 2. **Documentation Scripts**: `docs/generate_docs.py` for documentation management  
 3. **UI Launch Script**: `run_ui.py` for starting the interactive dashboard
-4. **Docker Compose**: `docker/docker-compose.yaml` for containerized deployment
-5. **CLI Commands**: Built-in automation through the `astro-lab` CLI
+4. **CLI Commands**: Built-in automation through the `astro-lab` CLI
 
 ### UI Launch Script
 
@@ -361,15 +357,6 @@ python run_ui.py
 - Enables interactive data visualization  
 - Runs on port 2718 by default
 
-For remote deployment and automation needs, the Docker Compose setup provides:
-```bash
-# Start all services
-docker-compose -f docker/docker-compose.yaml up -d
-
-# Execute commands in containers
-docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab cosmic-web gaia --max-samples 1000
-```
-
 ## 🏗️ Architecture
 
 ### Core Components
@@ -377,10 +364,17 @@ docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab cosmic-web
 astro-lab/
 ├── src/astro_lab/
 │   ├── cli/
-│   │   └── cosmic_web.py      # Cosmic web CLI interface
-│   │   └── cosmic_web.py      # Core cosmic web analysis
+│   │   ├── cosmic_web.py      # Cosmic web CLI interface
+│   │   ├── train.py           # Model training CLI
+│   │   └── optimize.py        # Hyperparameter optimization
+│   ├── data/
+│   │   ├── cosmic_web.py      # Core cosmic web analysis
+│   │   └── datasets/          # Survey-specific datasets
 │   ├── tensors/
 │   │   └── tensordict_astro.py # Spatial tensor operations  
+│   ├── models/
+│   │   ├── core/              # GNN model implementations
+│   │   └── components/        # Model building blocks
 │   ├── widgets/
 │   │   ├── cosmograph_bridge.py   # Interactive visualization
 │   │   ├── graph.py               # Graph analysis functions
@@ -389,12 +383,12 @@ astro-lab/
 │   │   ├── cosmic_web.py      # UI for cosmic web analysis
 │   │   ├── analysis.py        # Interactive analysis tools
 │   │   └── visualization.py   # Visualization interface
-│   ├── models/core/           # GNN models for spatial data
 │   └── training/              # Training framework
 ├── configs/                   # Configuration files
 ├── docs/
-│   └── cosmic_web_guide.md    # Comprehensive cosmic web guide
-└── examples/                  # Example scripts
+│   ├── cosmic_web_guide.md    # Comprehensive cosmic web guide
+│   └── api/                   # Auto-generated API documentation
+└── test/                      # Test suite
 ```
 
 ### Key Dependencies
@@ -503,32 +497,16 @@ uv run marimo run src/astro_lab/ui/app.py
 uv run mlflow ui --backend-store-uri ./data/experiments
 ```
 
-### Testing Cosmic Web Features
+### Testing
 ```bash
-# Test cosmic web analysis
-python test_cosmic_web.py
-
 # Run full test suite
 uv run pytest -v
 
-# Test specific cosmic web components
+# Test specific components
 uv run pytest test/test_cosmic_web.py -v
+uv run pytest test/test_data.py -v
+uv run pytest test/test_lightning.py -v
 uv run pytest src/astro_lab/tensors/ -v -k cosmic_web
-```
-
-## 🐳 Docker Support
-
-### Quick Start with Docker
-```bash
-# Build and start the container with cosmic web support
-docker-compose -f docker/docker-compose.yaml up -d
-
-# Access services
-open http://localhost:5000  # MLflow UI
-open http://localhost:2718  # Marimo UI with cosmic web analysis
-
-# Run cosmic web analysis in container
-docker-compose -f docker/docker-compose.yaml exec astro-lab python -m astro_lab.cli cosmic-web gaia --max-samples 1000
 ```
 
 ## 📊 Experiment Tracking
@@ -575,4 +553,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-**AstroLab** - Bridging astronomy and machine learning with advanced cosmic web analysis across all scales of the universe. 🌌✨ 
+**AstroLab** - An Astro GNN laboratory for exploring cosmic web structures across all scales of the universe. 🌌✨ 
