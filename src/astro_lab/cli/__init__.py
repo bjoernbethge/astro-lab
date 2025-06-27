@@ -15,6 +15,7 @@ COMMANDS = {
     "download": "astro_lab.cli.download",
     "optimize": "astro_lab.cli.optimize",
     "preprocess": "astro_lab.cli.preprocess",
+    # "process": "astro_lab.cli.process",  # Deprecated, use preprocess
 }
 
 

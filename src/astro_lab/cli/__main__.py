@@ -149,11 +149,6 @@ Examples:
         help="Training precision",
     )
     train_parser.add_argument(
-        "--fast-dev-run",
-        action="store_true",
-        help="Run a quick development test",
-    )
-    train_parser.add_argument(
         "--overfit-batches",
         type=float,
         help="Overfit on a few batches for testing",
@@ -203,11 +198,6 @@ Examples:
         type=int,
         help="Maximum samples for debugging",
     )
-    optimize_parser.add_argument(
-        "--fast-dev-run",
-        action="store_true",
-        help="Run a quick development test",
-    )
 
     # Config command
     config_parser = subparsers.add_parser(
@@ -254,6 +244,14 @@ Examples:
         "survey",
         choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
         help="Survey to show",
+    )
+
+    # Advanced options
+    parser.add_argument(
+        "--num-workers",
+        type=int,
+        default=4,
+        help="DataLoader workers (default: 4)",
     )
 
     return parser
