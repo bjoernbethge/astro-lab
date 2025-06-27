@@ -11,7 +11,6 @@ The API is organized by module. Each main module has its own page:
 - [astro_lab.models](api/astro_lab.models.md)
 - [astro_lab.models.components](api/astro_lab.models.components.md)
 - [astro_lab.models.core](api/astro_lab.models.core.md)
-- [astro_lab.models.lightning](api/astro_lab.models.lightning.md)
 - [astro_lab.tensors](api/astro_lab.tensors.md)
 - [astro_lab.training](api/astro_lab.training.md)
 - [astro_lab.ui](api/astro_lab.ui.md)
