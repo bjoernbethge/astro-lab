@@ -32,6 +32,10 @@ Examples:
   # Configuration
   astro-lab config create -o my_experiment.yaml
   astro-lab config surveys
+  
+  # Cosmic Web Analysis
+  astro-lab cosmic-web gaia --max-samples 100000 --clustering-scales 5 10 25
+  astro-lab cosmic-web nsa --clustering-scales 5 10 20 50 --visualize
         """,
     )
 
@@ -246,6 +250,68 @@ Examples:
         help="Survey to show",
     )
 
+    # Cosmic Web command
+    cosmic_web_parser = subparsers.add_parser(
+        "cosmic-web",
+        help="Analyze cosmic web structure",
+        description="Analyze cosmic web structure in astronomical surveys",
+    )
+    cosmic_web_parser.add_argument(
+        "survey",
+        choices=["gaia", "nsa", "exoplanet"],
+        help="Survey to analyze",
+    )
+    cosmic_web_parser.add_argument(
+        "--catalog-path",
+        type=Path,
+        help="Path to catalog file (uses default if not specified)",
+    )
+    cosmic_web_parser.add_argument(
+        "--max-samples",
+        type=int,
+        help="Maximum number of objects to analyze",
+    )
+    cosmic_web_parser.add_argument(
+        "--clustering-scales",
+        nargs="+",
+        type=float,
+        help="Clustering scales (parsecs for Gaia/exoplanet, Mpc for NSA)",
+    )
+    cosmic_web_parser.add_argument(
+        "--min-samples",
+        type=int,
+        default=5,
+        help="Minimum samples for DBSCAN clustering (default: 5)",
+    )
+    cosmic_web_parser.add_argument(
+        "--magnitude-limit",
+        type=float,
+        default=12.0,
+        help="Magnitude limit for Gaia (default: 12.0)",
+    )
+    cosmic_web_parser.add_argument(
+        "--redshift-limit",
+        type=float,
+        default=0.15,
+        help="Redshift limit for NSA (default: 0.15)",
+    )
+    cosmic_web_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Output directory for results",
+    )
+    cosmic_web_parser.add_argument(
+        "--visualize",
+        action="store_true",
+        help="Create visualizations",
+    )
+    cosmic_web_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Verbose output",
+    )
+
     # Advanced options
     parser.add_argument(
         "--num-workers",
@@ -287,6 +353,10 @@ def main() -> int:
             from .config import main as config_main
 
             return config_main(args)
+        elif args.command == "cosmic-web":
+            from .cosmic_web import main as cosmic_web_main
+
+            return cosmic_web_main(args)
         else:
             print(f"Unknown command: {args.command}")
             return 1

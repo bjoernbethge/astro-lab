@@ -57,6 +57,14 @@ from .processors import (
     preprocess_survey,
 )
 
+# 🌌 COSMIC WEB ANALYSIS
+from .cosmic_web import (
+    CosmicWebAnalyzer,
+    analyze_gaia_cosmic_web,
+    analyze_nsa_cosmic_web,
+    analyze_exoplanet_cosmic_web,
+)
+
 # 🛠️ UTILITY FUNCTIONS
 from .utils import (
     check_astroquery_available,
@@ -90,6 +98,11 @@ __all__ = [
     "preprocess_survey",
     "create_survey_tensordict",
     "create_training_splits",
+    # 🌌 COSMIC WEB ANALYSIS
+    "CosmicWebAnalyzer",
+    "analyze_gaia_cosmic_web",
+    "analyze_nsa_cosmic_web",
+    "analyze_exoplanet_cosmic_web",
     # 🔧 CONFIGURATION
     "DataConfig",
     "data_config",

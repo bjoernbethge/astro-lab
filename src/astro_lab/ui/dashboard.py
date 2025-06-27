@@ -35,13 +35,27 @@ from .modules import (
     gpu_monitor,
     mlflow_dashboard,
     training_monitor,
-    # Settings modules
-    experiment_settings,
-    data_settings,
-    model_settings,
-    visualization_settings,
-    advanced_settings,
 )
+
+# Import settings from ui folder
+from .settings import (
+    ui_experiment_settings as experiment_settings,
+    ui_data_settings as data_settings,
+    ui_model_settings as model_settings,
+    ui_visualization_settings as visualization_settings,
+)
+
+# Create advanced settings function
+def advanced_settings() -> mo.Html:
+    """Advanced settings panel."""
+    return mo.vstack([
+        mo.md("## ⚙️ Advanced Settings"),
+        mo.md("*Advanced configuration options are available in the individual setting panels.*"),
+        mo.callout(
+            "Use the other settings tabs for specific configuration options.",
+            kind="info"
+        ),
+    ])
 
 logger = logging.getLogger(__name__)
 
