@@ -127,8 +127,9 @@ class DataConfig:
         logger.info(f"📁 Core data structure created in: {self.base_dir}")
 
         # Results directory is separate in project root
-        self.results_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"📊 Results directory created: {self.results_dir}")
+        if create_results:
+            self.results_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"📊 Results directory created: {self.results_dir}")
 
     def ensure_survey_directories(self, survey: str):
         """Create directories for a specific survey only when needed."""
