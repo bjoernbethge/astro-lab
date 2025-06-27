@@ -85,6 +85,80 @@ All code is fully documented with mkdocstrings and includes automatic class inhe
 
 ## 🛠️ CLI Reference
 
+AstroLab provides a comprehensive command-line interface for all aspects of astronomical machine learning and cosmic web analysis.
+
+### Core Commands
+
+```bash
+# Show all available commands
+astro-lab --help
+
+# Get help for specific commands
+astro-lab <command> --help
+```
+
+### Data Download
+```bash
+# Download survey data (standalone module)
+python -m astro_lab.cli.download --survey gaia --magnitude-limit 12.0 --region all_sky
+python -m astro_lab.cli.download --survey sdss --verbose
+python -m astro_lab.cli.download --survey 2mass --region lmc
+
+# List available datasets
+python -m astro_lab.cli.download --list
+```
+
+### Data Processing
+```bash
+# Process all surveys with cosmic web features
+astro-lab process --surveys gaia nsa sdss --max-samples 10000
+
+# Process specific surveys with spatial indexing
+astro-lab process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
+
+# Preprocess raw data files
+astro-lab preprocess --surveys gaia sdss --max-samples 5000 --output-dir ./processed_data
+```
+
+### Configuration Management
+```bash
+# Create new configuration file
+astro-lab config create -o my_experiment.yaml --template gaia
+
+# Show available survey configurations
+astro-lab config surveys
+
+# Show specific survey configuration details
+astro-lab config show gaia
+astro-lab config show nsa
+```
+
+### Model Training
+```bash
+# Train with configuration file
+astro-lab train -c my_experiment.yaml --verbose
+
+# Train with command-line parameters
+astro-lab train --dataset gaia --model astro_graph_gnn --epochs 50 --batch-size 32
+astro-lab train --dataset nsa --model astro_node_gnn --learning-rate 0.001 --devices 2
+
+# Resume from checkpoint
+astro-lab train -c config.yaml --checkpoint path/to/checkpoint.ckpt
+
+# Debug training with small dataset
+astro-lab train --dataset gaia --max-samples 1000 --overfit-batches 10
+```
+
+### Hyperparameter Optimization
+```bash
+# Optimize hyperparameters
+astro-lab optimize config.yaml --trials 50 --timeout 3600
+astro-lab optimize config.yaml --algorithm optuna --trials 100
+
+# Quick optimization for debugging
+astro-lab optimize config.yaml --trials 10 --max-samples 1000
+```
+
 ### Cosmic Web Analysis
 ```bash
 # Multi-scale stellar structure analysis
@@ -95,31 +169,201 @@ astro-lab cosmic-web nsa --clustering-scales 5 10 20 50 --redshift-limit 0.15
 
 # Exoplanet host star clustering
 astro-lab cosmic-web exoplanet --clustering-scales 10 25 50 100 200 --min-samples 3
+
+# Custom analysis with output directory
+astro-lab cosmic-web gaia --catalog-path ./my_catalog.fits --output-dir ./results --verbose
 ```
 
-### Data Processing
+### Supported Surveys
+All commands support these astronomical surveys:
+- `gaia`: Gaia DR3 stellar catalog
+- `sdss`: Sloan Digital Sky Survey  
+- `nsa`: NASA-Sloan Atlas galaxy catalog
+- `tng50`: TNG50 cosmological simulation
+- `exoplanet`: NASA Exoplanet Archive
+- `rrlyrae`: RR Lyrae variable stars
+- `linear`: LINEAR asteroid survey
+
+## 🔧 Setup Scripts
+
+AstroLab provides automated setup scripts for easy installation across different platforms.
+
+### Linux/macOS Setup (setup.sh)
+
+The `setup.sh` script automates the entire installation process on Linux and macOS systems:
+
 ```bash
-# Process all surveys with cosmic web features
-astro-lab process
-
-# Process specific surveys with spatial indexing
-astro-lab process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
-
-# Preprocess with cosmic web metadata
-astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia --spatial-index
+# Make the script executable and run it
+chmod +x setup.sh
+./setup.sh
 ```
 
-### Training & Optimization
+**What the script does:**
+1. **Installs uv package manager** if not already present
+2. **Runs `uv sync`** to install all dependencies from `pyproject.toml`
+3. **Installs PyTorch Geometric extensions** for CUDA support
+4. **Activates the virtual environment** automatically
+5. **Provides instructions** for future activation
+
+**Manual equivalent:**
 ```bash
-# Create configuration with cosmic web features
-astro-lab config create -o my_experiment.yaml --features cosmic-web
+# Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.cargo/bin:$PATH"
 
-# Training with spatial features
-astro-lab train -c my_experiment.yaml --spatial-features
-astro-lab train --dataset gaia --model astro_graph_gnn --epochs 50
+# Install dependencies
+uv sync
+uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
-# Hyperparameter optimization for cosmic web models
-astro-lab optimize config.yaml --trials 50 --spatial-aware
+# Activate environment
+source .venv/bin/activate
+```
+
+### Windows Setup (setup.ps1)
+
+The `setup.ps1` script provides the same functionality for Windows PowerShell:
+
+```powershell
+# Run the PowerShell setup script
+.\setup.ps1
+```
+
+**What the script does:**
+1. **Installs uv package manager** via PowerShell
+2. **Runs `uv sync`** to install dependencies
+3. **Installs PyTorch Geometric extensions** with CUDA support
+4. **Activates the virtual environment**
+5. **Provides activation instructions** for future use
+
+**Manual equivalent (PowerShell):**
+```powershell
+# Install uv
+irm https://astral.sh/uv/install.ps1 | iex
+$env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
+
+# Install dependencies
+uv sync
+uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+
+# Activate environment
+.\.venv\Scripts\Activate.ps1
+```
+
+### Environment Activation
+
+After setup, activate the environment for future sessions:
+
+**Linux/macOS:**
+```bash
+source .venv/bin/activate
+```
+
+**Windows:**
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### Verification
+
+Test your installation:
+```bash
+# Check CLI availability
+astro-lab --help
+
+# Verify CUDA support (if available)
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Test cosmic web analysis
+astro-lab cosmic-web gaia --max-samples 100 --clustering-scales 5 10
+```
+
+## 📖 Documentation Generation
+
+AstroLab includes automated documentation generation and management tools.
+
+### Documentation Scripts
+
+The `docs/generate_docs.py` script provides comprehensive documentation management:
+
+```bash
+# Generate/update all documentation
+python docs/generate_docs.py update
+
+# Start local documentation server
+python docs/generate_docs.py serve
+
+# Deploy documentation to GitHub Pages
+python docs/generate_docs.py deploy
+```
+
+**What the documentation script does:**
+1. **Scans source code** for all Python modules
+2. **Generates API documentation** using mkdocstrings
+3. **Creates navigation structure** automatically
+4. **Builds documentation** with MkDocs
+5. **Serves locally** for development
+6. **Deploys to GitHub Pages** for production
+
+### Manual Documentation Commands
+
+You can also run documentation commands directly:
+
+```bash
+# Install documentation dependencies
+uv run pip install mkdocs mkdocstrings[python] mkdocs-material
+
+# Build documentation
+uv run mkdocs build --clean
+
+# Serve documentation locally (http://127.0.0.1:8000)
+uv run mkdocs serve
+
+# Deploy to GitHub Pages
+uv run mkdocs gh-deploy --force
+```
+
+### Documentation Structure
+
+The documentation system automatically generates:
+- **API Reference**: Complete code documentation with inheritance diagrams
+- **Cosmic Web Guide**: Comprehensive analysis tutorials
+- **User Guide**: Examples and tutorials
+- **Configuration Reference**: All survey and model configurations
+
+## 🤖 Automation and Fabric Scripts
+
+**Note**: This repository does not currently use Fabric (Python remote execution library) for automation. Instead, automation is handled through:
+
+1. **Setup Scripts**: `setup.sh` and `setup.ps1` for environment setup
+2. **Documentation Scripts**: `docs/generate_docs.py` for documentation management  
+3. **UI Launch Script**: `run_ui.py` for starting the interactive dashboard
+4. **Docker Compose**: `docker/docker-compose.yaml` for containerized deployment
+5. **CLI Commands**: Built-in automation through the `astro-lab` CLI
+
+### UI Launch Script
+
+The `run_ui.py` script provides an easy way to start the AstroLab interactive dashboard:
+
+```bash
+# Start the AstroLab UI dashboard
+python run_ui.py
+
+# The dashboard will be available at http://localhost:2718
+```
+
+**What the UI script does:**
+- Launches the Marimo reactive notebook interface
+- Provides access to cosmic web analysis tools
+- Enables interactive data visualization  
+- Runs on port 2718 by default
+
+For remote deployment and automation needs, the Docker Compose setup provides:
+```bash
+# Start all services
+docker-compose -f docker/docker-compose.yaml up -d
+
+# Execute commands in containers
+docker-compose -f docker/docker-compose.yaml exec astro-lab astro-lab cosmic-web gaia --max-samples 1000
 ```
 
 ## 🏗️ Architecture
