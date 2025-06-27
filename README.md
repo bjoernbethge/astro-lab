@@ -83,6 +83,10 @@ The complete, up-to-date documentation is available as a modern website:
 
 All code is fully documented with mkdocstrings and includes automatic class inheritance diagrams, usage examples, and configuration options.
 
+> **ℹ️ Automatic Documentation Deployment**
+>
+> The documentation is automatically generated and deployed to GitHub Pages on every push to the `main` branch using a [GitHub Action](.github/workflows/docs.yml). You do not need to build or deploy the documentation manually—simply push your changes to `main` and the latest docs will be published automatically.
+
 ## 🛠️ CLI Reference
 
 AstroLab provides a comprehensive command-line interface for all aspects of astronomical machine learning and cosmic web analysis.
@@ -374,7 +378,6 @@ astro-lab/
 ├── src/astro_lab/
 │   ├── cli/
 │   │   └── cosmic_web.py      # Cosmic web CLI interface
-│   ├── data/
 │   │   └── cosmic_web.py      # Core cosmic web analysis
 │   ├── tensors/
 │   │   └── tensordict_astro.py # Spatial tensor operations  
