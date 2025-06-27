@@ -1,0 +1,89 @@
+name: Generate and Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/**'
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'pyproject.toml'
+      - 'docs/generate_docs.py'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  generate-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for git operations
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install uv
+      uses: astral-sh/setup-uv@v2
+      with:
+        version: "latest"
+    
+    - name: Cache uv dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          .venv
+          ~/.cache/uv
+        key: ${{ runner.os }}-uv-${{ hashFiles('**/uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-
+    
+    - name: Install dependencies
+      run: |
+        uv sync --frozen
+    
+    - name: Generate API documentation
+      run: |
+        uv run python docs/generate_docs.py update
+    
+    - name: Build documentation
+      run: |
+        uv run mkdocs build --clean
+    
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v1.7.0
+      if: github.ref == 'refs/heads/main'
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./site
+        force_orphan: true
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_message: 'docs: auto-generate and deploy documentation'
+    
+    - name: Create deployment summary
+      if: always()
+      run: |
+        echo "## Documentation Generation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ **Status:** Documentation generation completed" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Generated files:**" >> $GITHUB_STEP_SUMMARY
+        if [ -d "docs/api" ]; then
+          echo "- API documentation files in \`docs/api/\`" >> $GITHUB_STEP_SUMMARY
+        fi
+        if [ -d "site" ]; then
+          echo "- Built documentation in \`site/\`" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Deployment:**" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          echo "- ✅ Deployed to GitHub Pages" >> $GITHUB_STEP_SUMMARY
+          echo "- 📖 Available at: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "- ℹ️ Documentation built but not deployed (not on main branch)" >> $GITHUB_STEP_SUMMARY
+        fi 
