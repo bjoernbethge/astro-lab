@@ -1,54 +1,104 @@
 """
-Reusable components for AstroLab models.
-========================================
+Model Components for AstroLab
+============================
 
-Core components used by the consolidated 4-model architecture:
-- Base components for device management and graph processing
-- Layer utilities for creating MLPs and activation functions
-- Output heads for different task types
-- Lightning mixins for training functionality
+Modular components for astronomical neural networks.
 """
 
-from .base import DeviceMixin, GraphProcessor, PoolingModule, TensorDictFeatureProcessor
-from .layers import ResidualBlock, create_conv_layer, create_mlp, get_activation
+# Encoders
+from .encoders import (
+    MultiModalFusion,
+    PhotometricEncoder,
+    SpatialEncoder,
+    SpectralEncoder,
+    TemporalEncoder,
+)
+
+# Layers
+from .layers import (
+    BaseAttentionLayer,
+    # Base layers
+    BaseGraphLayer,
+    BasePoolingLayer,
+    TensorDictLayer,
+)
+from .layers.convolution import (
+    AstronomicalGraphConv,
+    DistanceEncoder,
+    FlexibleGraphConv,
+)
+from .layers.normalization import (
+    AdaptiveNormalization,
+    AstronomicalFeatureNorm,
+    RobustNormalization,
+)
+from .layers.pooling import (
+    AdaptivePooling,
+    AttentivePooling,
+    HierarchicalPooling,
+    MultiScalePooling,
+    StatisticalPooling,
+)
+
+# Mixins
 from .mixins import (
-    AstroLightningMixin,
-    LossMixin,
+    # Astronomical domain
+    AstronomicalAugmentationMixin,
+    AstronomicalLossMixin,
+    # HPO specific
+    HPOResetMixin,
+    # Core functionality
     MetricsMixin,
-    OptimizerMixin,
-    TrainingMixin,
+    OptimizationMixin,
+    VisualizationMixin,
 )
-from .mixins import (
-    DeviceMixin as MixinDeviceMixin,
-)
+
+# Output heads
 from .output_heads import (
-    OUTPUT_HEADS,
     ClassificationHead,
+    PeriodDetectionHead,
     RegressionHead,
+    ShapeModelingHead,
     create_output_head,
 )
 
 __all__ = [
-    # Base components
-    "DeviceMixin",
-    "GraphProcessor",
-    "TensorDictFeatureProcessor",
-    "PoolingModule",
-    # Layer functions
-    "create_conv_layer",
-    "create_mlp",
-    "get_activation",
-    "ResidualBlock",
+    # Encoders
+    "PhotometricEncoder",
+    "SpatialEncoder",
+    "SpectralEncoder",
+    "TemporalEncoder",
+    "MultiModalFusion",
+    # Base layers
+    "BaseGraphLayer",
+    "BasePoolingLayer",
+    "BaseAttentionLayer",
+    "TensorDictLayer",
+    # Convolution layers
+    "FlexibleGraphConv",
+    "AstronomicalGraphConv",
+    "DistanceEncoder",
+    # Pooling layers
+    "MultiScalePooling",
+    "AttentivePooling",
+    "HierarchicalPooling",
+    "StatisticalPooling",
+    "AdaptivePooling",
+    # Normalization layers
+    "AdaptiveNormalization",
+    "AstronomicalFeatureNorm",
+    "RobustNormalization",
+    # Mixins
+    "MetricsMixin",
+    "OptimizationMixin",
+    "VisualizationMixin",
+    "HPOResetMixin",
+    "AstronomicalAugmentationMixin",
+    "AstronomicalLossMixin",
     # Output heads
     "ClassificationHead",
     "RegressionHead",
+    "PeriodDetectionHead",
+    "ShapeModelingHead",
     "create_output_head",
-    "OUTPUT_HEADS",
-    # Lightning mixins
-    "AstroLightningMixin",
-    "TrainingMixin",
-    "OptimizerMixin",
-    "LossMixin",
-    "MetricsMixin",
-    "MixinDeviceMixin",
 ]

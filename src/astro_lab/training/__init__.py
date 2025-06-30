@@ -1,30 +1,38 @@
 """
-AstroLab Training Module (Lightning Edition)
-==========================================
+AstroLab Training Module
+========================
 
-Simplified training utilities for Lightning-based astronomical ML.
-The main training functionality is now handled by Lightning wrappers
-in astro_lab.models.lightning.
+High-level training interface for astronomical ML models with integrated
+hardware optimizations and monitoring.
 """
 
-from .astro_trainer import AstroTrainer, train_model
-from .callbacks import SafeModelCheckpoint
-from .config import TrainingConfig
-from .mlflow_logger import LightningMLflowLogger, MLflowModelCheckpoint
-from .utils import set_random_seed, setup_logging
+from astro_lab.training.astro_trainer import AstroTrainer
+from astro_lab.training.trainer_core import TrainingCore
+from astro_lab.training.trainer_utils import (
+    detect_hardware,
+    log_training_info,
+    setup_cuda_graphs,
+    setup_device,
+    setup_mixed_precision,
+    setup_torch_compile,
+    validate_model_inputs,
+)
 
 __all__ = [
     # Main trainer
     "AstroTrainer",
-    "train_model",
-    # Callbacks
-    "SafeModelCheckpoint",
-    # MLflow integration for Lightning
-    "LightningMLflowLogger",
-    "MLflowModelCheckpoint",
-    # Basic configuration
-    "TrainingConfig",
+    # Core training
+    "TrainingCore",
     # Utilities
-    "set_random_seed",
-    "setup_logging",
+    "detect_hardware",
+    "setup_device",
+    "setup_mixed_precision",
+    "setup_torch_compile",
+    "setup_cuda_graphs",
+    "validate_model_inputs",
+    "log_training_info",
 ]
+
+
+# Version info
+__version__ = "3.0.0"

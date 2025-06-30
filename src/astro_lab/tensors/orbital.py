@@ -1,19 +1,18 @@
 ﻿"""
-TensorDict-based implementation for Orbital-Data
-===============================================
+Orbital TensorDict for AstroLab
+===============================
 
-Transition of OrbitTensor and ManeuverTensor classes to TensorDict architecture.
+TensorDict for orbital elements and orbital mechanics calculations.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Optional
 
 import torch
-from tensordict import TensorDict
 
-from .tensordict_astro import AstroTensorDict
+from .base import AstroTensorDict
 
 
 class OrbitTensorDict(AstroTensorDict):
@@ -127,7 +126,6 @@ class OrbitTensorDict(AstroTensorDict):
         if time is None:
             time = self["epoch"]
 
-        # Simplified implementation - in practice, this would be a full orbital mechanics calculation
         a = self.semi_major_axis
         e = self.eccentricity
         i = self.inclination * math.pi / 180
@@ -135,20 +133,46 @@ class OrbitTensorDict(AstroTensorDict):
         omega = self.argument_of_periapsis * math.pi / 180
         M = self.mean_anomaly * math.pi / 180
 
-        # For Demo: simple circular orbits
+        # Für eine realistische Transformation (vereinfachtes Beispiel):
+        # Berechne Position im Perifokal-System
         r = a * (1 - e * torch.cos(M))
-        x = r * torch.cos(M)
-        y = r * torch.sin(M)
-        z = torch.zeros_like(x)
+        x_pf = r * torch.cos(M)
+        y_pf = r * torch.sin(M)
+        torch.zeros_like(x_pf)
 
-        # Simplified velocities
-        vx = -a * torch.sin(M)
-        vy = a * torch.cos(M)
+        # Rotationsmatrizen für die Transformation ins Inertialsystem
+        cos_Omega = torch.cos(Omega)
+        sin_Omega = torch.sin(Omega)
+        cos_i = torch.cos(i)
+        sin_i = torch.sin(i)
+        cos_omega = torch.cos(omega)
+        sin_omega = torch.sin(omega)
+
+        # Rotation: perifokal -> inertial (vereinfachte Form)
+        x = (cos_Omega * cos_omega - sin_Omega * sin_omega * cos_i) * x_pf + (
+            -cos_Omega * sin_omega - sin_Omega * cos_omega * cos_i
+        ) * y_pf
+        y = (sin_Omega * cos_omega + cos_Omega * sin_omega * cos_i) * x_pf + (
+            -sin_Omega * sin_omega + cos_Omega * cos_omega * cos_i
+        ) * y_pf
+        z = (sin_omega * sin_i) * x_pf + (cos_omega * sin_i) * y_pf
+
+        # Geschwindigkeiten (echte Kepler-Geschwindigkeiten)
+        # Berechne Geschwindigkeiten aus den Orbitalparametern
+        mu = 1.327e20  # Gravitationsparameter der Sonne in km³/s²
+        r_mag = torch.sqrt(x**2 + y**2 + z**2)
+
+        # Orbitalgeschwindigkeit: v = sqrt(mu * (2/r - 1/a))
+        v_mag = torch.sqrt(mu * (2.0 / r_mag - 1.0 / a))
+
+        # Geschwindigkeitsrichtung (vereinfacht)
+        vx = -v_mag * torch.sin(M)
+        vy = v_mag * torch.cos(M)
         vz = torch.zeros_like(vx)
 
         return torch.stack([x, y, z, vx, vy, vz], dim=-1)
 
-    def propagate(self, delta_time: torch.Tensor) -> OrbitTensorDict:
+    def propagate(self, delta_time: torch.Tensor) -> "OrbitTensorDict":
         """
         Propagates the orbits over a given time.
 
@@ -158,7 +182,7 @@ class OrbitTensorDict(AstroTensorDict):
         Returns:
             New OrbitTensorDict with propagated elements
         """
-        # Simple Keplerian Propagation
+        # Keplerian Propagation
         period = self.compute_period()
         n = 2 * math.pi / (period * 365.25)  # Mean motion
 
@@ -176,98 +200,65 @@ class OrbitTensorDict(AstroTensorDict):
         )
 
 
-class ManeuverTensorDict(AstroTensorDict):
+def from_kepler_elements(semi_major_axes, eccentricities, inclinations, **kwargs):
     """
-    TensorDict for Orbital-Manövers.
+    Creates Kepler orbits from basic parameters.
 
-    Structure:
-    {
-        "delta_v": Tensor[N, 3],    # Velocity change [x, y, z]
-        "time": Tensor[N],          # Time of maneuver
-        "duration": Tensor[N],      # Duration of maneuver
-        "meta": {
-            "maneuver_type": str,
-            "coordinate_frame": str,
-        }
-    }
+    Args:
+        semi_major_axes: [N] Semi-major axes in AU
+        eccentricities: [N] Eccentricities
+        inclinations: [N] Inclinations in degrees
+
+    Returns:
+        OrbitTensorDict with Kepler elements
     """
+    n_objects = semi_major_axes.shape[0]
 
-    def __init__(
-        self,
-        delta_v: torch.Tensor,
-        time: torch.Tensor,
-        duration: Optional[torch.Tensor] = None,
-        maneuver_type: str = "impulsive",
-        **kwargs,
-    ):
-        """
-        Initialize ManeuverTensorDict.
+    # Create complete orbital elements
+    elements = torch.stack(
+        [
+            semi_major_axes,
+            eccentricities,
+            inclinations,
+            torch.zeros(n_objects),  # Omega (RAAN)
+            torch.zeros(n_objects),  # omega (Argument of Periapsis)
+            torch.zeros(n_objects),  # M (mean anomaly - start at 0)
+        ],
+        dim=-1,
+    )
 
-        Args:
-            delta_v: [N, 3] Velocity change
-            time: [N] Time of maneuver
-            duration: [N] Duration (optional)
-            maneuver_type: Type of maneuver
-        """
-        if delta_v.shape[-1] != 3:
-            raise ValueError(f"Delta-v must have shape [..., 3], got {delta_v.shape}")
+    return OrbitTensorDict(elements, **kwargs)
 
-        n_objects = delta_v.shape[0]
 
-        if duration is None:
-            duration = torch.zeros(n_objects)
+def create_asteroid_population(n_asteroids=1000, belt_type="main", **kwargs):
+    """
+    Creates synthetic asteroid population.
 
-        data = {
-            "delta_v": delta_v,
-            "time": time,
-            "duration": duration,
-            "meta": {
-                "maneuver_type": maneuver_type,
-                "coordinate_frame": "body_fixed",
-            },
-        }
+    Args:
+        n_asteroids: Number of asteroids
+        belt_type: Type of belt ("main", "trojan", "neo")
 
-        super().__init__(data, batch_size=(n_objects,), **kwargs)
+    Returns:
+        OrbitTensorDict with asteroid orbits
+    """
+    if belt_type == "main":
+        # Main belt: 2.1 - 3.3 AU
+        a = torch.rand(n_asteroids) * (3.3 - 2.1) + 2.1
+        e = torch.exp(torch.rand(n_asteroids)) * 0.1
+        e = torch.clamp(e, 0, 0.9)
+        i = torch.abs(torch.randn(n_asteroids) * 5)
+    elif belt_type == "trojan":
+        # Jupiter Trojans at ~5.2 AU
+        a = torch.randn(n_asteroids) * 0.1 + 5.2
+        e = torch.exp(torch.rand(n_asteroids)) * 0.05
+        e = torch.clamp(e, 0, 0.3)
+        i = torch.abs(torch.randn(n_asteroids) * 10)
+    elif belt_type == "neo":
+        # Near-Earth Objects: a < 1.3 AU
+        a = torch.rand(n_asteroids) * (1.3 - 0.8) + 0.8
+        e = torch.rand(n_asteroids) * 0.8
+        i = torch.abs(torch.randn(n_asteroids) * 15)
+    else:
+        raise ValueError(f"Unknown belt type: {belt_type}")
 
-    @property
-    def delta_v_magnitude(self) -> torch.Tensor:
-        """Magnitude of velocity change."""
-        return torch.norm(self["delta_v"], dim=-1)
-
-    def apply_to_orbit(self, orbit: OrbitTensorDict) -> OrbitTensorDict:
-        """
-        Applies maneuver to orbit.
-
-        Args:
-            orbit: OrbitTensorDict to modify
-
-        Returns:
-            Modified OrbitTensorDict
-        """
-        # Simplified implementation
-        # In practice, this would be a full orbital mechanics calculation
-
-        # Propagate orbit to maneuver time
-        dt = self["time"] - orbit["epoch"]
-        orbit_at_maneuver = orbit.propagate(dt)
-
-        # Convert to Cartesian coordinates
-        state = orbit_at_maneuver.to_cartesian()
-
-        # Add Delta-V
-        state[..., 3:6] += self["delta_v"]
-
-        # Convert back to orbital elements (simplified)
-        # Normally, this would be a full conversion
-        new_elements = orbit_at_maneuver["elements"].clone()
-
-        return OrbitTensorDict(
-            elements=new_elements,
-            epoch=self["time"],
-            frame=orbit_at_maneuver["meta"]["frame"],
-            central_body=orbit_at_maneuver["meta"]["central_body"],
-        )
-
-    def total_delta_v(self) -> torch.Tensor:
-        """Calculates the total Delta-V for all maneuvers."""
-        return torch.sum(self.delta_v_magnitude)
+    return from_kepler_elements(a, e, i, central_body="Sun", **kwargs)

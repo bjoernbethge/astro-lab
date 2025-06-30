@@ -8,13 +8,12 @@ Umstellung der EarthSatelliteTensor und verwandter Klassen auf TensorDict-Archit
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import torch
-from tensordict import TensorDict
 
-from .orbital_tensordict import OrbitTensorDict
-from .tensordict_astro import AstroTensorDict
+from .base import AstroTensorDict
+from .orbital import OrbitTensorDict
 
 
 class EarthSatelliteTensorDict(AstroTensorDict):
@@ -96,6 +95,7 @@ class EarthSatelliteTensorDict(AstroTensorDict):
             [N, 6] Orbital elements [a, e, i, Omega, omega, M]
         """
         # TLE format: [inclination, raan, eccentricity, arg_perigee, mean_anomaly, mean_motion, bstar, epoch]
+        # See https://www.celestrak.com/columns/v04n03/ for details.
         inclination = tle_data[..., 0]
         raan = tle_data[..., 1]  # Right Ascension of Ascending Node (Omega)
         eccentricity = tle_data[..., 2]

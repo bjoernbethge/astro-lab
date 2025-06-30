@@ -8,12 +8,10 @@ Umstellung der CrossMatchTensor Klasse auf TensorDict-Architektur.
 from __future__ import annotations
 
 import math
-from typing import Dict, List, Optional, Tuple, Union
 
 import torch
-from tensordict import TensorDict
 
-from .tensordict_astro import AstroTensorDict, SpatialTensorDict
+from .base import AstroTensorDict
 
 
 class CrossMatchTensorDict(AstroTensorDict):
@@ -132,7 +130,7 @@ class CrossMatchTensorDict(AstroTensorDict):
             if min_sep <= match_radius / 3600:  # Convert arcsec to degrees
                 matches.append([i, min_idx.item()])
                 distances.append(min_sep.item() * 3600)  # Convert to arcsec
-                qualities.append(1.0 / (1.0 + min_sep.item()))  # Simple quality metric
+                qualities.append(1.0 / (1.0 + min_sep.item()))  # quality metric
 
         if matches:
             self["matches"] = torch.tensor(matches, dtype=torch.long)
@@ -233,7 +231,7 @@ class CrossMatchTensorDict(AstroTensorDict):
         """Berechnet Match-Statistiken."""
         n_matches = self["meta", "n_matches"]
         n_cat1 = self["catalog1"].n_objects
-        n_cat2 = self["catalog2"].n_objects
+        self["catalog2"].n_objects
 
         if n_matches > 0:
             distances = self["distances"]
@@ -350,5 +348,6 @@ class CrossMatchTensorDict(AstroTensorDict):
         print(f"  Median Distanz: {stats['median_distance']:.2f} arcsec")
         print(f"  Std Distanz: {stats['std_distance']:.2f} arcsec")
         print(
-            f"  Min/Max Distanz: {stats['min_distance']:.2f}/{stats['max_distance']:.2f} arcsec"
+            f"  Min/Max Distanz: {stats['min_distance']:.2f}/"
+            f"{stats['max_distance']:.2f} arcsec"
         )

@@ -1,36 +1,50 @@
 """
-Model Factory for AstroLab Models
-================================
+Model Factory for creating AstroLab models
+==========================================
 
-Factory functions to create the consolidated 4-model architecture:
-- AstroNodeGNN: Node-level tasks
-- AstroGraphGNN: Graph-level tasks
-- AstroTemporalGNN: Temporal tasks
-- AstroPointNet: Point cloud tasks
+Factory functions for creating appropriate models based on task and data characteristics.
 """
 
-import logging
 from typing import Any, Dict, Optional, Union
 
-from ..config import (
-    TASK_TO_MODEL,
-    AstroGraphGNNConfig,
-    AstroNodeGNNConfig,
-    AstroPointNetConfig,
-    AstroTemporalGNNConfig,
-    ModelConfig,
-    create_config_from_dict,
-    get_available_presets,
-    get_model_type_for_task,
-    get_preset,
-    list_presets,
-)
-from .astro_graph_gnn import AstroGraphGNN, create_astro_graph_gnn
-from .astro_node_gnn import AstroNodeGNN, create_astro_node_gnn
-from .astro_pointnet import AstroPointNet, create_astro_pointnet
-from .astro_temporal_gnn import AstroTemporalGNN, create_astro_temporal_gnn
+from astro_lab.config import get_model_config, get_model_type_for_task
 
-logger = logging.getLogger(__name__)
+from .astro_graph_gnn import AstroGraphGNN, create_astro_graph_gnn
+from .astro_node_gnn import AstroNodeGNN
+from .astro_temporal_gnn import AstroTemporalGNN
+from .astro_unified_point_cloud import AstroUnifiedPointCloud, create_unified_point_cloud_model
+from .astro_cosmic_web_gnn import AstroCosmicWebGNN
+
+
+# Model registry with aliases and constructors
+MODEL_REGISTRY = {
+    # Graph-level models
+    "astro_graph_gnn": AstroGraphGNN,
+    "graph_gnn": AstroGraphGNN,
+    "graph": AstroGraphGNN,
+    
+    # Node-level models
+    "astro_node_gnn": AstroNodeGNN,
+    "node_gnn": AstroNodeGNN,
+    "node": AstroNodeGNN,
+    
+    # Point cloud models (unified)
+    "point_cloud": AstroUnifiedPointCloud,
+    "point": AstroUnifiedPointCloud,  # Short alias
+    "astro_point_cloud": AstroUnifiedPointCloud,
+    "astro_pointnet": AstroUnifiedPointCloud,  # Legacy alias
+    "astro_point_cloud_gnn": AstroUnifiedPointCloud,  # Legacy alias
+    "unified_point_cloud": AstroUnifiedPointCloud,
+    
+    # Temporal models
+    "astro_temporal_gnn": AstroTemporalGNN,
+    "temporal_gnn": AstroTemporalGNN,
+    "temporal": AstroTemporalGNN,
+    
+    # Specialized models
+    "cosmic_web": AstroCosmicWebGNN,
+    "astro_cosmic_web_gnn": AstroCosmicWebGNN,
+}
 
 
 def create_model(
@@ -38,284 +52,159 @@ def create_model(
     num_features: int,
     num_classes: int,
     task: Optional[str] = None,
-    hidden_dim: Optional[int] = None,
+    survey: Optional[str] = None,
     **kwargs,
-) -> Union[AstroNodeGNN, AstroGraphGNN, AstroTemporalGNN, AstroPointNet]:
+) -> Any:
     """
-    Create a model based on model type with robust error handling and automatic task assignment.
-
+    Create an AstroLab model based on type and configuration.
+    
     Args:
-        model_type: Type of model ('node', 'graph', 'temporal', 'point')
+        model_type: Type of model to create
         num_features: Number of input features
         num_classes: Number of output classes
-        task: Task type (optional, will be auto-assigned if not provided)
-        **kwargs: Additional model parameters
-
+        task: Task type (optional, for validation)
+        survey: Survey name for survey-specific defaults
+        **kwargs: Additional model-specific arguments
+        
     Returns:
-        Configured model instance
-
-    Raises:
-        ValueError: If model_type is unknown or parameters are invalid
+        Initialized model instance
+        
+    Examples:
+        >>> # Create a graph-level GNN
+        >>> model = create_model("graph", num_features=7, num_classes=3)
+        
+        >>> # Create a point cloud model
+        >>> model = create_model("point_cloud", num_features=10, num_classes=4,
+        ...                     architecture="hybrid", scale="large")
+        
+        >>> # Create a temporal GNN
+        >>> model = create_model("temporal", num_features=5, num_classes=2,
+        ...                     window_size=10)
     """
-    # Validate model_type
-    valid_model_types = ["node", "graph", "temporal", "point"]
-    if model_type not in valid_model_types:
+    
+    # Normalize model type
+    model_type = model_type.lower()
+    
+    # Get configuration from central config system
+    config = get_model_config(model_type)
+    config.update(kwargs)
+    
+    # Extract model parameters
+    model_params = {
+        "num_features": num_features,
+        "num_classes": num_classes,
+        "task": task or config.get("task", "classification"),
+        "hidden_dim": config.get("hidden_dim", 128),
+        "num_layers": config.get("num_layers", 3),
+        "dropout": config.get("dropout", 0.1),
+        "learning_rate": config.get("learning_rate", 0.001),
+        "weight_decay": config.get("weight_decay", 0.01),
+    }
+    
+    # Add model-specific parameters from config
+    if model_type in ["graph", "node", "cosmic_web", "astro_graph_gnn", "astro_node_gnn"]:
+        model_params["conv_type"] = config.get("conv_type", "gcn")
+        if config.get("conv_type") == "gat":
+            model_params["heads"] = config.get("heads", 4)
+        if config.get("edge_dim"):
+            model_params["edge_dim"] = config["edge_dim"]
+    
+    if model_type in ["graph", "astro_graph_gnn"]:
+        model_params["pooling"] = config.get("pooling", "mean")
+        # Add point cloud layer support
+        if config.get("graph_layer_type") == "point_cloud":
+            model_params["graph_layer_type"] = "point_cloud"
+            model_params["point_cloud_config"] = config.get("point_cloud_config", {})
+        # Add output head configuration
+        if config.get("output_head"):
+            model_params["output_head"] = config["output_head"]
+            if config.get("num_harmonics"):
+                model_params["num_harmonics"] = config["num_harmonics"]
+    
+    if model_type in ["temporal", "astro_temporal_gnn"]:
+        model_params["rnn_type"] = config.get("rnn_type", "lstm")
+        model_params["sequence_length"] = config.get("sequence_length", 10)
+        model_params["temporal_layers"] = config.get("temporal_layers", 2)
+    
+    if model_type in ["cosmic_web", "astro_cosmic_web_gnn"]:
+        model_params["multi_scale"] = config.get("multi_scale", True)
+    
+    # Special handling for point cloud models
+    if model_type in ["point_cloud", "point", "astro_point_cloud", "astro_pointnet", 
+                      "astro_point_cloud_gnn", "unified_point_cloud"]:
+        # Use specialized factory for point cloud models
+        scale = kwargs.get("scale", "medium")
+        num_objects = kwargs.get("num_objects", 1_000_000)
+        
+        # Determine scale from num_objects if not specified
+        if scale == "medium" and "num_objects" in kwargs:
+            if num_objects < 100_000:
+                scale = "small"
+            elif num_objects < 1_000_000:
+                scale = "medium"
+            elif num_objects < 10_000_000:
+                scale = "large"
+            else:
+                scale = "xlarge"
+        
+        # Add all config parameters
+        model_params.update(config)
+                
+        return create_unified_point_cloud_model(
+            num_features=num_features,
+            num_classes=num_classes,
+            task=task or "graph_classification",
+            scale=scale,
+            **model_params
+        )
+    
+    # Check if model type exists
+    if model_type not in MODEL_REGISTRY:
+        available = ", ".join(sorted(set(MODEL_REGISTRY.keys())))
         raise ValueError(
-            f"Unknown model_type: {model_type}. "
-            f"Valid types: {', '.join(valid_model_types)}"
+            f"Unknown model type: '{model_type}'. "
+            f"Available models: {available}"
         )
-
-    # Auto-assign task if not provided
-    if task is None:
-        task_mapping = {
-            "node": "node_classification",
-            "graph": "graph_classification",
-            "temporal": "time_series_classification",
-            "point": "point_classification",
-        }
-        task = task_mapping[model_type]
-        logger.info(f"Auto-assigned task '{task}' for model_type '{model_type}'")
-
-    # Validate parameters
-    if num_features <= 0:
-        raise ValueError(f"num_features must be positive, got {num_features}")
-    if num_classes <= 0:
-        raise ValueError(f"num_classes must be positive, got {num_classes}")
-
-    # Set hidden_dim if not provided
-    if hidden_dim is None:
-        hidden_dim = num_features
-        logger.info(f"Using hidden_dim={hidden_dim} (same as num_features)")
-
-    # Create model with appropriate task validation
-    try:
-        if model_type == "node":
-            return create_astro_node_gnn(
-                num_features=num_features,
-                num_classes=num_classes,
-                task=task,
-                hidden_dim=hidden_dim,
-                **kwargs,
-            )
-        elif model_type == "graph":
+    
+    # Get model class
+    model_class = MODEL_REGISTRY[model_type]
+    
+    # Handle special factory functions
+    if model_type in ["graph", "graph_gnn", "astro_graph_gnn"]:
+        # Use graph GNN factory for variants
+        variant = kwargs.pop("variant", "standard")
+        if variant != "standard":
             return create_astro_graph_gnn(
+                model_type=variant,
                 num_features=num_features,
                 num_classes=num_classes,
                 task=task,
-                hidden_dim=hidden_dim,
-                **kwargs,
+                **model_params
             )
-        elif model_type == "temporal":
-            return create_astro_temporal_gnn(
-                num_features=num_features,
-                num_classes=num_classes,
-                task=task,
-                hidden_dim=hidden_dim,
-                **kwargs,
-            )
-        elif model_type == "point":
-            return create_astro_pointnet(
-                num_features=num_features,
-                num_classes=num_classes,
-                task=task,
-                hidden_dim=hidden_dim,
-                **kwargs,
-            )
-    except Exception as e:
-        # Provide more helpful error messages
-        if "Unknown task" in str(e):
-            valid_tasks = {
-                "node": ["node_classification", "node_regression", "node_segmentation"],
-                "graph": ["graph_classification", "graph_regression"],
-                "temporal": [
-                    "time_series_classification",
-                    "forecasting",
-                    "anomaly_detection",
-                ],
-                "point": [
-                    "point_classification",
-                    "point_segmentation",
-                    "point_registration",
-                ],
-            }
-            raise ValueError(
-                f"Invalid task '{task}' for model_type '{model_type}'. "
-                f"Valid tasks: {', '.join(valid_tasks[model_type])}"
-            ) from e
-        else:
-            raise ValueError(f"Failed to create {model_type} model: {e}") from e
-
-    # This should never be reached, but satisfies the type checker
-    raise RuntimeError(
-        f"Unexpected error: model_type '{model_type}' was validated but not handled"
-    )
-
-
-def create_model_from_config(
-    config: ModelConfig,
-) -> Union[AstroNodeGNN, AstroGraphGNN, AstroTemporalGNN, AstroPointNet]:
-    """
-    Create a model from a configuration object.
-
-    Args:
-        config: Model configuration object
-
-    Returns:
-        Configured model instance
-    """
-    # Pflichtparameter, die nicht doppelt übergeben werden dürfen
-    remove_keys = [
-        "num_features",
-        "num_classes",
-        "hidden_dim",
-        "use_batch_norm",
-        "conv_type",
-        "pooling",
-        "temporal_model",
-        "sequence_length",
-        "task",
-        "learning_rate",
-        "optimizer",
-        "scheduler",
-        "weight_decay",
-        "dropout",
-        "num_layers",
-    ]
-    if isinstance(config, AstroNodeGNNConfig):
-        model_params = config.model_params.copy()
-        for k in remove_keys:
-            model_params.pop(k, None)
-        return create_astro_node_gnn(
-            num_features=config.model_params.get("num_features", 64),
-            num_classes=config.num_classes or 2,
-            task=config.task,
-            hidden_dim=config.hidden_dim,
-            num_layers=config.num_layers,
-            conv_type=config.conv_type,
-            learning_rate=config.learning_rate,
-            optimizer=config.optimizer,
-            scheduler=config.scheduler,
-            weight_decay=config.weight_decay,
-            dropout=config.dropout,
-            use_batch_norm=config.use_batch_norm,
-            **model_params,
-        )
-    elif isinstance(config, AstroGraphGNNConfig):
-        model_params = config.model_params.copy()
-        for k in remove_keys:
-            model_params.pop(k, None)
-        return create_astro_graph_gnn(
-            num_features=config.model_params.get("num_features", 64),
-            num_classes=config.num_classes or 2,
-            task=config.task,
-            hidden_dim=config.hidden_dim,
-            num_layers=config.num_layers,
-            conv_type=config.conv_type,
-            pooling=config.pooling_type,
-            learning_rate=config.learning_rate,
-            optimizer=config.optimizer,
-            scheduler=config.scheduler,
-            weight_decay=config.weight_decay,
-            dropout=config.dropout,
-            use_batch_norm=config.use_batch_norm,
-            **model_params,
-        )
-    elif isinstance(config, AstroTemporalGNNConfig):
-        model_params = config.model_params.copy()
-        for k in remove_keys:
-            model_params.pop(k, None)
-        return create_astro_temporal_gnn(
-            num_features=config.model_params.get("num_features", 64),
-            num_classes=config.num_classes or 2,
-            task=config.task,
-            hidden_dim=config.hidden_dim,
-            num_layers=config.num_layers,
-            conv_type=config.model_params.get("conv_type", "gcn"),
-            temporal_model=config.temporal_conv_type,
-            sequence_length=config.sequence_length,
-            learning_rate=config.learning_rate,
-            optimizer=config.optimizer,
-            scheduler=config.scheduler,
-            weight_decay=config.weight_decay,
-            dropout=config.dropout,
-            use_batch_norm=config.model_params.get("use_batch_norm", True),
-            **model_params,
-        )
-    elif isinstance(config, AstroPointNetConfig):
-        model_params = config.model_params.copy()
-        for k in remove_keys:
-            model_params.pop(k, None)
-        return create_astro_pointnet(
-            num_features=config.model_params.get("num_features", 3),
-            num_classes=config.num_classes or 2,
-            task=config.task,
-            hidden_dim=config.hidden_dim,
-            num_layers=config.num_layers,
-            learning_rate=config.learning_rate,
-            optimizer=config.optimizer,
-            scheduler=config.scheduler,
-            weight_decay=config.weight_decay,
-            dropout=config.dropout,
-            use_batch_norm=config.model_params.get("use_batch_norm", True),
-            **model_params,
-        )
-    else:
-        raise ValueError(f"Unknown config type: {type(config)}")
-
-
-def create_model_from_preset(
-    preset_name: str,
-    num_features: Optional[int] = None,
-    num_classes: Optional[int] = None,
-    **kwargs,
-) -> Union[AstroNodeGNN, AstroGraphGNN, AstroTemporalGNN, AstroPointNet]:
-    """
-    Create a model from a preset configuration.
-
-    Args:
-        preset_name: Name of the preset configuration
-        num_features: Override number of features (optional)
-        num_classes: Override number of classes (optional)
-        **kwargs: Additional parameters to override
-
-    Returns:
-        Configured model instance
-    """
-    config = get_preset(preset_name)
-
-    # Override parameters if provided
-    if num_features is not None:
-        config.model_params["num_features"] = num_features
-    if num_classes is not None:
-        config.num_classes = num_classes
-
-    # Override any additional parameters
-    for key, value in kwargs.items():
-        if hasattr(config, key):
-            setattr(config, key, value)
-        else:
-            config.model_params[key] = value
-
-    return create_model_from_config(config)
+    
+    # Create model instance
+    return model_class(**model_params)
 
 
 def create_model_for_task(
     task: str,
     num_features: int,
     num_classes: int,
+    survey: Optional[str] = None,
     **kwargs,
-) -> Union[AstroNodeGNN, AstroGraphGNN, AstroTemporalGNN, AstroPointNet]:
+) -> Any:
     """
-    Create a model automatically based on task type.
+    Create a model for a specific task using central configuration.
 
     Args:
-        task: Task type (e.g., 'node_classification', 'graph_regression')
+        task: Task type
         num_features: Number of input features
         num_classes: Number of output classes
-        **kwargs: Additional model parameters
+        survey: Survey name for survey-specific defaults
+        **kwargs: Additional model arguments
 
     Returns:
-        Configured model instance
+        Model instance
     """
     model_type = get_model_type_for_task(task)
     return create_model(
@@ -323,125 +212,124 @@ def create_model_for_task(
         num_features=num_features,
         num_classes=num_classes,
         task=task,
+        survey=survey,
         **kwargs,
     )
 
 
-def create_model_from_dict(
-    config_dict: Dict[str, Any],
-) -> Union[AstroNodeGNN, AstroGraphGNN, AstroTemporalGNN, AstroPointNet]:
+def get_model_config_dict(model_type: str, **overrides) -> Dict[str, Any]:
     """
-    Create a model from a configuration dictionary.
+    Get model configuration from central defaults.
 
     Args:
-        config_dict: Configuration dictionary
+        model_type: Type of model
+        **overrides: Configuration overrides
 
     Returns:
-        Configured model instance
+        Model configuration dictionary
     """
-    config = create_config_from_dict(config_dict)
-    return create_model_from_config(config)
+    config = get_model_config(model_type)
+    config.update(overrides)
+    return config
 
 
-# Convenience functions for each model type
-def create_node_gnn(
-    num_features: int,
-    num_classes: int,
-    task: str = "node_classification",
-    **kwargs,
-) -> AstroNodeGNN:
-    """Create an AstroNodeGNN model."""
-    return create_astro_node_gnn(
-        num_features=num_features,
-        num_classes=num_classes,
-        task=task,
-        **kwargs,
-    )
+def get_model_type_for_task_name(task: str) -> str:
+    """Get the model type for a given task."""
+    return get_model_type_for_task(task)
 
 
-def create_graph_gnn(
-    num_features: int,
-    num_classes: int,
-    task: str = "graph_classification",
-    **kwargs,
-) -> AstroGraphGNN:
-    """Create an AstroGraphGNN model."""
-    return create_astro_graph_gnn(
-        num_features=num_features,
-        num_classes=num_classes,
-        task=task,
-        **kwargs,
-    )
+def get_available_models() -> list:
+    """Get list of available model types."""
+    return list(MODEL_REGISTRY.keys())
 
 
-def create_temporal_gnn(
-    num_features: int,
-    num_classes: int,
-    task: str = "time_series_classification",
-    **kwargs,
-) -> AstroTemporalGNN:
-    """Create an AstroTemporalGNN model."""
-    return create_astro_temporal_gnn(
-        num_features=num_features,
-        num_classes=num_classes,
-        task=task,
-        **kwargs,
-    )
+def get_available_tasks() -> list:
+    """Get list of available tasks."""
+    # This is now delegated to config if needed
+    from astro_lab.config import get_model_presets
+
+    return list(get_model_presets().keys())
 
 
-def create_pointnet(
-    num_features: int,
-    num_classes: int,
-    task: str = "point_classification",
-    **kwargs,
-) -> AstroPointNet:
-    """Create an AstroPointNet model."""
-    return create_astro_pointnet(
-        num_features=num_features,
-        num_classes=num_classes,
-        task=task,
-        **kwargs,
-    )
-
-
-# Model registry for easy access
-MODEL_REGISTRY = {
-    "node": AstroNodeGNN,
-    "graph": AstroGraphGNN,
-    "temporal": AstroTemporalGNN,
-    "point": AstroPointNet,
-}
-
-FACTORY_REGISTRY = {
-    "node": create_astro_node_gnn,
-    "graph": create_astro_graph_gnn,
-    "temporal": create_astro_temporal_gnn,
-    "point": create_astro_pointnet,
-}
-
-
-def list_lightning_models() -> Dict[str, str]:
+def auto_select_model(
+    data_characteristics: Dict[str, Any],
+    task: str,
+) -> tuple[str, Dict[str, Any]]:
     """
-    List all available Lightning models with descriptions.
-
+    Automatically select the best model based on data characteristics.
+    
+    Args:
+        data_characteristics: Dictionary with data properties
+        task: Task name
+        
     Returns:
-        Dictionary mapping model names to descriptions
+        Tuple of (model_type, config)
     """
-    return {
-        "astro_node_gnn": "AstroNodeGNN - Node-level tasks (classification, regression, segmentation)",
-        "astro_graph_gnn": "AstroGraphGNN - Graph-level tasks (survey classification, cluster analysis)",
-        "astro_temporal_gnn": "AstroTemporalGNN - Temporal tasks (lightcurves, time series)",
-        "astro_pointnet": "AstroPointNet - Point cloud tasks (classification, segmentation, registration)",
-        "node_classifier_small": "Small node classifier (32 dim, 2 layers, GCN)",
-        "node_classifier_medium": "Medium node classifier (64 dim, 3 layers, GAT)",
-        "node_classifier_large": "Large node classifier (128 dim, 4 layers, GIN)",
-        "graph_classifier_small": "Small graph classifier (32 dim, 2 layers, GCN)",
-        "graph_classifier_medium": "Medium graph classifier (64 dim, 3 layers, GAT)",
-        "graph_classifier_large": "Large graph classifier (128 dim, 4 layers, GIN)",
-        "temporal_classifier_small": "Small temporal classifier (32 dim, 2 layers, GRU)",
-        "temporal_classifier_medium": "Medium temporal classifier (64 dim, 3 layers, LSTM)",
-        "forecaster_medium": "Medium forecaster (64 dim, 3 layers, Transformer)",
-        "point_classifier_small": "Small point classifier (32 dim, 2 layers, 512 points)",
-        "point_classifier_medium": "Medium point classifier (64 dim, 3 layers, 1024 points)",
-        "point_segmenter_medium": "Medium point segmenter (64 dim, 3 layers, 1024 points)",
-    }
+    
+    # Extract characteristics
+    num_nodes = data_characteristics.get("num_nodes", 0)
+    num_edges = data_characteristics.get("num_edges", 0)
+    num_graphs = data_characteristics.get("num_graphs", 1)
+    has_positions = data_characteristics.get("has_positions", False)
+    has_temporal = data_characteristics.get("has_temporal", False)
+    is_dynamic = data_characteristics.get("is_dynamic", False)
+    
+    # Determine model type
+    if has_temporal or is_dynamic:
+        model_type = "temporal"
+    elif has_positions and num_edges == 0:
+        # Point cloud data without explicit edges
+        model_type = "point_cloud"
+    elif "graph" in task or num_graphs > 1:
+        model_type = "graph"
+    else:
+        model_type = "node"
+    
+    # Get base config
+    config = get_model_config(model_type)
+    
+    # Adjust for scale
+    if model_type == "point_cloud":
+        if num_nodes < 100_000:
+            config["scale"] = "small"
+        elif num_nodes < 1_000_000:
+            config["scale"] = "medium"
+        elif num_nodes < 10_000_000:
+            config["scale"] = "large"
+        else:
+            config["scale"] = "xlarge"
+            config["use_hierarchical"] = True
+    
+    # Adjust for sparsity
+    if num_nodes > 0:
+        avg_degree = (2 * num_edges) / num_nodes if num_edges > 0 else 0
+        if avg_degree < 10:
+            # Sparse graph - use attention mechanisms
+            config["conv_type"] = "gat"
+            config["heads"] = 8
+        elif avg_degree > 100:
+            # Dense graph - use simpler convolutions
+            config["conv_type"] = "gcn"
+    
+    return model_type, config
+
+
+# Convenience functions for specific model types
+def create_graph_model(**kwargs) -> AstroGraphGNN:
+    """Create a graph-level GNN model."""
+    return create_model("graph", **kwargs)
+
+
+def create_node_model(**kwargs) -> AstroNodeGNN:
+    """Create a node-level GNN model."""
+    return create_model("node", **kwargs)
+
+
+def create_point_cloud_model(**kwargs) -> AstroUnifiedPointCloud:
+    """Create a point cloud model."""
+    return create_model("point_cloud", **kwargs)
+
+
+def create_temporal_model(**kwargs) -> AstroTemporalGNN:
+    """Create a temporal GNN model."""
+    return create_model("temporal", **kwargs)

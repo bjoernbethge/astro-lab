@@ -1,543 +1,614 @@
 """
-TensorDict-Native Base Components for AstroLab Models
-===================================================
+Base Components for AstroLab Models - PyG 2025 Enhanced
+=============================================================
 
-This module provides foundational neural network components designed
-specifically for the AstroLab TensorDict system. All components expect
-TensorDict inputs and are optimized for astronomical data processing.
-
-Key Components:
-- TensorDictFeatureProcessor: Extract features from TensorDict structures
-- BaseGNNLayer: Graph neural network layer with TensorDict support
-- AstroGCNLayer: Specialized GCN for astronomical graphs
+Reusable components leveraging:
+- EdgeIndex support with metadata caching
+- Index class for efficient 1D indexing
+- VariancePreservingAggregation
+- torch.compile compatibility
+- normalization techniques
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from tensordict import TensorDict
-from torch_geometric.nn import global_mean_pool
+import torch_geometric.nn.aggr as aggr
+from torch import Tensor
 
-from .layers import create_conv_layer
+# PyTorch Geometric
+from torch_geometric import EdgeIndex
+from torch_geometric.nn import (
+    global_add_pool,
+    global_max_pool,
+    global_mean_pool,
+)
 
-
-class DeviceMixin:
-    """Simple device management mixin."""
-
-    def __init__(self, device: Optional[Union[str, torch.device]] = None):
-        self.device = torch.device(
-            device or ("cuda" if torch.cuda.is_available() else "cpu")
-        )
-
-    def to_device(self, *tensors):
-        """Move tensors to device."""
-        return [t.to(self.device) if t is not None else None for t in tensors]
+# Import our modern layers
+# from .layers import AstroGraphLayer
 
 
-class GraphProcessor(nn.Module):
-    """Simple graph processing component."""
-
-    def __init__(
-        self,
-        hidden_dim: int,
-        num_layers: int,
-        conv_type: str = "gcn",
-        dropout: float = 0.1,
-        **kwargs,
-    ):
-        super().__init__()
-
-        self.convs = nn.ModuleList(
-            [
-                create_conv_layer(conv_type, hidden_dim, hidden_dim, **kwargs)
-                for _ in range(num_layers)
-            ]
-        )
-        self.norms = nn.ModuleList(
-            [nn.LayerNorm(hidden_dim) for _ in range(num_layers)]
-        )
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> torch.Tensor:
-        """Process graph through conv layers."""
-        h = x
-        for conv, norm in zip(self.convs, self.norms):
-            h = conv(h, edge_index)
-            h = norm(h)
-            h = F.relu(h)
-            h = self.dropout(h)
-        return h
-
-
-class TensorDictFeatureProcessor(nn.Module):
+class EnhancedMLPBlock(nn.Module):
     """
-    TensorDict-native feature extraction processor.
+    MLP block with modern features.
 
-    Designed to extract and process features from various TensorDict types
-    used in astronomical data analysis.
+    Features:
+    - Multiple normalization options
+    - activation functions
+    - Residual connections
+    - torch.compile compatibility
     """
 
     def __init__(
         self,
-        output_dim: int,
+        in_dim: int,
+        out_dim: int,
         hidden_dim: Optional[int] = None,
+        num_layers: int = 2,
         dropout: float = 0.1,
-        device: Optional[Union[str, torch.device]] = None,
-        **kwargs,
+        activation: str = "gelu",
+        norm_type: str = "layer",
+        residual: bool = True,
+        bias: bool = True,
     ):
         super().__init__()
 
-        self.output_dim = output_dim
-        self.hidden_dim = hidden_dim or output_dim * 2
+        hidden_dim = hidden_dim or max(in_dim, out_dim)
+        self.residual = residual and (in_dim == out_dim)
 
-        self.device = torch.device(
-            device or ("cuda" if torch.cuda.is_available() else "cpu")
-        )
+        # Build layers
+        layers = []
+        dims = [in_dim] + [hidden_dim] * (num_layers - 1) + [out_dim]
 
-        # Feature extraction networks for different TensorDict types
-        self.feature_processors = nn.ModuleDict()
+        for i in range(len(dims) - 1):
+            # Linear layer
+            layers.append(nn.Linear(dims[i], dims[i + 1], bias=bias))
 
-        # Will be built dynamically based on input TensorDict structure
-        self.is_initialized = False
+            # Skip norm and activation on last layer
+            if i < len(dims) - 2:
+                # Normalization
+                if norm_type == "layer":
+                    layers.append(nn.LayerNorm(dims[i + 1]))
+                elif norm_type == "batch":
+                    layers.append(nn.BatchNorm1d(dims[i + 1]))
+                elif norm_type == "instance":
+                    layers.append(nn.InstanceNorm1d(dims[i + 1]))
 
-        self.to(self.device)
+                # Activation
+                if activation == "relu":
+                    layers.append(nn.ReLU(inplace=True))
+                elif activation == "gelu":
+                    layers.append(nn.GELU())
+                elif activation == "silu":
+                    layers.append(nn.SiLU(inplace=True))
+                elif activation == "leaky_relu":
+                    layers.append(nn.LeakyReLU(0.01, inplace=True))
 
-    def _initialize_processors(self, data: TensorDict):
-        """Initialize processors based on TensorDict structure."""
-        if self.is_initialized:
-            return
+                # Dropout
+                if dropout > 0:
+                    layers.append(nn.Dropout(dropout))
 
-        feature_dim = 0
+        self.layers = nn.Sequential(*layers)
 
-        # Survey data processor
-        if "photometric" in data:
-            phot_data = data["photometric"]
-            if isinstance(phot_data, TensorDict) and "magnitudes" in phot_data:
-                mag_dim = phot_data["magnitudes"].shape[-1]
-                # Add space for colors and errors
-                phot_feature_dim = mag_dim * 2 if mag_dim > 1 else mag_dim
-                if "errors" in phot_data:
-                    phot_feature_dim += mag_dim
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through the MLP block."""
+        identity = x
 
-                self.feature_processors["photometric"] = nn.Sequential(
-                    nn.Linear(phot_feature_dim, self.hidden_dim // 2),
-                    nn.ReLU(),
-                    nn.Dropout(0.1),
-                )
-                feature_dim += self.hidden_dim // 2
-
-        if "spatial" in data:
-            spatial_data = data["spatial"]
-            if isinstance(spatial_data, TensorDict) and "coordinates" in spatial_data:
-                coord_dim = spatial_data["coordinates"].shape[-1]
-                self.feature_processors["spatial"] = nn.Sequential(
-                    nn.Linear(coord_dim, self.hidden_dim // 4),
-                    nn.ReLU(),
-                    nn.Dropout(0.1),
-                )
-                feature_dim += self.hidden_dim // 4
-
-        if "spectral" in data:
-            spectral_data = data["spectral"]
-            if isinstance(spectral_data, TensorDict) and "flux" in spectral_data:
-                flux_dim = spectral_data["flux"].shape[-1]
-                self.feature_processors["spectral"] = nn.Sequential(
-                    nn.Linear(flux_dim, self.hidden_dim // 4),
-                    nn.ReLU(),
-                    nn.Dropout(0.1),
-                )
-                feature_dim += self.hidden_dim // 4
-
-        # Lightcurve data processor
-        if "times" in data and "magnitudes" in data:
-            # For lightcurve data - use LSTM
-            self.feature_processors["lightcurve"] = nn.LSTM(
-                input_size=2,  # time + magnitude
-                hidden_size=self.hidden_dim // 2,
-                batch_first=True,
-            )
-            feature_dim += self.hidden_dim // 2
-
-        # Final projection layer
-        if feature_dim > 0:
-            self.final_projection = nn.Sequential(
-                nn.Linear(feature_dim, self.hidden_dim),
-                nn.ReLU(),
-                nn.Dropout(0.1),
-                nn.Linear(self.hidden_dim, self.output_dim),
-            )
-        else:
-            # Fallback for unknown structure
-            self.final_projection = nn.Linear(1, self.output_dim)
-
-        self.feature_processors = self.feature_processors.to(self.device)
-        self.final_projection = self.final_projection.to(self.device)
-        self.is_initialized = True
-
-    def forward(self, data: TensorDict) -> torch.Tensor:
-        """Extract features from TensorDict."""
-        if not isinstance(data, TensorDict):
-            raise ValueError("TensorDictFeatureProcessor requires TensorDict input")
-
-        # Initialize processors if needed
-        if not self.is_initialized:
-            self._initialize_processors(data)
-
-        features = []
-
-        # Process photometric data
-        if "photometric" in data and "photometric" in self.feature_processors:
-            phot_data = data["photometric"]
-            if isinstance(phot_data, TensorDict) and "magnitudes" in phot_data:
-                magnitudes = phot_data["magnitudes"].to(self.device)
-
-                # Prepare photometric features
-                phot_features = [magnitudes]
-
-                # Add colors if multiple bands
-                if magnitudes.shape[-1] > 1:
-                    colors = magnitudes[..., :-1] - magnitudes[..., 1:]
-                    phot_features.append(colors)
-
-                # Add errors if available
-                if "errors" in phot_data:
-                    errors = phot_data["errors"].to(self.device)
-                    phot_features.append(errors)
-
-                combined_phot = torch.cat(phot_features, dim=-1)
-
-                # Handle NaN values
-                if torch.isnan(combined_phot).any():
-                    combined_phot = torch.nan_to_num(combined_phot, nan=0.0)
-
-                phot_encoded = self.feature_processors["photometric"](combined_phot)
-                features.append(phot_encoded)
-
-        # Process spatial data
-        if "spatial" in data and "spatial" in self.feature_processors:
-            spatial_data = data["spatial"]
-            if isinstance(spatial_data, TensorDict) and "coordinates" in spatial_data:
-                coordinates = spatial_data["coordinates"].to(self.device)
-                spatial_encoded = self.feature_processors["spatial"](coordinates)
-                features.append(spatial_encoded)
-
-        # Process spectral data
-        if "spectral" in data and "spectral" in self.feature_processors:
-            spectral_data = data["spectral"]
-            if isinstance(spectral_data, TensorDict) and "flux" in spectral_data:
-                flux = spectral_data["flux"].to(self.device)
-                # Handle different flux dimensions
-                if flux.dim() > 2:
-                    flux = flux.mean(dim=-1)
-                spectral_encoded = self.feature_processors["spectral"](flux)
-                features.append(spectral_encoded)
-
-        # Process lightcurve data
-        if (
-            "times" in data
-            and "magnitudes" in data
-            and "lightcurve" in self.feature_processors
-        ):
-            times = data["times"].to(self.device)
-            magnitudes = data["magnitudes"].to(self.device)
-
-            # Prepare sequence
-            if times.dim() == 1:
-                times = times.unsqueeze(0).unsqueeze(-1)
-                magnitudes = magnitudes.unsqueeze(0).unsqueeze(-1)
-            elif times.dim() == 2:
-                times = times.unsqueeze(-1)
-                magnitudes = magnitudes.unsqueeze(-1)
-
-            sequence = torch.cat([times, magnitudes], dim=-1)
-            lstm_out, (h_n, _) = self.feature_processors["lightcurve"](sequence)
-            lc_encoded = h_n[-1]  # Use final hidden state
-            features.append(lc_encoded)
-
-        if not features:
-            # Fallback for unknown TensorDict structure
-            dummy_input = torch.zeros(1, 1, device=self.device)
-            if hasattr(data, "batch_size"):
-                dummy_input = dummy_input.expand(data.batch_size[0], -1)
-            return self.final_projection(dummy_input)
-
-        # Combine all features
-        combined_features = torch.cat(features, dim=-1)
-
-        # Final projection
-        return self.final_projection(combined_features)
-
-
-class BaseGNNLayer(nn.Module):
-    """
-    Base Graph Neural Network layer with TensorDict support.
-
-    Provides common functionality for graph-based processing of
-    astronomical data stored in TensorDict format.
-    """
-
-    def __init__(
-        self,
-        input_dim: int,
-        output_dim: int,
-        hidden_dim: Optional[int] = None,
-        dropout: float = 0.1,
-        activation: str = "relu",
-        normalization: str = "batch",
-        device: Optional[Union[str, torch.device]] = None,
-        **kwargs,
-    ):
-        super().__init__()
-
-        self.input_dim = input_dim
-        self.output_dim = output_dim
-        self.hidden_dim = hidden_dim or max(input_dim, output_dim)
-
-        self.device = torch.device(
-            device or ("cuda" if torch.cuda.is_available() else "cpu")
-        )
-
-        # Activation function
-        if activation == "relu":
-            self.activation = nn.ReLU()
-        elif activation == "gelu":
-            self.activation = nn.GELU()
-        elif activation == "leaky_relu":
-            self.activation = nn.LeakyReLU()
-        else:
-            self.activation = nn.ReLU()
-
-        # Normalization
-        if normalization == "batch":
-            self.norm = nn.BatchNorm1d(output_dim)
-        elif normalization == "layer":
-            self.norm = nn.LayerNorm(output_dim)
-        else:
-            self.norm = nn.Identity()
-
-        # Dropout
-        self.dropout = nn.Dropout(dropout)
-
-        # Main transformation
-        self.transform = nn.Linear(input_dim, output_dim)
-
-        self.to(self.device)
-
-    def forward(
-        self, x: torch.Tensor, edge_index: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """Forward pass through GNN layer."""
-        # Apply transformation
-        x = self.transform(x.to(self.device))
-
-        # Apply normalization
-        if hasattr(self.norm, "weight"):  # BatchNorm
-            if x.dim() == 2:
-                x = self.norm(x)
-            elif x.dim() == 3:
-                # (batch, seq, features) -> (batch, features, seq)
-                x = self.norm(x.permute(0, 2, 1)).permute(0, 2, 1)
+        for i, layer in enumerate(self.layers):
+            # Only pass x to LayerNorm, never batch
+            if isinstance(layer, nn.LayerNorm):
+                x = layer(x)
             else:
-                x = self.norm(x)
-        else:  # LayerNorm or Identity
-            x = self.norm(x)
+                x = layer(x)
 
-        # Apply activation
-        x = self.activation(x)
-
-        # Apply dropout
-        x = self.dropout(x)
+            # Add residual connection if enabled and not the last layer
+            if self.residual and i < len(self.layers) - 1 and x.shape == identity.shape:
+                x = x + identity
+                identity = x
 
         return x
 
+    def reset_parameters(self):
+        """Reset all parameters."""
+        for layer in self.layers:
+            if hasattr(layer, "reset_parameters"):
+                layer.reset_parameters()
 
-class AstroGCNLayer(BaseGNNLayer):
+
+class ModernGraphEncoder(nn.Module):
     """
-    Astronomical Graph Convolutional Network layer.
+    graph encoder with PyG 2025 features.
 
-    Specialized GCN layer designed for astronomical graph data
-    with support for various edge types and node features.
+    Features:
+    - EdgeIndex support with metadata caching
+    - VariancePreservingAggregation
+    - Multiple conv layer types
+    - Residual connections
+    - Flexible normalization
     """
 
     def __init__(
         self,
-        input_dim: int,
-        output_dim: int,
-        num_edge_types: int = 1,
-        use_edge_features: bool = False,
-        self_loops: bool = True,
+        in_channels: int,
+        hidden_channels: int,
+        out_channels: int,
+        num_layers: int = 3,
+        conv_type: str = "gcn",
+        heads: int = 4,
+        dropout: float = 0.1,
+        edge_dim: Optional[int] = None,
+        norm_type: str = "layer",
+        residual: bool = True,
+        aggr: Union[str, aggr.Aggregation] = "mean",
         **kwargs,
     ):
-        super().__init__(input_dim, output_dim, **kwargs)
+        super().__init__()
 
-        self.num_edge_types = num_edge_types
-        self.use_edge_features = use_edge_features
-        self.self_loops = self_loops
+        self.num_layers = num_layers
+        self.residual = residual
+        self.conv_type = conv_type
 
-        # Multiple transformation matrices for different edge types
-        if num_edge_types > 1:
-            self.edge_transforms = nn.ModuleList(
-                [nn.Linear(input_dim, output_dim) for _ in range(num_edge_types)]
+        # Input projection
+        self.input_proj = nn.Linear(in_channels, hidden_channels)
+
+        # Graph layers using our modern implementation
+        self.layers = nn.ModuleList()
+
+        # Layer dimensions
+        dims = [hidden_channels] * (num_layers - 1) + [out_channels]
+
+        for i in range(num_layers):
+            layer_in = hidden_channels if i == 0 else dims[i - 1]
+            layer_out = dims[i]
+
+            layer = create_graph_layer(
+                layer_type=conv_type,
+                in_channels=layer_in,
+                out_channels=layer_out,
+                heads=heads,
+                edge_dim=edge_dim,
+                **kwargs,
             )
+
+            self.layers.append(layer)
+
+        # Output projection if needed
+        if out_channels != hidden_channels and num_layers == 1:
+            self.output_proj = nn.Linear(hidden_channels, out_channels)
         else:
-            self.edge_transforms = nn.ModuleList([self.transform])
-
-        # Edge feature processing
-        if use_edge_features:
-            self.edge_processor = nn.Sequential(
-                nn.Linear(input_dim, self.hidden_dim),
-                nn.ReLU(),
-                nn.Linear(self.hidden_dim, output_dim),
-            )
-
-        self.to(self.device)
+            self.output_proj = nn.Identity()
 
     def forward(
         self,
-        x: torch.Tensor,
-        edge_index: torch.Tensor,
-        edge_type: Optional[torch.Tensor] = None,
-        edge_features: Optional[torch.Tensor] = None,
-    ) -> torch.Tensor:
-        """Forward pass with graph convolution."""
-        x = x.to(self.device)
-        edge_index = edge_index.to(self.device)
+        x: Tensor,
+        edge_index: Union[Tensor, EdgeIndex],
+        edge_attr: Optional[Tensor] = None,
+        batch: Optional[Tensor] = None,
+    ) -> Tensor:
+        """Forward pass through graph encoder."""
 
-        if edge_type is not None:
-            edge_type = edge_type.to(self.device)
-        if edge_features is not None:
-            edge_features = edge_features.to(self.device)
+        # Input projection
+        x = self.input_proj(x)
+        x = F.gelu(x)
 
-        # Initialize output
-        out = torch.zeros(x.size(0), self.output_dim, device=self.device)
+        # Graph layers
+        for layer in self.layers:
+            x = layer(x, edge_index, edge_attr=edge_attr)
 
-        # Process different edge types
-        for i, transform in enumerate(self.edge_transforms):
-            if edge_type is not None:
-                # Filter edges by type
-                edge_mask = edge_type == i
-                if not edge_mask.any():
-                    continue
-                current_edges = edge_index[:, edge_mask]
-            else:
-                current_edges = edge_index
+        # Output projection
+        x = self.output_proj(x)
 
-            if current_edges.size(1) == 0:
-                continue
+        return x
 
-            # Message passing
-            row, col = current_edges
-            messages = transform(x[col])
+    def reset_parameters(self):
+        """Reset all parameters."""
+        self.input_proj.reset_parameters()
+        for layer in self.layers:
+            layer.reset_parameters()
+        if hasattr(self.output_proj, "reset_parameters"):
+            self.output_proj.reset_parameters()
 
-            # Include edge features if available
-            if self.use_edge_features and edge_features is not None:
-                if edge_type is not None:
-                    edge_feats = edge_features[edge_mask]
-                else:
-                    edge_feats = edge_features
-                edge_processed = self.edge_processor(edge_feats)
-                messages = messages + edge_processed
 
-            # Aggregate messages
-            out.index_add_(0, row, messages)
+class AdvancedTemporalEncoder(nn.Module):
+    """
+    temporal encoder with attention mechanisms.
+    """
 
-        # Add self-loops
-        if self.self_loops:
-            out = out + self.transform(x)
+    def __init__(
+        self,
+        in_dim: int,
+        hidden_dim: int,
+        out_dim: int,
+        num_layers: int = 2,
+        encoder_type: str = "lstm",
+        bidirectional: bool = True,
+        attention: bool = True,
+        dropout: float = 0.1,
+    ):
+        super().__init__()
 
-        # Apply normalization, activation, dropout
-        if hasattr(self.norm, "weight"):  # BatchNorm
-            out = self.norm(out.unsqueeze(0)).squeeze(0)
-        else:  # LayerNorm or Identity
-            out = self.norm(out)
+        self.encoder_type = encoder_type
+        self.bidirectional = bidirectional
+        self.attention = attention
 
-        out = self.activation(out)
-        out = self.dropout(out)
+        # RNN layers
+        if encoder_type == "lstm":
+            self.rnn = nn.LSTM(
+                in_dim,
+                hidden_dim,
+                num_layers,
+                batch_first=True,
+                bidirectional=bidirectional,
+                dropout=dropout if num_layers > 1 else 0,
+            )
+        elif encoder_type == "gru":
+            self.rnn = nn.GRU(
+                in_dim,
+                hidden_dim,
+                num_layers,
+                batch_first=True,
+                bidirectional=bidirectional,
+                dropout=dropout if num_layers > 1 else 0,
+            )
+        else:
+            raise ValueError(f"Unknown encoder_type: {encoder_type}")
+
+        # Calculate RNN output dimension
+        rnn_out_dim = hidden_dim * (2 if bidirectional else 1)
+
+        # Attention mechanism
+        if attention:
+            self.attention_layer = nn.MultiheadAttention(
+                rnn_out_dim, num_heads=8, dropout=dropout, batch_first=True
+            )
+            self.attention_norm = nn.LayerNorm(rnn_out_dim)
+
+        # Output projection
+        self.output_proj = EnhancedMLPBlock(
+            rnn_out_dim, out_dim, hidden_dim=rnn_out_dim // 2, dropout=dropout
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through temporal encoder."""
+
+        # RNN encoding
+        rnn_out, _ = self.rnn(x)
+
+        # Attention mechanism
+        if self.attention:
+            attn_out, _ = self.attention_layer(rnn_out, rnn_out, rnn_out)
+            rnn_out = self.attention_norm(rnn_out + attn_out)
+
+        # Global pooling over time dimension
+        if self.bidirectional:
+            # Use mean pooling for bidirectional
+            temporal_features = rnn_out.mean(dim=1)
+        else:
+            # Use last time step for unidirectional
+            temporal_features = rnn_out[:, -1]
+
+        # Output projection
+        out = self.output_proj(temporal_features)
 
         return out
 
+    def reset_parameters(self):
+        """Reset all parameters."""
+        for name, param in self.rnn.named_parameters():
+            if "weight" in name:
+                nn.init.xavier_uniform_(param)
+            elif "bias" in name:
+                nn.init.zeros_(param)
 
-class PoolingModule(nn.Module):
-    """Simple pooling module for graph-level features."""
+        if self.attention:
+            self.attention_layer._reset_parameters()
+            self.attention_norm.reset_parameters()
 
-    def __init__(self, pooling_type: str = "mean"):
+        self.output_proj.reset_parameters()
+
+
+class PointNetEncoder(nn.Module):
+    """
+    PointNet encoder with set attention.
+    """
+
+    def __init__(
+        self,
+        in_dim: int,
+        hidden_dims: List[int],
+        out_dim: int,
+        dropout: float = 0.1,
+        use_attention: bool = True,
+        pooling: str = "max",
+    ):
         super().__init__()
-        self.pooling_type = pooling_type
 
-    def forward(
-        self, x: torch.Tensor, batch: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """Pool node features to graph level."""
-        # Handle edge cases for input tensor
-        if x.numel() == 0:
-            # Empty tensor - return a valid shaped tensor
-            return torch.zeros(
-                1, x.size(-1) if x.dim() > 0 else 1, device=x.device, dtype=x.dtype
+        self.use_attention = use_attention
+        self.pooling = pooling
+
+        # Point-wise MLPs
+        layers = []
+        dims = [in_dim] + hidden_dims
+
+        for i in range(len(dims) - 1):
+            layers.extend(
+                [
+                    nn.Conv1d(dims[i], dims[i + 1], 1),
+                    nn.BatchNorm1d(dims[i + 1]),
+                    nn.GELU(),
+                    nn.Dropout(dropout),
+                ]
             )
 
-        if batch is None:
-            # If no batch, assume single graph
-            # Ensure x has at least 2 dimensions for pooling
-            if x.dim() == 0:
-                # Scalar - convert to [1, 1]
-                x = x.view(1, 1)
-            elif x.dim() == 1:
-                # 1D tensor - convert to [1, features] or [nodes, 1]
-                if x.size(0) == 1:
-                    x = x.view(1, 1)  # Single value
-                else:
-                    x = x.unsqueeze(-1)  # Multiple nodes, single feature
+        self.point_encoder = nn.Sequential(*layers)
 
-            # Apply pooling
-            if self.pooling_type == "mean":
-                result = x.mean(dim=0, keepdim=True)
-            elif self.pooling_type == "max":
-                result = x.max(dim=0)[0].unsqueeze(0)
-            elif self.pooling_type == "sum":
-                result = x.sum(dim=0, keepdim=True)
-            else:
-                # Default to mean pooling
-                result = x.mean(dim=0, keepdim=True)
+        # Attention mechanism
+        if use_attention:
+            self.attention = nn.MultiheadAttention(
+                hidden_dims[-1], num_heads=8, dropout=dropout, batch_first=True
+            )
 
-            # Ensure result has proper dimensions
-            if result.dim() == 0:
-                result = result.unsqueeze(0)
-            if result.dim() == 1 and result.size(0) > 1:
-                result = result.unsqueeze(0)
+        # Output projection
+        self.output_proj = EnhancedMLPBlock(hidden_dims[-1], out_dim, dropout=dropout)
 
-            return result
+    def forward(self, x: Tensor) -> Tensor:
+        """Forward pass through PointNet encoder."""
+
+        # x: [batch, num_points, features]
+        batch_size, num_points, _ = x.shape
+
+        # Point-wise encoding
+        x = x.transpose(1, 2)  # [batch, features, num_points]
+        x = self.point_encoder(x)
+        x = x.transpose(1, 2)  # [batch, num_points, features]
+
+        # Attention mechanism
+        if self.use_attention:
+            attn_out, _ = self.attention(x, x, x)
+            x = x + attn_out
+
+        # Global pooling
+        if self.pooling == "max":
+            global_features = x.max(dim=1)[0]
+        elif self.pooling == "mean":
+            global_features = x.mean(dim=1)
+        elif self.pooling == "sum":
+            global_features = x.sum(dim=1)
         else:
-            # Use PyG pooling with error handling
-            try:
-                if self.pooling_type == "mean":
-                    from torch_geometric.nn import global_mean_pool
+            raise ValueError(f"Unknown pooling: {self.pooling}")
 
-                    result = global_mean_pool(x, batch)
-                elif self.pooling_type == "max":
-                    from torch_geometric.nn import global_max_pool
+        # Output projection
+        out = self.output_proj(global_features)
 
-                    result = global_max_pool(x, batch)
-                elif self.pooling_type == "sum":
-                    from torch_geometric.nn import global_add_pool
+        return out
 
-                    result = global_add_pool(x, batch)
-                else:
-                    # Default to mean pooling
-                    from torch_geometric.nn import global_mean_pool
+    def reset_parameters(self):
+        """Reset all parameters."""
+        for layer in self.point_encoder:
+            if hasattr(layer, "reset_parameters"):
+                layer.reset_parameters()
 
-                    result = global_mean_pool(x, batch)
+        if self.use_attention:
+            self.attention._reset_parameters()
 
-                # Ensure result has proper batch dimension
-                if result.dim() == 1:
-                    result = result.unsqueeze(0)
-                elif result.dim() == 0:
-                    result = result.view(1, 1)
+        self.output_proj.reset_parameters()
 
-                return result
-            except Exception:
-                # Fallback to manual pooling if PyG pooling fails
-                if x.dim() == 1:
-                    x = x.unsqueeze(0)
+
+class TaskSpecificHead(nn.Module):
+    """
+    task-specific output head with advanced features.
+    """
+
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        task_type: str,
+        hidden_dim: Optional[int] = None,
+        dropout: float = 0.1,
+        num_layers: int = 2,
+        use_uncertainty: bool = False,
+    ):
+        super().__init__()
+
+        self.task_type = task_type
+        self.use_uncertainty = use_uncertainty
+
+        hidden_dim = hidden_dim or max(in_dim // 2, out_dim * 2)
+
+        # Main prediction head
+        self.prediction_head = EnhancedMLPBlock(
+            in_dim,
+            out_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+        )
+
+        # Uncertainty head (for regression tasks)
+        if use_uncertainty and task_type in [
+            "regression",
+            "node_regression",
+            "graph_regression",
+        ]:
+            self.uncertainty_head = EnhancedMLPBlock(
+                in_dim,
+                out_dim,
+                hidden_dim=hidden_dim // 2,
+                num_layers=max(1, num_layers - 1),
+                dropout=dropout,
+            )
+
+    def forward(self, x: Tensor) -> Union[Tensor, Dict[str, Tensor]]:
+        """Forward pass through task head."""
+
+        predictions = self.prediction_head(x)
+
+        if self.use_uncertainty and hasattr(self, "uncertainty_head"):
+            uncertainties = F.softplus(self.uncertainty_head(x)) + 1e-6
+            return {"predictions": predictions, "uncertainties": uncertainties}
+
+        return predictions
+
+    def reset_parameters(self):
+        """Reset all parameters."""
+        self.prediction_head.reset_parameters()
+        if hasattr(self, "uncertainty_head"):
+            self.uncertainty_head.reset_parameters()
+
+
+def create_encoder(
+    encoder_type: str, in_dim: int, hidden_dim: int, out_dim: int, **kwargs
+) -> nn.Module:
+    """
+    Factory function for creating encoders.
+
+    Args:
+        encoder_type: Type of encoder ('graph', 'temporal', 'pointnet', 'mlp')
+        in_dim: Input dimension
+        hidden_dim: Hidden dimension
+        out_dim: Output dimension
+        **kwargs: Additional arguments
+
+    Returns:
+        Configured encoder module
+    """
+
+    if encoder_type == "graph":
+        return ModernGraphEncoder(
+            in_channels=in_dim,
+            hidden_channels=hidden_dim,
+            out_channels=out_dim,
+            **kwargs,
+        )
+
+    elif encoder_type == "temporal":
+        return AdvancedTemporalEncoder(
+            in_dim=in_dim, hidden_dim=hidden_dim, out_dim=out_dim, **kwargs
+        )
+
+    elif encoder_type == "pointnet":
+        hidden_dims = kwargs.get("hidden_dims", [hidden_dim, hidden_dim * 2])
+        return PointNetEncoder(
+            in_dim=in_dim, hidden_dims=hidden_dims, out_dim=out_dim, **kwargs
+        )
+
+    elif encoder_type == "mlp":
+        return EnhancedMLPBlock(
+            in_dim=in_dim, out_dim=out_dim, hidden_dim=hidden_dim, **kwargs
+        )
+
+    else:
+        raise ValueError(f"Unknown encoder_type: {encoder_type}")
+
+
+def create_output_head(
+    task_type: str,
+    in_dim: int,
+    out_dim: int,
+    hidden_dim: Optional[int] = None,
+    dropout: float = 0.1,
+    **kwargs,
+) -> nn.Module:
+    """
+    Factory function for creating task-specific output heads.
+
+    Args:
+        task_type: Type of task
+        in_dim: Input dimension
+        out_dim: Output dimension
+        hidden_dim: Hidden dimension
+        dropout: Dropout rate
+        **kwargs: Additional arguments
+
+    Returns:
+        Configured output head
+    """
+
+    return TaskSpecificHead(
+        in_dim=in_dim,
+        out_dim=out_dim,
+        task_type=task_type,
+        hidden_dim=hidden_dim,
+        dropout=dropout,
+        **kwargs,
+    )
+
+
+class GraphPooling(nn.Module):
+    """
+    graph pooling with multiple strategies using our modern implementation.
+    """
+
+    def __init__(
+        self,
+        pooling_type: str = "mean",
+        hidden_dim: Optional[int] = None,
+        num_heads: int = 8,
+    ):
+        super().__init__()
+
+        self.pooling_type = pooling_type
+
+        if pooling_type == "attention" and hidden_dim is not None:
+            self.pooling = nn.Identity()
+        elif pooling_type == "multi":
+            self.pooling = nn.Identity()
+        else:
+            self.pooling = None
+
+    def forward(self, x: Tensor, batch: Optional[Tensor] = None) -> Tensor:
+        """Apply graph pooling."""
+
+        if self.pooling is not None:
+            return self.pooling(x, batch)
+
+        # Standard pooling
+        if batch is None:
+            # Single graph case
+            if self.pooling_type == "mean":
                 return x.mean(dim=0, keepdim=True)
+            elif self.pooling_type == "max":
+                return x.max(dim=0)[0].unsqueeze(0)
+            elif self.pooling_type == "sum":
+                return x.sum(dim=0, keepdim=True)
+        else:
+            # Batched graphs
+            if self.pooling_type == "mean":
+                return global_mean_pool(x, batch)
+            elif self.pooling_type == "max":
+                return global_max_pool(x, batch)
+            elif self.pooling_type == "sum":
+                return global_add_pool(x, batch)
+
+        return x
+
+    def reset_parameters(self):
+        """Reset all parameters."""
+        if self.pooling is not None and hasattr(self.pooling, "reset_parameters"):
+            self.pooling.reset_parameters()
+
+
+def create_graph_layer(layer_type: str, in_channels: int, out_channels: int, **kwargs):
+    """Create a graph layer based on type."""
+    # Remove norm_type from kwargs if present
+    kwargs = {k: v for k, v in kwargs.items() if k != "norm_type"}
+    if layer_type == "gcn":
+        from torch_geometric.nn import GCNConv
+
+        return GCNConv(in_channels, out_channels)
+    elif layer_type == "gat":
+        from torch_geometric.nn import GATConv
+
+        return GATConv(in_channels, out_channels, **kwargs)
+    elif layer_type == "sage":
+        from torch_geometric.nn import SAGEConv
+
+        return SAGEConv(in_channels, out_channels)
+    elif layer_type == "graph":
+        from torch_geometric.nn import GraphConv
+
+        return GraphConv(in_channels, out_channels)
+    else:
+        raise ValueError(f"Unknown layer type: {layer_type}")

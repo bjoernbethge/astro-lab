@@ -1,187 +1,510 @@
-"""Pure utility functions - no factories or classes."""
+"""
+Model Utilities with TensorDict Integration
+==========================================
 
-import inspect
-from typing import Any, Dict, Optional, Type, Union
+Utility functions for astronomical neural networks with native TensorDict support.
+"""
 
+from typing import Any, Dict, List, Optional, Union
+
+# Import for model analysis
+import numpy as np
 import torch
 import torch.nn as nn
+from tensordict import TensorDict
+from tensordict.nn import TensorDictModule
 
 
-def get_activation(name: str) -> nn.Module:
-    """Get activation function by name."""
-    activations = {
-        "relu": nn.ReLU(),
-        "gelu": nn.GELU(),
-        "swish": nn.SiLU(),
-        "tanh": nn.Tanh(),
-        "leaky_relu": nn.LeakyReLU(0.2),
-        "elu": nn.ELU(),
-        "mish": nn.Mish(),
-    }
-
-    name = name.lower()
-    if name not in activations:
-        raise ValueError(
-            f"Unknown activation: {name}. Available: {list(activations.keys())}"
-        )
-
-    return activations[name]
-
-
-def get_pooling(pooling_type: str) -> str:
-    """Get pooling type string (for compatibility)."""
-    valid_types = ["mean", "max", "add", "attention"]
-    pooling_type = pooling_type.lower()
-
-    if pooling_type not in valid_types:
-        raise ValueError(f"Unknown pooling: {pooling_type}. Available: {valid_types}")
-
-    return pooling_type
-
-
-def initialize_weights(module: nn.Module) -> None:
-    """Initialize model weights using Xavier/Kaiming initialization."""
-    for name, param in module.named_parameters():
-        if "weight" in name:
-            if len(param.shape) >= 2:
-                # Use Kaiming for ReLU networks, Xavier otherwise
-                if (
-                    hasattr(module, "activation")
-                    and "relu" in str(module.activation).lower()
-                ):
-                    nn.init.kaiming_normal_(param, mode="fan_out", nonlinearity="relu")
-                else:
-                    nn.init.xavier_uniform_(param)
-        elif "bias" in name:
-            nn.init.zeros_(param)
-
-
-def count_parameters(model: nn.Module) -> int:
-    """Count trainable parameters in a model."""
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-def get_device(device: Optional[Union[str, torch.device]] = None) -> torch.device:
-    """Get torch device, with automatic CUDA detection."""
-    if device is None:
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    return torch.device(device)
-
-
-def move_batch_to_device(batch: dict, device: torch.device) -> dict:
-    """Move all tensors in a batch dict to device."""
-    moved_batch = {}
-    for key, value in batch.items():
-        if isinstance(value, torch.Tensor):
-            moved_batch[key] = value.to(device)
-        elif (
-            isinstance(value, (list, tuple))
-            and len(value) > 0
-            and isinstance(value[0], torch.Tensor)
-        ):
-            moved_batch[key] = [v.to(device) for v in value]
-        else:
-            moved_batch[key] = value
-    return moved_batch
-
-
-def get_model_summary(model: nn.Module, input_shape: Optional[tuple] = None) -> str:
-    """Get a simple model summary string."""
-    total_params = count_parameters(model)
-
-    summary = f"{model.__class__.__name__}\n"
-    summary += f"Total trainable parameters: {total_params:,}\n"
-
-    if input_shape is not None:
-        summary += f"Expected input shape: {input_shape}\n"
-
-    # Count layers by type
-    layer_counts = {}
-    for name, module in model.named_modules():
-        module_type = module.__class__.__name__
-        if module_type in ["Module", "Sequential", "ModuleList", "ModuleDict"]:
-            continue
-        layer_counts[module_type] = layer_counts.get(module_type, 0) + 1
-
-    summary += "\nLayer counts:\n"
-    for layer_type, count in sorted(layer_counts.items()):
-        summary += f"  {layer_type}: {count}\n"
-
-    return summary
-
-
-def set_dropout_rate(model: nn.Module, dropout_rate: float) -> None:
-    """Set dropout rate for all dropout layers in model."""
-    for module in model.modules():
-        if isinstance(module, nn.Dropout):
-            module.p = dropout_rate
-
-
-def freeze_layers(model: nn.Module, layer_names: Optional[list[str]] = None) -> None:
-    """Freeze specific layers or all layers if layer_names is None."""
-    if layer_names is None:
-        # Freeze all parameters
-        for param in model.parameters():
-            param.requires_grad = False
-    else:
-        # Freeze specific layers
-        for name, param in model.named_parameters():
-            if any(layer_name in name for layer_name in layer_names):
-                param.requires_grad = False
-
-
-def unfreeze_layers(model: nn.Module, layer_names: Optional[list[str]] = None) -> None:
-    """Unfreeze specific layers or all layers if layer_names is None."""
-    if layer_names is None:
-        # Unfreeze all parameters
-        for param in model.parameters():
-            param.requires_grad = True
-    else:
-        # Unfreeze specific layers
-        for name, param in model.named_parameters():
-            if any(layer_name in name for layer_name in layer_names):
-                param.requires_grad = True
-
-
-# Keep AttentionPooling for backward compatibility
-class AttentionPooling(nn.Module):
-    """Simple attention pooling module."""
-
-    def __init__(self, hidden_dim: int):
-        super().__init__()
-        self.attention = nn.Linear(hidden_dim, 1)
-
-    def forward(
-        self, x: torch.Tensor, batch: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        """Apply attention pooling."""
-        # Compute attention scores
-        scores = self.attention(x)
-
-        if batch is not None:
-            # Masked softmax for batched graphs
-            from torch_geometric.utils import softmax
-
-            alpha = softmax(scores, batch, dim=0)
-        else:
-            # Simple softmax for single graph
-            alpha = torch.softmax(scores, dim=0)
-
-        # Weighted sum
-        return (x * alpha).sum(dim=0, keepdim=True)
-
-
-def filter_kwargs(target_class: Type[Any], **kwargs: Any) -> Dict[str, Any]:
+def count_parameters(model: Union[nn.Module, TensorDictModule]) -> Dict[str, int]:
     """
-    Filter kwargs to only include parameters accepted by target_class.__init__.
+    Count parameters in a model with TensorDict support.
 
     Args:
-        target_class: The class to filter kwargs for
-        **kwargs: Keyword arguments to filter
+        model: PyTorch model or TensorDict model
 
     Returns:
-        Dictionary containing only valid parameters for the target class
+        Dictionary with parameter counts
     """
-    sig = inspect.signature(target_class.__init__)
-    valid_params = set(sig.parameters.keys()) - {"self"}
-    return {k: v for k, v in kwargs.items() if k in valid_params}
+    if isinstance(model, TensorDictModule):
+        # Extract the wrapped module
+        base_model = model.module
+    else:
+        base_model = model
+
+    total_params = sum(p.numel() for p in base_model.parameters())
+    trainable_params = sum(
+        p.numel() for p in base_model.parameters() if p.requires_grad
+    )
+
+    return {
+        "total_parameters": total_params,
+        "trainable_parameters": trainable_params,
+        "non_trainable_parameters": total_params - trainable_params,
+        "total_mb": total_params * 4 / (1024 * 1024),  # Assuming float32
+        "trainable_mb": trainable_params * 4 / (1024 * 1024),
+    }
+
+
+def get_model_summary(
+    model: Union[nn.Module, TensorDictModule],
+    input_example: Optional[Union[torch.Tensor, TensorDict]] = None,
+    max_depth: int = 3,
+) -> str:
+    """
+    Generate a detailed model summary with TensorDict support.
+
+    Args:
+        model: Model to analyze
+        input_example: Example input for shape inference
+        max_depth: Maximum depth for nested modules
+
+    Returns:
+        Formatted model summary string
+    """
+
+    def _get_module_info(module, name="", depth=0):
+        """Recursively get module information."""
+        info = []
+
+        # Current module info
+        param_count = sum(p.numel() for p in module.parameters(recurse=False))
+        module_type = type(module).__name__
+
+        indent = "  " * depth
+        info.append(f"{indent}{name}: {module_type}")
+
+        if param_count > 0:
+            info.append(f"{indent}  Parameters: {param_count:,}")
+
+        # Recurse into children if not at max depth
+        if depth < max_depth:
+            for child_name, child_module in module.named_children():
+                child_info = _get_module_info(child_module, child_name, depth + 1)
+                info.extend(child_info)
+
+        return info
+
+    # Get base model
+    if isinstance(model, TensorDictModule):
+        base_model = model.module
+        model_type = "TensorDictModule"
+        in_keys = getattr(model, "in_keys", [])
+        out_keys = getattr(model, "out_keys", [])
+    else:
+        base_model = model
+        model_type = "PyTorch Module"
+        in_keys = []
+        out_keys = []
+
+    # Build summary
+    summary_lines = [f"Model Summary - {model_type}", "=" * 50]
+
+    # TensorDict specific info
+    if isinstance(model, TensorDictModule):
+        summary_lines.extend([f"Input keys: {in_keys}", f"Output keys: {out_keys}", ""])
+
+    # Parameter counts
+    param_info = count_parameters(model)
+    summary_lines.extend(
+        [
+            f"Total parameters: {param_info['total_parameters']:,}",
+            f"Trainable parameters: {param_info['trainable_parameters']:,}",
+            f"Model size: {param_info['total_mb']:.2f} MB",
+            "",
+        ]
+    )
+
+    # Module structure
+    summary_lines.append("Module Structure:")
+    summary_lines.append("-" * 20)
+    module_info = _get_module_info(base_model)
+    summary_lines.extend(module_info)
+
+    # Input/output shapes if example provided
+    if input_example is not None:
+        summary_lines.append("")
+        summary_lines.append("Input/Output Shapes:")
+        summary_lines.append("-" * 20)
+
+        try:
+            model.eval()
+            with torch.no_grad():
+                if isinstance(input_example, TensorDict):
+                    output = model(input_example)
+                    summary_lines.append("TensorDict Input/Output:")
+                    for key, tensor in input_example.items():
+                        if isinstance(tensor, torch.Tensor):
+                            summary_lines.append(
+                                f"  Input[{key}]: {tuple(tensor.shape)}"
+                            )
+
+                    if isinstance(output, TensorDict):
+                        for key, tensor in output.items():
+                            if isinstance(tensor, torch.Tensor):
+                                summary_lines.append(
+                                    f"  Output[{key}]: {tuple(tensor.shape)}"
+                                )
+                    else:
+                        summary_lines.append(f"  Output: {tuple(output.shape)}")
+                else:
+                    output = model(input_example)
+                    summary_lines.append(f"Input shape: {tuple(input_example.shape)}")
+                    summary_lines.append(f"Output shape: {tuple(output.shape)}")
+
+        except Exception as e:
+            summary_lines.append(f"Could not infer shapes: {e}")
+
+    return "\n".join(summary_lines)
+
+
+def validate_tensordict_compatibility(
+    model: nn.Module,
+    tensordict_example: TensorDict,
+    required_keys: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Validate TensorDict compatibility for a model.
+
+    Args:
+        model: Model to validate
+        tensordict_example: Example TensorDict
+        required_keys: Keys that must be present
+
+    Returns:
+        Validation results dictionary
+    """
+    results = {
+        "is_compatible": True,
+        "errors": [],
+        "warnings": [],
+        "key_analysis": {},
+        "shape_analysis": {},
+    }
+
+    # Check required keys
+    if required_keys:
+        missing_keys = set(required_keys) - set(tensordict_example.keys())
+        if missing_keys:
+            results["errors"].append(f"Missing required keys: {missing_keys}")
+            results["is_compatible"] = False
+
+    # Analyze each key
+    for key, tensor in tensordict_example.items():
+        key_info = {
+            "type": type(tensor).__name__,
+            "is_tensor": isinstance(tensor, torch.Tensor),
+        }
+
+        if isinstance(tensor, torch.Tensor):
+            key_info.update(
+                {
+                    "shape": tuple(tensor.shape),
+                    "dtype": tensor.dtype,
+                    "device": tensor.device,
+                    "requires_grad": tensor.requires_grad,
+                }
+            )
+
+            # Check for common issues
+            if tensor.numel() == 0:
+                results["warnings"].append(f"Key '{key}' has empty tensor")
+
+            if torch.any(torch.isnan(tensor)):
+                results["warnings"].append(f"Key '{key}' contains NaN values")
+
+            if torch.any(torch.isinf(tensor)):
+                results["warnings"].append(f"Key '{key}' contains infinite values")
+
+        results["key_analysis"][key] = key_info
+
+    # Try forward pass if model supports TensorDict
+    if isinstance(model, TensorDictModule):
+        try:
+            model.eval()
+            with torch.no_grad():
+                output = model(tensordict_example)
+                results["forward_pass"] = "success"
+
+                if isinstance(output, TensorDict):
+                    results["output_keys"] = list(output.keys())
+                    results["shape_analysis"]["output"] = {
+                        key: tuple(tensor.shape)
+                        if isinstance(tensor, torch.Tensor)
+                        else "non-tensor"
+                        for key, tensor in output.items()
+                    }
+                else:
+                    results["output_keys"] = ["tensor_output"]
+                    results["shape_analysis"]["output"] = {
+                        "tensor_output": tuple(output.shape)
+                    }
+
+        except Exception as e:
+            results["errors"].append(f"Forward pass failed: {e}")
+            results["is_compatible"] = False
+            results["forward_pass"] = "failed"
+
+    return results
+
+
+def tensor_model_info(
+    model: Union[nn.Module, TensorDictModule], include_weights: bool = False
+) -> Dict[str, Any]:
+    """
+    Get comprehensive information about a tensor model.
+
+    Args:
+        model: Model to analyze
+        include_weights: Whether to include weight statistics
+
+    Returns:
+        Model information dictionary
+    """
+    info = {
+        "model_type": type(model).__name__,
+        "is_tensordict_model": isinstance(model, TensorDictModule),
+        "parameter_info": count_parameters(model),
+        "module_count": len(list(model.modules())),
+        "training_mode": model.training,
+    }
+
+    # TensorDict specific info
+    if isinstance(model, TensorDictModule):
+        info.update(
+            {
+                "in_keys": getattr(model, "in_keys", []),
+                "out_keys": getattr(model, "out_keys", []),
+                "wrapped_module_type": type(model.module).__name__,
+            }
+        )
+
+    # Device information
+    devices = set()
+    for param in model.parameters():
+        devices.add(str(param.device))
+    info["devices"] = list(devices)
+    info["primary_device"] = list(devices)[0] if devices else "unknown"
+
+    # Weight statistics
+    if include_weights:
+        weight_stats = {}
+        for name, param in model.named_parameters():
+            if param.requires_grad:
+                weight_stats[name] = {
+                    "shape": tuple(param.shape),
+                    "mean": param.data.mean().item(),
+                    "std": param.data.std().item(),
+                    "min": param.data.min().item(),
+                    "max": param.data.max().item(),
+                    "norm": param.data.norm().item(),
+                }
+        info["weight_statistics"] = weight_stats
+
+    return info
+
+
+def optimize_tensordict_model(
+    model: TensorDictModule,
+    compile_mode: str = "default",
+    enable_mixed_precision: bool = True,
+) -> TensorDictModule:
+    """
+    Optimize a TensorDict model for performance.
+
+    Args:
+        model: TensorDict model to optimize
+        compile_mode: torch.compile mode ("default", "max-autotune", "reduce-overhead")
+        enable_mixed_precision: Whether to enable automatic mixed precision
+
+    Returns:
+        Optimized model
+    """
+
+    # Apply torch.compile if available (PyTorch 2.0+)
+    if hasattr(torch, "compile"):
+        try:
+            # Compile the wrapped module
+            optimized_module = torch.compile(model.module, mode=compile_mode)
+
+            # Create new TensorDict module with compiled module
+            optimized_model = TensorDictModule(
+                module=optimized_module, in_keys=model.in_keys, out_keys=model.out_keys
+            )
+
+            print(f"✅ Model compiled with mode: {compile_mode}")
+            return optimized_model
+
+        except Exception as e:
+            print(f"⚠️ Compilation failed: {e}")
+            return model
+    else:
+        print("⚠️ torch.compile not available")
+        return model
+
+
+def convert_model_to_tensordict(
+    model: nn.Module,
+    in_keys: List[str],
+    out_keys: List[str],
+    coordinate_system: Optional[str] = None,
+    validate_astronomy: bool = True,
+) -> TensorDictModule:
+    """
+    Convert a regular PyTorch model to TensorDict format.
+
+    Args:
+        model: PyTorch model to convert
+        in_keys: Input keys for TensorDict
+        out_keys: Output keys for TensorDict
+        coordinate_system: Astronomical coordinate system
+        validate_astronomy: Whether to validate astronomical inputs
+
+    Returns:
+        TensorDict-wrapped model
+    """
+    from .components.tensordict_modules import AstroTensorDictModule
+
+    return AstroTensorDictModule(
+        module=model,
+        in_keys=in_keys,
+        out_keys=out_keys,
+        coordinate_system=coordinate_system,
+        validate_astronomy=validate_astronomy,
+    )
+
+
+def create_model_ensemble(
+    models: List[Union[nn.Module, TensorDictModule]],
+    ensemble_method: str = "average",
+    weights: Optional[List[float]] = None,
+) -> TensorDictModule:
+    """
+    Create an ensemble of models with TensorDict support.
+
+    Args:
+        models: List of models to ensemble
+        ensemble_method: Ensemble method ("average", "weighted", "voting")
+        weights: Weights for weighted ensemble
+
+    Returns:
+        TensorDict ensemble model
+    """
+
+    class ModelEnsemble(nn.Module):
+        def __init__(self, models, method, weights):
+            super().__init__()
+            self.models = nn.ModuleList(models)
+            self.method = method
+            self.weights = weights
+
+            if weights and len(weights) != len(models):
+                raise ValueError("Number of weights must match number of models")
+
+        def forward(self, x):
+            outputs = [model(x) for model in self.models]
+
+            if self.method == "average":
+                return torch.stack(outputs).mean(dim=0)
+            elif self.method == "weighted" and self.weights:
+                weighted_outputs = [w * out for w, out in zip(self.weights, outputs)]
+                return torch.stack(weighted_outputs).sum(dim=0)
+            elif self.method == "voting":
+                # majority voting for classification
+                predictions = [torch.argmax(out, dim=-1) for out in outputs]
+                stacked_preds = torch.stack(predictions)
+                return torch.mode(stacked_preds, dim=0)[0]
+            else:
+                return torch.stack(outputs).mean(dim=0)
+
+    # Extract base models if they're TensorDict modules
+    base_models = []
+    sample_tensordict_model = None
+
+    for model in models:
+        if isinstance(model, TensorDictModule):
+            base_models.append(model.module)
+            if sample_tensordict_model is None:
+                sample_tensordict_model = model
+        else:
+            base_models.append(model)
+
+    # Create ensemble
+    ensemble = ModelEnsemble(base_models, ensemble_method, weights)
+
+    # Wrap in TensorDict if original models were TensorDict
+    if sample_tensordict_model:
+        return TensorDictModule(
+            module=ensemble,
+            in_keys=sample_tensordict_model.in_keys,
+            out_keys=sample_tensordict_model.out_keys,
+        )
+    else:
+        # Return as regular module
+        return ensemble
+
+
+def benchmark_model_performance(
+    model: Union[nn.Module, TensorDictModule],
+    input_data: Union[torch.Tensor, TensorDict],
+    num_iterations: int = 100,
+    warmup_iterations: int = 10,
+) -> Dict[str, float]:
+    """
+    Benchmark model performance.
+
+    Args:
+        model: Model to benchmark
+        input_data: Input data for benchmarking
+        num_iterations: Number of benchmark iterations
+        warmup_iterations: Number of warmup iterations
+
+    Returns:
+        Performance metrics
+    """
+
+    model.eval()
+    device = next(model.parameters()).device
+
+    # Move input to same device
+    if isinstance(input_data, TensorDict):
+        input_data = input_data.to(device)
+    else:
+        input_data = input_data.to(device)
+
+    # Warmup
+    with torch.no_grad():
+        for _ in range(warmup_iterations):
+            _ = model(input_data)
+
+    # Synchronize GPU
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+    # Benchmark
+    import time
+
+    times = []
+
+    with torch.no_grad():
+        for _ in range(num_iterations):
+            start_time = time.time()
+            _ = model(input_data)
+
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+
+            end_time = time.time()
+            times.append(end_time - start_time)
+
+    # Calculate statistics
+    times = np.array(times)
+
+    return {
+        "mean_time_ms": times.mean() * 1000,
+        "std_time_ms": times.std() * 1000,
+        "min_time_ms": times.min() * 1000,
+        "max_time_ms": times.max() * 1000,
+        "median_time_ms": np.median(times) * 1000,
+        "throughput_samples_per_sec": 1.0 / times.mean(),
+        "total_iterations": num_iterations,
+    }

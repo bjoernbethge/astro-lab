@@ -1,19 +1,43 @@
-"""Simple output head functions for AstroLab models."""
+"""output head functions for AstroLab models."""
 
 import inspect
 from typing import Dict, Optional, Type
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from ..utils import filter_kwargs
-from .layers import create_mlp
+
+def _filter_kwargs(cls, **kwargs):
+    """function to filter kwargs to only include valid parameters."""
+    valid_params = inspect.signature(cls.__init__).parameters.keys()
+    return {k: v for k, v in kwargs.items() if k in valid_params}
+
+
+def _create_mlp(
+    input_dim: int,
+    output_dim: int,
+    hidden_dims: Optional[list] = None,
+    dropout: float = 0.1,
+):
+    """Create a simple MLP."""
+    if hidden_dims is None:
+        hidden_dims = [input_dim // 2]
+
+    layers = []
+    prev_dim = input_dim
+
+    for hidden_dim in hidden_dims:
+        layers.extend([nn.Linear(prev_dim, hidden_dim), nn.ReLU(), nn.Dropout(dropout)])
+        prev_dim = hidden_dim
+
+    layers.append(nn.Linear(prev_dim, output_dim))
+
+    return nn.Sequential(*layers)
 
 
 class ClassificationHead(nn.Module):
     """
-    Simple classification head for multi-class classification tasks.
+    classification head for multi-class classification tasks.
 
     Args:
         input_dim: Input feature dimension
@@ -23,9 +47,7 @@ class ClassificationHead(nn.Module):
 
     def __init__(self, input_dim: int, num_classes: int, dropout: float = 0.1):
         super().__init__()
-        self.classifier = create_mlp(
-            input_dim, num_classes, hidden_dims=[input_dim // 2], dropout=dropout
-        )
+        self.classifier = _create_mlp(input_dim, num_classes, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -42,7 +64,7 @@ class ClassificationHead(nn.Module):
 
 class RegressionHead(nn.Module):
     """
-    Simple regression head for continuous value prediction.
+    regression head for continuous value prediction.
 
     Args:
         input_dim: Input feature dimension
@@ -52,9 +74,7 @@ class RegressionHead(nn.Module):
 
     def __init__(self, input_dim: int, output_dim: int = 1, dropout: float = 0.1):
         super().__init__()
-        self.regressor = create_mlp(
-            input_dim, output_dim, hidden_dims=[input_dim // 2], dropout=dropout
-        )
+        self.regressor = _create_mlp(input_dim, output_dim, dropout=dropout)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -81,7 +101,7 @@ class PeriodDetectionHead(nn.Module):
     def __init__(self, input_dim: int, dropout: float = 0.1):
         super().__init__()
         # Period detection: predict period value and uncertainty
-        self.period_net = create_mlp(
+        self.period_net = _create_mlp(
             input_dim,
             2,  # period and uncertainty
             hidden_dims=[input_dim // 2, input_dim // 4],
@@ -118,10 +138,9 @@ class ShapeModelingHead(nn.Module):
         super().__init__()
         self.num_harmonics = num_harmonics
         # Predict spherical harmonic coefficients
-        self.shape_net = create_mlp(
+        self.shape_net = _create_mlp(
             input_dim,
             num_harmonics * 2,  # Real and imaginary parts
-            hidden_dims=[input_dim // 2],
             dropout=dropout,
         )
 
@@ -141,7 +160,7 @@ class ShapeModelingHead(nn.Module):
         return {"real_coeffs": real_coeffs, "imag_coeffs": imag_coeffs}
 
 
-# Simple dictionary mapping
+# dictionary mapping
 OUTPUT_HEADS: Dict[str, Type[nn.Module]] = {
     "classification": ClassificationHead,
     "regression": RegressionHead,
@@ -178,16 +197,16 @@ def create_output_head(
     if head_type == "classification":
         config = {"input_dim": input_dim, "num_classes": output_dim or 2}
         config.update(kwargs)
-        filtered = filter_kwargs(head_class, **config)
+        filtered = _filter_kwargs(head_class, **config)
         return head_class(**filtered)
     elif head_type == "regression":
         config = {"input_dim": input_dim, "output_dim": output_dim or 1}
         config.update(kwargs)
-        filtered = filter_kwargs(head_class, **config)
+        filtered = _filter_kwargs(head_class, **config)
         return head_class(**filtered)
     else:
         # Period detection and shape modeling don't need output_dim
         config = {"input_dim": input_dim}
         config.update(kwargs)
-        filtered = filter_kwargs(head_class, **config)
+        filtered = _filter_kwargs(head_class, **config)
         return head_class(**filtered)
