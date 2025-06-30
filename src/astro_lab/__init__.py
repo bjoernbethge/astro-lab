@@ -1,12 +1,27 @@
 """
 Comprehensive Astronomical Data Analysis Framework
 
-A modern Python framework for astronomical data analysis, machine learning, and visualization that combines specialized astronomy libraries with cutting-edge ML tools.
+A modern Python framework for astronomical data analysis, machine learning,
+and visualization that combines specialized astronomy libraries with
+cutting-edge ML tools.
 """
 
 import os
 import warnings
 from pathlib import Path
+
+# Import main modules
+from astro_lab import data
+
+# Import specific tensor classes instead of star imports
+from astro_lab.tensors import (
+    AstroTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SpatialTensorDict,
+    SpectralTensorDict,
+    SurveyTensorDict,
+)
 
 # Suppress NumPy 2.x compatibility warnings while keeping NumPy 2.x
 with warnings.catch_warnings():
@@ -20,19 +35,6 @@ _data_dir.mkdir(exist_ok=True)
 
 # Set environment variable for astroML
 os.environ["ASTROML_DATA"] = str(_data_dir)
-
-# Import main modules - moved to top to fix E402
-from astro_lab import data
-
-# Import specific tensor classes instead of star imports
-from astro_lab.tensors import (
-    AstroTensorDict,
-    LightcurveTensorDict,
-    PhotometricTensorDict,
-    SpatialTensorDict,
-    SpectralTensorDict,
-    SurveyTensorDict,
-)
 
 __version__ = "0.1.0"
 __all__ = [

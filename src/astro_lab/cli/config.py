@@ -3,23 +3,20 @@
 AstroLab Config CLI
 ==================
 
-Simplified configuration management.
+Configuration management for AstroLab.
 """
 
 import logging
-from pathlib import Path
+import sys
 from typing import Any, Dict, Optional
 
 import yaml
 
-from astro_lab.config.surveys import SURVEY_CONFIGS
-from astro_lab.models.config import list_presets
+from astro_lab.config.surveys import SURVEY_CONFIGS, get_survey_config
 
 
 def setup_logging() -> logging.Logger:
     """Setup logging configuration."""
-    import sys
-
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -36,7 +33,7 @@ def load_and_prepare_training_config(
     """
     Load training configuration - simplified version.
 
-    Priority: CLI overrides > config file > preset > defaults
+    Priority: CLI overrides > config file > defaults
     """
     config: Dict[str, Any] = {}
 
@@ -47,33 +44,53 @@ def load_and_prepare_training_config(
             if loaded_config is not None:
                 config = loaded_config
 
-    # 2. Or use preset
+    # 2. Or use preset (simplified preset system)
     elif preset:
-        config = {
-            "preset": preset,
-            "model_type": preset.split("_")[0],  # e.g., "node_classifier" -> "node"
+        # Basic preset system
+        preset_configs = {
+            "graph_classifier_small": {
+                "model_type": "graph",
+                "hidden_dim": 64,
+                "num_layers": 2,
+                "learning_rate": 0.001
+            },
+            "node_classifier_medium": {
+                "model_type": "node",
+                "hidden_dim": 128,
+                "num_layers": 3,
+                "learning_rate": 0.001
+            },
+            "temporal_gnn": {
+                "model_type": "temporal",
+                "hidden_dim": 128,
+                "num_layers": 3,
+                "learning_rate": 0.0005
+            }
         }
+
+        if preset in preset_configs:
+            config = preset_configs[preset].copy()
+        else:
+            # Fallback: infer model type from preset name
+            if "node" in preset.lower():
+                config["model_type"] = "node"
+            elif "graph" in preset.lower():
+                config["model_type"] = "graph"
+            elif "temporal" in preset.lower():
+                config["model_type"] = "temporal"
+            elif "point" in preset.lower():
+                config["model_type"] = "point"
 
     # 3. Apply CLI overrides
     if cli_overrides:
         config.update(cli_overrides)
 
-    # 4. Set minimal defaults (let models/trainer handle the rest)
+    # 4. Set minimal defaults
     config.setdefault("dataset", "gaia")
+    config.setdefault("model_type", "graph")
     config.setdefault("max_epochs", 50)
     config.setdefault("batch_size", 32)
-
-    # Simple model type inference if needed
-    if "model" in config and "model_type" not in config:
-        model_name = config["model"].lower()
-        if "node" in model_name:
-            config["model_type"] = "node"
-        elif "graph" in model_name:
-            config["model_type"] = "graph"
-        elif "temporal" in model_name:
-            config["model_type"] = "temporal"
-        elif "point" in model_name:
-            config["model_type"] = "point"
+    config.setdefault("learning_rate", 0.001)
 
     return config
 
@@ -100,15 +117,13 @@ def main(args) -> int:
 
 def _create_config(args) -> int:
     """Create a new configuration file."""
-    from astro_lab.config.surveys import get_survey_config
-
     try:
-        survey_config = get_survey_config(args.template)
+        get_survey_config(args.template)
 
         config = {
             "experiment_name": f"{args.template}_experiment",
             "dataset": args.template,
-            "model": "node",  # Default model
+            "model_type": "graph",  # Default model type
             "max_epochs": 50,
             "batch_size": 32,
             "learning_rate": 0.001,
@@ -149,8 +164,6 @@ def _show_surveys() -> int:
 def _show_survey_config(survey: str) -> int:
     """Show detailed survey configuration."""
     try:
-        from astro_lab.config.surveys import get_survey_config
-
         config = get_survey_config(survey)
 
         print(f"📊 Survey: {survey.upper()}")
@@ -158,7 +171,7 @@ def _show_survey_config(survey: str) -> int:
         print(f"Coordinates: {config['coord_cols']}")
         print(f"Magnitudes: {config['mag_cols']}")
         print(f"Extra columns: {config['extra_cols']}")
-        if config["color_pairs"]:
+        if config.get("color_pairs"):
             print(f"Color pairs: {config['color_pairs']}")
 
         return 0

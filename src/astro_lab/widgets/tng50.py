@@ -21,18 +21,13 @@ Typical workflow:
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import h5py
 import numpy as np
 import pyvista as pv
 import torch
 
-try:
-    from .bpy import bpy, mathutils
-except ImportError:
-    bpy = None
-    mathutils = None
+from .albpy import bpy
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +46,13 @@ class TNG50Visualizer:
         Args:
             data_dir: Directory containing processed TNG50 graphs
         """
-        self.data_dir = data_dir or Path("data/processed/tng50_graphs")
+        if data_dir is None:
+            from astro_lab.config import get_data_config
+
+            data_config = get_data_config()
+            self.data_dir = data_config.get_survey_processed_dir("tng50") / "graphs"
+        else:
+            self.data_dir = data_dir
 
         logger.info("🌌 TNG50Visualizer initialized")
         logger.info(f"   Data directory: {self.data_dir}")
@@ -233,72 +234,30 @@ class TNG50Visualizer:
         Returns:
             List of created Blender objects
         """
-        if bpy is None:
-            raise ImportError("Blender not available")
-
         positions = graph_data["positions"]
-        features = graph_data["features"]
+        graph_data["features"]
 
         logger.info(f"🎨 Converting to Blender: {len(positions):,} particles")
 
-        # Create or get base mesh (sphere for particles)
-        if use_instancing:
-            # Create base sphere
-            import bpy  # Import locally after availability check
+        # Create single mesh with all particles using pure bpy API
+        # Create mesh data
+        mesh_data = bpy.data.meshes.new(object_name)
+        mesh_obj = bpy.data.objects.new(object_name, mesh_data)
 
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, 0, 0))
-            base_sphere = bpy.context.active_object
-            base_sphere.name = f"{object_name}_base"
+        # Create vertices from positions
+        vertices = []
+        for pos in positions:
+            vertices.append(pos)
 
-            # Create collection for instances
-            collection_name = f"{object_name}_collection"
-            collection = bpy.data.collections.new(collection_name)
-            bpy.context.scene.collection.children.link(collection)
+        # Create mesh from vertices
+        mesh_data.from_pydata(vertices, [], [])
+        mesh_data.update()
 
-            objects = [base_sphere]
+        # Link to scene
+        bpy.context.scene.collection.objects.link(mesh_obj)
 
-            # Use geometry nodes for instancing (more efficient)
-            # For now, create simple instances
-            for i, pos in enumerate(positions[:100]):  # Limit for performance
-                bpy.ops.object.duplicate()
-                instance = bpy.context.active_object
-                instance.location = pos
-                instance.name = f"{object_name}_particle_{i}"
-
-                # Scale by mass if available
-                if len(features) > 0:
-                    mass = features[i, 0]  # Assume first feature is mass
-                    scale = np.log10(mass * 1000) if mass > 0 else 1.0
-                    instance.scale = (scale, scale, scale)
-
-                collection.objects.link(instance)
-                objects.append(instance)
-
-            logger.info(f"   Created {len(objects) - 1} particle instances")
-
-        else:
-            # Create single mesh with all particles
-            import bmesh
-
-            bm = bmesh.new()
-
-            for i, pos in enumerate(positions):
-                # Add vertex at particle position
-                vert = bm.verts.new(pos)
-
-                # Could add more sophisticated geometry here
-
-            # Create mesh
-            mesh = bpy.data.meshes.new(object_name)
-            bm.to_mesh(mesh)
-            bm.free()
-
-            # Create object
-            obj = bpy.data.objects.new(object_name, mesh)
-            bpy.context.scene.collection.objects.link(obj)
-
-            objects = [obj]
-            logger.info("   Created single mesh object")
+        objects = [mesh_obj]
+        logger.info("   Created single mesh object")
 
         return objects
 
@@ -342,6 +301,48 @@ class TNG50Visualizer:
 
         else:
             raise ValueError(f"Unknown method: {method}")
+
+    def render(
+        self,
+        output_path: str = "results/tng50_render.png",
+        engine: str = "CYCLES",
+        resolution: Tuple[int, int] = (1920, 1080),
+        samples: int = 128,
+        animation: bool = False,
+        **kwargs,
+    ) -> bool:
+        """
+        Zentrale Render-Methode für TNG50-Visualisierungen.
+        Unterstützt Standbild und Animation.
+        """
+        try:
+            bpy.context.scene.render.engine = engine
+            bpy.context.scene.render.filepath = output_path
+            bpy.context.scene.render.resolution_x = resolution[0]
+            bpy.context.scene.render.resolution_y = resolution[1]
+            bpy.context.scene.render.samples = samples
+
+            # Add camera if not present
+            if not any(obj.type == "CAMERA" for obj in bpy.context.scene.objects):
+                bpy.ops.object.camera_add(location=[10, -10, 5])
+                camera = bpy.context.active_object
+                camera.rotation_euler = [1.1, 0, 0.8]
+                bpy.context.scene.camera = camera
+
+            # Add light if not present
+            if not any(obj.type == "LIGHT" for obj in bpy.context.scene.objects):
+                bpy.ops.object.light_add(type="SUN", location=[5, 5, 10])
+                light = bpy.context.active_object
+                light.data.energy = 5.0
+
+            if animation:
+                bpy.ops.render.render(animation=True)
+            else:
+                bpy.ops.render.render(write_still=True)
+            return True
+        except Exception as e:
+            print(f"Failed to render TNG50 scene: {e}")
+            return False
 
 
 # Convenience functions

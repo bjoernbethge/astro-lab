@@ -12,10 +12,10 @@ import os
 import warnings
 from typing import Any, Dict, List, Optional, Tuple
 
-import bpy
-import mathutils
 import numpy as np
 import polars as pl
+
+from . import bpy
 
 # Set environment variable for NumPy 2.x compatibility with bpy
 os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"
@@ -40,9 +40,6 @@ class GreasePencil2DPlotter:
         scale: float = 5.0,
     ) -> List[Any]:
         """Create radar chart like the data format comparison example."""
-        if bpy is None:
-            return []
-
         if colors is None:
             colors = [
                 [0.2, 0.6, 1.0],  # Blue
@@ -100,9 +97,6 @@ class GreasePencil2DPlotter:
         panel_size: float = 3.0,
     ) -> List[Any]:
         """Create multi-panel plot like NSA galaxy analysis."""
-        if bpy is None:
-            return []
-
         objects = []
         rows, cols = layout
         panel_spacing = panel_size + 0.5
@@ -137,9 +131,6 @@ class GreasePencil2DPlotter:
         colors: Optional[List[List[float]]] = None,
     ) -> List[Any]:
         """Create comparison histogram plot."""
-        if bpy is None:
-            return []
-
         if colors is None:
             colors = [[0.2, 0.6, 1.0], [1.0, 0.4, 0.2]]
 
@@ -232,46 +223,40 @@ class GreasePencil2DPlotter:
         ]
 
         border_curve = self._create_curve_line(
-            border_points, f"{title}_border", [0.8, 0.8, 0.8], line_width=0.01
+            border_points, f"{title}_border", [0.7, 0.7, 0.7], line_width=0.01
         )
         if border_curve:
             objects.append(border_curve)
 
         # Add title
-        title_pos = [position[0], position[1] + size / 2 + 0.3, 0]
-        title_obj = self._create_text_object(title, title_pos, 0.2)
+        title_pos = [position[0], position[1] + size / 2 + 0.2, 0]
+        title_obj = self._create_text_object(title, title_pos, 0.3)
         if title_obj:
             objects.append(title_obj)
 
-        # Create plot content based on type
-        if plot_type == "scatter" and len(data) > 0:
-            # Simple scatter plot within panel
-            cols = data.columns
-            if len(cols) >= 2:
-                x_data = data[cols[0]].to_numpy()
-                y_data = data[cols[1]].to_numpy()
+        # Create plot based on type
+        if plot_type == "scatter":
+            # Extract x, y columns (assuming first two numeric columns)
+            numeric_cols = data.select(
+                pl.col("^.*$").filter(pl.col("^.*$").is_numeric())
+            ).columns
+            if len(numeric_cols) >= 2:
+                x_col, y_col = numeric_cols[0], numeric_cols[1]
+                x_data = data[x_col].to_numpy()
+                y_data = data[y_col].to_numpy()
 
-                # Normalize to panel size
-                x_norm = (
-                    (x_data - np.min(x_data))
-                    / (np.max(x_data) - np.min(x_data))
-                    * size
-                    * 0.8
-                    + position[0]
-                    - size * 0.4
-                )
-                y_norm = (
-                    (y_data - np.min(y_data))
-                    / (np.max(y_data) - np.min(y_data))
-                    * size
-                    * 0.8
-                    + position[1]
-                    - size * 0.4
-                )
-
-                # Create points
-                for x, y in zip(x_norm[:50], y_norm[:50]):  # Limit points
-                    point_obj = self._create_point([x, y, 0], 0.02)
+                # Create scatter plot
+                for x, y in zip(x_data, y_data):
+                    point_pos = [
+                        position[0]
+                        + (x - x_data.min()) / (x_data.max() - x_data.min()) * size
+                        - size / 2,
+                        position[1]
+                        + (y - y_data.min()) / (y_data.max() - y_data.min()) * size
+                        - size / 2,
+                        0,
+                    ]
+                    point_obj = self._create_point(point_pos, 0.01)
                     if point_obj:
                         objects.append(point_obj)
 
@@ -285,30 +270,27 @@ class GreasePencil2DPlotter:
         bins: int = 20,
         offset_x: float = 0.0,
     ) -> List[Any]:
-        """Create histogram using curves."""
+        """Create histogram visualization."""
         objects = []
 
         # Calculate histogram
         hist, bin_edges = np.histogram(data, bins=bins)
-        max_height = np.max(hist)
+        bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+        # Normalize heights
+        max_height = 2.0
+        normalized_heights = hist / hist.max() * max_height if hist.max() > 0 else hist
 
         # Create bars
-        for i, (height, left_edge, right_edge) in enumerate(
-            zip(hist, bin_edges[:-1], bin_edges[1:])
-        ):
+        bar_width = (bin_edges[1] - bin_edges[0]) * 0.8
+        for i, (center, height) in enumerate(zip(bin_centers, normalized_heights)):
             if height > 0:
-                # Normalize
-                bar_height = (height / max_height) * 3.0
-                bar_width = (right_edge - left_edge) * 0.1
-                bar_x = (left_edge + right_edge) / 2 * 0.1 + offset_x
-
-                # Create bar as rectangle
                 bar_points = [
-                    [bar_x - bar_width / 2, 0, 0],
-                    [bar_x + bar_width / 2, 0, 0],
-                    [bar_x + bar_width / 2, bar_height, 0],
-                    [bar_x - bar_width / 2, bar_height, 0],
-                    [bar_x - bar_width / 2, 0, 0],
+                    [offset_x + center - bar_width / 2, 0, 0],
+                    [offset_x + center + bar_width / 2, 0, 0],
+                    [offset_x + center + bar_width / 2, height, 0],
+                    [offset_x + center - bar_width / 2, height, 0],
+                    [offset_x + center - bar_width / 2, 0, 0],
                 ]
 
                 bar_curve = self._create_curve_line(
@@ -326,32 +308,31 @@ class GreasePencil2DPlotter:
         color: List[float],
         line_width: float = 0.01,
     ) -> Optional[Any]:
-        """Create curve line from points."""
-        if bpy is None:
-            return None
-
+        """Create a curve line object."""
         try:
-            # Create curve
+            # Create curve data
             curve_data = bpy.data.curves.new(name, type="CURVE")
             curve_data.dimensions = "3D"
-            curve_data.bevel_depth = line_width
+            curve_data.resolution_u = 2
 
             # Create spline
             spline = curve_data.splines.new("POLY")
             spline.points.add(len(points) - 1)
 
-            # Set points
             for i, point in enumerate(points):
-                spline.points[i].co = (*point, 1.0)
+                spline.points[i].co = (*point, 1)
 
             # Create object
             curve_obj = bpy.data.objects.new(name, curve_data)
-            bpy.context.collection.objects.link(curve_obj)
+            bpy.context.scene.collection.objects.link(curve_obj)
 
-            # Create and apply material
-            mat = self._create_emission_material(f"{name}_mat", color)
-            if mat:
-                curve_obj.data.materials.append(mat)
+            # Create material
+            material = self._create_emission_material(f"{name}_mat", color)
+            if material:
+                curve_obj.data.materials.append(material)
+
+            # Set line width
+            curve_data.bevel_depth = line_width
 
             return curve_obj
 
@@ -360,22 +341,28 @@ class GreasePencil2DPlotter:
             return None
 
     def _create_point(self, position: List[float], size: float = 0.02) -> Optional[Any]:
-        """Create a point as small UV sphere."""
-        if bpy is None:
-            return None
-
+        """Create a point object."""
         try:
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=size, location=position)
-            point_obj = bpy.context.active_object
+            # Create mesh data
+            mesh_data = bpy.data.meshes.new("Point")
+            mesh_obj = bpy.data.objects.new("Point", mesh_data)
+
+            # Create simple sphere
+            bpy.context.collection.objects.link(mesh_obj)
+            bpy.context.view_layer.objects.active = mesh_obj
+
+            # Add sphere primitive
+            bpy.ops.mesh.primitive_uv_sphere_add(
+                radius=size, location=position, segments=8, ring_count=6
+            )
+            sphere = bpy.context.active_object
 
             # Create material
-            mat = self._create_emission_material(
-                f"point_mat_{len(self.created_objects)}", [0.2, 0.8, 1.0]
-            )
-            if mat:
-                point_obj.data.materials.append(mat)
+            material = self._create_emission_material("PointMaterial", [1.0, 1.0, 1.0])
+            if material:
+                sphere.data.materials.append(material)
 
-            return point_obj
+            return sphere
 
         except Exception as e:
             print(f"Failed to create point: {e}")
@@ -384,74 +371,65 @@ class GreasePencil2DPlotter:
     def _create_text_object(
         self, text: str, position: List[float], size: float = 0.5
     ) -> Optional[Any]:
-        """Create text object."""
-        if bpy is None:
-            return None
-
+        """Create a text object."""
         try:
-            bpy.ops.object.text_add(location=position)
-            text_obj = bpy.context.active_object
-            text_obj.data.body = text
-            text_obj.data.size = size
+            # Create text data
+            text_data = bpy.data.curves.new("Text", type="FONT")
+            text_data.body = text
+            text_data.size = size
+
+            # Create text object
+            text_obj = bpy.data.objects.new("Text", text_data)
+            text_obj.location = position
+            bpy.context.scene.collection.objects.link(text_obj)
 
             # Create material
-            mat = self._create_emission_material(
-                f"text_mat_{len(self.created_objects)}", [1.0, 1.0, 1.0]
-            )
-            if mat:
-                text_obj.data.materials.append(mat)
+            material = self._create_emission_material("TextMaterial", [1.0, 1.0, 1.0])
+            if material:
+                text_obj.data.materials.append(material)
 
             return text_obj
 
         except Exception as e:
-            print(f"Failed to create text: {e}")
+            print(f"Failed to create text object: {e}")
             return None
 
     def _create_emission_material(
         self, name: str, color: List[float], strength: float = 2.0
     ) -> Optional[Any]:
-        """Create emission material."""
-        if bpy is None:
-            return None
-
-        if name in bpy.data.materials:
-            return bpy.data.materials[name]
-
+        """Create an emission material."""
         try:
-            mat = bpy.data.materials.new(name=name)
-            mat.use_nodes = True
-            nodes = mat.node_tree.nodes
-            links = mat.node_tree.links
+            material = bpy.data.materials.new(name)
+            material.use_nodes = True
+            nodes = material.node_tree.nodes
+            links = material.node_tree.links
+
+            # Clear default nodes
             nodes.clear()
 
-            # Output node
-            output = nodes.new("ShaderNodeOutputMaterial")
-            output.location = (300, 0)
-
-            # Emission node
+            # Create emission shader
             emission = nodes.new("ShaderNodeEmission")
             emission.inputs["Color"].default_value = (*color, 1.0)
             emission.inputs["Strength"].default_value = strength
-            emission.location = (0, 0)
 
-            # Link
+            # Create output node
+            output = nodes.new("ShaderNodeOutputMaterial")
+
+            # Link nodes
             links.new(emission.outputs["Emission"], output.inputs["Surface"])
 
-            return mat
+            return material
 
         except Exception as e:
-            print(f"Failed to create material: {e}")
+            print(f"Failed to create emission material: {e}")
             return None
 
     def clear_objects(self) -> None:
         """Clear all created objects."""
-        if bpy is None:
-            return
-
         for obj in self.created_objects:
             try:
                 bpy.data.objects.remove(obj, do_unlink=True)
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Failed to remove object {obj.name}: {e}")
 
         self.created_objects.clear()

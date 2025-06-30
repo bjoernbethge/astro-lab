@@ -1,5 +1,5 @@
 """
-Advanced post-processing for astronomical data visualization.
+post-processing for astronomical data visualization.
 
 This module provides post-processing effects for cosmic web structures,
 including scientific color mapping, data enhancement, and visualization optimization.
@@ -8,18 +8,13 @@ including scientific color mapping, data enhancement, and visualization optimiza
 # pyright: reportAttributeAccessIssue=false
 # pyright: reportGeneralTypeIssues=false
 
-import math
 import os
-import random
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
 
-from .. import numpy_compat  # noqa: F401
+from .. import (
+    bpy,
+)
 
 # Set environment variable for NumPy 2.x compatibility with bpy
 os.environ["NUMPY_EXPERIMENTAL_ARRAY_API"] = "1"

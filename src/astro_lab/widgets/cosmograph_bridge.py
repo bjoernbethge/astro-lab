@@ -10,9 +10,6 @@ import numpy as np
 import polars as pl
 import torch
 from cosmograph import cosmo
-from sklearn.neighbors import NearestNeighbors
-
-from astro_lab.data.graphs import create_knn_graph
 
 
 class CosmographBridge:
@@ -26,8 +23,14 @@ class CosmographBridge:
     - Polars DataFrames
     """
 
-    def __init__(self):
-        """Initialize CosmographBridge with default configuration."""
+    def __init__(self, device: Optional[str] = None):
+        """
+        Initialize Cosmograph bridge.
+
+        Args:
+            device: Device for tensor operations ('cuda', 'cpu', etc.)
+        """
+        self.device = device or "cpu"
         self.default_config = {
             "width": 800,
             "height": 600,
@@ -62,13 +65,26 @@ class CosmographBridge:
         # Extract coordinates
         coords = tensor.cartesian.cpu().numpy()
 
-        # Create neighbor graph
-        edges = (
-            tensor._create_radius_graph(tensor.cartesian, radius=radius)
-            .t()
-            .cpu()
-            .numpy()
-        )
+        # Create edges with real distances
+        max_edges = min(len(coords), 1000)  # Limit edges for performance
+        edges = []
+        for i in range(max_edges):
+            source = f"obj_{i}"
+            target = f"obj_{(i + 1) % len(coords)}"
+
+            # Calculate real distance between points
+            if i + 1 < len(coords):
+                distance = np.linalg.norm(coords[i] - coords[(i + 1) % len(coords)])
+            else:
+                distance = 1.0  # Default distance for last edge
+
+            edges.append(
+                {
+                    "source": source,
+                    "target": target,
+                    "distance": distance,
+                }
+            )
 
         # Create Polars DataFrames
         points_df = pl.DataFrame(
@@ -81,13 +97,7 @@ class CosmographBridge:
             }
         )
 
-        links_df = pl.DataFrame(
-            {
-                "source": [f"node_{edges[i, 0]}" for i in range(len(edges))],
-                "target": [f"node_{edges[i, 1]}" for i in range(len(edges))],
-                "distance": np.random.uniform(1.0, radius, len(edges)),
-            }
-        )
+        links_df = pl.DataFrame(edges)
 
         # Convert to pandas for Cosmograph (required by cosmograph)
         points_pandas = points_df.to_pandas()
@@ -217,7 +227,7 @@ class CosmographBridge:
         if edges is None:
             # Create simple neighbor graph using GPU acceleration
             # Convert to PyTorch tensor and move to GPU
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            device = torch.device(self.device)
             coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
 
             # Create k-NN graph on GPU
@@ -330,51 +340,37 @@ class CosmographBridge:
         else:
             ids = df[id_col].to_list()
 
-        # Create neighbor graph using GPU acceleration
-        # Convert to PyTorch tensor and move to GPU
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
+        # Create edges with real distances
+        edges = []
+        for i in range(min(len(coords), 1000)):
+            source = f"obj_{i}"
+            target = f"obj_{(i + 1) % len(coords)}"
 
-        # Create k-NN graph on GPU
-        from torch_geometric.nn import knn_graph
+            # Calculate real distance between points
+            if i + 1 < len(coords):
+                distance = np.linalg.norm(coords[i] - coords[(i + 1) % len(coords)])
+            else:
+                distance = 1.0  # Default distance for last edge
 
-        edge_index = knn_graph(
-            coords_tensor,
-            k=5,  # 5 nearest neighbors
-            batch=None,
-            loop=False,  # No self-loops
-        )
-
-        # Move back to CPU and convert to numpy
-        edge_index = edge_index.cpu().numpy()
-
-        # Calculate distances and filter by radius
-        edge_list = []
-        for i in range(edge_index.shape[1]):
-            src, tgt = edge_index[:, i]
-            dist = np.linalg.norm(coords[src] - coords[tgt])
-            if dist <= radius:
-                edge_list.append([src, tgt])
-
-        edges = np.array(edge_list, dtype=int)
-
-        # Extract coordinates explicitly
-        x_coords = coords[:, 0].tolist()
-        y_coords = coords[:, 1].tolist()
-        z_coords = coords[:, 2].tolist()
+            edges.append(
+                {
+                    "source": source,
+                    "target": target,
+                    "distance": distance,
+                }
+            )
 
         # Create Polars DataFrames
         points_df = pl.DataFrame(
-            {"id": ids, "x": x_coords, "y": y_coords, "z": z_coords}
+            {
+                "id": ids,
+                "x": coords[:, 0].tolist(),
+                "y": coords[:, 1].tolist(),
+                "z": coords[:, 2].tolist(),
+            }
         )
 
-        if edges.size > 0:
-            sources = [ids[src] for src in edges[:, 0]]
-            targets = [ids[tgt] for tgt in edges[:, 1]]
-        else:
-            sources = []
-            targets = []
-        links_df = pl.DataFrame({"source": sources, "target": targets})
+        links_df = pl.DataFrame(edges)
 
         # Convert to pandas for Cosmograph
         points_pandas = points_df.to_pandas()

@@ -9,16 +9,13 @@ Includes iridescent, glass, metallic, holographic, and energy field materials.
 # pyright: reportAttributeAccessIssue=false
 # pyright: reportGeneralTypeIssues=false
 
-import os
-import random
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Tuple
 
-import bpy
-import numpy as np
-from mathutils import Vector
 
-from .. import numpy_compat  # noqa: F401
+from .. import (
+    bpy,
+)
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")

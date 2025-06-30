@@ -2,329 +2,263 @@
 Survey Graph Dataset
 ===================
 
-Loads SurveyTensorDict data and builds PyG graphs using centralized graph builders.
-Provides a clean pipeline: SurveyTensorDict → Graph → InMemoryDataset.
+Simplified PyTorch Geometric Dataset using existing components.
 """
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-import polars as pl
 import torch
-from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import Data, Dataset
+from torch_geometric.transforms import KNNGraph
 
-from astro_lab.config.surveys import get_survey_config
-from astro_lab.data.graphs import create_astronomical_graph, create_knn_graph
-from astro_lab.memory import force_comprehensive_cleanup
-from astro_lab.tensors import PhotometricTensorDict, SpatialTensorDict, SurveyTensorDict
+from astro_lab.config import get_data_config, get_survey_config
+from astro_lab.data.datasets.base import AstroDatasetBase
+from astro_lab.data.preprocessors import get_preprocessor
+from astro_lab.memory import clear_cuda_cache
 
 logger = logging.getLogger(__name__)
 
 
-class SurveyGraphDataset(InMemoryDataset):
+class SurveyGraphDataset(Dataset):
     """
-    PyG Dataset that loads SurveyTensorDict data and builds graphs.
+    PyTorch Geometric Dataset for astronomical survey data.
 
-    Pipeline: Raw Data → SurveyTensorDict → Graph → InMemoryDataset
+    Uses existing components:
+    - PyG transforms for graph construction
+    - Preprocessors for data loading
+    - Central config for all settings
     """
 
     def __init__(
         self,
         root: str,
         survey: str,
-        graph_method: str = "knn",
-        k_neighbors: int = 8,
-        use_3d_coordinates: bool = True,
+        task: str = "node_classification",
         max_samples: Optional[int] = None,
+        k_neighbors: Optional[int] = None,
+        use_3d_coordinates: bool = True,
         transform: Optional[Any] = None,
         pre_transform: Optional[Any] = None,
         pre_filter: Optional[Any] = None,
+        force_reload: bool = False,
         **kwargs,
     ):
-        self.survey = survey
-        self.graph_method = graph_method
-        self.k_neighbors = k_neighbors
+        """
+        Initialize survey graph dataset.
+
+        Args:
+            root: Root directory for dataset
+            survey: Survey name (gaia, sdss, etc.)
+            task: Task type (node_classification, graph_classification, etc.)
+            max_samples: Maximum number of samples for development/testing
+            k_neighbors: Number of k-nearest neighbors for graph construction
+            use_3d_coordinates: Whether to use 3D coordinates
+            transform: Optional transform to apply
+            pre_transform: Optional pre-transform to apply
+            pre_filter: Optional pre-filter to apply
+            force_reload: Whether to force reload data
+            **kwargs: Additional arguments
+        """
         self.use_3d_coordinates = use_3d_coordinates
+        self.force_reload = force_reload
+        self.survey = survey
+        self.task = task
         self.max_samples = max_samples
+
+        # Get configurations
         self.survey_config = get_survey_config(survey)
+        self.data_config = get_data_config()
 
+        # Set k_neighbors with defaults
+        self.k_neighbors = k_neighbors or self.survey_config.get("k_neighbors", 8)
+
+        # Initialize base class
         super().__init__(root, transform, pre_transform, pre_filter)
-
-        # Setup paths
-        self._processed_dir = Path(self.root) / "processed" / self.survey
-        self._processed_dir.mkdir(parents=True, exist_ok=True)
-
-        # Graph file path
-        graph_filename = f"{self.survey}_{graph_method}_k{k_neighbors}"
-        if self.use_3d_coordinates:
-            graph_filename += "_3d"
-        graph_filename += ".pt"
-        self._graph_path = self._processed_dir / graph_filename
-
-        # SurveyTensorDict file path (for debugging/analysis)
-        self._tensor_path = self._processed_dir / f"{self.survey}_tensor.pt"
 
         # Load data
         self._load_data()
 
-    def _load_data(self):
-        """Load data and build graph if needed."""
-        if self._graph_path.exists():
-            logger.info(f"🔄 Loading existing graph: {self._graph_path}")
-            try:
-                graph_data = torch.load(self._graph_path, weights_only=False)
-                self.data, self.slices = self.collate([graph_data])
-                # Nach großem Ladevorgang Speicher bereinigen
-                force_comprehensive_cleanup()
-                return
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to load graph: {e}. Rebuilding...")
+    @property
+    def raw_file_names(self) -> List[str]:
+        """Raw file names."""
+        return [f"{self.survey}_raw.parquet"]
 
-        # Build graph from SurveyTensorDict
-        logger.info(f"🔄 Building graph for {self.survey} using {self.graph_method}")
-        survey_tensor = self._load_survey_tensor()
-        graph_data = self._build_graph(survey_tensor)
+    @property
+    def processed_file_names(self) -> List[str]:
+        """Processed file names."""
+        filename = f"{self.survey}_k{self.k_neighbors}"
+        if self.max_samples:
+            filename += f"_max{self.max_samples}"
+        return [f"{filename}.pt"]
 
-        # Save graph
-        torch.save(graph_data, self._graph_path)
-        logger.info(f"💾 Graph saved: {self._graph_path}")
+    def download(self):
+        """Download raw data if needed."""
+        raw_path = Path(self.raw_dir) / self.raw_file_names[0]
+        if not raw_path.exists():
+            logger.info(f"Downloading {self.survey} data...")
+            preprocessor = get_preprocessor(self.survey)
+            df = preprocessor.load_data()
+            df.write_parquet(raw_path)
+            logger.info(f"Saved to {raw_path}")
 
-        # Save SurveyTensorDict for debugging
-        torch.save(survey_tensor, self._tensor_path)
-        logger.info(f"💾 SurveyTensorDict saved: {self._tensor_path}")
+    def process(self):
+        """Process raw data into graph format."""
+        logger.info(f"Processing {self.survey} data...")
 
-        # Set data for PyG
-        self.data, self.slices = self.collate([graph_data])
-        # Nach großem Ladevorgang Speicher bereinigen
-        force_comprehensive_cleanup()
+        # Load data via preprocessor
+        preprocessor = get_preprocessor(self.survey)
+        df = preprocessor.load_data()
 
-    def _load_survey_tensor(self) -> SurveyTensorDict:
-        """Load or create SurveyTensorDict from raw data."""
-        # Try to load existing SurveyTensorDict
-        if self._tensor_path.exists():
-            try:
-                logger.info(f"🔄 Loading SurveyTensorDict: {self._tensor_path}")
-                tensor = torch.load(self._tensor_path, weights_only=False)
-                force_comprehensive_cleanup()
-                return tensor
-            except Exception:
-                logger.warning(
-                    "⚠️ Failed to load SurveyTensorDict. Creating from raw data..."
-                )
+        # Convert to TensorDict
+        tensor_dict = preprocessor.create_tensordict(df)
 
-        # Create from raw data
-        logger.info(f"🔄 Creating SurveyTensorDict from raw data for {self.survey}")
-        return self._create_survey_tensor_from_raw()
+        # Build graph using PyG transforms
+        graph = self._build_graph(tensor_dict)
 
-    def _create_survey_tensor_from_raw(self) -> SurveyTensorDict:
-        """Create SurveyTensorDict from raw survey data."""
-        # Load raw data (CSV, Parquet, etc.)
-        raw_data_path = self._find_raw_data()
-        if raw_data_path is None:
-            raise FileNotFoundError(f"No raw data found for survey: {self.survey}")
-
-        logger.info(f"🔄 Loading raw data: {raw_data_path}")
-
-        # Load with Polars
-        if raw_data_path.suffix == ".parquet":
-            df = pl.read_parquet(raw_data_path)
-        elif raw_data_path.suffix == ".csv":
-            df = pl.read_csv(raw_data_path)
-        else:
-            raise ValueError(f"Unsupported file format: {raw_data_path.suffix}")
-
-        # Apply sampling if requested
-        if self.max_samples and len(df) > self.max_samples:
-            df = df.sample(n=self.max_samples, seed=42)
-            logger.info(f"📊 Sampled {self.max_samples} objects from {len(df)} total")
-
-        # Create SurveyTensorDict
-        return self._dataframe_to_survey_tensor(df)
-
-    def _find_raw_data(self) -> Optional[Path]:
-        """Find raw data file for the survey."""
-        # Common locations - check processed first, then raw
-        search_paths = [
-            Path("data/processed")
-            / self.survey
-            / f"{self.survey}_processed.parquet",  # Preprocessing output
-            Path("data/processed") / self.survey / f"{self.survey}.parquet",
-            Path("data/processed") / self.survey / f"{self.survey}.csv",
-            Path("data/raw") / self.survey / f"{self.survey}.parquet",
-            Path("data/raw") / f"{self.survey}.parquet",
-            Path("data/raw") / f"{self.survey}.csv",
-            Path("data") / f"{self.survey}.parquet",
-            Path("data") / f"{self.survey}.csv",
-        ]
-
-        for path in search_paths:
-            if path.exists():
-                logger.info(f"📁 Found data file: {path}")
-                return path
-
-        logger.warning(f"❌ No data file found for survey: {self.survey}")
-        logger.warning(f"   Searched paths: {search_paths}")
-        return None
-
-    def _dataframe_to_survey_tensor(self, df: pl.DataFrame) -> SurveyTensorDict:
-        """
-        Convert a DataFrame to a SurveyTensorDict.
-        Uses existing preprocessing functions for proper 3D coordinate conversion.
-        """
-        # Check if this is processed data (has processed column config)
-        if "processed_coord_cols" in self.survey_config:
-            # Use processed column configuration
-            coord_cols = self.survey_config.get(
-                "processed_coord_cols", ["ra_deg", "dec_deg"]
-            )
-            mag_cols = self.survey_config.get("processed_mag_cols", [])
-            logger.info(f"📊 Using processed column config for {self.survey}")
-        else:
-            # Use raw column configuration
-            coord_cols = self.survey_config.get("coord_cols", ["ra", "dec"])
-            mag_cols = self.survey_config.get("mag_cols", [])
-            logger.info(f"📊 Using raw column config for {self.survey}")
-
-        # Use existing preprocessing functions for proper 3D coordinate conversion
-        if self.survey == "gaia":
-            from ..preprocessing.survey_specific import GaiaPreprocessor
-
-            preprocessor = GaiaPreprocessor()
-            coordinates_3d = preprocessor.extract_3d_positions(df)
-            coordinates = torch.tensor(coordinates_3d, dtype=torch.float32)
-            logger.info(
-                f"✅ Used GaiaPreprocessor for 3D coordinates: {coordinates.shape}"
-            )
-        else:
-            # Fallback: Use existing create_survey_tensordict function
-            from ..processors import create_survey_tensordict
-
-            survey_tensor = create_survey_tensordict(df, self.survey)
-            coordinates = survey_tensor["spatial"]["coordinates"]
-            logger.info(
-                f"✅ Used create_survey_tensordict for coordinates: {coordinates.shape}"
-            )
-
-        spatial_tensor = SpatialTensorDict(coordinates=coordinates)
-
-        # Extract photometric data if available
-        photometric_tensor = None
-        if mag_cols:
-            mags = []
-            bands = []
-            for col in mag_cols:
-                if col in df.columns:
-                    mags.append(torch.tensor(df[col].to_numpy(), dtype=torch.float32))
-                    bands.append(col)
-                else:
-                    logger.warning(f"⚠️ Magnitude column '{col}' not found in DataFrame")
-
-            if mags:
-                magnitudes = torch.stack(mags, dim=1)  # [N, B]
-                photometric_tensor = PhotometricTensorDict(
-                    magnitudes=magnitudes, bands=bands, filter_system="AB"
-                )
-
-        # Build SurveyTensorDict with correct signature
-        survey_name = self.survey
-        data_release = self.survey_config.get("data_release", "unknown")
-        if photometric_tensor is not None:
-            return SurveyTensorDict(
-                spatial=spatial_tensor,
-                photometric=photometric_tensor,
-                survey_name=survey_name,
-                data_release=data_release,
-            )
-        else:
-            # Minimal SurveyTensorDict (for tests or special cases)
-            # Use dummy photometric tensor if required by constructor
-            dummy_mags = torch.zeros(coordinates.shape[0], 1)
-            dummy_bands = ["dummy"]
-            dummy_phot = PhotometricTensorDict(dummy_mags, dummy_bands)
-            return SurveyTensorDict(
-                spatial=spatial_tensor,
-                photometric=dummy_phot,
-                survey_name=survey_name,
-                data_release=data_release,
-            )
-
-    def _build_graph(self, survey_tensor: SurveyTensorDict) -> Data:
-        """Build PyG graph from SurveyTensorDict using centralized builders."""
-        logger.info(f"🔗 Building {self.graph_method} graph with k={self.k_neighbors}")
-
-        if self.graph_method == "knn":
-            graph = create_knn_graph(
-                survey_tensor,
-                k_neighbors=self.k_neighbors,
-                use_3d_coordinates=self.use_3d_coordinates,
-            )
-        elif self.graph_method == "astronomical":
-            graph = create_astronomical_graph(
-                survey_tensor,
-                k_neighbors=self.k_neighbors,
-                use_3d_coordinates=self.use_3d_coordinates,
-            )
-        else:
-            raise ValueError(f"Unknown graph method: {self.graph_method}")
-
-        # Add survey metadata
+        # Add metadata
         graph.survey_name = self.survey
-        graph.graph_method = self.graph_method
-        graph.k_neighbors = self.k_neighbors
-        graph.use_3d = self.use_3d_coordinates
-
-        # Defensive: Only log node/edge count if present
-        num_nodes = getattr(graph, "num_nodes", None)
-        num_edges = getattr(graph, "num_edges", None)
-        logger.info(
-            f"✅ Built graph: {num_nodes if num_nodes is not None else '?'} nodes, {num_edges if num_edges is not None else '?'} edges"
+        graph.num_nodes = graph.x.size(0) if hasattr(graph, "x") else 0
+        setattr(
+            graph,
+            "num_edges",
+            graph.edge_index.size(1) if hasattr(graph, "edge_index") else 0,
         )
+
+        # Save processed data
+        processed_path = Path(self.processed_dir) / self.processed_file_names[0]
+        torch.save(graph, processed_path)
+        logger.info(f"Saved graph to {processed_path}")
+
+    def _build_graph(self, tensor_dict) -> Data:
+        """Build graph using PyG transforms."""
+        # Extract features from tensor_dict
+        if "features" in tensor_dict:
+            features = tensor_dict["features"]
+        else:
+            features = None
+
+        # Extract coordinates from tensor_dict
+        if "spatial" in tensor_dict:
+            coords = tensor_dict["spatial"].get(
+                "coordinates", tensor_dict["spatial"].get("pos", None)
+            )
+        elif features is not None:
+            coords = features[:, :3] if features.shape[1] >= 3 else features
+        elif "x" in tensor_dict:
+            coords = tensor_dict["x"]
+        else:
+            raise ValueError("No coordinate data found in tensor_dict")
+
+        if coords is None:
+            raise ValueError("No coordinates found")
+
+        # Create PyG Data object with features or coordinates
+        if features is not None:
+            graph = Data(x=features, pos=coords)
+        else:
+            graph = Data(x=coords, pos=coords)
+
+        # Add labels if available in tensor_dict
+        if "labels" in tensor_dict:
+            graph.y = tensor_dict["labels"]
+        elif "y" in tensor_dict:
+            graph.y = tensor_dict["y"]
+        else:
+            # Create synthetic labels for demonstration/unsupervised learning
+            # Based on spatial clustering or feature quantiles
+            num_nodes = coords.size(0)
+            if features is not None and features.size(1) > 0:
+                # Use first feature for quantile-based labels
+                first_feature = features[:, 0]
+                quantiles = torch.quantile(
+                    first_feature, torch.tensor([0.2, 0.4, 0.6, 0.8])
+                )
+                labels = torch.zeros(num_nodes, dtype=torch.long)
+                for i, q in enumerate(quantiles):
+                    labels[first_feature > q] = i + 1
+                graph.y = labels
+            else:
+                # Use spatial clustering for labels
+                from sklearn.cluster import KMeans
+
+                kmeans = KMeans(n_clusters=5, random_state=42, n_init="auto")
+                labels = kmeans.fit_predict(coords.cpu().numpy())
+                graph.y = torch.tensor(labels, dtype=torch.long)
+
+        # Apply k-NN transform
+        knn_transform = KNNGraph(k=self.k_neighbors)
+        graph = knn_transform(graph)
+
         return graph
 
+    def _load_data(self):
+        """Load or process data."""
+        processed_path = Path(self.processed_dir) / self.processed_file_names[0]
+
+        if processed_path.exists() and not self.force_reload:
+            try:
+                logger.info(f"Loading cached graph from {processed_path}")
+                self.data = torch.load(processed_path, weights_only=False)
+                clear_cuda_cache()
+                return
+            except Exception as e:
+                logger.warning(f"Failed to load cached graph: {e}")
+
+        # Process if needed
+        if not Path(self.raw_dir).exists():
+            Path(self.raw_dir).mkdir(parents=True, exist_ok=True)
+            self.download()
+
+        if not processed_path.exists():
+            Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
+            self.process()
+
+        # Load processed data
+        self.data = torch.load(processed_path, weights_only=False)
+        clear_cuda_cache()
+
     def len(self) -> int:
-        """Number of graphs in dataset."""
-        return 1  # Single graph dataset
+        """Number of graphs (always 1 for single graph datasets)."""
+        return 1
 
     def get(self, idx: int) -> Data:
         """Get graph by index."""
-        if idx == 0:
-            return self.data
-        else:
+        if idx != 0:
             raise IndexError(f"Index {idx} out of range for single graph dataset")
-
-    def get_survey_tensor(self) -> SurveyTensorDict:
-        """Get the underlying SurveyTensorDict (for analysis/debugging)."""
-        if self._tensor_path.exists():
-            tensor = torch.load(self._tensor_path, weights_only=False)
-            force_comprehensive_cleanup()
-            return tensor
-        else:
-            raise FileNotFoundError(
-                "SurveyTensorDict not found. Run _load_data() first."
-            )
+        return self.data
 
     def get_info(self) -> Dict[str, Any]:
         """Get dataset information."""
-        if len(self) == 0:
-            return {"error": "Dataset empty"}
+        if not hasattr(self, "data"):
+            return {"error": "Dataset not loaded"}
 
-        graph = self[0]
-        # Defensive: Only access attributes if present
-        num_nodes = getattr(graph, "num_nodes", 0)
-        num_edges = getattr(graph, "num_edges", 0)
-        # Use getattr to access 'x' safely
-        x = getattr(graph, "x", None)
-        num_features = x.size(1) if x is not None and x.dim() > 1 else 0
-        info = {
+        return {
             "survey": self.survey,
-            "graph_method": self.graph_method,
             "k_neighbors": self.k_neighbors,
-            "use_3d_coordinates": self.use_3d_coordinates,
-            "num_nodes": num_nodes,
-            "num_edges": num_edges,
-            "num_features": num_features,
-            "graph_type": getattr(graph, "graph_type", "unknown"),
+            "max_samples": self.max_samples,
+            "num_nodes": getattr(self.data, "num_nodes", 0),
+            "num_edges": getattr(self.data, "num_edges", 0),
+            "num_features": self.get_feature_dim(),
+            "num_classes": self.get_num_classes(),
+            "survey_config": {
+                "name": self.survey_config.get("name", self.survey),
+                "type": self.survey_config.get("type", "catalog"),
+                "coordinate_system": self.survey_config.get(
+                    "coordinate_system", "icrs"
+                ),
+            },
         }
 
-        return info
+    def get_feature_dim(self) -> int:
+        """Get feature dimension."""
+        if not hasattr(self, "data") or not hasattr(self.data, "x"):
+            return 0
+        return self.data.x.size(1)
+
+    def get_num_classes(self) -> int:
+        """Get number of classes."""
+        if not hasattr(self, "data") or not hasattr(self.data, "y"):
+            return 0
+        return int(self.data.y.max().item() + 1)

@@ -1,5 +1,5 @@
 """
-Advanced geometry nodes for astronomical data visualization.
+geometry nodes for astronomical data visualization.
 
 This module provides geometry node setups for cosmic web structures,
 including procedural generation, data-driven geometry, and scientific visualization.
@@ -9,17 +9,14 @@ including procedural generation, data-driven geometry, and scientific visualizat
 # pyright: reportGeneralTypeIssues=false
 
 import math
-import os
-import random
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
+from mathutils import Vector
 
-from .. import numpy_compat  # noqa: F401
+from .. import (
+    bpy,
+)
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
@@ -52,16 +49,16 @@ class ProceduralAstronomy:
 
         verts = []
 
-        # Temperature-color mapping
-        temp_colors = {
-            "O": (0.6, 0.7, 1.0),
-            "B": (0.7, 0.8, 1.0),
-            "A": (1.0, 1.0, 1.0),
-            "F": (1.0, 1.0, 0.9),
-            "G": (1.0, 0.9, 0.7),
-            "K": (1.0, 0.7, 0.4),
-            "M": (1.0, 0.4, 0.2),
-        }
+        # Temperature-color mapping (not used in current implementation)
+        # temp_colors = {
+        #     "O": (0.6, 0.7, 1.0),
+        #     "B": (0.7, 0.8, 1.0),
+        #     "A": (0.8, 0.9, 1.0),
+        #     "F": (0.9, 1.0, 1.0),
+        #     "G": (1.0, 1.0, 0.9),
+        #     "K": (1.0, 0.9, 0.7),
+        #     "M": (1.0, 0.7, 0.5),
+        # }
 
         for star in stellar_data:
             # Position in HR diagram space
@@ -445,51 +442,35 @@ class AstronomicalMaterials:
 
 
 # Example usage functions
-def create_hr_diagram_demo():
-    """Create a demonstration HR diagram."""
-    # Sample stellar data
-    stellar_data = []
+def create_hr_diagram_from_data(
+    stellar_data: List[Dict[str, float]], scale_factor: float = 2.0
+) -> bpy.types.Object:
+    """
+    Create HR diagram from real stellar data.
 
-    # Main sequence stars
-    for i in range(100):
-        temp = random.uniform(3000, 30000)
-        luminosity = (temp / 5778) ** 3.5  # Mass-luminosity relation approximation
-        mass = (temp / 5778) ** 0.7
+    Args:
+        stellar_data: List of real stellar parameters with temperature, luminosity, mass
+        scale_factor: Scale factor for the diagram
 
-        if temp > 20000:
-            spec_class = "O"
-        elif temp > 10000:
-            spec_class = "B"
-        elif temp > 7500:
-            spec_class = "A"
-        elif temp > 6000:
-            spec_class = "F"
-        elif temp > 5200:
-            spec_class = "G"
-        elif temp > 3700:
-            spec_class = "K"
-        else:
-            spec_class = "M"
-
-        stellar_data.append(
-            {
-                "temperature": temp,
-                "luminosity": luminosity + random.uniform(-0.5, 0.5),
-                "mass": mass,
-                "spectral_class": spec_class,
-            }
+    Returns:
+        Created HR diagram object
+    """
+    if not stellar_data:
+        raise ValueError(
+            "Stellar data cannot be empty. Please provide real stellar data."
         )
 
     # Create HR diagram
     hr_diagram = ProceduralAstronomy.create_hr_diagram_3d(
-        stellar_data, scale_factor=2.0
+        stellar_data, scale_factor=scale_factor
     )
 
     # Add stellar material
     star_mat = AstronomicalMaterials.create_stellar_classification_material("G")
     hr_diagram.data.materials.append(star_mat)
 
-    print("HR Diagram demonstration created!")
+    print(f"HR Diagram created from {len(stellar_data)} real stellar objects!")
+    return hr_diagram
 
 
 def create_galaxy_comparison():
@@ -523,5 +504,16 @@ def create_galaxy_comparison():
 
 
 if __name__ == "__main__":
-    create_hr_diagram_demo()
+    create_hr_diagram_from_data(
+        [
+            {"temperature": 5778, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 30000, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 20000, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 8500, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 6500, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 5500, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 4000, "luminosity": 1.0, "mass": 1.0},
+            {"temperature": 3000, "luminosity": 1.0, "mass": 1.0},
+        ]
+    )
     create_galaxy_comparison()

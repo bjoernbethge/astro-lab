@@ -1,5 +1,5 @@
 """
-Advanced shader development for astronomical data visualization.
+shader development for astronomical data visualization.
 
 This module provides custom shaders for cosmic web structures,
 including spectral rendering, emission effects, and scientific visualization.
@@ -9,17 +9,14 @@ including spectral rendering, emission effects, and scientific visualization.
 # pyright: reportGeneralTypeIssues=false
 
 import math
-import os
-import random
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
+from mathutils import Vector
 
-from .. import numpy_compat  # noqa: F401
+from .. import (
+    bpy,
+)
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
@@ -114,7 +111,9 @@ class AstronomicalShaders:
         Create planetary surface shader based on composition.
 
         Args:
-            planet_type: Type of planet ('terrestrial', 'gas_giant', 'ice_giant', 'moon')
+            planet_type: Type of planet (
+                'terrestrial', 'gas_giant', 'ice_giant', 'moon'
+            )
             composition: Compositional percentages {'rock': 0.7, 'ice': 0.3, etc.}
 
         Returns:

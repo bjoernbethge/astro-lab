@@ -4,19 +4,19 @@ AstroLab Preprocess CLI
 ======================
 
 Complete data preparation pipeline:
-1. Download raw data (if needed)
+1. Load raw data (if needed)
 2. Clean and preprocess data
 3. Create SurveyTensorDicts with 3D spatial coordinates
 4. Build graph structures for training
 """
 
+import argparse
 import logging
 import sys
+import traceback
 from pathlib import Path
-from typing import List, Optional
 
-from astro_lab.data import load_survey_catalog, preprocess_survey
-from astro_lab.data.datasets import SurveyGraphDataset
+from astro_lab.data.preprocessors import get_preprocessor
 
 
 def setup_logging(verbose: bool = False) -> logging.Logger:
@@ -30,142 +30,97 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
     return logging.getLogger(__name__)
 
 
+def add_preprocess_arguments(parser):
+    parser.add_argument(
+        "--surveys",
+        nargs="+",
+        required=True,
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+            "linear",
+            "rrlyrae",
+        ],
+        help="Surveys to preprocess",
+    )
+    parser.add_argument(
+        "--k-neighbors",
+        "-k",
+        type=int,
+        default=20,
+        help="Number of nearest neighbors for graph (default: 20)",
+    )
+    parser.add_argument(
+        "--force",
+        "-f",
+        action="store_true",
+        help="Force re-processing even if files exist",
+    )
+    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
+
 def main(args=None) -> int:
     """Main entry point for preprocess command."""
-    import argparse
-
     parser = argparse.ArgumentParser(
-        description="Prepare astronomical survey data for machine learning"
-    )
-    parser.add_argument(
-        "surveys", 
-        nargs="+", 
-        help="Surveys to preprocess (e.g., gaia sdss)"
-    )
-    parser.add_argument(
-        "--max-samples", "-n",
-        type=int, 
-        default=None, 
-        help="Maximum samples per survey"
-    )
-    parser.add_argument(
-        "--k-neighbors", "-k",
-        type=int,
-        default=8,
-        help="Number of nearest neighbors for graph (default: 8)"
-    )
-    parser.add_argument(
-        "--output-dir", "-o",
-        type=Path,
-        help="Output directory (default: data/)"
-    )
-    parser.add_argument(
-        "--force", "-f",
-        action="store_true",
-        help="Force re-processing even if files exist"
-    )
-    parser.add_argument(
-        "--skip-download",
-        action="store_true",
-        help="Skip download step (use existing data)"
-    )
-    parser.add_argument(
-        "--skip-graph",
-        action="store_true",
-        help="Skip graph building step"
-    )
-    parser.add_argument(
-        "--verbose", "-v",
-        action="store_true",
-        help="Verbose output"
-    )
+        description="Preprocess astronomical survey data for training",
+        epilog="""
+Examples:
+  # Preprocess single survey
+  astro-lab preprocess --surveys gaia
 
-    args = parser.parse_args(args)
-    logger = setup_logging(args.verbose)
-    
-    if args.output_dir is None:
-        args.output_dir = Path("data")
-    
+  # Preprocess multiple surveys  
+  astro-lab preprocess --surveys gaia sdss nsa
+
+  # Force re-processing
+  astro-lab preprocess --surveys gaia --force
+        """,
+    )
+    add_preprocess_arguments(parser)
+
+    # Only parse args if not already a Namespace
+    if not isinstance(args, argparse.Namespace):
+        args = parser.parse_args(args)
+    logger = setup_logging(getattr(args, "verbose", False))
+
+    if not getattr(args, "surveys", None):
+        logger.error("No surveys specified. Use --surveys SURVEY [SURVEY ...]")
+        return 1
+
     try:
         for survey in args.surveys:
-            logger.info(f"\n{'='*60}")
-            logger.info(f"🌟 Preparing {survey.upper()} survey data")
-            logger.info(f"{'='*60}\n")
+            logger.info(f"Preprocessing {survey} data...")
+
+            # Simply trigger dataset creation which handles preprocessing
+            from astro_lab.data import create_datamodule
             
-            # Step 1: Download/load raw data if needed
-            raw_path = args.output_dir / "raw" / survey / f"{survey}.parquet"
-            if not args.skip_download:
-                if raw_path.exists() and not args.force:
-                    logger.info(f"✓ Raw data exists: {raw_path}")
-                else:
-                    logger.info(f"📥 Downloading {survey} data...")
-                    try:
-                        df = load_survey_catalog(survey, max_samples=args.max_samples)
-                        raw_path.parent.mkdir(parents=True, exist_ok=True)
-                        df.write_parquet(raw_path)
-                        logger.info(f"✓ Downloaded {len(df)} objects → {raw_path}")
-                    except Exception as e:
-                        logger.warning(f"⚠️ Download failed: {e}")
-                        logger.info("   Trying to continue with existing data...")
+            # This will automatically preprocess if needed
+            dm = create_datamodule(
+                survey=survey,
+                task="graph",
+                dataset_type="point_cloud",
+                k_neighbors=args.k_neighbors,
+                force_reload=args.force,
+                num_workers=0,  # Single process for preprocessing
+            )
             
-            # Step 2: Preprocess data
-            processed_path = args.output_dir / "processed" / survey / f"{survey}_processed.parquet"
-            if processed_path.exists() and not args.force:
-                logger.info(f"✓ Processed data exists: {processed_path}")
-            else:
-                logger.info(f"🔧 Preprocessing {survey} data...")
-                try:
-                    input_path = raw_path if raw_path.exists() else None
-                    processed_path = preprocess_survey(
-                        survey,
-                        input_path=input_path,
-                        output_path=processed_path,
-                        max_samples=args.max_samples
-                    )
-                    logger.info(f"✓ Preprocessed → {processed_path}")
-                except Exception as e:
-                    logger.error(f"❌ Preprocessing failed: {e}")
-                    continue
+            # Access dataset to ensure it's processed
+            _ = len(dm.train_dataset) if hasattr(dm, 'train_dataset') else 0
             
-            # Step 3: Verify processed data exists
-            if not args.skip_graph:
-                # Just verify the preprocessed data can be loaded
-                logger.info(f"🔍 Verifying preprocessed data...")
-                try:
-                    import polars as pl
-                    df = pl.read_parquet(processed_path)
-                    logger.info(f"✓ Verified: {len(df)} objects with {len(df.columns)} columns")
-                    logger.info(f"✓ Columns: {', '.join(df.columns[:10])}{'...' if len(df.columns) > 10 else ''}")
-                    
-                    # Note: Graph building happens automatically during training
-                    logger.info(f"📝 Note: Graph structures will be built automatically during training")
-                    
-                except Exception as e:
-                    logger.error(f"❌ Verification failed: {e}")
-                    continue
-            
-            logger.info(f"\n✅ {survey.upper()} preparation complete!\n")
-        
-        # Summary
-        logger.info(f"\n{'='*60}")
-        logger.info("📊 PREPARATION SUMMARY")
-        logger.info(f"{'='*60}")
-        logger.info(f"✓ Prepared {len(args.surveys)} survey(s)")
-        logger.info(f"✓ Output directory: {args.output_dir.absolute()}")
-        logger.info(f"✓ Graph configuration: {args.k_neighbors}-NN, 3D coordinates")
-        
-        # Next steps
-        logger.info(f"\n📚 Next steps:")
-        logger.info(f"   1. Train a model: astro-lab train --dataset {args.surveys[0]}")
-        logger.info(f"   2. Launch UI: marimo run src/astro_lab/ui/app.py")
-        logger.info(f"   3. Inspect data: python -c \"from astro_lab.data import create_astro_datamodule; dm = create_astro_datamodule('{args.surveys[0]}'); dm.setup(); print(dm.get_info())\"")
-        
+            logger.info(f"✅ {survey} preprocessing complete!")
+
         return 0
-        
+
     except Exception as e:
-        logger.error(f"❌ Preparation failed: {e}")
+        logger.error(f"❌ Preprocessing failed: {e}")
         if args.verbose:
-            import traceback
             traceback.print_exc()
         return 1
 

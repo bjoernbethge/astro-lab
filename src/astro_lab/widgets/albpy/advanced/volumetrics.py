@@ -1,5 +1,5 @@
 """
-Advanced volumetric rendering for astronomical data visualization.
+volumetric rendering for astronomical data visualization.
 
 This module provides volumetric rendering techniques for cosmic web structures,
 including density fields, emission nebulae, and 3D data visualization.
@@ -9,17 +9,13 @@ including density fields, emission nebulae, and 3D data visualization.
 # pyright: reportGeneralTypeIssues=false
 
 import math
-import os
-import random
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
+from mathutils import Vector
 
-from .. import numpy_compat  # noqa: F401
+from .. import (
+    bpy,
+)
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")
@@ -504,23 +500,24 @@ class VolumetricShaders:
 # Example usage functions
 def create_nebula_complex():
     """Create a complex nebula with multiple emission regions."""
-    # Central emission nebula
-    central_nebula = VolumetricAstronomy.create_emission_nebula(
-        center=Vector((0, 0, 0)), size=15.0, nebula_type="h_alpha", density=0.2
-    )
+    # Central emission nebula (commented out - not used in current implementation)
+    # central_nebula = VolumetricAstronomy.create_emission_nebula(
+    #     center=Vector((0, 0, 0)), size=15.0, nebula_type="h_alpha", density=0.2
+    # )
 
-    # Oxygen emission region
-    oxygen_region = VolumetricAstronomy.create_emission_nebula(
-        center=Vector((3, 2, 1)), size=8.0, nebula_type="oxygen", density=0.15
-    )
+    # Oxygen emission region (commented out - not used in current implementation)
+    # oxygen_region = VolumetricAstronomy.create_emission_nebula(
+    #     center=Vector((3, 2, 1)), size=8.0, nebula_type="oxygen", density=0.15
+    # )
 
-    # Surrounding dust
-    dust_lane = VolumetricAstronomy.create_galactic_dust_lane(
-        start_pos=Vector((-20, -5, -2)),
-        end_pos=Vector((20, 5, 2)),
-        width=3.0,
-        dust_density=0.05,
-    )
+    # Surrounding dust (commented out - not used in current implementation)
+    # dust_lane = VolumetricAstronomy.create_galactic_dust_lane(
+    #     start_pos=Vector((-20, -5, -2)),
+    #     end_pos=Vector((20, 5, 2)),
+    #     width=3.0,
+    #     density=0.1,
+    #     dust_type="carbon",
+    # )
 
     print("Complex nebula scene created!")
 
@@ -534,7 +531,7 @@ def create_stellar_system_with_winds():
     star.scale = Vector([2, 2, 2])
 
     # Add stellar wind
-    stellar_wind = VolumetricAstronomy.create_stellar_wind(
+    VolumetricAstronomy.create_stellar_wind(
         star_obj=star, wind_speed=800.0, mass_loss_rate=1e-6, wind_radius=10.0
     )
 

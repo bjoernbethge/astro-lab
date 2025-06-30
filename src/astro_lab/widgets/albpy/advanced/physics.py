@@ -1,5 +1,5 @@
 """
-Advanced physics simulation for astronomical data visualization.
+physics simulation for astronomical data visualization.
 
 This module provides physics-based simulations for cosmic web structures,
 including gravitational interactions, particle dynamics, and fluid simulations.
@@ -9,17 +9,14 @@ including gravitational interactions, particle dynamics, and fluid simulations.
 # pyright: reportGeneralTypeIssues=false
 
 import math
-import os
-import random
 import warnings
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Tuple
 
-import bmesh
-import bpy
-import numpy as np
-from mathutils import Euler, Matrix, Vector
+from mathutils import Vector
 
-from .. import numpy_compat  # noqa: F401
+from .. import (
+    bpy,
+)
 
 # Suppress numpy warnings that occur with bpy
 warnings.filterwarnings("ignore", category=RuntimeWarning, module="numpy")

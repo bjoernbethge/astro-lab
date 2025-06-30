@@ -10,33 +10,14 @@ import argparse
 import sys
 from pathlib import Path
 
+from .preprocess import add_preprocess_arguments
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the main argument parser."""
     parser = argparse.ArgumentParser(
         description="AstroLab - Astronomical Machine Learning Framework",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Data processing
-  astro-lab process --surveys gaia nsa --max-samples 10000
-  astro-lab preprocess catalog data/gaia_catalog.parquet --config gaia
-
-  # Training
-  astro-lab train --dataset gaia --model gaia_classifier --epochs 50
-  astro-lab train -c my_experiment.yaml
-
-  # Optimization
-  astro-lab optimize my_experiment.yaml --trials 50
-
-  # Configuration
-  astro-lab config create -o my_experiment.yaml
-  astro-lab config surveys
-  
-  # Cosmic Web Analysis
-  astro-lab cosmic-web gaia --max-samples 100000 --clustering-scales 5 10 25
-  astro-lab cosmic-web nsa --clustering-scales 5 10 20 50 --visualize
-        """,
     )
 
     subparsers = parser.add_subparsers(
@@ -54,7 +35,18 @@ Examples:
     process_parser.add_argument(
         "--surveys",
         nargs="+",
-        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+        ],
         default=["gaia"],
         help="Surveys to process",
     )
@@ -76,23 +68,7 @@ Examples:
         help="Preprocess raw data files",
         description="Preprocess raw astronomical data files into training-ready format",
     )
-    preprocess_parser.add_argument(
-        "--surveys",
-        nargs="+",
-        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
-        required=True,
-        help="Surveys to preprocess",
-    )
-    preprocess_parser.add_argument(
-        "--max-samples",
-        type=int,
-        help="Maximum samples to preprocess",
-    )
-    preprocess_parser.add_argument(
-        "--output-dir",
-        type=Path,
-        help="Output directory for processed data",
-    )
+    add_preprocess_arguments(preprocess_parser)
 
     # Train command
     train_parser = subparsers.add_parser(
@@ -108,13 +84,24 @@ Examples:
     )
     train_parser.add_argument(
         "--dataset",
-        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+        ],
         help="Dataset/Survey name",
     )
     train_parser.add_argument(
-        "--model",
-        type=str,
-        help="Model name (e.g. gaia_classifier, sdss_galaxy)",
+        "--model-type",
+        choices=["node", "graph", "temporal", "point"],
+        help="Model type (node, graph, temporal, point)",
     )
     train_parser.add_argument(
         "--epochs",
@@ -169,38 +156,51 @@ Examples:
         help="Verbose logging",
     )
 
-    # Optimize command
-    optimize_parser = subparsers.add_parser(
-        "optimize",
-        help="Optimize hyperparameters",
-        description="Optimize hyperparameters for ML models",
+    # HPO command
+    hpo_parser = subparsers.add_parser(
+        "hpo",
+        help="Hyperparameter optimization",
+        description="Run hyperparameter optimization for ML models",
     )
-    optimize_parser.add_argument(
-        "config",
-        type=Path,
-        help="Path to YAML configuration file",
+    hpo_parser.add_argument(
+        "--dataset",
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+        ],
+        required=True,
+        help="Dataset to use",
     )
-    optimize_parser.add_argument(
+    hpo_parser.add_argument(
+        "--model-type",
+        choices=["node", "graph", "temporal", "point"],
+        required=True,
+        help="Model type to optimize",
+    )
+    hpo_parser.add_argument(
         "--trials",
         type=int,
-        default=20,
+        default=50,
         help="Number of optimization trials",
     )
-    optimize_parser.add_argument(
+    hpo_parser.add_argument(
+        "--max-epochs",
+        type=int,
+        default=20,
+        help="Maximum epochs per trial",
+    )
+    hpo_parser.add_argument(
         "--timeout",
         type=int,
         help="Optimization timeout in seconds",
-    )
-    optimize_parser.add_argument(
-        "--algorithm",
-        choices=["optuna", "ray", "grid", "random"],
-        default="optuna",
-        help="Optimization algorithm",
-    )
-    optimize_parser.add_argument(
-        "--max-samples",
-        type=int,
-        help="Maximum samples for debugging",
     )
 
     # Config command
@@ -228,13 +228,24 @@ Examples:
     )
     create_parser.add_argument(
         "--template",
-        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+        ],
         default="gaia",
         help="Configuration template",
     )
 
     # Config surveys
-    surveys_parser = config_subparsers.add_parser(
+    config_subparsers.add_parser(
         "surveys",
         help="Show available survey configurations",
     )
@@ -246,7 +257,18 @@ Examples:
     )
     show_parser.add_argument(
         "survey",
-        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+        ],
         help="Survey to show",
     )
 
@@ -258,7 +280,7 @@ Examples:
     )
     cosmic_web_parser.add_argument(
         "survey",
-        choices=["gaia", "nsa", "exoplanet"],
+        choices=["gaia", "nsa", "exoplanet", "sdss", "tng50"],
         help="Survey to analyze",
     )
     cosmic_web_parser.add_argument(
@@ -312,7 +334,7 @@ Examples:
         help="Verbose output",
     )
 
-    # Advanced options
+    # options
     parser.add_argument(
         "--num-workers",
         type=int,
@@ -345,10 +367,10 @@ def main() -> int:
             from .train import main as train_main
 
             return train_main(args)
-        elif args.command == "optimize":
-            from .optimize import main as optimize_main
+        elif args.command == "hpo":
+            from .hpo import main as hpo_main
 
-            return optimize_main(args)
+            return hpo_main(args)
         elif args.command == "config":
             from .config import main as config_main
 
