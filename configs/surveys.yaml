@@ -1,0 +1,51 @@
+gaia:
+  name: "Gaia DR3"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
+  extra_cols: ["parallax", "pmra", "pmdec"]
+  color_pairs:
+    - ["phot_g_mean_mag", "phot_bp_mean_mag"]
+    - ["phot_bp_mean_mag", "phot_rp_mean_mag"]
+  coordinate_system: "icrs"
+  data_release: "DR3"
+  filter_system: "Vega"
+  batch_size: 128
+  k_neighbors: 10
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "gaia_experiments"
+sdss:
+  name: "SDSS DR17"
+  coord_cols: ["ra", "dec"]
+  mag_cols:
+    ["modelMag_u", "modelMag_g", "modelMag_r", "modelMag_i", "modelMag_z"]
+  extra_cols: ["z", "petroRad_r"]
+  color_pairs:
+    - ["modelMag_g", "modelMag_r"]
+    - ["modelMag_r", "modelMag_i"]
+  coordinate_system: "icrs"
+  data_release: "DR17"
+  filter_system: "AB"
+  batch_size: 64
+  k_neighbors: 15
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "sdss_experiments"
+des:
+  name: "Dark Energy Survey"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["g", "r", "i", "z", "Y"]
+  extra_cols: ["g_err", "r_err", "i_err", "z_err", "Y_err"]
+  color_pairs:
+    - ["g", "r"]
+    - ["r", "i"]
+    - ["i", "z"]
+  coordinate_system: "icrs"
+  data_release: "Y6"
+  filter_system: "AB"
+  batch_size: 32
+  k_neighbors: 20
+  precision: "32-true"
+  gradient_clip_val: 1.0
+  experiment_name: "des_experiments"
+# ... (weitere Surveys nach gleichem Muster eintragen)

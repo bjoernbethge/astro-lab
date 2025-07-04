@@ -1,0 +1,15 @@
+albpy:
+  engine: BLENDER_EEVEE_NEXT
+  output_path: results/nsa_albpy_render.png
+  resolution: [1920, 1080]
+  samples: 64
+  file_format: PNG
+  lighting_preset: space
+  camera_preset: galactic_center
+  camera_location: [0, 0, 10]
+  camera_look_at: [0, 0, 0]
+  camera_focal_length: 50
+  material_presets:
+    - star_basic
+    - galaxy_disk
+    - pointcloud_simple

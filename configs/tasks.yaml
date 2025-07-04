@@ -1,0 +1,17 @@
+tasks:
+  node_classification:
+    task: node_classification
+    conv_type: gcn
+    pooling: null
+  graph_classification:
+    task: graph_classification
+    conv_type: gat
+    pooling: mean
+  node_regression:
+    task: node_regression
+    conv_type: sage
+    pooling: null
+  graph_regression:
+    task: graph_regression
+    conv_type: gin
+    pooling: cat

@@ -1,0 +1,185 @@
+graph TB
+    subgraph "🌟 AstroLab Core Architecture"
+        
+        subgraph "📊 Data Layer"
+            subgraph "Data Sources"
+                GAIA[("🔭 Gaia DR3")]
+                SDSS[("🌌 SDSS")]
+                NSA[("🌠 NSA")]
+                TNG50[("🌀 TNG50")]
+                EXOPLANET[("🪐 Exoplanet")]
+                LINEAR[("☄️ LINEAR")]
+                RRLYRAE[("⭐ RR Lyrae")]
+                TWOMASS[("🌟 2MASS")]
+                WISE[("🔥 WISE")]
+                DES[("📷 DES")]
+            end
+            
+            subgraph "Data Processing"
+                COLLECTORS["📥 Collectors<br/>• Survey Downloaders<br/>• Data Fetchers"]
+                PREPROCESSORS["🔧 Preprocessors<br/>• Data Cleaning<br/>• Format Conversion<br/>• Feature Extraction"]
+                TRANSFORMS["🔄 Transforms<br/>• Coordinate Conversions<br/>• Normalization<br/>• Augmentation"]
+                SAMPLERS["🎲 Samplers<br/>• Stratified Sampling<br/>• Balanced Sampling"]
+            end
+            
+            subgraph "Data Organization"
+                DATASET["📁 Dataset<br/>• PyG Data Objects<br/>• TensorDict Integration<br/>• Multi-Survey Support"]
+                INFO["ℹ️ Info<br/>• Survey Metadata<br/>• Column Mappings<br/>• Statistics"]
+                ANALYSIS["📈 Analysis<br/>• EDA Tools<br/>• Statistical Analysis<br/>• Visualization"]
+            end
+        end
+        
+        subgraph "🧮 Tensor Layer"
+            TENSORBASE["🎯 AstroTensorDict<br/>Base Class"]
+            SPATIAL["📍 SpatialTensorDict<br/>• Coordinates<br/>• Cosmic Web<br/>• Clustering"]
+            PHOTOMETRIC["🌈 PhotometricTensorDict<br/>• Magnitudes<br/>• Colors<br/>• Flux"]
+            LIGHTCURVE["📉 LightcurveTensorDict<br/>• Time Series<br/>• Variability<br/>• Periodicity"]
+            SPECTRAL["📊 SpectralTensorDict<br/>• Wavelength<br/>• Line Detection"]
+            TEMPORAL["⏰ TemporalTensorDict<br/>• Evolution<br/>• Time Steps"]
+            COSMOLOGY["🌌 CosmologyTensorDict<br/>• Redshift<br/>• Distances"]
+            IMAGE["🖼️ ImageTensorDict<br/>• 2D/3D Arrays<br/>• Cutouts"]
+        end
+        
+        subgraph "🧠 Model Layer"
+            BASEMODEL["🏗️ BaseModel<br/>• Abstract Base<br/>• Common Interface"]
+            ASTROMODEL["🌟 AstroModel<br/>• Domain-Specific<br/>• Survey Integration"]
+            
+            subgraph "Components"
+                ENCODERS["🔢 Encoders<br/>• Position Encoding<br/>• Feature Encoding"]
+                LAYERS["📚 Layers<br/>• GNN Layers<br/>• Attention<br/>• Custom Ops"]
+                AUTOENCODERS["🔄 Autoencoders<br/>• VAE<br/>• Reconstruction"]
+            end
+            
+            MIXINS["🧩 Mixins<br/>• Explainability<br/>• Visualization<br/>• Metrics"]
+            UTILS["🛠️ Utils<br/>• Model Helpers<br/>• Initialization"]
+        end
+        
+        subgraph "🏋️ Training Layer"
+            LIGHTNING["⚡ Lightning Module<br/>• Training Logic<br/>• Validation<br/>• Testing"]
+            CALLBACKS["📞 Callbacks<br/>• Checkpointing<br/>• Early Stopping<br/>• Monitoring"]
+            TRAINER["🎯 Trainer<br/>• Multi-GPU<br/>• Mixed Precision<br/>• Profiling"]
+            HPO["🔍 HPO<br/>• Optuna Integration<br/>• Grid Search<br/>• Bayesian Opt"]
+        end
+        
+        subgraph "🖥️ UI Layer"
+            MARIMO["📓 Marimo App<br/>• Interactive Notebooks<br/>• Reactive UI"]
+            
+            subgraph "UI Modules"
+                COSMIC_WEB_UI["🕸️ Cosmic Web<br/>• 3D Visualization<br/>• Clustering Analysis"]
+                ANALYSIS_UI["📊 Analysis<br/>• Data Exploration<br/>• Statistics"]
+                TRAINING_UI["🏃 Training<br/>• Live Monitoring<br/>• Metrics"]
+                VIZ_UI["🎨 Visualization<br/>• Plots<br/>• Interactive Graphics"]
+            end
+        end
+        
+        subgraph "🎨 Widget Layer"
+            COSMOGRAPH["🌐 Cosmograph<br/>• 3D Graph Viz<br/>• Physics Sim"]
+            PLOTLY_BRIDGE["📈 Plotly Bridge<br/>• Interactive Plots<br/>• 3D Scatter"]
+            TENSOR_BRIDGE["🌉 Tensor Bridge<br/>• Data Conversion<br/>• Format Adapters"]
+            GRAPH_WIDGETS["📊 Graph Widgets<br/>• Network Analysis<br/>• Topology"]
+            
+            subgraph "Albpy Integration"
+                ALBPY_CORE["🔮 Albpy Core<br/>• Blender Integration<br/>• 3D Rendering"]
+                ALBPY_ADV["🚀 Advanced<br/>• Animation<br/>• Complex Scenes"]
+            end
+        end
+        
+        subgraph "⚙️ Infrastructure"
+            CONFIG["📋 Config<br/>• Survey Configs<br/>• Model Configs<br/>• Training Configs"]
+            MEMORY["💾 Memory<br/>• Caching<br/>• Memory Maps<br/>• Optimization"]
+            CLI["🖥️ CLI<br/>• Commands<br/>• Processing<br/>• Training"]
+            MLFLOW["📊 MLflow<br/>• Experiment Tracking<br/>• Model Registry"]
+        end
+    end
+    
+    %% Data Flow Connections
+    GAIA --> COLLECTORS
+    SDSS --> COLLECTORS
+    NSA --> COLLECTORS
+    TNG50 --> COLLECTORS
+    EXOPLANET --> COLLECTORS
+    LINEAR --> COLLECTORS
+    RRLYRAE --> COLLECTORS
+    TWOMASS --> COLLECTORS
+    WISE --> COLLECTORS
+    DES --> COLLECTORS
+    
+    COLLECTORS --> PREPROCESSORS
+    PREPROCESSORS --> TRANSFORMS
+    TRANSFORMS --> DATASET
+    SAMPLERS --> DATASET
+    DATASET --> INFO
+    DATASET --> ANALYSIS
+    
+    %% Tensor Connections
+    DATASET --> TENSORBASE
+    TENSORBASE --> SPATIAL
+    TENSORBASE --> PHOTOMETRIC
+    TENSORBASE --> LIGHTCURVE
+    TENSORBASE --> SPECTRAL
+    TENSORBASE --> TEMPORAL
+    TENSORBASE --> COSMOLOGY
+    TENSORBASE --> IMAGE
+    
+    %% Model Connections
+    SPATIAL --> ASTROMODEL
+    PHOTOMETRIC --> ASTROMODEL
+    LIGHTCURVE --> ASTROMODEL
+    BASEMODEL --> ASTROMODEL
+    ENCODERS --> ASTROMODEL
+    LAYERS --> ASTROMODEL
+    AUTOENCODERS --> ASTROMODEL
+    MIXINS --> ASTROMODEL
+    
+    %% Training Connections
+    ASTROMODEL --> LIGHTNING
+    LIGHTNING --> TRAINER
+    CALLBACKS --> TRAINER
+    HPO --> TRAINER
+    TRAINER --> MLFLOW
+    
+    %% UI Connections
+    TRAINER --> TRAINING_UI
+    DATASET --> ANALYSIS_UI
+    SPATIAL --> COSMIC_WEB_UI
+    ANALYSIS --> VIZ_UI
+    COSMIC_WEB_UI --> MARIMO
+    ANALYSIS_UI --> MARIMO
+    TRAINING_UI --> MARIMO
+    VIZ_UI --> MARIMO
+    
+    %% Widget Connections
+    SPATIAL --> COSMOGRAPH
+    SPATIAL --> PLOTLY_BRIDGE
+    TENSORBASE --> TENSOR_BRIDGE
+    SPATIAL --> GRAPH_WIDGETS
+    COSMOGRAPH --> ALBPY_CORE
+    ALBPY_CORE --> ALBPY_ADV
+    
+    %% Infrastructure Connections
+    CONFIG --> DATASET
+    CONFIG --> ASTROMODEL
+    CONFIG --> TRAINER
+    MEMORY --> DATASET
+    CLI --> PREPROCESSORS
+    CLI --> TRAINER
+    CLI --> COSMIC_WEB_UI
+    
+    %% Styling
+    classDef dataSource fill:#4a5568,stroke:#2d3748,stroke-width:2px,color:#fff
+    classDef processing fill:#2b6cb0,stroke:#2c5aa0,stroke-width:2px,color:#fff
+    classDef tensor fill:#7c3aed,stroke:#6d28d9,stroke-width:2px,color:#fff
+    classDef model fill:#dc2626,stroke:#b91c1c,stroke-width:2px,color:#fff
+    classDef training fill:#059669,stroke:#047857,stroke-width:2px,color:#fff
+    classDef ui fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff
+    classDef widget fill:#ec4899,stroke:#db2777,stroke-width:2px,color:#fff
+    classDef infra fill:#6b7280,stroke:#4b5563,stroke-width:2px,color:#fff
+    
+    class GAIA,SDSS,NSA,TNG50,EXOPLANET,LINEAR,RRLYRAE,TWOMASS,WISE,DES dataSource
+    class COLLECTORS,PREPROCESSORS,TRANSFORMS,SAMPLERS,DATASET,INFO,ANALYSIS processing
+    class TENSORBASE,SPATIAL,PHOTOMETRIC,LIGHTCURVE,SPECTRAL,TEMPORAL,COSMOLOGY,IMAGE tensor
+    class BASEMODEL,ASTROMODEL,ENCODERS,LAYERS,AUTOENCODERS,MIXINS,UTILS model
+    class LIGHTNING,CALLBACKS,TRAINER,HPO training
+    class MARIMO,COSMIC_WEB_UI,ANALYSIS_UI,TRAINING_UI,VIZ_UI ui
+    class COSMOGRAPH,PLOTLY_BRIDGE,TENSOR_BRIDGE,GRAPH_WIDGETS,ALBPY_CORE,ALBPY_ADV widget
+    class CONFIG,MEMORY,CLI,MLFLOW infra
