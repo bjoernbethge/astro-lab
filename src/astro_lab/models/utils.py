@@ -5,6 +5,7 @@ Model Utilities with TensorDict Integration
 Utility functions for astronomical neural networks with native TensorDict support.
 """
 
+import logging
 from typing import Any, Dict, List, Optional, Union
 
 # Import for model analysis
@@ -13,6 +14,8 @@ import torch
 import torch.nn as nn
 from tensordict import TensorDict
 from tensordict.nn import TensorDictModule
+
+logger = logging.getLogger(__name__)
 
 
 def count_parameters(model: Union[nn.Module, TensorDictModule]) -> Dict[str, int]:
@@ -301,45 +304,6 @@ def tensor_model_info(
         info["weight_statistics"] = weight_stats
 
     return info
-
-
-def optimize_tensordict_model(
-    model: TensorDictModule,
-    compile_mode: str = "default",
-    enable_mixed_precision: bool = True,
-) -> TensorDictModule:
-    """
-    Optimize a TensorDict model for performance.
-
-    Args:
-        model: TensorDict model to optimize
-        compile_mode: torch.compile mode ("default", "max-autotune", "reduce-overhead")
-        enable_mixed_precision: Whether to enable automatic mixed precision
-
-    Returns:
-        Optimized model
-    """
-
-    # Apply torch.compile if available (PyTorch 2.0+)
-    if hasattr(torch, "compile"):
-        try:
-            # Compile the wrapped module
-            optimized_module = torch.compile(model.module, mode=compile_mode)
-
-            # Create new TensorDict module with compiled module
-            optimized_model = TensorDictModule(
-                module=optimized_module, in_keys=model.in_keys, out_keys=model.out_keys
-            )
-
-            print(f"✅ Model compiled with mode: {compile_mode}")
-            return optimized_model
-
-        except Exception as e:
-            print(f"⚠️ Compilation failed: {e}")
-            return model
-    else:
-        print("⚠️ torch.compile not available")
-        return model
 
 
 def convert_model_to_tensordict(

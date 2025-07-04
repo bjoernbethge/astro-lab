@@ -1,46 +1,107 @@
-"""
-AstroLab Data Module
-====================
+"""AstroLab Data Module - Unified astronomical data pipeline.
 
-Unified interface for astronomical data loading and processing.
+Exports all core preprocessors, datasets, samplers, transforms, collectors, datamodules, and analysis tools for astronomical ML workflows.
 """
 
-# Import the unified datamodule interface
-from .datamodules import (
-    create_datamodule,
-    AstroLightningDataset,
-    AstroLightningNodeData,
+# Analysis
+from .analysis import (
+    BaseAutoencoder,
+    CosmicWebAnalyzer,
+    FilamentDetector,
+    PointCloudAutoencoder,
+    ScalableCosmicWebAnalyzer,
+    SpatialClustering,
+    StructureAnalyzer,
+    analyze_cosmic_web_50m,
+    analyze_with_autoencoder,
 )
 
-# Import datasets
-from .datasets import (
-    SurveyGraphDataset,
-    AstroPointCloudDataset,
-    validate_survey,
-    get_supported_surveys,
+# Collectors
+from .collectors import (
+    COLLECTOR_REGISTRY,
+    BaseSurveyCollector,
+    DESCollector,
+    EuclidCollector,
+    ExoplanetCollector,
+    GaiaCollector,
+    LinearCollector,
+    NSACollector,
+    PanSTARRSCollector,
+    RRLyraeCollector,
+    SDSSCollector,
+    TNG50Collector,
+    TwoMASSCollector,
+    WISECollector,
+    get_available_collectors,
+    get_collector,
+    register_collector,
 )
 
-# Import preprocessors
-from .preprocessors import get_preprocessor
+# Dataset
+from .dataset import AstroLabDataModule, AstroLabInMemoryDataset
 
-# Import other utilities
-from .cross_match import AstroCrossMatch
-from .converters import create_spatial_tensor_from_survey, get_converter
+# Preprocessors
+from .preprocessors import (
+    PREPROCESSOR_REGISTRY,
+    AstroLabDataPreprocessor,
+    AstronomicalPreprocessorMixin,
+    DESPreprocessor,
+    ExoplanetPreprocessor,
+    GaiaPreprocessor,
+    LINEARPreprocessor,
+    NSAPreprocessor,
+    RRLyraePreprocessor,
+    SDSSPreprocessor,
+    StatisticalPreprocessorMixin,
+    TNG50Preprocessor,
+    TwoMASSPreprocessor,
+    WISEPreprocessor,
+    get_preprocessor,
+    list_available_surveys,
+)
 
-__all__ = [
-    # Main factory
-    "create_datamodule",
-    # Lightning wrappers
-    "AstroLightningDataset",
-    "AstroLightningNodeData",
-    # Datasets
-    "SurveyGraphDataset",
-    "AstroPointCloudDataset",
-    "validate_survey",
-    "get_supported_surveys",
-    # Utilities
-    "get_preprocessor",
-    "AstroCrossMatch",
-    "create_spatial_tensor_from_survey",
-    "get_converter",
-]
+# Samplers
+from .samplers import (
+    SAMPLER_REGISTRY,
+    AdaptiveGraphSAINTSampler,
+    AdaptiveRadiusSampler,
+    AstroLabSampler,
+    AstronomicalSamplerMixin,
+    ClusterSampler,
+    ClusterSamplerMixin,
+    DBSCANClusterSampler,
+    GraphSAINTEdgeSamplerWrapper,
+    GraphSAINTNodeSamplerWrapper,
+    GraphSAINTRandomWalkSamplerWrapper,
+    HierarchicalClusterSampler,
+    KNNSampler,
+    NeighborSubgraphSampler,
+    RadiusSampler,
+    SpatialSamplerMixin,
+    get_sampler,
+    list_available_samplers,
+)
+
+# Transforms
+from .transforms import (
+    AstronomicalFeatures,
+    Center,
+    Compose,
+    CosmicWebClassification,
+    CrossMatchObjects,
+    Delaunay,
+    DensityFieldEstimation,
+    ExtinctionCorrection,
+    FilamentDetection,
+    GalacticCoordinateTransform,
+    KNNGraph,
+    LinearTransformation,
+    MultiSurveyMerger,
+    NormalizeFeatures,
+    ProperMotionCorrection,
+    RadiusGraph,
+    RandomJitter,
+    RandomRotate,
+    RandomTranslate,
+    ToDevice,
+)

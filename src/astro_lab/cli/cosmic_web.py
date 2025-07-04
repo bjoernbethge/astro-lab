@@ -11,10 +11,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-import torch
-
-from astro_lab.data.analysis.cosmic_web import analyze_survey_cosmic_web
-
 logger = logging.getLogger(__name__)
 
 
@@ -67,92 +63,13 @@ def main(args: argparse.Namespace) -> int:
 
         # Run comprehensive analysis
         logger.info("🔬 Running comprehensive cosmic web analysis...")
-        results = analyze_survey_cosmic_web(survey=args.survey, **analysis_params)
-
-        # Report results
-        logger.info("\n📊 Analysis Results:")
-        n_objects = results.get("n_objects", 0)
-        logger.info(f"   Total objects: {n_objects:,}")
-
-        # Show clustering results
-        if "spatial_clustering" in results and results["spatial_clustering"]:
-            logger.info("\n🔍 Clustering Results:")
-            for scale, stats in results["spatial_clustering"].items():
-                logger.info(f"\n   Scale {scale}:")
-                logger.info(f"      Clusters: {stats.get('n_clusters', 0)}")
-                logger.info(
-                    f"      Grouped: {stats.get('n_grouped', 0):,} ({stats.get('grouped_fraction', 0):.1%})"
-                )
-                logger.info(f"      Isolated: {stats.get('n_noise', 0):,}")
-
-        # Show photometric analysis if available
-        if "photometric_analysis" in results and results["photometric_analysis"]:
-            photom = results["photometric_analysis"]
-            if "colors" in photom:
-                logger.info("\n📸 Photometric Analysis:")
-                logger.info(
-                    f"   Color indices: {len(photom['colors'].get('color_names', []))}"
-                )
-
-        # Show graph properties if available
-        if "graph_properties" in results and results["graph_properties"]:
-            graph_props = results["graph_properties"]
-            logger.info("\n🕸️ Graph Properties:")
-            logger.info(f"   Mean degree: {graph_props.get('mean_degree', 0):.1f}")
-            logger.info(
-                f"   Clustering coefficient: {graph_props.get('mean_clustering_coefficient', 0):.3f}"
-            )
-
-        # Save results if output directory specified
-        if args.output_dir:
-            output_dir = Path(args.output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Save analysis tensor
-            results_file = output_dir / f"{args.survey}_cosmic_web_analysis.pt"
-            torch.save(results, results_file)
-            logger.info(f"\n💾 Results saved to: {results_file}")
-
-        # Create visualizations if requested
-        if args.visualize:
-            logger.info("\n🎨 Creating visualizations...")
-            try:
-                from astro_lab.widgets.cosmograph_bridge import CosmographBridge
-
-                # Create visualization data
-                viz_data = {
-                    "coordinates": results.base_tensors["spatial"]["coordinates"]
-                    .cpu()
-                    .numpy(),
-                    "survey": args.survey,
-                    "n_objects": n_objects,
-                }
-
-                # Add cluster labels if available
-                if "spatial_clustering" in results and results["spatial_clustering"]:
-                    first_scale = list(results["spatial_clustering"].keys())[0]
-                    cluster_labels = results["spatial_clustering"][first_scale].get(
-                        "labels"
-                    )
-                    if cluster_labels is not None:
-                        viz_data["cluster_labels"] = cluster_labels.cpu().numpy()
-
-                # Create cosmograph visualization
-                bridge = CosmographBridge()
-                bridge.from_cosmic_web_results(viz_data, survey_name=args.survey)
-
-                output_dir = Path(args.output_dir or "cosmic_web_results")
-                output_dir.mkdir(parents=True, exist_ok=True)
-
-                logger.info(f"   Visualizations prepared for: {output_dir}")
-
-            except ImportError:
-                logger.warning("   Visualization modules not available - skipping")
-            except Exception as e:
-                logger.warning(f"   Visualization failed: {e}")
-
-        logger.info("\n✅ Cosmic Web Analysis Complete!")
-        return 0
+        # Prepare coordinates and density_field loading here based on args.survey and analysis_params
+        # For demonstration, raise NotImplementedError if not implemented
+        raise NotImplementedError(
+            "Direct call to analyze_cosmic_web requires loading survey data and coordinates. "
+            "Implement data loading here."
+        )
+        return 1
 
     except Exception as e:
         logger.error(f"❌ Analysis failed: {e}")

@@ -8,7 +8,7 @@ statistical computations, and clustering algorithms.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import torch
 from tensordict import TensorDict
@@ -113,6 +113,66 @@ class AnalysisTensorDict(
         return self["meta"]["algorithm"]
 
     def extract_features(
+        self, feature_types: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Extract analysis features from the TensorDict.
+
+        Args:
+            feature_types: Types of features to extract ('analysis', 'statistical', 'clustering')
+            **kwargs: Additional extraction parameters
+
+        Returns:
+            Dictionary of extracted analysis features
+        """
+
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add analysis-specific computed features
+        if feature_types is None or "analysis" in feature_types:
+            # Basic data properties
+            data = self["data"]
+            features["data_mean"] = torch.mean(data, dim=-1)
+            features["data_std"] = torch.std(data, dim=-1)
+            features["data_range"] = (
+                torch.max(data, dim=-1)[0] - torch.min(data, dim=-1)[0]
+            )
+
+        if feature_types is None or "statistical" in feature_types:
+            # Add statistical features if available
+            if "statistics" in self:
+                for stat_name, stat_value in self["statistics"].items():
+                    if (
+                        isinstance(stat_value, torch.Tensor)
+                        and stat_value.numel() == self.n_objects
+                    ):
+                        features[f"stat_{stat_name}"] = stat_value
+
+        if feature_types is None or "clustering" in feature_types:
+            # Add clustering features if available
+            if "labels" in self and self["meta"]["fitted"]:
+                features["cluster_labels"] = self["labels"].float()
+
+                # Distance to cluster centroid
+                data = self["data"]
+                labels = self["labels"]
+                centroids = self["centroids"]
+
+                centroid_distances = torch.zeros(self.n_objects)
+                for k in range(self["meta"]["n_clusters"]):
+                    mask = labels == k
+                    if torch.any(mask):
+                        cluster_data = data[mask]
+                        centroid = centroids[k]
+                        distances = torch.norm(cluster_data - centroid, dim=-1)
+                        centroid_distances[mask] = distances
+
+                features["distance_to_centroid"] = centroid_distances
+
+        return features
+
+    def extract_analysis_features(
         self,
         method: str = "basic",
         include_statistical: bool = True,

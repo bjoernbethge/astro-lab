@@ -1,8 +1,7 @@
 """
-Lightcurve TensorDict for AstroLab
-==================================
+Lightcurve TensorDict for time series photometry data.
 
-TensorDict for time series photometry data with proper astronomical analysis.
+TensorDict for time series photometry data with astronomical analysis.
 """
 
 from typing import Dict, List, Optional, Tuple, Union
@@ -12,8 +11,6 @@ import torch
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clipped_stats
 from astropy.time import Time
-
-# Time series analysis
 from astropy.timeseries import LombScargle
 
 from .base import AstroTensorDict
@@ -24,16 +21,15 @@ class LightcurveTensorDict(
     AstroTensorDict, NormalizationMixin, FeatureExtractionMixin, ValidationMixin
 ):
     """
-    TensorDict for lightcurve data with proper astronomical time series analysis.
+    TensorDict for lightcurve data with astronomical time series analysis.
 
     Features:
-    - Proper time handling with astropy.time
+    - Time handling with astropy.time
     - Period detection using Lomb-Scargle periodograms
     - Variability classification and characterization
     - Phase folding and lightcurve modeling
     - Multi-band lightcurve analysis
     - Outlier detection and data quality assessment
-    - Feature extraction for variable star classification
     """
 
     # Common variable star periods for validation (days)
@@ -61,7 +57,7 @@ class LightcurveTensorDict(
         **kwargs,
     ):
         """
-        Initialize LightcurveTensorDict with proper astronomical time handling.
+        Initialize LightcurveTensorDict.
 
         Args:
             times: [N, T] Time points (MJD, JD, etc.)
@@ -164,6 +160,60 @@ class LightcurveTensorDict(
     def object_ids(self) -> List[str]:
         """Object identifiers."""
         return self._metadata["object_ids"]
+
+    def extract_features(self, feature_types: Optional[List[str]] = None, **kwargs) -> Dict[str, torch.Tensor]:
+        """
+        Extract lightcurve features from the TensorDict.
+        
+        Args:
+            feature_types: Types of features to extract ('temporal', 'variability', 'periodic')
+            **kwargs: Additional extraction parameters
+            
+        Returns:
+            Dictionary of extracted lightcurve features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add lightcurve-specific computed features
+        if feature_types is None or "temporal" in feature_types:
+            # Basic temporal features
+            times = self.times
+            features["baseline"] = times[:, -1] - times[:, 0]
+            features["n_observations"] = torch.full((self.n_objects,), self.times.shape[1], dtype=torch.float32)
+
+            # Cadence features
+            time_diffs = torch.diff(times, dim=1)
+            features["median_cadence"] = torch.median(time_diffs, dim=1)[0]
+            features["cadence_std"] = torch.std(time_diffs, dim=1)
+
+        if feature_types is None or "variability" in feature_types:
+            # Variability features for first band
+            mags = self.magnitudes[:, :, 0]  # Use first band
+
+            features["mean_magnitude"] = torch.mean(mags, dim=1)
+            features["magnitude_std"] = torch.std(mags, dim=1)
+            features["magnitude_range"] = torch.max(mags, dim=1)[0] - torch.min(mags, dim=1)[0]
+            features["amplitude"] = features["magnitude_range"] / 2.0
+
+            # Coefficient of variation
+            features["coefficient_variation"] = features["magnitude_std"] / (features["mean_magnitude"] + 1e-10)
+
+            # Stetson variability index (simplified)
+            if self.magnitude_errors is not None:
+                errors = self.magnitude_errors[:, :, 0]
+                weighted_residuals = (mags - features["mean_magnitude"].unsqueeze(1)) / (errors + 1e-10)
+                features["stetson_index"] = torch.mean(weighted_residuals**2, dim=1) - 1.0
+
+        if feature_types is None or "periodic" in feature_types:
+            # Add periodic features if not already computed
+            if "best_period" not in features:
+                period_info = self.find_best_periods(n_periods=1)
+                features["best_period"] = period_info["periods"][:, 0, 0]
+                features["period_power"] = period_info["powers"][:, 0, 0]
+                features["period_significance"] = period_info["significance"][:, 0]
+
+        return features
 
     def to_astropy_time(self, object_index: int = 0) -> Time:
         """
@@ -379,14 +429,12 @@ class LightcurveTensorDict(
                     continue
 
                 if method == "sigma_clip":
-                    # Use astropy sigma clipping
                     mean, median, std = sigma_clipped_stats(
                         valid_mags, sigma=sigma_threshold, maxiters=3
                     )
                     outliers = np.abs(mags - median) > (sigma_threshold * std)
 
                 elif method == "iqr":
-                    # Interquartile range method
                     q1, q3 = np.percentile(valid_mags, [25, 75])
                     iqr = q3 - q1
                     lower_bound = q1 - 1.5 * iqr
@@ -394,7 +442,6 @@ class LightcurveTensorDict(
                     outliers = (mags < lower_bound) | (mags > upper_bound)
 
                 elif method == "mad":
-                    # Median absolute deviation
                     median = np.median(valid_mags)
                     mad = np.median(np.abs(valid_mags - median))
                     outliers = np.abs(mags - median) > (sigma_threshold * mad)
@@ -444,7 +491,6 @@ class LightcurveTensorDict(
             # Stetson variability index
             if self.magnitude_errors is not None:
                 errors = self.magnitude_errors[:, :, band_idx]
-                # Simplified Stetson index
                 weighted_residuals = (
                     band_mags - band_features["mean"].unsqueeze(1)
                 ) / (errors + 1e-10)
@@ -483,7 +529,7 @@ class LightcurveTensorDict(
         var_class = torch.zeros(self.n_objects, dtype=torch.long)
         confidence = torch.zeros(self.n_objects)
 
-        # classification rules
+        # Simple classification rules
         for i in range(self.n_objects):
             amp = amplitude[i].item()
             period = best_periods[i].item()
@@ -564,17 +610,15 @@ class LightcurveTensorDict(
 
     def validate(self) -> bool:
         """Validate lightcurve tensor data."""
-        # Basic validation from parent
         if not super().validate():
             return False
 
-        # Lightcurve-specific validation
         return (
             "times" in self
             and "magnitudes" in self
             and self.times.shape[0] == self.magnitudes.shape[0]
             and self.times.shape[1] == self.magnitudes.shape[1]
             and self.times.shape[1] > 5  # Minimum time points
-            and torch.all(torch.isfinite(self.times))
+            and self.validate_finite_values("times")
             and len(self.bands) == self.magnitudes.shape[2]
         )

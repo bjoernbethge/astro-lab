@@ -11,16 +11,19 @@ import numpy as np
 import polars as pl
 import torch
 
-from .base import BaseSurveyProcessor
+from astro_lab.data.transforms.astronomical import spherical_to_cartesian
+
+from .astro import AstroLabDataPreprocessor
 
 logger = logging.getLogger(__name__)
 
 
-class PanSTARRSPreprocessor(BaseSurveyProcessor):
+class PanSTARRSPreprocessor(AstroLabDataPreprocessor):
     """Processor for Pan-STARRS survey data."""
 
-    def __init__(self):
-        super().__init__("panstarrs")
+    def __init__(self, config=None):
+        super().__init__(config)
+        self.survey_name = "panstarrs"
 
     def extract_coordinates(self, df: pl.DataFrame) -> torch.Tensor:
         """Extract 3D coordinates from Pan-STARRS data."""
@@ -31,26 +34,18 @@ class PanSTARRSPreprocessor(BaseSurveyProcessor):
         raise ValueError("No valid coordinate columns found in Pan-STARRS data")
 
     def _ra_dec_to_xyz_estimated(self, df: pl.DataFrame) -> torch.Tensor:
-        """Convert RA/Dec to 3D coordinates with estimated distance."""
-        ra = np.deg2rad(df["ra"].to_numpy())
-        dec = np.deg2rad(df["dec"].to_numpy())
-
+        """Convert RA/Dec to 3D coordinates with estimated distance using spherical_to_cartesian."""
+        ra = df["ra"].to_numpy()
+        dec = df["dec"].to_numpy()
         # Estimate distance from r magnitude if available
         if "r_mag" in df.columns:
             r_mag = df["r_mag"].to_numpy()
-            # Assume absolute r magnitude of ~-20 for typical galaxies
             abs_mag = -20.0
             distance_mpc = 10 ** ((r_mag - abs_mag + 5) / 5)
             distance_pc = distance_mpc * 1e6
         else:
-            # Default to 100 Mpc if no magnitude available
             distance_pc = np.full(len(df), 100.0 * 1e6)
-
-        # Convert to Cartesian
-        x = distance_pc * np.cos(dec) * np.cos(ra)
-        y = distance_pc * np.cos(dec) * np.sin(ra)
-        z = distance_pc * np.sin(dec)
-
+        x, y, z = spherical_to_cartesian(ra, dec, distance_pc, degrees=True)
         coords = np.stack([x, y, z], axis=1)
         return torch.tensor(coords, dtype=torch.float32)
 
@@ -104,7 +99,7 @@ class PanSTARRSPreprocessor(BaseSurveyProcessor):
         return torch.tensor(features, dtype=torch.float32)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Apply Pan-STARRS-specific preprocessing."""
+        """Apply Pan-STARRS-specific preprocessing. Expects a DataFrame as input."""
         # Calculate colors if we have magnitudes
         mag_bands = []
         for band in ["g", "r", "i", "z", "y"]:

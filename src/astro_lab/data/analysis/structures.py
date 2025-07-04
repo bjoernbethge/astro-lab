@@ -1,660 +1,915 @@
 """
-Lightning DataModule for AstroLab
-================================
+Structure Analysis for Astronomical Data
+=======================================
 
-Lightning DataModule with enhanced integration of astronomical features,
-reduced redundancy, and better cooperation between components.
+Advanced structure detection and analysis with TensorDict integration.
 """
 
 import logging
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
-import lightning as L
 import torch
-from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader
-from torch_geometric.transforms import Compose
+import torch.nn.functional as F
+from torch_geometric.nn import radius_graph
+from torch_geometric.utils import to_undirected
 
-from astro_lab.config import (
-    get_data_config,
-    get_survey_config,
-    get_survey_optimization,
-)
-from astro_lab.data.datasets import SurveyGraphDataset
-from astro_lab.tensors import (
-    LightcurveTensorDict,
-    PhotometricTensorDict,
-    SpatialTensorDict,
-    SpectralTensorDict,
-    SurveyTensorDict,
-)
+from astro_lab.tensors import SpatialTensorDict
 
 logger = logging.getLogger(__name__)
 
 
-class AstroDataModule(L.LightningDataModule):
+class FilamentDetector:
     """
-    Enhanced Lightning DataModule with deep integration of astronomical features.
+    Advanced filament detection using geometric and topological analysis.
 
-    Major improvements:
-    - Direct integration with specialized TensorDict classes
-    - Survey-specific feature extractors and transformations
-    - Unified configuration through central config system
-    - Memory-efficient caching and lazy loading
-    - Astronomical domain-aware splitting strategies
-    - Multi-scale graph construction support
+    Features:
+    - Multi-scale filament detection
+    - Topological persistence analysis
+    - TensorDict integration
+    - GPU acceleration
     """
 
     def __init__(
         self,
-        survey: str,
-        # Core parameters
-        batch_size: int = 32,
-        num_workers: int = 4,
-        # Graph construction parameters
-        graph_config: Optional[Dict[str, Any]] = None,
-        # Data selection
-        max_samples: Optional[int] = None,
-        selection_criteria: Optional[Dict[str, Any]] = None,
-        # Split configuration
-        split_config: Optional[Dict[str, Any]] = None,
-        # Transform pipeline
-        transform_pipeline: Optional[List[Union[str, Callable]]] = None,
-        # Cache configuration
-        cache_config: Optional[Dict[str, Any]] = None,
-        # Optional overrides
-        data_root: Optional[str] = None,
-        force_reload: bool = False,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        min_filament_length: float = 2.0,
+        anisotropy_threshold: float = 0.7,
     ):
-        super().__init__()
-        self.save_hyperparameters()
+        """Initialize filament detector."""
+        self.device = device
+        self.min_filament_length = min_filament_length
+        self.anisotropy_threshold = anisotropy_threshold
 
-        # Core configuration
-        self.survey = survey
-        self.data_config = get_data_config()
-        self.survey_config = get_survey_config(survey)
-        self.optimization_config = get_survey_optimization(survey)
+        logger.info(f"🧵 FilamentDetector initialized on {self.device}")
 
-        # Use optimized batch size if available
-        self.batch_size = batch_size
-        if self.optimization_config and batch_size == 32:  # Default not overridden
-            self.batch_size = self.optimization_config.batch_size
+    def detect_filaments(
+        self,
+        coordinates: Union[torch.Tensor, SpatialTensorDict],
+        density_field: Optional[torch.Tensor] = None,
+        scales: Optional[List[float]] = None,
+    ) -> Dict:
+        """
+        Detect filamentary structures in the data.
 
-        self.num_workers = num_workers
-        self.max_samples = max_samples
-        self.force_reload = force_reload
+        Args:
+            coordinates: Object coordinates [N, 3]
+            density_field: Optional density field [N]
+            scales: Analysis scales
 
-        # Data root with central config
-        self.data_root = Path(data_root) if data_root else self.data_config.base_dir
-
-        # Graph construction configuration with defaults
-        default_graph_config = {
-            "method": "knn",
-            "k_neighbors": 8,
-            "use_3d": True,
-            "cosmic_web_scales": [5.0, 10.0, 25.0],  # For multi-scale analysis
-            "include_edge_features": True,
-        }
-        self.graph_config = {**default_graph_config, **(graph_config or {})}
-
-        # Selection criteria for data filtering
-        self.selection_criteria = selection_criteria or {}
-
-        # Split configuration with astronomical awareness
-        default_split_config = {
-            "train_ratio": 0.8,
-            "val_ratio": 0.1,
-            "strategy": "spatial",  # spatial, temporal, random, stratified
-            "stratify_by": None,  # Feature to stratify by
-            "spatial_method": "clustering",  # clustering, grid, random
-            "temporal_bins": 10,  # For temporal splitting
-        }
-        self.split_config = {**default_split_config, **(split_config or {})}
-
-        # Transform pipeline setup
-        self.transform_pipeline = self._build_transform_pipeline(transform_pipeline)
-
-        # Cache configuration
-        default_cache_config = {
-            "enable": True,
-            "cache_processed": True,
-            "cache_graphs": True,
-            "cache_dir": self.data_root / "cache" / survey,
-        }
-        self.cache_config = {**default_cache_config, **(cache_config or {})}
-
-        # Initialize cache directory if enabled
-        if self.cache_config["enable"]:
-            self.cache_config["cache_dir"].mkdir(parents=True, exist_ok=True)
-
-        # Dataset components (initialized in setup)
-        self.dataset: Optional[SurveyGraphDataset] = None
-        self.tensor_dict: Optional[SurveyTensorDict] = None
-        self._splits: Dict[str, Any] = {"train": None, "val": None, "test": None}
-        self._cached_properties: Dict[str, Any] = {}
-
-    def _build_transform_pipeline(
-        self, pipeline: Optional[List[Union[str, Callable]]]
-    ) -> Optional[Compose]:
-        """Build transformation pipeline from config or callables."""
-        if not pipeline:
-            # Default survey-specific transforms
-            pipeline = self._get_default_transforms()
-
-        transforms = []
-        for transform in pipeline:
-            if isinstance(transform, str):
-                # Load predefined transforms by name
-                transforms.append(self._get_transform_by_name(transform))
-            elif callable(transform):
-                transforms.append(transform)
-            else:
-                logger.warning(f"Invalid transform: {transform}")
-
-        return Compose(transforms) if transforms else None
-
-    def _get_default_transforms(self) -> List[str]:
-        """Get default transforms based on survey type."""
-        survey_type = self.survey_config.get("type", "catalog")
-
-        if survey_type == "stellar":
-            return ["normalize_magnitudes", "compute_colors", "add_kinematics"]
-        elif survey_type == "galaxy":
-            return [
-                "normalize_magnitudes",
-                "compute_morphology",
-                "add_redshift_features",
-            ]
-        elif survey_type == "timeseries":
-            return ["normalize_lightcurves", "extract_variability_features"]
+        Returns:
+            Filament detection results
+        """
+        # Handle TensorDict input
+        if isinstance(coordinates, SpatialTensorDict):
+            coords = coordinates.coordinates
         else:
-            return ["normalize_features"]
+            coords = coordinates
 
-    def _get_transform_by_name(self, name: str) -> Callable:
-        """Get predefined transform by name."""
-        transform_registry = {
-            "normalize_magnitudes": self._normalize_magnitudes,
-            "compute_colors": self._compute_colors,
-            "add_kinematics": self._add_kinematics,
-            "compute_morphology": self._compute_morphology,
-            "add_redshift_features": self._add_redshift_features,
-            "normalize_lightcurves": self._normalize_lightcurves,
-            "extract_variability_features": self._extract_variability_features,
-            "normalize_features": self._normalize_features,
-        }
+        coords = coords.to(self.device)
 
-        if name not in transform_registry:
-            raise ValueError(f"Unknown transform: {name}")
+        if density_field is not None:
+            density_field = density_field.to(self.device)
 
-        return transform_registry[name]
+        if scales is None:
+            scales = [1.0, 2.0, 5.0]
 
-    def prepare_data(self):
-        """Download and preprocess data if needed. Called only on rank 0."""
-        # Check cache first
-        cache_path = self._get_cache_path("dataset")
-        if cache_path.exists() and not self.force_reload:
-            logger.info(f"Dataset cache exists: {cache_path}")
-            return
-
-        # Create dataset to trigger download/processing
-        _ = SurveyGraphDataset(
-            root=str(self.data_root),
-            survey=self.survey,
-            k_neighbors=self.graph_config["k_neighbors"],
-            max_samples=self.max_samples,
-            force_reload=self.force_reload,
+        logger.info(
+            f"🧵 Filament detection: {coords.size(0)} points, {len(scales)} scales"
         )
 
-    def setup(self, stage: Optional[str] = None):
-        """Setup datasets with enhanced astronomical features."""
-        if self.dataset is None:
-            self._load_or_create_dataset()
-            self._create_tensor_dict()
-            self._apply_selection_criteria()
-            self._extract_features()
-            self._create_splits()
-            self._log_dataset_info()
+        results = {}
 
-    def _load_or_create_dataset(self):
-        """Load dataset with caching support."""
-        cache_path = self._get_cache_path("dataset")
+        for scale in scales:
+            scale_results = self._detect_at_scale(coords, density_field, scale)
+            results[f"scale_{scale:.1f}"] = scale_results
 
-        if cache_path.exists() and not self.force_reload:
-            logger.info(f"Loading cached dataset from {cache_path}")
-            self.dataset = torch.load(cache_path, map_location="cpu")
-        else:
-            # Create new dataset
-            self.dataset = SurveyGraphDataset(
-                root=str(self.data_root),
-                survey=self.survey,
-                k_neighbors=self.graph_config["k_neighbors"],
-                use_3d_coordinates=self.graph_config["use_3d"],
-                max_samples=self.max_samples,
-                transform=self.transform_pipeline,
-                force_reload=self.force_reload,
-            )
+        # Combine multi-scale results
+        combined = self._combine_filament_results(results)
 
-            # Cache if enabled
-            if self.cache_config["enable"] and self.cache_config["cache_processed"]:
-                torch.save(self.dataset, cache_path)
-                logger.info(f"Cached dataset to {cache_path}")
+        return {
+            "multi_scale": results,
+            "combined": combined,
+            "coordinates": coords,
+            "scales": scales,
+        }
 
-    def _create_tensor_dict(self):
-        """Create specialized TensorDict based on survey type."""
-        if not self.dataset or len(self.dataset) == 0:
-            return
+    def _detect_at_scale(
+        self,
+        coordinates: torch.Tensor,
+        density_field: Optional[torch.Tensor],
+        scale: float,
+    ) -> Dict:
+        """Detect filaments at a specific scale."""
+        n_points = coordinates.size(0)
 
-        survey_type = self.survey_config.get("type", "catalog")
-        graph = self.dataset[0]
-
-        # Create appropriate TensorDict subclass
-        if survey_type == "stellar":
-            self.tensor_dict = self._create_spatial_tensor_dict(graph)
-        elif survey_type == "galaxy":
-            self.tensor_dict = self._create_cosmology_tensor_dict(graph)
-        elif survey_type == "photometric":
-            self.tensor_dict = self._create_photometric_tensor_dict(graph)
-        elif survey_type == "spectroscopic":
-            self.tensor_dict = self._create_spectral_tensor_dict(graph)
-        elif survey_type == "timeseries":
-            self.tensor_dict = self._create_lightcurve_tensor_dict(graph)
-        else:
-            # Generic survey tensor dict
-            self.tensor_dict = SurveyTensorDict.from_graph(graph)
-
-    def _create_spatial_tensor_dict(self, graph: Data) -> SpatialTensorDict:
-        """Create spatial tensor dict for stellar surveys."""
-        coords = graph.pos if hasattr(graph, "pos") else graph.x[:, :3]
-
-        spatial = SpatialTensorDict(
-            coordinates=coords,
-            coordinate_system=self.survey_config.get("coordinate_system", "icrs"),
-            unit=self.survey_config.get("distance_unit", "pc"),
+        # Build connectivity graph
+        edge_index = radius_graph(
+            coordinates,
+            r=scale,
+            batch=None,
+            loop=False,
+            max_num_neighbors=min(100, n_points),
         )
 
-        # Add cosmic web analysis if requested
-        if "cosmic_web" in self.graph_config:
-            for scale in self.graph_config["cosmic_web_scales"]:
-                labels = spatial.cosmic_web_clustering(eps_pc=scale)
-                graph[f"cluster_labels_{scale}pc"] = labels
+        # Make undirected
+        edge_index = to_undirected(edge_index, num_nodes=n_points)
 
-        return spatial
+        # Calculate local density if not provided
+        if density_field is None:
+            density_field = self._calculate_local_density(coordinates, edge_index)
 
-    def _create_photometric_tensor_dict(self, graph: Data) -> PhotometricTensorDict:
-        """Create photometric tensor dict for multi-band surveys."""
-        # Extract magnitude columns
-        mag_columns = self.survey_config.get("magnitude_columns", [])
-        if mag_columns and hasattr(graph, "x"):
-            mags = graph.x[:, : len(mag_columns)]
+        # Calculate geometric features
+        anisotropy = self._calculate_anisotropy(coordinates, edge_index)
+        curvature = self._calculate_curvature(coordinates, edge_index)
 
-            photom = PhotometricTensorDict(
-                magnitudes=mags,
-                bands=mag_columns,
-                filter_system=self.survey_config.get("magnitude_system", "AB"),
+        # Identify filament candidates
+        filament_mask = self._identify_filament_candidates(
+            density_field, anisotropy, curvature, scale
+        )
+
+        # Extract filament structures
+        filaments = self._extract_filament_structures(
+            coordinates, edge_index, filament_mask, scale
+        )
+
+        return {
+            "scale": scale,
+            "filaments": filaments,
+            "anisotropy": anisotropy,
+            "curvature": curvature,
+            "density_field": density_field,
+            "filament_mask": filament_mask,
+        }
+
+    def _calculate_local_density(
+        self, coordinates: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
+        """Calculate local density using connectivity."""
+        n_points = coordinates.size(0)
+        device = coordinates.device
+
+        # Count neighbors for each point
+        neighbor_counts = torch.zeros(n_points, device=device)
+        src = edge_index[0]
+        neighbor_counts.scatter_add_(0, src, torch.ones_like(src, dtype=torch.float))
+
+        # Normalize by maximum possible neighbors
+        max_neighbors = neighbor_counts.max()
+        if max_neighbors > 0:
+            density = neighbor_counts / max_neighbors
+        else:
+            density = torch.zeros_like(neighbor_counts)
+
+        return density
+
+    def _calculate_anisotropy(
+        self, coordinates: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
+        """Calculate local anisotropy using neighbor distribution."""
+        n_points = coordinates.size(0)
+        device = coordinates.device
+
+        anisotropy = torch.zeros(n_points, device=device)
+
+        for i in range(n_points):
+            # Find neighbors
+            neighbor_mask = edge_index[0] == i
+            if neighbor_mask.sum() > 0:
+                neighbors = edge_index[1, neighbor_mask]
+
+                # Calculate direction vectors
+                directions = coordinates[neighbors] - coordinates[i]
+                directions = F.normalize(directions, dim=1)
+
+                # Calculate anisotropy as variance of directions
+                if len(directions) > 1:
+                    mean_direction = directions.mean(dim=0)
+                    variance = ((directions - mean_direction) ** 2).mean()
+                    anisotropy[i] = variance
+                else:
+                    anisotropy[i] = 0.0
+
+        return anisotropy
+
+    def _calculate_curvature(
+        self, coordinates: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
+        """Calculate local curvature using neighbor positions."""
+        n_points = coordinates.size(0)
+        device = coordinates.device
+
+        curvature = torch.zeros(n_points, device=device)
+
+        for i in range(n_points):
+            # Find neighbors
+            neighbor_mask = edge_index[0] == i
+            if neighbor_mask.sum() > 1:
+                neighbors = edge_index[1, neighbor_mask]
+
+                # Calculate curvature as deviation from linear arrangement
+                neighbor_positions = coordinates[neighbors]
+                center = coordinates[i]
+
+                # Fit line through neighbors
+                if len(neighbor_positions) >= 2:
+                    # Simple curvature estimation
+                    distances = torch.norm(neighbor_positions - center, dim=1)
+                    mean_distance = distances.mean()
+                    curvature[i] = distances.std() / (mean_distance + 1e-8)
+
+        return curvature
+
+    def _identify_filament_candidates(
+        self,
+        density_field: torch.Tensor,
+        anisotropy: torch.Tensor,
+        curvature: torch.Tensor,
+        scale: float,
+    ) -> torch.Tensor:
+        """Identify filament candidate points."""
+        # Filament criteria: high anisotropy, medium density, low curvature
+        filament_mask = (
+            (anisotropy > self.anisotropy_threshold)
+            & (density_field > 0.3)
+            & (density_field < 0.8)
+            & (curvature < 0.5)
+        )
+
+        return filament_mask
+
+    def _extract_filament_structures(
+        self,
+        coordinates: torch.Tensor,
+        edge_index: torch.Tensor,
+        filament_mask: torch.Tensor,
+        scale: float,
+    ) -> List[Dict]:
+        """Extract connected filament structures."""
+        n_points = coordinates.size(0)
+        device = coordinates.device
+
+        # Find connected filament components
+        filament_edges = edge_index[
+            :, filament_mask[edge_index[0]] & filament_mask[edge_index[1]]
+        ]
+
+        if filament_edges.size(1) > 0:
+            filament_labels = self._connected_components(filament_edges, n_points)
+        else:
+            filament_labels = torch.full(
+                (n_points,), -1, dtype=torch.long, device=device
             )
 
-            # Add colors as features
-            colors = photom.compute_colors()
-            graph.color_features = colors
+        # Extract individual filaments
+        filaments = []
+        for label in torch.unique(filament_labels):
+            if label < 0:
+                continue
 
-            return photom
+            filament_mask_label = filament_labels == label
+            filament_coords = coordinates[filament_mask_label]
 
-        return None
+            if len(filament_coords) >= 3:
+                # Calculate filament properties
+                length = self._calculate_filament_length(filament_coords)
+                thickness = self._calculate_filament_thickness(filament_coords)
 
-    def _apply_selection_criteria(self):
-        """Apply selection criteria to filter data."""
-        if not self.selection_criteria or not self.dataset:
-            return
+                if length > self.min_filament_length:
+                    filaments.append(
+                        {
+                            "label": label.item(),
+                            "coordinates": filament_coords,
+                            "length": length,
+                            "thickness": thickness,
+                            "n_points": len(filament_coords),
+                            "point_indices": filament_mask_label.nonzero().squeeze(),
+                        }
+                    )
 
-        # Example criteria: magnitude limits, quality flags, etc.
-        for criterion, value in self.selection_criteria.items():
-            if criterion == "magnitude_limit" and hasattr(
-                self.dataset[0], "magnitudes"
-            ):
-                mask = self.dataset[0].magnitudes[:, 0] < value
-                self._apply_mask(mask)
-            elif criterion == "quality_flag" and hasattr(self.dataset[0], "quality"):
-                mask = self.dataset[0].quality >= value
-                self._apply_mask(mask)
+        return filaments
 
-    def _extract_features(self):
-        """Extract astronomical features using tensor dicts."""
-        if not self.tensor_dict or not self.dataset:
-            return
+    def _connected_components(
+        self, edge_index: torch.Tensor, n_nodes: int
+    ) -> torch.Tensor:
+        """Find connected components using Union-Find."""
+        device = edge_index.device
 
-        graph = self.dataset[0]
+        # Initialize each node as its own component
+        parent = torch.arange(n_nodes, device=device)
 
-        # Extract features based on tensor dict type
-        if isinstance(self.tensor_dict, SpatialTensorDict):
-            # Add kinematic features
-            if hasattr(graph, "proper_motion"):
-                graph.kinematic_features = (
-                    self.tensor_dict.compute_tangential_velocity()
+        def find(x):
+            if parent[x] != x:
+                parent[x] = find(parent[x])
+            return parent[x]
+
+        def union(x, y):
+            px, py = find(x), find(y)
+            if px != py:
+                parent[px] = py
+
+        # Union connected nodes
+        for i in range(edge_index.size(1)):
+            union(edge_index[0, i], edge_index[1, i])
+
+        # Relabel components
+        labels = torch.zeros(n_nodes, dtype=torch.long, device=device)
+        component_map = {}
+        next_label = 0
+
+        for i in range(n_nodes):
+            root = find(i)
+            if root not in component_map:
+                component_map[root] = next_label
+                next_label += 1
+            labels[i] = component_map[root]
+
+        return labels
+
+    def _calculate_filament_length(self, coordinates: torch.Tensor) -> float:
+        """Calculate filament length."""
+        if len(coordinates) < 2:
+            return 0.0
+
+        # Use maximum pairwise distance as length estimate
+        distances = torch.cdist(coordinates, coordinates)
+        max_distance = distances.max().item()
+
+        return max_distance
+
+    def _calculate_filament_thickness(self, coordinates: torch.Tensor) -> float:
+        """Calculate filament thickness."""
+        if len(coordinates) < 3:
+            return 0.0
+
+        # Use minimum spanning tree edge length as thickness estimate
+        distances = torch.cdist(coordinates, coordinates)
+        # Set diagonal to infinity
+        distances.fill_diagonal_(float("inf"))
+        min_distances = distances.min(dim=1)[0]
+
+        return min_distances.mean().item()
+
+    def _combine_filament_results(self, results: Dict) -> Dict:
+        """Combine filament results from multiple scales."""
+        combined = {
+            "filaments": [],
+            "statistics": {},
+        }
+
+        # Aggregate filaments across scales
+        for scale_name, scale_result in results.items():
+            filaments = scale_result["filaments"]
+            for filament in filaments:
+                filament["scale"] = scale_result["scale"]
+                combined["filaments"].append(filament)
+
+        # Calculate statistics
+        if combined["filaments"]:
+            lengths = [f["length"] for f in combined["filaments"]]
+            thicknesses = [f["thickness"] for f in combined["filaments"]]
+            n_points = [f["n_points"] for f in combined["filaments"]]
+
+            combined["statistics"] = {
+                "n_filaments": len(combined["filaments"]),
+                "mean_length": sum(lengths) / len(lengths),
+                "mean_thickness": sum(thicknesses) / len(thicknesses),
+                "mean_points": sum(n_points) / len(n_points),
+                "total_length": sum(lengths),
+            }
+        else:
+            combined["statistics"] = {
+                "n_filaments": 0,
+                "mean_length": 0.0,
+                "mean_thickness": 0.0,
+                "mean_points": 0.0,
+                "total_length": 0.0,
+            }
+
+        return combined
+
+
+class StructureAnalyzer:
+    """
+    Comprehensive structure analysis for astronomical data.
+
+    Features:
+    - Multi-scale structure analysis
+    - Hierarchical structure detection
+    - TensorDict integration
+    - Statistical analysis
+    """
+
+    def __init__(
+        self,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        max_structures: int = 1000,
+    ):
+        """Initialize structure analyzer."""
+        self.device = device
+        self.max_structures = max_structures
+
+        logger.info(f"🏗️ StructureAnalyzer initialized on {self.device}")
+
+    def analyze_structures(
+        self,
+        coordinates: Union[torch.Tensor, SpatialTensorDict],
+        density_field: Optional[torch.Tensor] = None,
+        scales: Optional[List[float]] = None,
+    ) -> Dict:
+        """
+        Analyze structures at multiple scales.
+
+        Args:
+            coordinates: Object coordinates [N, 3]
+            density_field: Optional density field [N]
+            scales: Analysis scales
+
+        Returns:
+            Structure analysis results
+        """
+        # Handle TensorDict input
+        if isinstance(coordinates, SpatialTensorDict):
+            coords = coordinates.coordinates
+        else:
+            coords = coordinates
+
+        coords = coords.to(self.device)
+
+        if density_field is not None:
+            density_field = density_field.to(self.device)
+
+        if scales is None:
+            scales = [1.0, 2.0, 5.0, 10.0]
+
+        logger.info(
+            f"🏗️ Structure analysis: {coords.size(0)} points, {len(scales)} scales"
+        )
+
+        results = {}
+
+        for scale in scales:
+            scale_results = self._analyze_at_scale(coords, density_field, scale)
+            results[f"scale_{scale:.1f}"] = scale_results
+
+        # Combine multi-scale results
+        combined = self._combine_structure_results(results)
+
+        return {
+            "multi_scale": results,
+            "combined": combined,
+            "coordinates": coords,
+            "scales": scales,
+        }
+
+    def _analyze_at_scale(
+        self,
+        coordinates: torch.Tensor,
+        density_field: Optional[torch.Tensor],
+        scale: float,
+    ) -> Dict:
+        """Analyze structures at a specific scale."""
+        n_points = coordinates.size(0)
+
+        # Build connectivity graph
+        edge_index = radius_graph(
+            coordinates,
+            r=scale,
+            batch=None,
+            loop=False,
+            max_num_neighbors=min(100, n_points),
+        )
+
+        # Make undirected
+        edge_index = to_undirected(edge_index, num_nodes=n_points)
+
+        # Calculate local density if not provided
+        if density_field is None:
+            density_field = self._calculate_local_density(coordinates, edge_index)
+
+        # Identify different structure types
+        clusters = self._identify_clusters(
+            coordinates, edge_index, density_field, scale
+        )
+        voids = self._identify_voids(coordinates, density_field, scale)
+        walls = self._identify_walls(coordinates, edge_index, density_field, scale)
+
+        return {
+            "scale": scale,
+            "clusters": clusters,
+            "voids": voids,
+            "walls": walls,
+            "density_field": density_field,
+            "connectivity": edge_index,
+        }
+
+    def _calculate_local_density(
+        self, coordinates: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
+        """Calculate local density using connectivity."""
+        n_points = coordinates.size(0)
+        device = coordinates.device
+
+        # Count neighbors for each point
+        neighbor_counts = torch.zeros(n_points, device=device)
+        src = edge_index[0]
+        neighbor_counts.scatter_add_(0, src, torch.ones_like(src, dtype=torch.float))
+
+        # Normalize by maximum possible neighbors
+        max_neighbors = neighbor_counts.max()
+        if max_neighbors > 0:
+            density = neighbor_counts / max_neighbors
+        else:
+            density = torch.zeros_like(neighbor_counts)
+
+        return density
+
+    def _identify_clusters(
+        self,
+        coordinates: torch.Tensor,
+        edge_index: torch.Tensor,
+        density_field: torch.Tensor,
+        scale: float,
+    ) -> List[Dict]:
+        """Identify cluster structures."""
+        # High density regions
+        cluster_mask = density_field > 0.7
+
+        # Find connected cluster components
+        cluster_edges = edge_index[
+            :, cluster_mask[edge_index[0]] & cluster_mask[edge_index[1]]
+        ]
+
+        if cluster_edges.size(1) > 0:
+            cluster_labels = self._connected_components(
+                cluster_edges, coordinates.size(0)
+            )
+        else:
+            cluster_labels = torch.full(
+                (coordinates.size(0),), -1, dtype=torch.long, device=coordinates.device
+            )
+
+        # Extract clusters
+        clusters = []
+        for label in torch.unique(cluster_labels):
+            if label < 0:
+                continue
+
+            cluster_mask_label = cluster_labels == label
+            cluster_coords = coordinates[cluster_mask_label]
+
+            if len(cluster_coords) >= 5:
+                # Calculate cluster properties
+                center = cluster_coords.mean(dim=0)
+                radius = torch.norm(cluster_coords - center, dim=1).max().item()
+                mass = len(cluster_coords)
+
+                clusters.append(
+                    {
+                        "label": label.item(),
+                        "coordinates": cluster_coords,
+                        "center": center,
+                        "radius": radius,
+                        "mass": mass,
+                        "point_indices": cluster_mask_label.nonzero().squeeze(),
+                    }
                 )
 
-        elif isinstance(self.tensor_dict, PhotometricTensorDict):
-            # Color indices already added
-            pass
+        return clusters
 
-        elif isinstance(self.tensor_dict, SpectralTensorDict):
-            # Extract spectral features
-            graph.spectral_features = self.tensor_dict.extract_spectral_features()
+    def _identify_voids(
+        self, coordinates: torch.Tensor, density_field: torch.Tensor, scale: float
+    ) -> List[Dict]:
+        """Identify void structures."""
+        # Low density regions
+        void_mask = density_field < 0.3
 
-        elif isinstance(self.tensor_dict, LightcurveTensorDict):
-            # Extract variability features
-            graph.variability_features = self.tensor_dict.extract_variability_features()
+        # Find connected void components
+        void_coords = coordinates[void_mask]
 
-    def _create_splits(self):
-        """Create train/val/test splits using configured strategy."""
-        if not self.dataset:
-            return
-
-        strategy = self.split_config["strategy"]
-
-        if strategy == "spatial":
-            self._create_spatial_splits()
-        elif strategy == "temporal":
-            self._create_temporal_splits()
-        elif strategy == "stratified":
-            self._create_stratified_splits()
+        if void_coords.size(0) > 0:
+            # Use distance-based clustering for voids
+            void_labels = self._cluster_voids(void_coords, scale)
         else:
-            self._create_random_splits()
+            void_labels = torch.empty(0, dtype=torch.long, device=coordinates.device)
 
-    def _create_spatial_splits(self):
-        """Create spatially-aware splits using astronomical clustering."""
-        if len(self.dataset) == 1:
-            # Single graph - use spatial clustering
-            graph = self.dataset[0]
+        # Extract voids
+        voids = []
+        for label in torch.unique(void_labels):
+            if label >= 0:
+                void_coords_label = void_coords[void_labels == label]
 
-            if self.tensor_dict and isinstance(self.tensor_dict, SpatialTensorDict):
-                # Use cosmic web clustering for splits
-                method = self.split_config.get("spatial_method", "clustering")
+                if len(void_coords_label) >= 10:
+                    # Calculate void properties
+                    center = void_coords_label.mean(dim=0)
+                    radius = torch.norm(void_coords_label - center, dim=1).max().item()
+                    volume = len(void_coords_label)
 
-                if method == "clustering":
-                    # Use existing clustering or compute new one
-                    scale = self.graph_config["cosmic_web_scales"][0]
-                    cluster_key = f"cluster_labels_{scale}pc"
+                    voids.append(
+                        {
+                            "label": label.item(),
+                            "coordinates": void_coords_label,
+                            "center": center,
+                            "radius": radius,
+                            "volume": volume,
+                        }
+                    )
 
-                    if hasattr(graph, cluster_key):
-                        cluster_labels = getattr(graph, cluster_key)
-                    else:
-                        cluster_labels = self.tensor_dict.cosmic_web_clustering(
-                            eps_pc=scale
-                        )
+        return voids
 
-                    # Assign clusters to splits
-                    self._assign_clusters_to_splits(graph, cluster_labels)
+    def _identify_walls(
+        self,
+        coordinates: torch.Tensor,
+        edge_index: torch.Tensor,
+        density_field: torch.Tensor,
+        scale: float,
+    ) -> List[Dict]:
+        """Identify wall structures."""
+        # Medium density, planar regions
+        wall_mask = (density_field > 0.4) & (density_field < 0.7)
 
-                elif method == "grid":
-                    # Grid-based splitting
-                    self._create_grid_splits(graph)
+        # Calculate planarity
+        planarity = self._calculate_planarity(coordinates, edge_index)
+        wall_mask = wall_mask & (planarity > 0.6)
 
-            else:
-                # Fallback to coordinate-based splitting
-                self._create_coordinate_splits(graph)
+        # Find connected wall components
+        wall_edges = edge_index[:, wall_mask[edge_index[0]] & wall_mask[edge_index[1]]]
 
-            # All splits point to same dataset
-            for split in ["train", "val", "test"]:
-                self._splits[split] = self.dataset
+        if wall_edges.size(1) > 0:
+            wall_labels = self._connected_components(wall_edges, coordinates.size(0))
         else:
-            # Multiple graphs - use spatial distribution
-            self._create_multi_graph_spatial_splits()
-
-    def _assign_clusters_to_splits(self, graph: Data, cluster_labels: torch.Tensor):
-        """Assign clusters to train/val/test splits."""
-        unique_clusters = torch.unique(cluster_labels)
-        n_clusters = len(unique_clusters)
-
-        # Shuffle clusters
-        perm = torch.randperm(n_clusters)
-        shuffled_clusters = unique_clusters[perm]
-
-        # Calculate split sizes
-        train_size = int(self.split_config["train_ratio"] * n_clusters)
-        val_size = int(self.split_config["val_ratio"] * n_clusters)
-
-        # Assign clusters
-        train_clusters = shuffled_clusters[:train_size]
-        val_clusters = shuffled_clusters[train_size : train_size + val_size]
-        test_clusters = shuffled_clusters[train_size + val_size :]
-
-        # Create masks
-        graph.train_mask = torch.isin(cluster_labels, train_clusters)
-        graph.val_mask = torch.isin(cluster_labels, val_clusters)
-        graph.test_mask = torch.isin(cluster_labels, test_clusters)
-
-    def _get_cache_path(self, cache_type: str) -> Path:
-        """Get cache path for given type."""
-        filename = f"{self.survey}_{cache_type}"
-        if cache_type == "dataset":
-            filename += f"_k{self.graph_config['k_neighbors']}"
-        if self.max_samples:
-            filename += f"_n{self.max_samples}"
-        filename += ".pt"
-
-        return self.cache_config["cache_dir"] / filename
-
-    def _log_dataset_info(self):
-        """Log comprehensive dataset information."""
-        if not self.dataset:
-            return
-
-        info = {
-            "survey": self.survey,
-            "batch_size": self.batch_size,
-            "num_workers": self.num_workers,
-            "graph_method": self.graph_config["method"],
-            "split_strategy": self.split_config["strategy"],
-        }
-
-        # Add tensor dict info
-        if self.tensor_dict:
-            info["tensor_dict_type"] = type(self.tensor_dict).__name__
-            if hasattr(self.tensor_dict, "coordinate_system"):
-                info["coordinate_system"] = self.tensor_dict.coordinate_system
-
-        # Add feature info
-        if len(self.dataset) > 0:
-            graph = self.dataset[0]
-            info["num_nodes"] = (
-                graph.num_nodes if hasattr(graph, "num_nodes") else graph.x.size(0)
+            wall_labels = torch.full(
+                (coordinates.size(0),), -1, dtype=torch.long, device=coordinates.device
             )
-            info["num_features"] = graph.x.size(1) if hasattr(graph, "x") else 0
 
-            # List available features
-            features = []
-            for attr in [
-                "color_features",
-                "kinematic_features",
-                "spectral_features",
-                "variability_features",
-            ]:
-                if hasattr(graph, attr):
-                    features.append(attr)
-            info["extracted_features"] = features
+        # Extract walls
+        walls = []
+        for label in torch.unique(wall_labels):
+            if label < 0:
+                continue
 
-        logger.info(f"Dataset configuration: {info}")
+            wall_mask_label = wall_labels == label
+            wall_coords = coordinates[wall_mask_label]
 
-    # Transform methods
-    def _normalize_magnitudes(self, data: Data) -> Data:
-        """Normalize magnitude features."""
-        if (
-            hasattr(data, "x")
-            and self.tensor_dict
-            and isinstance(self.tensor_dict, PhotometricTensorDict)
-        ):
-            # Use photometric tensor dict normalization
-            data.x = self.tensor_dict.normalize_magnitudes(data.x)
-        return data
+            if len(wall_coords) >= 8:
+                # Calculate wall properties
+                center = wall_coords.mean(dim=0)
+                area = len(wall_coords)
+                thickness = self._calculate_wall_thickness(wall_coords)
 
-    def _compute_colors(self, data: Data) -> Data:
-        """Compute color indices."""
-        if self.tensor_dict and isinstance(self.tensor_dict, PhotometricTensorDict):
-            colors = self.tensor_dict.compute_colors()
-            data.color_features = colors
-        return data
+                walls.append(
+                    {
+                        "label": label.item(),
+                        "coordinates": wall_coords,
+                        "center": center,
+                        "area": area,
+                        "thickness": thickness,
+                        "point_indices": wall_mask_label.nonzero().squeeze(),
+                    }
+                )
 
-    def _add_kinematics(self, data: Data) -> Data:
-        """Add kinematic features."""
-        if self.tensor_dict and isinstance(self.tensor_dict, SpatialTensorDict):
-            if hasattr(data, "proper_motion"):
-                data.kinematic_features = self.tensor_dict.compute_tangential_velocity()
-        return data
+        return walls
 
-    def _normalize_features(self, data: Data) -> Data:
-        """Generic feature normalization."""
-        if hasattr(data, "x"):
-            # Simple standardization
-            mean = data.x.mean(dim=0, keepdim=True)
-            std = data.x.std(dim=0, keepdim=True)
-            data.x = (data.x - mean) / (std + 1e-8)
-        return data
+    def _calculate_planarity(
+        self, coordinates: torch.Tensor, edge_index: torch.Tensor
+    ) -> torch.Tensor:
+        """Calculate local planarity using neighbor distribution."""
+        n_points = coordinates.size(0)
+        device = coordinates.device
 
-    # DataLoader creation methods remain similar but use optimized settings
-    def train_dataloader(self) -> DataLoader:
-        """Create training DataLoader with optimized settings."""
-        if not self.dataset:
-            raise RuntimeError("Dataset not initialized. Call setup() first.")
+        planarity = torch.zeros(n_points, device=device)
 
-        # Apply optimization config if available
-        batch_size = self.batch_size
-        if self.optimization_config:
-            batch_size = self.optimization_config.batch_size
+        for i in range(n_points):
+            # Find neighbors
+            neighbor_mask = edge_index[0] == i
+            if neighbor_mask.sum() > 2:
+                neighbors = edge_index[1, neighbor_mask]
 
-        # Use neighbor sampling for large graphs
-        if self._should_use_neighbor_sampling():
-            return self._create_neighbor_loader("train", shuffle=True)
+                # Calculate local covariance matrix
+                neighbor_positions = coordinates[neighbors]
+                center = coordinates[i]
+                relative_positions = neighbor_positions - center
 
-        return self._create_standard_loader(
-            self._splits["train"], batch_size, shuffle=True
+                # Compute covariance matrix
+                cov_matrix = torch.matmul(
+                    relative_positions.T, relative_positions
+                ) / len(relative_positions)
+
+                # Calculate eigenvalues
+                eigenvals = torch.linalg.eigvals(cov_matrix).real
+                eigenvals = torch.sort(eigenvals, descending=True)[0]
+
+                # Planarity = (λ1 - λ2) / (λ1 + λ2 + λ3)
+                if eigenvals.sum() > 0:
+                    planarity[i] = (eigenvals[0] - eigenvals[1]) / eigenvals.sum()
+
+        return planarity
+
+    def _calculate_wall_thickness(self, coordinates: torch.Tensor) -> float:
+        """Calculate wall thickness."""
+        if len(coordinates) < 3:
+            return 0.0
+
+        # Use PCA to find wall normal and thickness
+        center = coordinates.mean(dim=0)
+        relative_positions = coordinates - center
+
+        # Compute covariance matrix
+        cov_matrix = torch.matmul(relative_positions.T, relative_positions) / len(
+            relative_positions
         )
 
-    def _should_use_neighbor_sampling(self) -> bool:
-        """Determine if neighbor sampling should be used."""
-        if len(self.dataset) == 1 and hasattr(self.dataset[0], "num_nodes"):
-            # Use neighbor sampling for large single graphs
-            return self.dataset[0].num_nodes > 10000
-        return False
+        # Find eigenvalues and eigenvectors
+        eigenvals, eigenvecs = torch.linalg.eigh(cov_matrix)
 
-    def _create_standard_loader(
-        self, dataset: Any, batch_size: int, shuffle: bool = False
-    ) -> DataLoader:
-        """Create standard DataLoader with all optimizations."""
-        # Build loader arguments
-        loader_args = {
-            "batch_size": batch_size,
-            "shuffle": shuffle,
-            "num_workers": self.num_workers,
-            "pin_memory": True,
-            "persistent_workers": self.num_workers > 0,
+        # Thickness is the smallest eigenvalue
+        thickness = torch.sqrt(eigenvals[0]).item()
+
+        return thickness
+
+    def _cluster_voids(self, coordinates: torch.Tensor, scale: float) -> torch.Tensor:
+        """Cluster void regions using distance-based clustering."""
+        if len(coordinates) == 0:
+            return torch.empty(0, dtype=torch.long, device=coordinates.device)
+
+        # Use simple distance-based clustering
+        edge_index = radius_graph(coordinates, r=scale * 2, loop=False)
+
+        if edge_index.size(1) > 0:
+            labels = self._connected_components(edge_index, len(coordinates))
+        else:
+            labels = torch.arange(len(coordinates), device=coordinates.device)
+
+        return labels
+
+    def _connected_components(
+        self, edge_index: torch.Tensor, n_nodes: int
+    ) -> torch.Tensor:
+        """Find connected components using Union-Find."""
+        device = edge_index.device
+
+        # Initialize each node as its own component
+        parent = torch.arange(n_nodes, device=device)
+
+        def find(x):
+            if parent[x] != x:
+                parent[x] = find(parent[x])
+            return parent[x]
+
+        def union(x, y):
+            px, py = find(x), find(y)
+            if px != py:
+                parent[px] = py
+
+        # Union connected nodes
+        for i in range(edge_index.size(1)):
+            union(edge_index[0, i], edge_index[1, i])
+
+        # Relabel components
+        labels = torch.zeros(n_nodes, dtype=torch.long, device=device)
+        component_map = {}
+        next_label = 0
+
+        for i in range(n_nodes):
+            root = find(i)
+            if root not in component_map:
+                component_map[root] = next_label
+                next_label += 1
+            labels[i] = component_map[root]
+
+        return labels
+
+    def _combine_structure_results(self, results: Dict) -> Dict:
+        """Combine structure results from multiple scales."""
+        combined = {
+            "clusters": [],
+            "voids": [],
+            "walls": [],
+            "statistics": {},
         }
 
-        # Add prefetch factor for multi-worker loading
-        if self.num_workers > 0:
-            loader_args["prefetch_factor"] = 2
+        # Aggregate structures across scales
+        for scale_name, scale_result in results.items():
+            scale = scale_result["scale"]
 
-        return DataLoader(dataset, **loader_args)
+            # Add clusters
+            for cluster in scale_result["clusters"]:
+                cluster["scale"] = scale
+                combined["clusters"].append(cluster)
 
-    @property
-    def num_features(self) -> int:
-        """Get number of features including extracted ones."""
-        if "num_features" not in self._cached_properties:
-            total_features = 0
+            # Add voids
+            for void in scale_result["voids"]:
+                void["scale"] = scale
+                combined["voids"].append(void)
 
-            if self.dataset and len(self.dataset) > 0:
-                graph = self.dataset[0]
+            # Add walls
+            for wall in scale_result["walls"]:
+                wall["scale"] = scale
+                combined["walls"].append(wall)
 
-                # Base features
-                if hasattr(graph, "x"):
-                    total_features = graph.x.size(1)
+        # Calculate statistics
+        combined["statistics"] = {
+            "n_clusters": len(combined["clusters"]),
+            "n_voids": len(combined["voids"]),
+            "n_walls": len(combined["walls"]),
+            "total_structures": len(combined["clusters"])
+            + len(combined["voids"])
+            + len(combined["walls"]),
+        }
 
-                # Add extracted features
-                for attr in [
-                    "color_features",
-                    "kinematic_features",
-                    "spectral_features",
-                    "variability_features",
-                ]:
-                    if hasattr(graph, attr):
-                        feat = getattr(graph, attr)
-                        if isinstance(feat, torch.Tensor):
-                            total_features += feat.size(1) if feat.dim() > 1 else 1
-
-            self._cached_properties["num_features"] = total_features
-
-        return self._cached_properties["num_features"]
-
-    @property
-    def num_classes(self) -> int:
-        """Get number of classes from survey config or data."""
-        if "num_classes" not in self._cached_properties:
-            # Try survey config first
-            num_classes = self.survey_config.get("num_classes", None)
-
-            if num_classes is None and self.dataset and len(self.dataset) > 0:
-                # Infer from data
-                graph = self.dataset[0]
-                if hasattr(graph, "y") and graph.y is not None:
-                    if graph.y.dim() == 1:
-                        num_classes = len(torch.unique(graph.y))
-                    else:
-                        num_classes = graph.y.size(1)
-                else:
-                    num_classes = 2  # Default binary
-
-            self._cached_properties["num_classes"] = num_classes or 2
-
-        return self._cached_properties["num_classes"]
+        return combined
 
 
-def create_datamodule(survey: str, **kwargs) -> AstroDataModule:
+class CosmicWebAnalyzer:
     """
-    Create an optimized DataModule for the given survey.
+    Unified cosmic web analysis combining all structure types.
 
-    This factory function automatically applies survey-specific optimizations
-    and configurations from the central config system.
+    Features:
+    - Integrated cosmic web analysis
+    - Multi-component detection
+    - TensorDict integration
+    - Comprehensive reporting
     """
-    # Get survey-specific configurations
-    survey_config = get_survey_config(survey)
-    optimization = get_survey_optimization(survey)
 
-    # Build default graph config based on survey type
-    survey_type = survey_config.get("type", "catalog")
-    default_graph_config = {
-        "method": "knn",
-        "k_neighbors": 8,
-        "use_3d": True,
-    }
+    def __init__(
+        self,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+    ):
+        """Initialize cosmic web analyzer."""
+        self.device = device
+        self.filament_detector = FilamentDetector(device=device)
+        self.structure_analyzer = StructureAnalyzer(device=device)
 
-    # Add survey-specific graph settings
-    if survey_type == "stellar":
-        default_graph_config["cosmic_web_scales"] = [5.0, 10.0, 25.0, 50.0]
-    elif survey_type == "galaxy":
-        default_graph_config["cosmic_web_scales"] = [1.0, 5.0, 10.0, 20.0]  # Mpc
+        logger.info(f"🌌 CosmicWebAnalyzer initialized on {self.device}")
 
-    # Merge with user config
-    if "graph_config" in kwargs:
-        kwargs["graph_config"] = {**default_graph_config, **kwargs["graph_config"]}
-    else:
-        kwargs["graph_config"] = default_graph_config
+    def analyze_cosmic_web(
+        self,
+        coordinates: Union[torch.Tensor, SpatialTensorDict],
+        density_field: Optional[torch.Tensor] = None,
+        scales: Optional[List[float]] = None,
+    ) -> Dict:
+        """
+        Comprehensive cosmic web analysis.
 
-    # Apply optimization settings if not overridden
-    if optimization:
-        if "batch_size" not in kwargs:
-            kwargs["batch_size"] = optimization.batch_size
-        if "num_workers" not in kwargs:
-            kwargs["num_workers"] = optimization.num_workers
+        Args:
+            coordinates: Object coordinates [N, 3]
+            density_field: Optional density field [N]
+            scales: Analysis scales
 
-    # Set default transform pipeline if not provided
-    if "transform_pipeline" not in kwargs:
-        if survey_type == "stellar":
-            kwargs["transform_pipeline"] = [
-                "normalize_magnitudes",
-                "compute_colors",
-                "add_kinematics",
-            ]
-        elif survey_type == "photometric":
-            kwargs["transform_pipeline"] = ["normalize_magnitudes", "compute_colors"]
+        Returns:
+            Complete cosmic web analysis results
+        """
+        logger.info(
+            f"🌌 Comprehensive cosmic web analysis: {coordinates.size(0) if hasattr(coordinates, 'size') else len(coordinates)} points"
+        )
 
-    return AstroDataModule(survey=survey, **kwargs)
+        # Analyze filaments
+        filament_results = self.filament_detector.detect_filaments(
+            coordinates, density_field, scales
+        )
+
+        # Analyze structures
+        structure_results = self.structure_analyzer.analyze_structures(
+            coordinates, density_field, scales
+        )
+
+        # Combine results
+        combined = self._combine_cosmic_web_results(filament_results, structure_results)
+
+        return {
+            "filaments": filament_results,
+            "structures": structure_results,
+            "combined": combined,
+            "coordinates": coordinates,
+            "scales": scales,
+        }
+
+    def _combine_cosmic_web_results(
+        self, filament_results: Dict, structure_results: Dict
+    ) -> Dict:
+        """Combine filament and structure analysis results."""
+        combined = {
+            "cosmic_web": {
+                "filaments": filament_results["combined"]["filaments"],
+                "clusters": structure_results["combined"]["clusters"],
+                "voids": structure_results["combined"]["voids"],
+                "walls": structure_results["combined"]["walls"],
+            },
+            "statistics": {
+                "n_filaments": len(filament_results["combined"]["filaments"]),
+                "n_clusters": len(structure_results["combined"]["clusters"]),
+                "n_voids": len(structure_results["combined"]["voids"]),
+                "n_walls": len(structure_results["combined"]["walls"]),
+                "total_components": (
+                    len(filament_results["combined"]["filaments"])
+                    + len(structure_results["combined"]["clusters"])
+                    + len(structure_results["combined"]["voids"])
+                    + len(structure_results["combined"]["walls"])
+                ),
+            },
+            "multi_scale": {
+                "filaments": filament_results["multi_scale"],
+                "structures": structure_results["multi_scale"],
+            },
+        }
+
+        return combined

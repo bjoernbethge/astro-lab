@@ -2,8 +2,8 @@
 AstroLab Cosmograph Integration (ALCG)
 =====================================
 
-Cosmograph integration for AstroLab with deep TensorDict support
-and proper astronomical data visualization.
+Cosmograph integration for AstroLab with support for both TensorDict
+and non-TensorDict data sources.
 
 Based on:
 - @cosmograph/cosmograph JavaScript library
@@ -11,16 +11,23 @@ Based on:
 - cosmograph_widget for Jupyter integration
 """
 
-# Convenience functions
+# Core bridge classes
 from .bridge import (
     CosmographBridge,
     CosmographConfig,
     CosmographLinkData,
     CosmographNodeData,
 )
+
+# Convenience functions
 from .convenience import (
+    # TensorDict-based functions
     create_cosmic_web_cosmograph,
+    # Non-TensorDict functions
+    create_cosmograph_from_coordinates,
+    create_cosmograph_from_dataframe,
     create_cosmograph_from_tensordict,
+    create_cosmograph_visualization,
     create_multimodal_cosmograph,
     visualize_analysis_results,
     visualize_spatial_tensordict,
@@ -32,12 +39,16 @@ __all__ = [
     "CosmographConfig",
     "CosmographNodeData",
     "CosmographLinkData",
-    # Convenience functions
+    # TensorDict convenience functions
     "create_cosmograph_from_tensordict",
     "visualize_spatial_tensordict",
     "visualize_analysis_results",
     "create_cosmic_web_cosmograph",
     "create_multimodal_cosmograph",
+    # Non-TensorDict convenience functions
+    "create_cosmograph_from_coordinates",
+    "create_cosmograph_from_dataframe",
+    "create_cosmograph_visualization",
 ]
 
 # Module metadata
@@ -45,16 +56,18 @@ __version__ = "1.0.0"
 __author__ = "AstroLab Team"
 
 # Module documentation
-__doc__ += """
+__doc__ = (
+    (__doc__ or "")
+    + """
 
 ALCG (AstroLab Cosmograph) Integration Features:
 ===============================================
 
-1. **Deep TensorDict Integration**:
-   - Direct visualization from SpatialTensorDict, PhotometricTensorDict, \
-     AnalysisTensorDict
-   - Automatic coordinate system detection and unit conversion
-   - Proper astronomical metadata handling
+1. **Flexible Data Support**:
+   - Direct visualization from SpatialTensorDict, PhotometricTensorDict, AnalysisTensorDict
+   - Support for numpy arrays, Polars/Pandas DataFrames
+   - Automatic data source detection and routing
+   - Zero-copy operations where possible
 
 2. **Astronomical Styling**:
    - Survey-specific color schemes (Gaia gold, SDSS blue, TNG50 green)
@@ -76,35 +89,32 @@ ALCG (AstroLab Cosmograph) Integration Features:
    - Interactive tooltips with astronomical information
    - Export capabilities for publications and presentations
 
-Features:
-=================
+Usage Examples:
+===============
 
 ```python
-from astro_lab.widgets.alcg import CosmicWebCosmographVisualizer
+from astro_lab.widgets.alcg import create_cosmograph_visualization
 
-# cosmic web visualization
-visualizer = CosmicWebCosmographVisualizer()
+# From numpy coordinates
+coords = np.random.randn(1000, 3) * 100
+viz = create_cosmograph_visualization(coords, survey="gaia")
 
-# Configure for different analysis types
-config = visualizer.create_config_for_analysis(
-    analysis_type="clustering",
-    survey="gaia",
-    n_objects=25000,
-    clustering_scales=[5.0, 10.0, 25.0],
-    show_filaments=True,
-    interactive_selection=True
-)
+# From Polars DataFrame
+df = pl.DataFrame({
+    "x": np.random.randn(1000),
+    "y": np.random.randn(1000),
+    "z": np.random.randn(1000),
+    "magnitude": np.random.rand(1000) * 10
+})
+viz = create_cosmograph_visualization(df)
 
-# Create visualization with analysis overlays
-viz = visualizer.create_from_analysis_tensordict(
-    analysis_tensordict=results,
-    config=config
-)
+# From TensorDict (if available)
+spatial_tensor = SpatialTensorDict(coordinates=coords_tensor)
+viz = create_cosmograph_visualization(spatial_tensor)
 
-# Add interactive features
-viz.add_cluster_selection_callback(on_cluster_select)
-viz.add_magnitude_filtering(magnitude_range=[8.0, 15.0])
-viz.enable_temporal_animation(time_steps=analysis_timesteps)
+# From dictionary
+data = {"coordinates": coords}
+viz = create_cosmograph_visualization(data)
 ```
 
 Performance Characteristics:
@@ -119,3 +129,4 @@ The ALCG module provides the most advanced astronomical data visualization
 capabilities available, combining Cosmograph's cutting-edge GPU acceleration
 with AstroLab's deep astronomical domain knowledge.
 """
+)

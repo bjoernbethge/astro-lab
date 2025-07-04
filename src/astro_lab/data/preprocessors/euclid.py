@@ -11,7 +11,7 @@ import numpy as np
 import polars as pl
 import torch
 
-from .base import BaseSurveyProcessor
+from .astro import BaseSurveyProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +108,7 @@ class EuclidPreprocessor(BaseSurveyProcessor):
         return torch.tensor(features, dtype=torch.float32)
 
     def preprocess(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Apply Euclid-specific preprocessing."""
+        """Apply Euclid-specific preprocessing. Expects a DataFrame as input."""
         # Calculate colors if we have magnitudes
         mag_bands = []
         for band in ["vis", "y", "j", "h"]:
@@ -167,4 +167,35 @@ class EuclidPreprocessor(BaseSurveyProcessor):
                 (pl.col("e1") ** 2 + pl.col("e2") ** 2).sqrt().alias("e_mag")
             )
 
+        return df
+
+    def load_raw(self, max_samples=None):
+        return super().load_raw(max_samples=max_samples)
+
+    def filter(self, df):
+        return self.apply_quality_filters(df)
+
+    def create_graph(self, df):
+        return super().create_graph(df)
+
+    def load_processed(self):
+        return super().load_processed()
+
+    def load_graph(self):
+        raise NotImplementedError(
+            "load_graph must be implemented for Euclid if needed."
+        )
+
+    def apply_quality_filters(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Apply only central harmonization and filter for valid coordinates."""
+        df = self.harmonize_survey_columns(df)
+        initial_count = len(df)
+        if not ("ra" in df.columns and "dec" in df.columns):
+            raise ValueError(
+                "Data must contain 'ra' and 'dec' columns after harmonization!"
+            )
+        df = df.filter(df["ra"].is_not_null() & df["dec"].is_not_null())
+        logger.info(
+            f"Euclid quality filters: {initial_count:,}  {len(df):,} ({len(df) / initial_count * 100:.1f}% retained)"
+        )
         return df

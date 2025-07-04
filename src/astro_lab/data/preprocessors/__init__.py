@@ -1,79 +1,77 @@
+"""Astronomical survey preprocessors.
+
+Unified preprocessing pipeline for different astronomical surveys.
+Each preprocessor implements filtering, transformation, and feature extraction
+optimized for machine learning applications.
 """
-Survey Data Preprocessors
-========================
 
-Factory pattern for survey preprocessors with proper TensorDict integration.
-"""
-
-from typing import Type
-
-from astro_lab.config.registry import PREPROCESSOR_REGISTRY
-
-from .base import BaseSurveyProcessor
+from .astro import (
+    AstroLabDataPreprocessor,
+    AstronomicalPreprocessorMixin,
+    StatisticalPreprocessorMixin,
+)
 from .des import DESPreprocessor
-from .euclid import EuclidPreprocessor
 from .exoplanet import ExoplanetPreprocessor
 from .gaia import GaiaPreprocessor
-from .linear import LinearPreprocessor
+from .linear import LINEARPreprocessor
 from .nsa import NSAPreprocessor
-from .panstarrs import PanSTARRSPreprocessor
 from .rrlyrae import RRLyraePreprocessor
 from .sdss import SDSSPreprocessor
 from .tng50 import TNG50Preprocessor
 from .twomass import TwoMASSPreprocessor
 from .wise import WISEPreprocessor
 
-# Register preprocessors in the global registry
-PREPROCESSOR_REGISTRY["gaia"] = GaiaPreprocessor
-PREPROCESSOR_REGISTRY["sdss"] = SDSSPreprocessor
-PREPROCESSOR_REGISTRY["nsa"] = NSAPreprocessor
-PREPROCESSOR_REGISTRY["tng50"] = TNG50Preprocessor
-PREPROCESSOR_REGISTRY["exoplanet"] = ExoplanetPreprocessor
-PREPROCESSOR_REGISTRY["twomass"] = TwoMASSPreprocessor
-PREPROCESSOR_REGISTRY["wise"] = WISEPreprocessor
-PREPROCESSOR_REGISTRY["panstarrs"] = PanSTARRSPreprocessor
-PREPROCESSOR_REGISTRY["des"] = DESPreprocessor
-PREPROCESSOR_REGISTRY["euclid"] = EuclidPreprocessor
-PREPROCESSOR_REGISTRY["linear"] = LinearPreprocessor
-PREPROCESSOR_REGISTRY["rrlyrae"] = RRLyraePreprocessor
+# Survey preprocessor registry
+PREPROCESSOR_REGISTRY = {
+    "gaia": GaiaPreprocessor,
+    "sdss": SDSSPreprocessor,
+    "nsa": NSAPreprocessor,
+    "tng50": TNG50Preprocessor,
+    "exoplanet": ExoplanetPreprocessor,
+    "twomass": TwoMASSPreprocessor,
+    "wise": WISEPreprocessor,
+    "des": DESPreprocessor,
+    "linear": LINEARPreprocessor,
+    "rrlyrae": RRLyraePreprocessor,
+}
 
 
-def get_preprocessor(survey: str, **kwargs) -> BaseSurveyProcessor:
-    """
-    Get preprocessor instance for a given survey.
+def get_preprocessor(survey_name: str, config=None):
+    """Get preprocessor for specified survey.
 
     Args:
-        survey: Survey name
-        **kwargs: Additional configuration for the preprocessor
+        survey_name: Name of survey ('gaia', 'sdss', 'nsa', etc.)
+        config: Optional configuration dict
 
     Returns:
-        Preprocessor instance
+        Initialized preprocessor instance
+
+    Raises:
+        ValueError: If survey not supported
     """
-    if survey not in PREPROCESSOR_REGISTRY:
-        available = ", ".join(sorted(PREPROCESSOR_REGISTRY.keys()))
-        raise ValueError(f"Unknown survey: {survey}. Available: {available}")
+    if survey_name not in PREPROCESSOR_REGISTRY:
+        available = list(PREPROCESSOR_REGISTRY.keys())
+        raise ValueError(
+            f"Survey '{survey_name}' not supported. Available: {available}"
+        )
 
-    preprocessor_class = PREPROCESSOR_REGISTRY[survey]
-    return preprocessor_class(survey, **kwargs)
-
-
-def get_available_preprocessors() -> list[str]:
-    """Get list of available survey preprocessors."""
-    return sorted(PREPROCESSOR_REGISTRY.keys())
+    preprocessor_class = PREPROCESSOR_REGISTRY[survey_name]
+    return preprocessor_class(config=config)
 
 
-def register_preprocessor(survey: str, preprocessor_class: Type[BaseSurveyProcessor]):
-    """Register a new preprocessor for a survey."""
-    PREPROCESSOR_REGISTRY[survey] = preprocessor_class
+def list_available_surveys():
+    """List all available survey preprocessors.
+
+    Returns:
+        List of survey names
+    """
+    return list(PREPROCESSOR_REGISTRY.keys())
 
 
 __all__ = [
-    "get_preprocessor",
-    "get_available_preprocessors",
-    "register_preprocessor",
-    "BaseSurveyProcessor",
-    "PREPROCESSOR_REGISTRY",
-    # Individual preprocessors
+    "AstroLabDataPreprocessor",
+    "AstronomicalPreprocessorMixin",
+    "StatisticalPreprocessorMixin",
     "GaiaPreprocessor",
     "SDSSPreprocessor",
     "NSAPreprocessor",
@@ -81,9 +79,10 @@ __all__ = [
     "ExoplanetPreprocessor",
     "TwoMASSPreprocessor",
     "WISEPreprocessor",
-    "PanSTARRSPreprocessor",
     "DESPreprocessor",
-    "EuclidPreprocessor",
-    "LinearPreprocessor",
+    "LINEARPreprocessor",
     "RRLyraePreprocessor",
+    "get_preprocessor",
+    "list_available_surveys",
+    "PREPROCESSOR_REGISTRY",
 ]

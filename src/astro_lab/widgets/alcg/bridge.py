@@ -13,6 +13,8 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable, Dict, List, Optional, TypedDict, Union
 
 import numpy as np
+import polars as pl
+import torch
 
 # TensorDict imports
 from astro_lab.tensors import (
@@ -274,7 +276,7 @@ class CosmographBridge:
         start_time = time.time()
 
         # Extract coordinates and metadata
-        coords = spatial_tensordict["coordinates"]
+        coords = spatial_tensordict
         coordinate_system = spatial_tensordict.meta.get("coordinate_system", "unknown")
         unit = spatial_tensordict.meta.get("unit", "pc")
         n_objects = spatial_tensordict.n_objects
@@ -791,3 +793,168 @@ class CosmographBridge:
         green = int(128)
 
         return f"#{red:02x}{green:02x}{blue:02x}"
+
+    def from_coordinates(
+        self,
+        coords: np.ndarray,
+        edges: Optional[np.ndarray] = None,
+        radius: float = 5.0,
+        **kwargs,
+    ) -> Any:
+        """
+        Create Cosmograph visualization from coordinate array.
+
+        Args:
+            coords: Coordinate array [N, 3]
+            edges: Optional edge array [M, 2]
+            radius: Radius for neighbor graph creation
+            **kwargs: Additional Cosmograph parameters
+
+        Returns:
+            Cosmograph widget
+        """
+        if edges is None and kwargs.get("build_graph", True):
+            # Create simple neighbor graph using GPU acceleration if available
+            if self.use_gpu:
+                try:
+                    device = torch.device(self.device)
+                    coords_tensor = torch.tensor(
+                        coords, dtype=torch.float32, device=device
+                    )
+
+                    # Create k-NN graph on GPU
+                    from torch_geometric.nn import knn_graph
+
+                    edge_index = knn_graph(
+                        coords_tensor,
+                        k=kwargs.get("k_neighbors", 5),
+                        batch=None,
+                        loop=False,
+                    )
+
+                    # Move back to CPU and convert to numpy
+                    edge_index = edge_index.cpu().numpy()
+
+                    # Calculate distances and filter by radius
+                    edge_list = []
+                    for i in range(edge_index.shape[1]):
+                        src, tgt = edge_index[:, i]
+                        dist = np.linalg.norm(coords[src] - coords[tgt])
+                        if dist <= radius:
+                            edge_list.append([src, tgt])
+
+                    edges = (
+                        np.array(edge_list, dtype=int)
+                        if edge_list
+                        else np.array([], dtype=int).reshape(0, 2)
+                    )
+                except Exception as e:
+                    logger.warning(f"GPU graph creation failed, skipping edges: {e}")
+                    edges = np.array([], dtype=int).reshape(0, 2)
+            else:
+                edges = np.array([], dtype=int).reshape(0, 2)
+
+        # Create nodes
+        nodes = []
+        for i in range(len(coords)):
+            node = CosmographNodeData(
+                id=f"point_{i}",
+                x=float(coords[i, 0]),
+                y=float(coords[i, 1]),
+                z=float(coords[i, 2]) if coords.shape[1] > 2 else 0.0,
+            )
+            nodes.append(node)
+
+        # Create links
+        links = []
+        if edges is not None and edges.size > 0:
+            for src, tgt in edges:
+                link = CosmographLinkData(
+                    source=f"point_{src}",
+                    target=f"point_{tgt}",
+                )
+                links.append(link)
+
+        # Apply styling
+        survey = kwargs.get("survey", "unknown")
+        config = self._create_default_config(survey, len(coords))
+
+        # Override with custom colors if provided
+        if "point_color" in kwargs:
+            config.node_color = kwargs["point_color"]
+        if "link_color" in kwargs:
+            config.link_color = kwargs["link_color"]
+
+        return {
+            "nodes": nodes,
+            "links": links,
+            "config": config.to_dict(),
+            "metadata": {
+                "type": "coordinates",
+                "n_objects": len(coords),
+                "n_links": len(links),
+            },
+        }
+
+    def from_polars_dataframe(
+        self,
+        df: pl.DataFrame,
+        x_col: str = "x",
+        y_col: str = "y",
+        z_col: str = "z",
+        id_col: Optional[str] = None,
+        radius: float = 5.0,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Create Cosmograph visualization directly from Polars DataFrame.
+
+        Args:
+            df: Polars DataFrame with coordinate columns
+            x_col: Column name for x coordinates
+            y_col: Column name for y coordinates
+            z_col: Column name for z coordinates
+            id_col: Column name for point IDs (optional)
+            radius: Radius for neighbor graph creation
+            **kwargs: Additional Cosmograph parameters
+
+        Returns:
+            Cosmograph data structure
+        """
+        # Extract coordinates
+        coords = df.select([x_col, y_col, z_col]).to_numpy()
+
+        # Create IDs if not provided
+        if id_col is None or id_col not in df.columns:
+            ids = [f"point_{i}" for i in range(len(df))]
+        else:
+            ids = df[id_col].to_list()
+
+        # Create nodes with IDs
+        nodes = []
+        for i, node_id in enumerate(ids):
+            node = CosmographNodeData(
+                id=str(node_id),
+                x=float(coords[i, 0]),
+                y=float(coords[i, 1]),
+                z=float(coords[i, 2]) if coords.shape[1] > 2 else 0.0,
+            )
+
+            # Add any additional columns as node properties
+            for col in df.columns:
+                if col not in [x_col, y_col, z_col, id_col]:
+                    node[col] = df[col][i]
+
+            nodes.append(node)
+
+        # Use from_coordinates for graph creation
+        result = self.from_coordinates(coords, radius=radius, **kwargs)
+
+        # Replace nodes with our ID-based nodes
+        result["nodes"] = nodes
+
+        # Update metadata
+        result["metadata"]["type"] = "polars_dataframe"
+        result["metadata"]["columns"] = df.columns
+
+        return result

@@ -1,40 +1,169 @@
-#!/usr/bin/env python3
 """
-AstroLab Preprocess CLI
-======================
-
-Complete data preparation pipeline:
-1. Load raw data (if needed)
-2. Clean and preprocess data
-3. Create SurveyTensorDicts with 3D spatial coordinates
-4. Build graph structures for training
+Preprocessing CLI commands for AstroLab.
 """
 
-import argparse
 import logging
-import sys
-import traceback
 from pathlib import Path
 
-from astro_lab.data.preprocessors import get_preprocessor
+import polars as pl
+import torch
+
+from astro_lab.config import get_optimal_batch_size
+
+from ..config import get_data_paths, get_survey_config
+from ..data.preprocessors import get_preprocessor
+from ..data.preprocessors.nsa import NSAPreprocessor
+
+logger = logging.getLogger(__name__)
 
 
-def setup_logging(verbose: bool = False) -> logging.Logger:
-    """Setup logging configuration."""
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
-    )
-    return logging.getLogger(__name__)
+def preprocess_survey(args) -> int:
+    """Preprocess a single survey."""
+    survey = args.survey
+
+    print(f"{'=' * 60}")
+    print(f"Preprocessing {survey.upper()} data")
+    print(f"{'=' * 60}")
+
+    try:
+        # Get preprocessor
+        config = get_survey_config(survey)
+        # handle_missing wird nicht mehr unterstützt, immer generische Imputation
+        preprocessor = get_preprocessor(survey, config=config)
+
+        # Check if data exists
+        data_path = preprocessor._find_data_file()
+
+        if not data_path.exists():
+            print(f"\n❌ Error: No raw data found for {survey}")
+            print(f"Expected location: {data_path}")
+            print("\nPlease download the data first:")
+            print(f"  astro-lab download {survey}")
+            return 1
+
+        print(f"\n📂 Raw data found: {data_path}")
+        print(f"📊 File size: {data_path.stat().st_size / (1024**2):.1f} MB")
+
+        # Check if already processed
+        processed_dir = Path(get_data_paths()["processed_dir"]) / survey
+        processed_file = processed_dir / f"{survey}.parquet"
+
+        # Clean up processed files if --force is set
+        if args.force:
+            import os
+
+            for ext in ["*.pt", "*.json"]:
+                for f in processed_dir.glob(ext):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+
+        if processed_file.exists() and not args.force:
+            print(f"\n✅ Processed data already exists: {processed_file}")
+            print("Use --force to reprocess")
+            return 0
+
+        # Run preprocessing
+        print(f"\n🔄 Processing {survey} data...")
+        # Load raw data
+        if data_path.suffix == ".parquet":
+            raw_df = pl.read_parquet(data_path)
+        elif data_path.suffix == ".csv":
+            raw_df = pl.read_csv(data_path)
+        elif data_path.suffix == ".fits" and survey == "nsa":
+            raw_df = NSAPreprocessor(config)._load_fits_data(str(data_path))
+        else:
+            raise ValueError(f"Unsupported file format: {data_path.suffix}")
+        df = preprocessor.preprocess(raw_df)
+
+        # Save harmonized parquet
+        processed_dir.mkdir(parents=True, exist_ok=True)
+        df.write_parquet(processed_file)
+
+        # === Build ML-ready dataset (.pt) with sampling ===
+        print(
+            f"\n🔄 Building ML-ready dataset (.pt) with sampling strategy '{getattr(args, 'sampling_strategy', 'knn')}'..."
+        )
+
+        from astro_lab.data.dataset.astrolab import create_dataset
+
+        # Collect sampling parameters
+        sampling_kwargs = {}
+        if hasattr(args, "k") and args.k is not None:
+            sampling_kwargs["k"] = args.k
+        if hasattr(args, "radius") and args.radius is not None:
+            sampling_kwargs["radius"] = args.radius
+        if hasattr(args, "num_subgraphs") and args.num_subgraphs is not None:
+            sampling_kwargs["num_subgraphs"] = args.num_subgraphs
+        if (
+            hasattr(args, "points_per_subgraph")
+            and args.points_per_subgraph is not None
+        ):
+            sampling_kwargs["points_per_subgraph"] = args.points_per_subgraph
+
+        # Batch size and device
+        batch_size = getattr(args, "batch_size", None)
+        device = getattr(args, "device", None)
+        if device is None:
+            device = "cpu"
+        if batch_size is None:
+            # Use automatic detection based on device
+            if device.startswith("cuda") and torch.cuda.is_available():
+                gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+                batch_size = get_optimal_batch_size(gpu_memory_gb)
+                print(
+                    f"   (Auto-detected batch size: {batch_size} for {gpu_memory_gb:.1f} GB GPU, Device: {device})"
+                )
+            else:
+                batch_size = get_optimal_batch_size(None)
+                print(
+                    f"   (Auto-detected batch size: {batch_size} for CPU, Device: {device})"
+                )
+        else:
+            print(f"   (Batch size: {batch_size}, Device: {device})")
+
+        # Create dataset with selected sampling strategy
+        dataset = create_dataset(
+            root=processed_dir,
+            survey_name=survey,
+            data_type=getattr(args, "type", "spatial"),
+            sampling_strategy=getattr(args, "sampling_strategy", "knn"),
+            sampler_kwargs=sampling_kwargs,
+        )
+        dataset.process(batch_size=batch_size, device=device)
+        pt_path = dataset.processed_paths[0]
+        print(f"\n✅ ML-ready dataset saved to: {pt_path}")
+        print(
+            f"   (Sampling: {getattr(args, 'sampling_strategy', 'knn')}, Params: {sampling_kwargs})"
+        )
+        print(f"   (Batch size: {batch_size}, Device: {device})")
+
+        # Show results
+        print("\n✅ Processing complete!")
+        print(f"📊 Processed {len(df):,} rows")
+        print(f"💾 Saved to: {processed_file}")
+        print(f"  Columns: {len(df.columns)}")
+        print(f"  Memory: {df.estimated_size() / (1024 * 1024):.1f} MB")
+
+        return 0
+
+    except Exception as e:
+        import traceback
+
+        logger.error(f"Preprocessing failed: {e}", exc_info=True)
+        print(f"\n❌ Error: {e}")
+        print("\n📋 Stack trace:")
+        traceback.print_exc()
+        return 1
 
 
+# Legacy function for compatibility
 def add_preprocess_arguments(parser):
+    """Add preprocess arguments to parser (legacy)."""
     parser.add_argument(
         "--surveys",
         nargs="+",
-        required=True,
         choices=[
             "gaia",
             "sdss",
@@ -46,84 +175,42 @@ def add_preprocess_arguments(parser):
             "panstarrs",
             "des",
             "euclid",
-            "linear",
-            "rrlyrae",
         ],
         help="Surveys to preprocess",
     )
     parser.add_argument(
-        "--k-neighbors",
-        "-k",
+        "--max-samples",
         type=int,
-        default=20,
-        help="Number of nearest neighbors for graph (default: 20)",
+        help="Maximum number of samples to preprocess",
     )
     parser.add_argument(
-        "--force",
-        "-f",
-        action="store_true",
-        help="Force re-processing even if files exist",
+        "--output-dir",
+        type=Path,
+        help="Output directory for preprocessed data",
     )
-    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
 
 
-def main(args=None) -> int:
-    """Main entry point for preprocess command."""
-    parser = argparse.ArgumentParser(
-        description="Preprocess astronomical survey data for training",
-        epilog="""
-Examples:
-  # Preprocess single survey
-  astro-lab preprocess --surveys gaia
-
-  # Preprocess multiple surveys  
-  astro-lab preprocess --surveys gaia sdss nsa
-
-  # Force re-processing
-  astro-lab preprocess --surveys gaia --force
-        """,
-    )
-    add_preprocess_arguments(parser)
-
-    # Only parse args if not already a Namespace
-    if not isinstance(args, argparse.Namespace):
-        args = parser.parse_args(args)
-    logger = setup_logging(getattr(args, "verbose", False))
-
-    if not getattr(args, "surveys", None):
-        logger.error("No surveys specified. Use --surveys SURVEY [SURVEY ...]")
-        return 1
-
-    try:
+def main(args) -> int:
+    """Legacy main function for old CLI structure."""
+    if hasattr(args, "surveys") and args.surveys:
+        # Process multiple surveys (old style)
         for survey in args.surveys:
-            logger.info(f"Preprocessing {survey} data...")
+            # Create new args object with single survey
+            class NewArgs:
+                def __init__(self, survey, force=False, max_samples=None):
+                    self.survey = survey
+                    self.force = force
+                    self.max_samples = max_samples
+                    self.verbose = getattr(args, "verbose", False)
 
-            # Simply trigger dataset creation which handles preprocessing
-            from astro_lab.data import create_datamodule
-            
-            # This will automatically preprocess if needed
-            dm = create_datamodule(
-                survey=survey,
-                task="graph",
-                dataset_type="point_cloud",
-                k_neighbors=args.k_neighbors,
-                force_reload=args.force,
-                num_workers=0,  # Single process for preprocessing
-            )
-            
-            # Access dataset to ensure it's processed
-            _ = len(dm.train_dataset) if hasattr(dm, 'train_dataset') else 0
-            
-            logger.info(f"✅ {survey} preprocessing complete!")
+            new_args = NewArgs(survey, force=False, max_samples=args.max_samples)
+            result = preprocess_survey(new_args)
+
+            if result is not None and result != 0:
+                return int(result)
 
         return 0
-
-    except Exception as e:
-        logger.error(f"❌ Preprocessing failed: {e}")
-        if args.verbose:
-            traceback.print_exc()
-        return 1
-
-
-if __name__ == "__main__":
-    exit(main())
+    else:
+        # New style - single survey
+        result = preprocess_survey(args)
+        return int(result) if result is not None else 0

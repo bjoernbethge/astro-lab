@@ -1,32 +1,53 @@
 """
-Spatial Clustering for Cosmic Web Analysis
-==========================================
+Spatial Clustering for Astronomical Data Analysis
+================================================
 
-Efficient clustering algorithms using PyTorch and PyTorch Geometric.
+Efficient clustering algorithms using PyTorch Geometric and TensorDict integration.
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict, List, Optional, Union
 
 import torch
 from torch_geometric.nn import radius_graph
 from torch_geometric.utils import to_undirected
 
+from astro_lab.models.autoencoders.base import BaseAutoencoder
+from astro_lab.models.autoencoders.pointcloud_autoencoder import PointCloudAutoencoder
+from astro_lab.tensors import SpatialTensorDict
+
 logger = logging.getLogger(__name__)
 
 
 class SpatialClustering:
-    """Efficient spatial clustering using PyTorch Geometric operations."""
+    """
+    Efficient spatial clustering using PyTorch Geometric operations.
 
-    def __init__(self, n_clusters: int = 8, random_state: int = 42):
-        """Initialize HDBSCAN clustering."""
-        self.n_clusters = n_clusters
+    Features:
+    - Multi-scale clustering analysis
+    - Friends-of-Friends algorithm
+    - DBSCAN implementation
+    - TensorDict integration
+    - GPU acceleration
+    """
+
+    def __init__(
+        self,
+        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        random_state: int = 42,
+    ):
+        """Initialize spatial clustering."""
+        self.device = device
         self.random_state = random_state
-        self.device = "cuda"
+
+        if random_state is not None:
+            torch.manual_seed(random_state)
+
+        logger.info(f"🔗 SpatialClustering initialized on {self.device}")
 
     def multi_scale_analysis(
         self,
-        coordinates: torch.Tensor,
+        coordinates: Union[torch.Tensor, SpatialTensorDict],
         scales: List[float],
         min_samples: int = 5,
     ) -> Dict[str, Dict]:
@@ -34,22 +55,30 @@ class SpatialClustering:
         Perform multi-scale clustering analysis.
 
         Args:
-            coordinates: Coordinates tensor [N, 3]
+            coordinates: Coordinates tensor [N, 3] or SpatialTensorDict
             scales: Clustering scales in appropriate units
             min_samples: Minimum cluster size
 
         Returns:
             Dictionary with clustering results per scale
         """
+        # Handle TensorDict input
+        if isinstance(coordinates, SpatialTensorDict):
+            coords = coordinates.coordinates
+        else:
+            coords = coordinates
+
+        coords = coords.to(self.device)
+
         results = {}
-        n_total = coordinates.size(0)
+        n_total = coords.size(0)
 
         logger.debug(f"🔗 Multi-scale clustering: {len(scales)} scales")
 
         for scale in scales:
             # Use Friends-of-Friends clustering
             labels = self.friends_of_friends(
-                coordinates, linking_length=scale, min_group_size=min_samples
+                coords, linking_length=scale, min_group_size=min_samples
             )
 
             # Analyze results
@@ -131,71 +160,6 @@ class SpatialClustering:
 
         return labels
 
-    def _connected_components_torch(
-        self, edge_index: torch.Tensor, n_nodes: int
-    ) -> torch.Tensor:
-        """Find connected components using pure PyTorch operations."""
-        device = edge_index.device
-
-        # Initialize each node as its own component
-        labels = torch.arange(n_nodes, device=device)
-
-        # Iteratively merge components
-        changed = True
-        while changed:
-            changed = False
-
-            # Get minimum label among neighbors
-            src, dst = edge_index
-            neighbor_labels = labels[dst]
-
-            # Scatter min to update labels
-            new_labels = labels.clone()
-            new_labels.scatter_reduce_(
-                0, src, neighbor_labels, reduce="amin", include_self=True
-            )
-
-            # Check if any labels changed
-            if not torch.equal(labels, new_labels):
-                changed = True
-                labels = new_labels
-
-        # Relabel consecutively
-        unique_labels = torch.unique(labels)
-        label_map = torch.zeros(n_nodes, dtype=torch.long, device=device)
-        for i, label in enumerate(unique_labels):
-            label_map[labels == label] = i
-
-        return label_map
-
-    def _analyze_clustering(self, labels: torch.Tensor, n_total: int) -> Dict:
-        """Analyze clustering results."""
-        # Count clusters and noise
-        unique_labels, counts = torch.unique(labels, return_counts=True)
-
-        cluster_mask = unique_labels >= 0
-        n_clusters = cluster_mask.sum().item()
-        n_noise = (labels == -1).sum().item()
-        n_grouped = n_total - n_noise
-
-        # Cluster statistics
-        if n_clusters > 0:
-            cluster_sizes = counts[cluster_mask]
-            largest_cluster = cluster_sizes.max().item()
-            mean_cluster_size = cluster_sizes.float().mean().item()
-        else:
-            largest_cluster = 0
-            mean_cluster_size = 0.0
-
-        return {
-            "n_clusters": n_clusters,
-            "n_noise": n_noise,
-            "n_grouped": n_grouped,
-            "grouped_fraction": n_grouped / n_total if n_total > 0 else 0.0,
-            "largest_cluster_size": largest_cluster,
-            "mean_cluster_size": mean_cluster_size,
-        }
-
     def dbscan_torch(
         self, coordinates: torch.Tensor, eps: float, min_samples: int = 5
     ) -> torch.Tensor:
@@ -264,3 +228,107 @@ class SpatialClustering:
                 cluster_id += 1
 
         return labels
+
+    def _connected_components_torch(
+        self, edge_index: torch.Tensor, n_nodes: int
+    ) -> torch.Tensor:
+        """Find connected components using pure PyTorch operations."""
+        device = edge_index.device
+
+        # Initialize each node as its own component
+        labels = torch.arange(n_nodes, device=device)
+
+        # Iteratively merge components
+        changed = True
+        while changed:
+            changed = False
+
+            # Get minimum label among neighbors
+            src, dst = edge_index
+            neighbor_labels = labels[dst]
+
+            # Scatter min to update labels
+            new_labels = labels.clone()
+            new_labels.scatter_reduce_(
+                0, src, neighbor_labels, reduce="amin", include_self=True
+            )
+
+            # Check if any labels changed
+            if not torch.equal(labels, new_labels):
+                changed = True
+                labels = new_labels
+
+        # Relabel consecutively
+        unique_labels = torch.unique(labels)
+        label_map = torch.zeros(n_nodes, dtype=torch.long, device=device)
+        for i, label in enumerate(unique_labels):
+            label_map[labels == label] = i
+
+        return label_map
+
+    def _analyze_clustering(self, labels: torch.Tensor, n_total: int) -> Dict:
+        """Analyze clustering results."""
+        # Count clusters and noise
+        unique_labels, counts = torch.unique(labels, return_counts=True)
+
+        cluster_mask = unique_labels >= 0
+        n_clusters = cluster_mask.sum().item()
+        n_noise = (labels == -1).sum().item()
+        n_grouped = n_total - n_noise
+
+        # Cluster statistics
+        if n_clusters > 0:
+            cluster_sizes = counts[cluster_mask]
+            largest_cluster = cluster_sizes.max().item()
+            mean_cluster_size = cluster_sizes.float().mean().item()
+        else:
+            largest_cluster = 0
+            mean_cluster_size = 0.0
+
+        return {
+            "n_clusters": n_clusters,
+            "n_noise": n_noise,
+            "n_grouped": n_grouped,
+            "grouped_fraction": n_grouped / n_total if n_total > 0 else 0.0,
+            "largest_cluster_size": largest_cluster,
+            "mean_cluster_size": mean_cluster_size,
+            "cluster_sizes": counts[cluster_mask].tolist() if n_clusters > 0 else [],
+        }
+
+
+def analyze_with_autoencoder(
+    coordinates: Union[torch.Tensor, SpatialTensorDict],
+    autoencoder: Optional[BaseAutoencoder] = None,
+    device: str = "cuda" if torch.cuda.is_available() else "cpu",
+) -> Dict:
+    """
+    Analyze spatial data using autoencoder for dimensionality reduction.
+
+    Args:
+        coordinates: Input coordinates
+        autoencoder: Pre-trained autoencoder (optional)
+        device: Computation device
+
+    Returns:
+        Analysis results with latent representations
+    """
+    if autoencoder is None:
+        # Create default autoencoder
+        autoencoder = PointCloudAutoencoder(
+            input_dim=3, latent_dim=16, hidden_dim=64, use_geometric=True
+        ).to(device)
+
+    # Get latent representations
+    latent_repr = autoencoder.encode(coordinates)
+
+    # Perform clustering on latent space
+    clustering = SpatialClustering(device=device)
+    clustering_results = clustering.multi_scale_analysis(
+        latent_repr, scales=[0.5, 1.0, 2.0], min_samples=3
+    )
+
+    return {
+        "latent_representations": latent_repr,
+        "clustering_results": clustering_results,
+        "autoencoder": autoencoder,
+    }

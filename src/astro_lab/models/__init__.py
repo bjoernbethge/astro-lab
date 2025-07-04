@@ -1,97 +1,30 @@
-"""
-AstroLab Models - Astronomical Neural Networks
-===================================================
+"""AstroLab Models Module - Graph neural networks for astronomical data."""
 
-Core model implementations for astronomical data analysis.
-"""
-
-from .components import (
-    ClassificationHead,
-    MultiModalFusion,
-    PeriodDetectionHead,
-    PhotometricEncoder,
-    RegressionHead,
-    ShapeModelingHead,
-    SpectralEncoder,
-    TemporalEncoder,
+from .astro_model import (
+    AstroModel,
+    create_cosmic_web_model,
+    create_exoplanet_model,
+    create_galaxy_model,
+    create_stellar_model,
 )
-from .core import (
-    AstroBaseModel,
-    AstroCosmicWebGNN,
-    AstroGraphGNN,
-    AstroNodeGNN,
-    AstroPointNet,
-    AstroTemporalGNN,
-)
+from .autoencoders.base import BaseAutoencoder
+from .autoencoders.pointcloud_autoencoder import PointCloudAutoencoder
+from .base_model import AstroBaseModel
+from .mixins import ExplainabilityMixin
 
 __all__ = [
-    # Core models
+    "AstroModel",
     "AstroBaseModel",
-    "AstroGraphGNN",
-    "AstroNodeGNN",
-    "AstroPointNet",
-    "AstroTemporalGNN",
-    "AstroCosmicWebGNN",
-    # Components
-    "ClassificationHead",
-    "RegressionHead",
-    "PeriodDetectionHead",
-    "ShapeModelingHead",
-    "PhotometricEncoder",
-    "SpectralEncoder",
-    "TemporalEncoder",
-    "MultiModalFusion",
+    "BaseAutoencoder",
+    "PointCloudAutoencoder",
+    "create_cosmic_web_model",
+    "create_stellar_model",
+    "create_galaxy_model",
+    "create_exoplanet_model",
+    "ExplainabilityMixin",
 ]
 
-# Module metadata
-__version__ = "3.0.0-tensordict"
-if __doc__ is None:
-    __doc__ = ""
-__doc__ += """
-
-Major Changes in v3.0 - TensorDict Native Integration:
-=====================================================
-
-1. **Native TensorDict Support**:
-   - All models now work seamlessly with AstroTensorDict classes
-   - TensorDictModule wrappers for existing PyTorch models
-   - AstroTensorDictModule for astronomical-specific functionality
-   - Direct integration with SpatialTensorDict, PhotometricTensorDict, etc.
-
-2. **PyTorch Geometric Integration**:
-   - Optimized for PyTorch Geometric 2.6+ features
-   - Native support for torch.compile and TorchScript
-   - Efficient batching and memory management
-   - graph operations for cosmic web analysis
-
-3. **Multi-Modal Model Support**:
-   - MultiModalFusion for combining spatial, photometric, spectral data
-   - Cross-modal attention mechanisms
-   - Unified interfaces for different data modalities
-   - Seamless integration with analysis workflows
-
-4. **Cosmic Web Models**:
-   - AstroCosmicWebGNN for large-scale structure analysis
-   - SpatialAttention for astronomical coordinate systems
-   - Scale-aware architectures for different cosmic scales
-   - Proper astronomical distance and coordinate handling
-
-5. **2025 Framework Integration**:
-   - Full torch.compile support for performance
-   - TensorDictSequential for complex pipelines
-   - Memory-mapped tensor support for large datasets
-   - GPU-optimized operations with CUDA 12.x support
-
-Performance Features:
-====================
-
-1. **Memory Efficiency**: TensorDict enables zero-copy operations and memory sharing
-2. **GPU Acceleration**: Native CUDA support with optimized kernels
-3. **Compilation**: Full torch.compile support for 2x performance gains
-4. **Batching**: Efficient batching of heterogeneous astronomical data
-5. **Modularity**: Reusable components that can be combined flexibly
-
-The enhanced models module provides state-of-the-art neural networks specifically
-optimized for astronomical data while maintaining full backward compatibility
-with existing AstroLab workflows.
-"""
+# For details on layers, encoders, components etc., import from the respective submodules:
+#   from astro_lab.models.layers import FlexibleGraphConv
+#   from astro_lab.models.encoders import PhotometricEncoder
+#   from astro_lab.models.components import EnhancedMLPBlock

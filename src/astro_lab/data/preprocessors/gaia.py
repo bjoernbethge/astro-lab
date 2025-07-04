@@ -1,395 +1,670 @@
-#!/usr/bin/env python3
-"""
-Gaia DR3 Preprocessor with GPU acceleration and memory optimization.
+"""Enhanced Gaia survey preprocessor implementation with unified 3D coordinate handling.
+
+Handles Gaia DR3 data preprocessing for machine learning applications with
+automatic 3D coordinate conversion and standardized field mapping.
 """
 
 import logging
-import math
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-import numpy as np
 import polars as pl
-import torch
-from tqdm import tqdm
 
-from astro_lab.data.preprocessors.base import BaseSurveyProcessor
-from astro_lab.tensors import PhotometricTensorDict, SpatialTensorDict
+from astro_lab.config import get_survey_config
+
+from .astro import (
+    AstroLabDataPreprocessor,
+    AstronomicalPreprocessorMixin,
+    StatisticalPreprocessorMixin,
+)
 
 logger = logging.getLogger(__name__)
 
 
-class GaiaPreprocessor(BaseSurveyProcessor):
-    """
-    Preprocessor for Gaia DR3 data.
+class GaiaPreprocessor(
+    AstroLabDataPreprocessor,
+    AstronomicalPreprocessorMixin,
+    StatisticalPreprocessorMixin,
+):
+    """Enhanced preprocessor for Gaia DR3 data with unified 3D coordinate handling.
 
     Handles:
-    - Bright all-sky data (G < 12)
-    - Astrometric data (ra, dec, parallax, proper motions)
-    - Photometric data (G, BP, RP magnitudes)
-    - Quality filtering
-    - Coordinate transformations
+    - Quality filtering (parallax SNR, excess noise, RUWE)
+    - Automatic 3D coordinate conversion (spherical → Cartesian)
+    - Feature extraction (colors, kinematics, stellar properties)
+    - Unified field mapping for spatial analysis
     """
 
-    def __init__(self, survey_name: str = "gaia", data_config: Optional[Dict] = None):
-        super().__init__(survey_name, data_config)
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """Initialize Gaia preprocessor.
 
-        # Quality cuts for bright stars
-        self.min_parallax_over_error = 5.0
-        self.max_ruwe = 1.4
-        self.min_phot_g_n_obs = 5
+        Args:
+            config: Configuration dict with preprocessing parameters
+        """
+        default_config = {
+            "parallax_snr_min": None,
+            "astrometric_excess_noise_max": None,
+            "ruwe_max": None,
+            "magnitude_limit": None,
+            "distance_limit_pc": None,
+            "remove_duplicates": False,
+            "handle_missing": "median",
+            "include_galactic_coords": True,
+            "include_kinematics": True,
+            "include_colors": True,
+            "map_columns": True,  # Enable column mapping
+        }
 
-        # Memory optimization settings
-        self.chunk_size = 1_000_000  # Process 1M sources at a time
-        self.use_gpu = torch.cuda.is_available()
+        if config:
+            default_config.update(config)
 
-        if self.use_gpu:
-            logger.info("🚀 GPU acceleration enabled for Polars")
-            try:
-                # Test GPU engine
-                test_df = pl.LazyFrame({"a": [1, 2, 3]})
-                test_df.collect(engine="gpu")
-                self.gpu_engine = pl.GPUEngine(device=0, raise_on_fail=False)
-            except Exception as e:
-                logger.warning(f"GPU engine not available: {e}")
-                self.use_gpu = False
-        else:
-            logger.info("💻 Using CPU processing")
-            self.gpu_engine = None
+        super().__init__(default_config)
 
-    def create_spatial_tensor(self, df: pl.DataFrame) -> SpatialTensorDict:
-        """Create spatial tensor from Gaia coordinates with GPU acceleration."""
-        logger.info("Creating spatial tensor...")
+        # Get survey configuration
+        self.survey_config = get_survey_config("gaia")
 
-        # Convert to 3D Cartesian coordinates
-        if self.use_gpu and self.gpu_engine:
-            try:
-                # Use GPU for coordinate conversion
-                coords_3d = self._convert_to_3d_gpu(df)
-                logger.info(
-                    f"Spatial tensor created using GPU: {len(coords_3d):,} sources"
-                )
-            except Exception as e:
-                logger.warning(f"GPU coordinate conversion failed: {e}")
-                coords_3d = self._convert_to_3d_cpu(df)
-        else:
-            coords_3d = self._convert_to_3d_cpu(df)
+        # Column mapping for Gaia (handles various formats)
+        self.column_mapping = {
+            # Standard Gaia columns
+            "SOURCE_ID": "source_id",
+            "RA_ICRS": "ra",
+            "DE_ICRS": "dec",
+            "Plx": "parallax",
+            "e_Plx": "parallax_error",
+            "pmRA": "pmra",
+            "pmDE": "pmdec",
+            "e_pmRA": "pmra_error",
+            "e_pmDE": "pmdec_error",
+            "Gmag": "phot_g_mean_mag",
+            "BPmag": "phot_bp_mean_mag",
+            "RPmag": "phot_rp_mean_mag",
+            "RV": "radial_velocity",
+            "e_RV": "radial_velocity_error",
+            # Alternative column names
+            "source_id": "source_id",
+            "ra": "ra",
+            "dec": "dec",
+            "parallax": "parallax",
+            "parallax_error": "parallax_error",
+            "pmra": "pmra",
+            "pmdec": "pmdec",
+            "pmra_error": "pmra_error",
+            "pmdec_error": "pmdec_error",
+            "phot_g_mean_mag": "phot_g_mean_mag",
+            "phot_bp_mean_mag": "phot_bp_mean_mag",
+            "phot_rp_mean_mag": "phot_rp_mean_mag",
+            "radial_velocity": "radial_velocity",
+            "radial_velocity_error": "radial_velocity_error",
+            # Quality columns
+            "astrometric_excess_noise": "astrometric_excess_noise",
+            "ruwe": "ruwe",
+            "visibility_periods_used": "visibility_periods_used",
+        }
 
-        # Create spatial tensor with correct parameters
-        spatial_tensor = SpatialTensorDict(
-            coordinates=coords_3d,
-            coordinate_system="icrs",
-            unit="pc",
-        )
+        # Gaia-specific column sets
+        self.required_columns = [
+            "source_id",
+            "ra",
+            "dec",
+            "parallax",
+            "parallax_error",
+            "pmra",
+            "pmdec",
+            "phot_g_mean_mag",
+        ]
 
-        return spatial_tensor
+        self.quality_columns = [
+            "astrometric_excess_noise",
+            "ruwe",
+            "visibility_periods_used",
+        ]
 
-    def create_photometric_tensor(self, df: pl.DataFrame) -> PhotometricTensorDict:
-        """Create photometric tensor from Gaia photometric data."""
-        logger.info("Creating photometric tensor...")
+        self.photometry_columns = [
+            "phot_g_mean_mag",
+            "phot_bp_mean_mag",
+            "phot_rp_mean_mag",
+        ]
 
-        # Extract magnitudes
-        magnitudes = df.select(
-            [
-                pl.col("phot_g_mean_mag"),
-                pl.col("phot_bp_mean_mag"),
-                pl.col("phot_rp_mean_mag"),
-            ]
-        ).to_numpy()
+        self.kinematics_columns = [
+            "pmra",
+            "pmdec",
+            "pmra_error",
+            "pmdec_error",
+            "radial_velocity",
+            "radial_velocity_error",
+        ]
 
-        # Create photometric tensor
-        photometric_tensor = PhotometricTensorDict(
-            magnitudes=torch.tensor(magnitudes, dtype=torch.float32),
-            bands=["G", "BP", "RP"],
-            filter_system="Vega",
-        )
+    def get_survey_name(self) -> str:
+        """Get the survey name for this preprocessor."""
+        return "gaia"
 
-        return photometric_tensor
+    def get_object_type(self) -> str:
+        """Get the primary object type for this survey."""
+        return "star"
 
-    def _convert_to_3d_cpu(self, df: pl.DataFrame) -> torch.Tensor:
-        """Convert coordinates to 3D Cartesian using CPU."""
-        # Extract coordinates
-        coords = df.select(
-            [
-                pl.col("ra"),
-                pl.col("dec"),
-                pl.col("parallax"),
-            ]
-        ).to_numpy()
+    def _map_and_select_columns(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Map column names and select relevant columns for Gaia."""
+        if not self.config.get("map_columns", True):
+            return df
 
-        # Convert to 3D Cartesian
-        ra_rad = np.radians(coords[:, 0])
-        dec_rad = np.radians(coords[:, 1])
-        parallax_mas = coords[:, 2]
+        logger.info("Mapping and selecting columns for gaia")
 
-        # Distance in parsecs (1/parallax)
-        distance_pc = 1000.0 / parallax_mas
+        # Apply column mapping (case-insensitive)
+        available_columns = df.columns
+        mapping_applied = {}
 
-        # Convert to Cartesian coordinates
-        x = distance_pc * np.cos(dec_rad) * np.cos(ra_rad)
-        y = distance_pc * np.cos(dec_rad) * np.sin(ra_rad)
-        z = distance_pc * np.sin(dec_rad)
+        for old_name, new_name in self.column_mapping.items():
+            if old_name in available_columns:
+                mapping_applied[old_name] = new_name
+            else:
+                for col in available_columns:
+                    if col.lower() == old_name.lower():
+                        mapping_applied[col] = new_name
+                        break
 
-        return torch.tensor(np.column_stack([x, y, z]), dtype=torch.float32)
+        # Apply mapping
+        if mapping_applied:
+            df = df.rename(mapping_applied)
+            logger.info(f"Applied column mapping: {mapping_applied}")
 
-    def _convert_to_3d_gpu(self, df: pl.DataFrame) -> torch.Tensor:
-        """Convert coordinates to 3D Cartesian using optimized processing."""
-        # Use optimized coordinate calculations (GPU engine not available on Windows)
-        coords_df = df.select(
-            [
-                pl.col("ra"),
-                pl.col("dec"),
-                pl.col("parallax"),
-            ]
-        ).lazy()
+        # Select essential and optional columns for Gaia
+        essential_columns = ["source_id", "ra", "dec", "parallax"]
+        optional_columns = [
+            "parallax_error",
+            "pmra",
+            "pmdec",
+            "pmra_error",
+            "pmdec_error",
+            "phot_g_mean_mag",
+            "phot_bp_mean_mag",
+            "phot_rp_mean_mag",
+            "radial_velocity",
+            "radial_velocity_error",
+            "astrometric_excess_noise",
+            "ruwe",
+            "visibility_periods_used",
+        ]
 
-        # Convert to radians and calculate 3D coordinates
-        coords_3d = coords_df.select(
-            [
-                (pl.col("ra") * (np.pi / 180.0)).alias("ra_rad"),
-                (pl.col("dec") * (np.pi / 180.0)).alias("dec_rad"),
-                (1000.0 / pl.col("parallax")).alias("distance"),
-            ]
-        ).collect()
+        # Keep columns that exist
+        columns_to_keep = []
+        missing = []
+        for col in essential_columns:
+            if col in df.columns:
+                columns_to_keep.append(col)
+            else:
+                found = False
+                for c in df.columns:
+                    if c.lower() == col.lower():
+                        columns_to_keep.append(c)
+                        found = True
+                        break
+                if not found:
+                    missing.append(col)
 
-        # Convert to torch tensors
-        ra_rad = torch.tensor(coords_3d["ra_rad"].to_numpy(), dtype=torch.float32)
-        dec_rad = torch.tensor(coords_3d["dec_rad"].to_numpy(), dtype=torch.float32)
-        distance = torch.tensor(coords_3d["distance"].to_numpy(), dtype=torch.float32)
+        for col in optional_columns:
+            if col in df.columns:
+                columns_to_keep.append(col)
 
-        # Calculate 3D Cartesian coordinates
-        x = distance * torch.cos(dec_rad) * torch.cos(ra_rad)
-        y = distance * torch.cos(dec_rad) * torch.sin(ra_rad)
-        z = distance * torch.sin(dec_rad)
+        # Remove duplicates
+        columns_to_keep = list(dict.fromkeys(columns_to_keep))
 
-        return torch.stack([x, y, z], dim=1)
-
-    def preprocess_dataframe(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Apply Gaia-specific preprocessing."""
-        # Apply quality cuts (more lenient to preserve data)
-        df_filtered = df.filter(
-            # Basic coordinate requirements
-            pl.col("ra").is_not_null()
-            & pl.col("dec").is_not_null()
-            & pl.col("parallax").is_not_null()
-            &
-            # More lenient quality cuts
-            (pl.col("parallax_over_error") >= 1.0)  # Was 5.0
-            & (pl.col("ruwe") <= 2.0)  # Was 1.4
-            & (pl.col("phot_g_n_obs") >= 2)  # Was 5
-            & pl.all_horizontal(
-                [
-                    pl.col(col).is_not_null()
-                    for col in [
-                        "ra",
-                        "dec",
-                        "parallax",
-                        "phot_g_mean_mag",
-                    ]
-                ]
+        if missing:
+            logger.error(f"Missing essential columns after mapping: {missing}")
+            logger.error(f"Available columns: {df.columns}")
+            raise ValueError(
+                f"Missing essential columns in Gaia data: {missing}\nAvailable columns: {list(df.columns)}"
             )
-        )
+
+        df = df.select(columns_to_keep)
+        logger.info(f"Selected {len(columns_to_keep)} columns for Gaia processing")
+        return df
+
+    def filter(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Apply Gaia-specific quality filters.
+
+        Args:
+            df: Input DataFrame
+
+        Returns:
+            Filtered DataFrame
+        """
+        logger.info("Applying Gaia quality filters...")
+
+        # Apply column mapping first
+        df = self._map_and_select_columns(df)
+
+        initial_count = len(df)
+
+        # Basic quality filters
+        filters = []
+
+        # Parallax SNR filter
+        if (
+            "parallax" in df.columns
+            and "parallax_error" in df.columns
+            and self.config["parallax_snr_min"] is not None
+        ):
+            parallax_snr = df["parallax"] / df["parallax_error"]
+            filters.append(parallax_snr > self.config["parallax_snr_min"])
+            filters.append(df["parallax"] > 0)  # Positive parallax only
+            logger.info(
+                f"Applied parallax SNR filter: min_snr={self.config['parallax_snr_min']}"
+            )
+
+        # Astrometric excess noise
+        if (
+            "astrometric_excess_noise" in df.columns
+            and self.config["astrometric_excess_noise_max"] is not None
+        ):
+            filters.append(
+                df["astrometric_excess_noise"]
+                < self.config["astrometric_excess_noise_max"]
+            )
+            logger.info(
+                f"Applied astrometric excess noise filter: max={self.config['astrometric_excess_noise_max']}"
+            )
+
+        # RUWE (Renormalized Unit Weight Error)
+        if "ruwe" in df.columns and self.config["ruwe_max"] is not None:
+            filters.append(df["ruwe"] < self.config["ruwe_max"])
+            logger.info(f"Applied RUWE filter: max={self.config['ruwe_max']}")
+
+        # Magnitude limit
+        if (
+            "phot_g_mean_mag" in df.columns
+            and self.config["magnitude_limit"] is not None
+        ):
+            filters.append(df["phot_g_mean_mag"] < self.config["magnitude_limit"])
+            logger.info(
+                f"Applied magnitude limit: max={self.config['magnitude_limit']}"
+            )
+
+        # Apply all filters
+        if filters:
+            mask = filters[0]
+            for f in filters[1:]:
+                mask = mask & f
+            df = df.filter(mask)
+
+        # Distance filter (if parallax available)
+        if "parallax" in df.columns and self.config["distance_limit_pc"] is not None:
+            distance_pc = 1000.0 / df["parallax"]  # Convert mas to pc
+            df = df.filter(distance_pc < self.config["distance_limit_pc"])
+            logger.info(
+                f"Applied distance limit: max={self.config['distance_limit_pc']} pc"
+            )
+
+        # Remove duplicates by source_id
+        if self.config["remove_duplicates"] and "source_id" in df.columns:
+            df = df.unique(subset=["source_id"])
+            logger.info("Removed duplicate source_id entries")
+
+        final_count = len(df)
+        self.stats["filter"] = {
+            "initial_count": initial_count,
+            "final_count": final_count,
+            "filtered_fraction": 1 - (final_count / initial_count),
+        }
 
         logger.info(
-            f"Quality cuts: {len(df):,} → {len(df_filtered):,} sources "
-            f"({100 * len(df_filtered) / len(df):.1f}% retained)"
+            f"Filtered {initial_count - final_count} objects "
+            f"({100 * (1 - final_count / initial_count):.1f}%)"
         )
 
-        return df_filtered
+        return df
 
-    def _save_processed_data(self, df: pl.DataFrame, output_file: Path):
-        """Save processed data to Parquet file with Gaia-specific columns."""
-        output_file.parent.mkdir(parents=True, exist_ok=True)
+    def transform(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Transform Gaia data for unified 3D processing.
 
-        # Select key columns for processed file
-        processed_df = df.select(
-            [
-                "source_id",
-                "ra",
-                "dec",
-                "parallax",
-                "parallax_error",
-                "parallax_over_error",
-                "pmra",
-                "pmdec",
-                "pm",
-                "ruwe",
-                "phot_g_mean_mag",
-                "phot_bp_mean_mag",
-                "phot_rp_mean_mag",
-                "phot_g_n_obs",
-                "phot_bp_n_obs",
-                "phot_rp_n_obs",
-                "bp_rp",
-                "bp_g",
-                "g_rp",
-                "radial_velocity",
-                "radial_velocity_error",
-            ]
-        )
+        Includes:
+        - Parallax to distance conversion
+        - Galactic coordinate calculation
+        - Color index calculation
+        - Kinematic feature calculation
+        - Missing value handling
 
-        processed_df.write_parquet(output_file)
-        logger.info(f"Saved processed data: {output_file}")
+        Args:
+            df: Filtered DataFrame
 
-    def _load_processed_data(self, processed_file: Path) -> Dict[str, Any]:
-        """Load existing processed data."""
-        df = pl.read_parquet(processed_file)
+        Returns:
+            Transformed DataFrame with standardized coordinates
+        """
+        logger.info("Transforming Gaia data...")
 
-        # Recreate tensors
-        spatial_tensor = self.create_spatial_tensor(df)
-        photometric_tensor = self.create_photometric_tensor(df)
-
-        return {
-            "spatial_tensor": spatial_tensor,
-            "photometric_tensor": photometric_tensor,
-            "metadata": {
-                "survey": "gaia",
-                "data_release": "DR3",
-                "n_sources": len(df),
-                "processed_file": str(processed_file),
-                "gpu_accelerated": self.use_gpu,
-                "quality_cuts": {
-                    "min_parallax_over_error": self.min_parallax_over_error,
-                    "max_ruwe": self.max_ruwe,
-                    "min_phot_g_n_obs": self.min_phot_g_n_obs,
-                },
-            },
-        }
-
-    def get_coordinate_columns(self) -> List[str]:
-        """Get coordinate column names for Gaia."""
-        return ["ra", "dec", "parallax"]
-
-    def extract_coordinates(self, df: pl.DataFrame) -> torch.Tensor:
-        """Extract coordinates from Gaia data."""
-        # Extract RA, Dec, and distance from parallax
-        coords = df.select(
-            [
-                pl.col("ra").alias("ra_deg"),
-                pl.col("dec").alias("dec_deg"),
-                pl.col("parallax").alias("parallax_mas"),
-            ]
-        ).to_numpy()
-
-        # Convert to 3D Cartesian coordinates
-        ra_rad = np.radians(coords[:, 0])
-        dec_rad = np.radians(coords[:, 1])
-        parallax_mas = coords[:, 2]
-
-        # Distance in parsecs (1/parallax)
-        distance_pc = 1000.0 / parallax_mas
-
-        # Convert to Cartesian coordinates
-        x = distance_pc * np.cos(dec_rad) * np.cos(ra_rad)
-        y = distance_pc * np.cos(dec_rad) * np.sin(ra_rad)
-        z = distance_pc * np.sin(dec_rad)
-
-        spatial_coords = np.column_stack([x, y, z])
-        return torch.tensor(spatial_coords, dtype=torch.float32)
-
-    def create_tensordict(
-        self, df: pl.DataFrame, use_gpu: bool = True
-    ) -> Dict[str, torch.Tensor]:
-        """Create TensorDict from Gaia data with GPU support."""
-        # Use GPU for preprocessing if available
-        device = torch.device(
-            "cuda" if torch.cuda.is_available() and use_gpu else "cpu"
-        )
-
-        logger.info(f"Creating TensorDict on {device}...")
-
-        # Extract coordinates
-        coords = self.extract_coordinates(df).to(device)
-
-        # Extract features (photometry, proper motions, etc.)
-        available_cols = df.columns
-        feature_cols = []
-
-        for col in ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]:
-            if col in available_cols:
-                feature_cols.append(pl.col(col))
-
-        for col in ["pmra", "pmdec"]:
-            if col in available_cols:
-                feature_cols.append(pl.col(col))
-            else:
-                feature_cols.append(pl.lit(0.0).alias(col))
-
-        if "parallax_over_error" in available_cols:
-            feature_cols.append(pl.col("parallax_over_error"))
-        elif "parallax" in available_cols and "parallax_error" in available_cols:
-            feature_cols.append(
-                (pl.col("parallax") / pl.col("parallax_error")).alias(
-                    "parallax_over_error"
-                )
+        # Convert parallax to distance (this will be used by ensure_3d_coordinates)
+        if "parallax" in df.columns and "distance_pc" not in df.columns:
+            df = df.with_columns(
+                [
+                    pl.when(pl.col("parallax") > 0.001)
+                    .then(1000.0 / pl.col("parallax"))
+                    .otherwise(pl.lit(None))
+                    .alias("distance_pc")
+                ]
             )
-        else:
-            feature_cols.append(pl.lit(5.0).alias("parallax_over_error"))
+            logger.info("Converted parallax to distance")
 
-        if "ruwe" in available_cols:
-            feature_cols.append(pl.col("ruwe"))
-        else:
-            feature_cols.append(pl.lit(1.0).alias("ruwe"))
+        # Add galactic coordinates if requested
+        if self.config["include_galactic_coords"]:
+            df = self._add_galactic_coordinates(df)
+            logger.info("Added galactic coordinates")
 
-        features = torch.tensor(
-            df.select(feature_cols).to_numpy(), dtype=torch.float32, device=device
-        )
+        # Calculate colors if photometry available
+        if self.config["include_colors"] and all(
+            col in df.columns for col in ["phot_bp_mean_mag", "phot_rp_mean_mag"]
+        ):
+            df = df.with_columns(
+                [
+                    (pl.col("phot_bp_mean_mag") - pl.col("phot_rp_mean_mag")).alias(
+                        "bp_rp"
+                    ),
+                    (pl.col("phot_g_mean_mag") - pl.col("phot_rp_mean_mag")).alias(
+                        "g_rp"
+                    ),
+                    (pl.col("phot_g_mean_mag") - pl.col("phot_bp_mean_mag")).alias(
+                        "g_bp"
+                    ),
+                ]
+            )
+            logger.info("Calculated color indices")
 
-        tensor_dict = {
-            "features": features,
-            "x": features,  # Alias for PyG
-            "spatial": {
-                "coordinates": coords,
-                "pos": coords,  # Alias for PyG
-            },
-            "num_nodes": len(df),
+        # Calculate kinematic features
+        if self.config["include_kinematics"] and all(
+            col in df.columns for col in ["pmra", "pmdec"]
+        ):
+            df = df.with_columns(
+                [(pl.col("pmra") ** 2 + pl.col("pmdec") ** 2).sqrt().alias("pm_total")]
+            )
+
+            # Calculate tangential velocity (km/s) if distance available
+            if "distance_pc" in df.columns:
+                df = df.with_columns(
+                    [
+                        (
+                            4.74 * pl.col("pm_total") * pl.col("distance_pc") / 1000
+                        ).alias("v_tan_kms")
+                    ]
+                )
+                logger.info("Calculated kinematic features")
+
+        # Calculate stellar properties
+        df = self._calculate_stellar_properties(df)
+
+        # Add cartesian coordinates if not already present and if possible
+        if all(col in df.columns for col in ["ra", "dec", "distance_pc"]) and not all(
+            col in df.columns for col in ["x", "y", "z"]
+        ):
+            from astro_lab.data.transforms.astronomical import spherical_to_cartesian
+
+            x, y, z = spherical_to_cartesian(df["ra"], df["dec"], df["distance_pc"])
+            df = df.with_columns(
+                [
+                    pl.Series("x", x),
+                    pl.Series("y", y),
+                    pl.Series("z", z),
+                ]
+            )
+
+        self.stats["transform"] = {
+            "num_features": len(df.columns),
+            "has_colors": "bp_rp" in df.columns,
+            "has_kinematics": "v_tan_kms" in df.columns,
+            "has_galactic_coords": "gal_l" in df.columns,
         }
 
-        # Add synthetic labels if needed
-        if "label" not in df.columns and "class" not in df.columns:
-            g_mag = torch.tensor(df["phot_g_mean_mag"].to_numpy(), device=device)
-            labels = torch.zeros(len(df), dtype=torch.long, device=device)
-            labels[g_mag < 6.0] = 0  # Bright stars
-            labels[(g_mag >= 6.0) & (g_mag < 10.0)] = 1  # Medium
-            labels[g_mag >= 10.0] = 2  # Faint
-            tensor_dict["labels"] = labels
-            tensor_dict["y"] = labels  # Alias for PyG
+        return df
 
-        # Move all tensors to CPU before returning (for saving)
-        def to_cpu(obj):
-            if isinstance(obj, torch.Tensor):
-                return obj.cpu()
-            elif isinstance(obj, dict):
-                return {k: to_cpu(v) for k, v in obj.items()}
-            else:
-                return obj
+    def _add_galactic_coordinates(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Add galactic coordinates using astropy."""
+        from astropy import units as u
+        from astropy.coordinates import SkyCoord
 
-        return to_cpu(tensor_dict)
+        # Get RA/Dec values
+        ra_vals = df["ra"].to_numpy()
+        dec_vals = df["dec"].to_numpy()
+        degree = u.Unit("deg")
 
-    def preprocess_and_save(
-        self,
-        input_path: Optional[Path] = None,
-        output_path: Optional[Path] = None,
-        force_reprocess: bool = False,
-    ) -> Path:
-        """Preprocess Gaia DR3 data and save to processed directory."""
-        # Use default paths if not provided
-        if output_path is None:
-            output_path = Path("data/processed/gaia/gaia.parquet")
+        # Convert to galactic coordinates
+        coords = SkyCoord(ra=ra_vals * degree, dec=dec_vals * degree, frame="icrs")
+        galactic = coords.galactic
 
-        # Ensure output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        return df.with_columns(
+            [
+                pl.Series("gal_l", galactic.l.degree),
+                pl.Series("gal_b", galactic.b.degree),
+            ]
+        )
 
-        # Call the preprocess method
-        result = self.preprocess(force=force_reprocess)
+    def _calculate_stellar_properties(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Calculate stellar properties from Gaia data."""
+        # Absolute magnitude if distance available
+        if "distance_pc" in df.columns and "phot_g_mean_mag" in df.columns:
+            df = df.with_columns(
+                [
+                    (
+                        pl.col("phot_g_mean_mag")
+                        - 5 * (pl.col("distance_pc").log10() - 1)
+                    ).alias("mg_abs")
+                ]
+            )
 
-        # Save processed data
-        if "metadata" in result and "processed_file" in result["metadata"]:
-            # Data was already saved by preprocess method
-            return Path(result["metadata"]["processed_file"])
+        # Stellar mass estimation (very rough approximation)
+        if "mg_abs" in df.columns and "bp_rp" in df.columns:
+            # Simple mass-luminosity relation approximation
+            df = df.with_columns(
+                [
+                    pl.when(pl.col("mg_abs") < 4.83)  # Brighter than Sun
+                    .then(
+                        pl.lit(1.0) * (10 ** (-0.4 * (pl.col("mg_abs") - 4.83)) * 0.23)
+                    )
+                    .otherwise(
+                        pl.lit(0.1) * (10 ** (-0.4 * (pl.col("mg_abs") - 4.83)) * 0.23)
+                    )
+                    .alias("stellar_mass_est")
+                ]
+            )
+
+        return df
+
+    def extract_features(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Extract ML-ready features from Gaia data keeping essential coordinates.
+
+        Args:
+            df: Transformed DataFrame
+
+        Returns:
+            DataFrame with extracted features optimized for ML
+        """
+        logger.info("Extracting ML features from Gaia data...")
+
+        feature_columns = []
+
+        # Essential identifier
+        if "source_id" in df.columns:
+            feature_columns.append("source_id")
+
+        # ALWAYS keep coordinate features for 3D processing
+        essential_coords = ["ra", "dec"]
+        for col in essential_coords:
+            if col in df.columns:
+                feature_columns.append(col)
+
+        # Distance information
+        distance_cols = ["distance_pc", "parallax"]
+        for col in distance_cols:
+            if col in df.columns:
+                feature_columns.append(col)
+
+        # Galactic coordinates
+        if self.config["include_galactic_coords"]:
+            gal_cols = ["gal_l", "gal_b"]
+            for col in gal_cols:
+                if col in df.columns:
+                    feature_columns.append(col)
+
+        # Photometric features
+        photo_cols = ["phot_g_mean_mag", "phot_g_mean_mag_error"]
+        if self.config["include_colors"]:
+            photo_cols.extend(
+                ["phot_bp_mean_mag", "phot_rp_mean_mag", "bp_rp", "g_rp", "g_bp"]
+            )
+        for col in photo_cols:
+            if col in df.columns:
+                feature_columns.append(col)
+
+        # Kinematic features
+        if self.config["include_kinematics"]:
+            kinematic_cols = ["pmra", "pmdec", "pm_total", "v_tan_kms"]
+            if "radial_velocity" in df.columns:
+                kinematic_cols.append("radial_velocity")
+            for col in kinematic_cols:
+                if col in df.columns:
+                    feature_columns.append(col)
+
+        # Stellar properties
+        stellar_cols = ["mg_abs", "stellar_mass_est"]
+        for col in stellar_cols:
+            if col in df.columns:
+                feature_columns.append(col)
+
+        # Quality indicators
+        quality_cols = ["parallax_error", "pmra_error", "pmdec_error", "ruwe"]
+        for col in quality_cols:
+            if col in df.columns:
+                feature_columns.append(col)
+
+        # Astrometric quality
+        astrometric_cols = ["astrometric_excess_noise", "visibility_periods_used"]
+        for col in astrometric_cols:
+            if col in df.columns:
+                feature_columns.append(col)
+
+        # Remove duplicates and keep only available columns
+        feature_columns = list(set(feature_columns))
+        available_features = [col for col in feature_columns if col in df.columns]
+
+        # Ensure we have essential coordinates
+        if not all(col in available_features for col in ["ra", "dec"]):
+            logger.error("Missing essential coordinate columns in feature extraction")
+            # Add them back if they exist in the original dataframe
+            for col in ["ra", "dec"]:
+                if col in df.columns and col not in available_features:
+                    available_features.append(col)
+
+        # Select and reorder columns
+        df = df.select(available_features)
+
+        # Store feature information
+        self.feature_names = available_features
+
+        self.stats["extract_features"] = {
+            "num_features": len(available_features),
+            "feature_groups": {
+                "coordinates": len(
+                    [
+                        c
+                        for c in available_features
+                        if c in ["ra", "dec", "gal_l", "gal_b"]
+                    ]
+                ),
+                "photometry": len([c for c in available_features if c in photo_cols]),
+                "kinematics": len(
+                    [c for c in available_features if c in kinematic_cols]
+                ),
+                "stellar_properties": len(
+                    [c for c in available_features if c in stellar_cols]
+                ),
+                "quality": len([c for c in available_features if c in quality_cols]),
+            },
+        }
+
+        logger.info(f"Extracted {len(available_features)} features")
+        logger.info(
+            f"Feature groups: {self.stats['extract_features']['feature_groups']}"
+        )
+
+        return df
+
+    def get_cartesian_columns(self) -> List[str]:
+        """Get names of Cartesian coordinate columns."""
+        return ["x", "y", "z"]
+
+    def get_feature_columns(self) -> List[str]:
+        """Get names of all feature columns."""
+        return self.feature_names
+
+    def validate_schema(self, df: pl.DataFrame) -> bool:
+        """Validate that DataFrame has required Gaia columns.
+
+        Args:
+            df: DataFrame to validate
+
+        Returns:
+            True if valid, raises ValueError otherwise
+        """
+        # Check for essential columns after mapping
+        essential_cols = ["ra", "dec"]
+        missing_columns = [col for col in essential_cols if col not in df.columns]
+
+        if missing_columns:
+            raise ValueError(
+                f"Missing essential columns after mapping: {missing_columns}"
+            )
+
+        return True
+
+    def get_stellar_mass(self, df: pl.DataFrame) -> Optional[pl.Series]:
+        """Get stellar mass estimates if available."""
+        if "stellar_mass_est" in df.columns:
+            return df["stellar_mass_est"]
+        elif "mass" in df.columns:
+            return df["mass"]
         else:
-            # Save the processed data manually
-            df = self.load_data()
-            df_filtered = self.preprocess_dataframe(df)
-            self._save_processed_data(df_filtered, output_path)
-            return output_path
+            return None
+
+    def get_brightness_measure(self, df: pl.DataFrame) -> pl.Series:
+        """Get brightness measure for visualization."""
+        if "phot_g_mean_mag" in df.columns:
+            # Convert magnitude to brightness (inverted scale)
+            return 25.0 - df["phot_g_mean_mag"]
+        else:
+            return pl.Series([1.0] * len(df))
+
+    def add_standard_fields(self, df: pl.DataFrame) -> pl.DataFrame:
+        # Add object_id if missing
+        if "object_id" not in df.columns:
+            id_candidates = [
+                "source_id",
+                "nsaid",
+                "objid",
+                "id",
+                "SOURCE_ID",
+                "NSAID",
+                "OBJID",
+                "ID",
+            ]
+            id_col = None
+            for candidate in id_candidates:
+                if candidate in df.columns:
+                    id_col = candidate
+                    break
+            if id_col:
+                df = df.with_columns([pl.col(id_col).alias("object_id")])
+            else:
+                df = df.with_row_count("object_id")
+        # Add magnitude if missing
+        if "magnitude" not in df.columns:
+            mag_cols = ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
+            for mag_col in mag_cols:
+                if mag_col in df.columns:
+                    df = df.with_columns([pl.col(mag_col).alias("magnitude")])
+                    break
+        # Add brightness if missing
+        if "brightness" not in df.columns:
+            if "magnitude" in df.columns:
+                df = df.with_columns([(25.0 - pl.col("magnitude")).alias("brightness")])
+            else:
+                df = df.with_columns([pl.lit(1.0).alias("brightness")])
+        # Remove synthetic fields that are not useful
+        for col in ["object_type", "survey_name"]:
+            if col in df.columns:
+                df = df.drop(col)
+        return df

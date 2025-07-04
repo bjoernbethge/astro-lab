@@ -1,30 +1,32 @@
 ﻿"""
-TensorDict-basierte Implementierung für Cross-Matching
-====================================================
+Cross-matching TensorDict for astronomical catalogs.
 
-Umstellung der CrossMatchTensor Klasse auf TensorDict-Architektur.
+TensorDict for cross-matching between astronomical catalogs with proper
+distance calculations and match quality assessment.
 """
 
 from __future__ import annotations
 
 import math
+from typing import Dict, List, Optional
 
 import torch
 
 from .base import AstroTensorDict
+from .mixins import ValidationMixin
 
 
-class CrossMatchTensorDict(AstroTensorDict):
+class CrossMatchTensorDict(AstroTensorDict, ValidationMixin):
     """
-    TensorDict für Cross-Matching zwischen astronomischen Katalogen.
+    TensorDict for cross-matching between astronomical catalogs.
 
-    Struktur:
+    Structure:
     {
-        "catalog1": AstroTensorDict,  # Erster Katalog
-        "catalog2": AstroTensorDict,  # Zweiter Katalog
-        "matches": Tensor[M, 2],      # Match-Indizes [idx1, idx2]
-        "distances": Tensor[M],       # Winkeldistanzen
-        "match_quality": Tensor[M],   # Match-Qualität
+        "catalog1": AstroTensorDict,  # First catalog
+        "catalog2": AstroTensorDict,  # Second catalog
+        "matches": Tensor[M, 2],      # Match indices [idx1, idx2]
+        "distances": Tensor[M],       # Angular distances
+        "match_quality": Tensor[M],   # Match quality
         "meta": {
             "match_radius": float,
             "algorithm": str,
@@ -51,13 +53,13 @@ class CrossMatchTensorDict(AstroTensorDict):
             match_radius: Search radius in arcseconds
             algorithm: Matching algorithm
         """
-        # Extrahiere räumliche Informationen aus beiden Katalogen
-        if not hasattr(catalog1, "spatial") and "spatial" not in catalog1:
+        # Validate that both catalogs contain spatial information
+        if not self._has_spatial_info(catalog1):
             raise ValueError("Catalog1 must contain spatial information")
-        if not hasattr(catalog2, "spatial") and "spatial" not in catalog2:
+        if not self._has_spatial_info(catalog2):
             raise ValueError("Catalog2 must contain spatial information")
 
-        # Initialisiere leere Matches
+        # Initialize empty matches
         empty_matches = torch.empty((0, 2), dtype=torch.long)
         empty_distances = torch.empty(0)
         empty_quality = torch.empty(0)
@@ -77,6 +79,78 @@ class CrossMatchTensorDict(AstroTensorDict):
         }
 
         super().__init__(data, **kwargs)
+
+    def _has_spatial_info(self, catalog: AstroTensorDict) -> bool:
+        """Check if catalog contains spatial information."""
+        return (
+            "coordinates" in catalog
+            or "ra" in catalog
+            and "dec" in catalog
+            or hasattr(catalog, "coordinates")
+        )
+
+    def extract_features(
+        self, feature_types: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Extract cross-match features from the TensorDict.
+
+        Args:
+            feature_types: Types of features to extract ('crossmatch', 'statistics', 'quality')
+            **kwargs: Additional extraction parameters
+
+        Returns:
+            Dictionary of extracted cross-match features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add cross-match specific features
+        if feature_types is None or "crossmatch" in feature_types:
+            # Basic cross-match properties
+            features["n_matches"] = torch.tensor(
+                self["meta"]["n_matches"], dtype=torch.float32
+            )
+            features["match_radius"] = torch.tensor(
+                self["meta"]["match_radius"], dtype=torch.float32
+            )
+            features["completeness"] = torch.tensor(
+                self["meta"]["match_statistics"].get("completeness", 0.0),
+                dtype=torch.float32,
+            )
+
+        if feature_types is None or "statistics" in feature_types:
+            # Statistical features of matches
+            if self["meta"]["n_matches"] > 0:
+                distances = self["distances"]
+                features["mean_distance"] = torch.mean(distances)
+                features["std_distance"] = torch.std(distances)
+                features["median_distance"] = torch.median(distances)
+                features["min_distance"] = torch.min(distances)
+                features["max_distance"] = torch.max(distances)
+            else:
+                # No matches - return zeros
+                features["mean_distance"] = torch.tensor(0.0)
+                features["std_distance"] = torch.tensor(0.0)
+                features["median_distance"] = torch.tensor(0.0)
+                features["min_distance"] = torch.tensor(0.0)
+                features["max_distance"] = torch.tensor(0.0)
+
+        if feature_types is None or "quality" in feature_types:
+            # Match quality features
+            if self["meta"]["n_matches"] > 0:
+                quality = self["match_quality"]
+                features["mean_quality"] = torch.mean(quality)
+                features["std_quality"] = torch.std(quality)
+                features["min_quality"] = torch.min(quality)
+                features["max_quality"] = torch.max(quality)
+            else:
+                features["mean_quality"] = torch.tensor(0.0)
+                features["std_quality"] = torch.tensor(0.0)
+                features["min_quality"] = torch.tensor(0.0)
+                features["max_quality"] = torch.tensor(0.0)
+
+        return features
 
     def perform_crossmatch(self) -> CrossMatchTensorDict:
         """

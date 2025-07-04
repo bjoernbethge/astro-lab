@@ -1,1 +1,0 @@
-"""Galaxies Module"""

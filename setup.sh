@@ -18,7 +18,7 @@ uv sync
 
 # Install PyG Extensions
 echo "🔧 Installing PyG Extensions..."
-uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+uv pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
 # Activate virtual environment
 echo "🔌 Activating virtual environment..."

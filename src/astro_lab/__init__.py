@@ -10,17 +10,21 @@ import os
 import warnings
 from pathlib import Path
 
-# Import main modules
-from astro_lab import data
+# Import data module with relative import
+from . import data
 
-# Import specific tensor classes instead of star imports
-from astro_lab.tensors import (
+# Import config module with relative import
+from .config import (
+    SURVEY_CONFIGS,
+    get_survey_config,
+)
+
+# Import specific tensor classes with relative imports
+from .tensors import (
     AstroTensorDict,
     LightcurveTensorDict,
     PhotometricTensorDict,
     SpatialTensorDict,
-    SpectralTensorDict,
-    SurveyTensorDict,
 )
 
 # Suppress NumPy 2.x compatibility warnings while keeping NumPy 2.x
@@ -42,7 +46,7 @@ __all__ = [
     "AstroTensorDict",
     "SpatialTensorDict",
     "PhotometricTensorDict",
-    "SpectralTensorDict",
     "LightcurveTensorDict",
-    "SurveyTensorDict",
+    "get_survey_config",
+    "SURVEY_CONFIGS",
 ]

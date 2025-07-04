@@ -182,7 +182,7 @@ results = analyze_exoplanet_cosmic_web(
 )
 ```
 
-## Advanced Usage
+## Usage
 
 ### Custom Analysis Pipeline
 

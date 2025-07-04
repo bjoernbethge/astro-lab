@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from typing import List
 
+from astro_lab.config import get_data_paths
+
 from .base import BaseSurveyCollector
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,9 @@ class LinearCollector(BaseSurveyCollector):
         logger.info(f"📥 Collecting LINEAR data for {self.survey_name}")
 
         # Check if we have existing data in the global raw directory
-        global_raw_path = Path("data/raw/linear/linear_raw.parquet")
+        global_raw_path = (
+            Path(get_data_paths()["raw_dir"]) / "linear" / "linear_raw.parquet"
+        )
 
         if global_raw_path.exists():
             # Copy existing data to survey directory

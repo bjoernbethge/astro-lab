@@ -1,3 +1,9 @@
+from typing import Any, Dict, Optional
+
+import numpy as np
+import pyvista as pv
+from astropy.visualization import quantity_support
+
 """
 Astronomically correct PyVista plotter for astronomical data visualization.
 
@@ -5,17 +11,8 @@ Provides specialized plotting functions for astronomical data with proper
 coordinate systems, units, and scientific standards.
 """
 
-from typing import Any, Dict, Optional
-
-# Astropy imports for astronomical correctness
-import numpy as np
-from astropy.visualization import quantity_support
-
 # Enable quantity support
 quantity_support()
-
-# PyVista imports
-import pyvista as pv
 
 
 class AstronomicalPyVistaPlotter:

@@ -1,23 +1,16 @@
 """
-Image TensorDict for AstroLab
-=============================
+Image TensorDict for astronomical image data.
 
-TensorDict for astronomical image data with proper WCS and photometry support.
+TensorDict for astronomical image data with WCS and photometry support.
 """
 
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
-from astropy.convolution import Gaussian2DKernel, convolve
 from astropy.coordinates import SkyCoord
-from astropy.stats import gaussian_fwhm_to_sigma, sigma_clipped_stats
+from astropy.stats import sigma_clipped_stats
 from astropy.wcs import WCS
-from photutils.aperture import CircularAnnulus, CircularAperture, aperture_photometry
-from photutils.background import Background2D, MedianBackground
-
-# Photometry and source detection
-from photutils.detection import DAOStarFinder
 
 from .base import AstroTensorDict
 from .mixins import FeatureExtractionMixin, NormalizationMixin, ValidationMixin
@@ -30,13 +23,11 @@ class ImageTensorDict(
     TensorDict for astronomical image data.
 
     Features:
-    - Proper WCS (World Coordinate System) handling
+    - WCS (World Coordinate System) handling
     - Source detection and aperture photometry
     - Background estimation and subtraction
     - PSF analysis and modeling
     - Multi-band image processing
-    - Astrometric calibration support
-    - Image quality assessment
     """
 
     def __init__(
@@ -52,7 +43,7 @@ class ImageTensorDict(
         **kwargs,
     ):
         """
-        Initialize ImageTensorDict with proper astronomical metadata.
+        Initialize ImageTensorDict.
 
         Args:
             images: [N, C, H, W] Tensor with images (N=objects, C=bands, H/W=spatial)
@@ -65,9 +56,7 @@ class ImageTensorDict(
             coordinates: Central coordinates of images
         """
         if images.dim() != 4:
-            raise ValueError(
-                f"Images must be 4D tensor [N, C, H, W], got {images.shape}"
-            )
+            raise ValueError(f"Images must be 4D tensor [N, C, H, W], got {images.shape}")
 
         N, C, H, W = images.shape
 
@@ -75,18 +64,14 @@ class ImageTensorDict(
         if bands is None:
             bands = [f"band_{i}" for i in range(C)]
         elif len(bands) != C:
-            raise ValueError(
-                f"Number of bands ({len(bands)}) doesn't match channels ({C})"
-            )
+            raise ValueError(f"Number of bands ({len(bands)}) doesn't match channels ({C})")
 
         # Handle WCS
         if wcs is not None:
             if isinstance(wcs, WCS):
                 wcs = [wcs] * N  # Same WCS for all images
             elif len(wcs) != N:
-                raise ValueError(
-                    f"Number of WCS ({len(wcs)}) doesn't match images ({N})"
-                )
+                raise ValueError(f"Number of WCS ({len(wcs)}) doesn't match images ({N})")
 
         # Handle pixel scale
         if pixel_scale is not None:
@@ -161,6 +146,52 @@ class ImageTensorDict(
         """List of WCS objects."""
         return self.get("wcs", None)
 
+    def extract_features(self, feature_types: Optional[List[str]] = None, **kwargs) -> Dict[str, torch.Tensor]:
+        """
+        Extract image features from the TensorDict.
+        
+        Args:
+            feature_types: Types of features to extract ('image', 'morphological', 'statistical')
+            **kwargs: Additional extraction parameters
+            
+        Returns:
+            Dictionary of extracted image features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add image-specific computed features
+        if feature_types is None or "image" in feature_types:
+            # Basic image statistics
+            images = self.images
+            features["mean_intensity"] = torch.mean(images, dim=(-2, -1))
+            features["std_intensity"] = torch.std(images, dim=(-2, -1))
+            features["max_intensity"] = torch.max(images.view(images.shape[0], images.shape[1], -1), dim=-1)[0]
+            features["min_intensity"] = torch.min(images.view(images.shape[0], images.shape[1], -1), dim=-1)[0]
+
+        if feature_types is None or "morphological" in feature_types:
+            # Morphological features
+            images = self.images
+
+            # Gradient-based features
+            grad_x = torch.diff(images, dim=-1)
+            grad_y = torch.diff(images, dim=-2)
+
+            features["gradient_strength_x"] = torch.mean(torch.abs(grad_x), dim=(-2, -1))
+            features["gradient_strength_y"] = torch.mean(torch.abs(grad_y), dim=(-2, -1))
+
+        if feature_types is None or "statistical" in feature_types:
+            # Statistical features
+            images = self.images
+
+            # Flatten spatial dimensions for percentile calculations
+            flat_images = images.view(images.shape[0], images.shape[1], -1)
+
+            features["median_intensity"] = torch.median(flat_images, dim=-1)[0]
+            features["intensity_range"] = features["max_intensity"] - features["min_intensity"]
+
+        return features
+
     def get_wcs(self, image_index: int = 0) -> Optional[WCS]:
         """Get WCS for specific image."""
         if "wcs" not in self:
@@ -211,48 +242,38 @@ class ImageTensorDict(
         x_pix, y_pix = wcs.world_to_pixel(coordinates)
         return x_pix, y_pix
 
-    def estimate_background(
-        self, method: str = "median", box_size: int = 50, filter_size: int = 3
-    ) -> torch.Tensor:
+    def estimate_background(self, method: str = "sigma_clip") -> torch.Tensor:
         """
-        Estimate image background using photutils.
+        Estimate image background using statistical methods.
 
         Args:
-            method: Background estimation method ('median', 'mode', 'sigma_clip')
-            box_size: Size of background estimation boxes
-            filter_size: Size of median filter for background map
+            method: Background estimation method ('sigma_clip', 'median', 'mode')
 
         Returns:
-            Background estimate [N, C, H, W]
+            Background estimate [N, C] - one value per image/band
         """
-        backgrounds = torch.zeros_like(self.images)
+        backgrounds = torch.zeros(self.n_objects, self.n_bands)
 
         for n in range(self.n_objects):
             for c in range(self.n_bands):
                 image = self.images[n, c].detach().cpu().numpy()
 
-                if method in ["median", "mode"]:
-                    # Use photutils for robust background estimation
-                    bkg_estimator = MedianBackground()
-                    bkg = Background2D(
-                        image,
-                        box_size=(box_size, box_size),
-                        filter_size=(filter_size, filter_size),
-                        bkg_estimator=bkg_estimator,
-                    )
-                    background = bkg.background
-                else:
-                    # background estimation with sigma clipping
+                if method == "sigma_clip":
                     mean, median, std = sigma_clipped_stats(image, sigma=3.0)
-                    background = np.full_like(image, median)
+                    background = median
+                elif method == "median":
+                    background = np.median(image)
+                elif method == "mode":
+                    # Approximate mode as 3*median - 2*mean
+                    background = 3 * np.median(image) - 2 * np.mean(image)
+                else:
+                    background = np.mean(image)
 
-                backgrounds[n, c] = torch.tensor(background, dtype=torch.float32)
+                backgrounds[n, c] = background
 
         return backgrounds
 
-    def subtract_background(
-        self, method: str = "median", **kwargs
-    ) -> "ImageTensorDict":
+    def subtract_background(self, method: str = "sigma_clip", **kwargs) -> "ImageTensorDict":
         """
         Subtract background from images.
 
@@ -260,8 +281,11 @@ class ImageTensorDict(
             method: Background estimation method
             **kwargs: Additional arguments for background estimation
         """
-        backgrounds = self.estimate_background(method=method, **kwargs)
-        background_subtracted = self.images - backgrounds
+        backgrounds = self.estimate_background(method=method)
+
+        # Broadcast background to image shape
+        background_map = backgrounds.unsqueeze(-1).unsqueeze(-1)
+        background_subtracted = self.images - background_map
 
         result = ImageTensorDict(
             background_subtracted,
@@ -276,15 +300,14 @@ class ImageTensorDict(
         result.add_history("subtract_background", method=method)
         return result
 
-    def detect_sources(
-        self, threshold: float = 5.0, fwhm: float = 3.0, band_index: int = 0
+    def detect_sources_simple(
+        self, threshold: float = 5.0, band_index: int = 0
     ) -> List[Dict]:
         """
-        Detect sources in images using DAOStarFinder.
+        Simple source detection using threshold.
 
         Args:
             threshold: Detection threshold in sigma above background
-            fwhm: Expected FWHM of sources in pixels
             band_index: Which band to use for detection
 
         Returns:
@@ -298,239 +321,29 @@ class ImageTensorDict(
             # Estimate background statistics
             mean, median, std = sigma_clipped_stats(image, sigma=3.0)
 
-            # Use DAOStarFinder for robust source detection
-            daofind = DAOStarFinder(
-                fwhm=fwhm, threshold=threshold * std, exclude_border=True
-            )
-            sources = daofind(image - median)
+            # Simple threshold detection
+            detection_mask = image > (median + threshold * std)
 
-            if sources is not None:
+            if np.any(detection_mask):
+                # Find connected components (simplified)
+                y_coords, x_coords = np.where(detection_mask)
                 catalog = {
-                    "x": sources["xcentroid"].data,
-                    "y": sources["ycentroid"].data,
-                    "flux": sources["flux"].data,
-                    "magnitude": sources["mag"].data
-                    if "mag" in sources.colnames
-                    else None,
-                    "n_sources": len(sources),
+                    "x": x_coords.astype(float),
+                    "y": y_coords.astype(float),
+                    "flux": image[detection_mask],
+                    "n_sources": len(x_coords),
                 }
             else:
                 catalog = {
                     "x": np.array([]),
                     "y": np.array([]),
                     "flux": np.array([]),
-                    "magnitude": None,
                     "n_sources": 0,
                 }
 
             source_catalogs.append(catalog)
 
         return source_catalogs
-
-    def aperture_photometry(
-        self,
-        positions: List[Tuple[float, float]],
-        aperture_radius: float = 5.0,
-        annulus_inner: float = 10.0,
-        annulus_outer: float = 15.0,
-        image_index: int = 0,
-        band_index: int = 0,
-    ) -> Dict[str, np.ndarray]:
-        """
-        Perform aperture photometry on detected sources.
-
-        Args:
-            positions: List of (x, y) source positions
-            aperture_radius: Radius of photometry aperture in pixels
-            annulus_inner: Inner radius of background annulus
-            annulus_outer: Outer radius of background annulus
-            image_index: Which image to analyze
-            band_index: Which band to analyze
-
-        Returns:
-            Dictionary with photometry results
-        """
-        if not positions:
-            return {
-                "aperture_sum": np.array([]),
-                "background": np.array([]),
-                "net_flux": np.array([]),
-                "magnitude": np.array([]),
-            }
-
-        image = self.images[image_index, band_index].detach().cpu().numpy()
-
-        # Create apertures
-        apertures = CircularAperture(positions, r=aperture_radius)
-        annulus_apertures = CircularAnnulus(
-            positions, r_in=annulus_inner, r_out=annulus_outer
-        )
-
-        # Perform photometry
-        phot_table = aperture_photometry(image, apertures)
-        bkg_table = aperture_photometry(image, annulus_apertures)
-
-        # Calculate background per pixel
-        bkg_mean = bkg_table["aperture_sum"] / annulus_apertures.area
-
-        # Background-subtracted flux
-        aperture_area = apertures.area
-        total_bkg = bkg_mean * aperture_area
-        net_flux = phot_table["aperture_sum"] - total_bkg
-
-        # Convert to magnitudes if zero point available
-        magnitudes = None
-        if "zero_point" in self:
-            zp = self["zero_point"]
-            if isinstance(zp, torch.Tensor):
-                zp = zp[image_index].item()
-            magnitudes = -2.5 * np.log10(np.clamp(net_flux, 1e-10, None)) + zp
-
-        return {
-            "aperture_sum": phot_table["aperture_sum"].data,
-            "background": total_bkg.data,
-            "net_flux": net_flux.data,
-            "magnitude": magnitudes.data if magnitudes is not None else None,
-        }
-
-    def estimate_psf_fwhm(
-        self,
-        source_positions: Optional[List[Tuple[float, float]]] = None,
-        image_index: int = 0,
-        band_index: int = 0,
-        box_size: int = 25,
-    ) -> float:
-        """
-        Estimate PSF FWHM from bright sources.
-
-        Args:
-            source_positions: List of source positions (if None, detect automatically)
-            image_index: Which image to analyze
-            band_index: Which band to analyze
-            box_size: Size of cutout around each source
-
-        Returns:
-            Estimated FWHM in pixels
-        """
-        image = self.images[image_index, band_index].detach().cpu().numpy()
-
-        if source_positions is None:
-            # Auto-detect sources
-            catalogs = self.detect_sources(band_index=band_index)
-            if not catalogs[image_index]["n_sources"]:
-                return 3.0  # Default fallback
-
-            # Use brightest sources
-            fluxes = catalogs[image_index]["flux"]
-            x_coords = catalogs[image_index]["x"]
-            y_coords = catalogs[image_index]["y"]
-
-            # Sort by flux and take top 10
-            sorted_indices = np.argsort(fluxes)[::-1][:10]
-            source_positions = [(x_coords[i], y_coords[i]) for i in sorted_indices]
-
-        fwhm_estimates = []
-
-        for x, y in source_positions:
-            # Extract cutout around source
-            x_int, y_int = int(round(x)), int(round(y))
-            half_box = box_size // 2
-
-            x_min = max(0, x_int - half_box)
-            x_max = min(image.shape[1], x_int + half_box)
-            y_min = max(0, y_int - half_box)
-            y_max = min(image.shape[0], y_int + half_box)
-
-            cutout = image[y_min:y_max, x_min:x_max]
-
-            if cutout.size < 25:  # Too small
-                continue
-
-            # Find peak and estimate FWHM
-            peak_y, peak_x = np.unravel_index(np.argmax(cutout), cutout.shape)
-            peak_val = cutout[peak_y, peak_x]
-
-            # Background estimate
-            background = np.median(cutout)
-            signal = peak_val - background
-
-            if signal <= 0:
-                continue
-
-            # Find half-maximum contour
-            half_max = background + signal / 2.0
-
-            # FWHM estimate along x and y axes
-            x_profile = cutout[peak_y, :]
-            y_profile = cutout[:, peak_x]
-
-            # Find width at half maximum
-            x_fwhm = self._estimate_fwhm_1d(x_profile, half_max)
-            y_fwhm = self._estimate_fwhm_1d(y_profile, half_max)
-
-            if x_fwhm > 0 and y_fwhm > 0:
-                fwhm_estimates.append(np.sqrt(x_fwhm * y_fwhm))
-
-        if fwhm_estimates:
-            return float(np.median(fwhm_estimates))
-        else:
-            return 3.0  # Fallback default
-
-    def _estimate_fwhm_1d(self, profile: np.ndarray, half_max: float) -> float:
-        """Estimate FWHM from 1D profile."""
-        above_half = profile > half_max
-        if not np.any(above_half):
-            return 0.0
-
-        # Find edges of half-maximum region
-        indices = np.where(above_half)[0]
-        if len(indices) < 2:
-            return 0.0
-
-        return float(indices[-1] - indices[0])
-
-    def convolve_psf(
-        self, fwhm: float, kernel_size: Optional[int] = None
-    ) -> "ImageTensorDict":
-        """
-        Convolve images with Gaussian PSF.
-
-        Args:
-            fwhm: FWHM of Gaussian kernel in pixels
-            kernel_size: Size of convolution kernel (if None, auto-determine)
-
-        Returns:
-            Convolved ImageTensorDict
-        """
-        sigma = gaussian_fwhm_to_sigma * fwhm
-
-        if kernel_size is None:
-            kernel_size = int(2 * np.ceil(3 * sigma) + 1)
-
-        # Create Gaussian kernel
-        kernel = Gaussian2DKernel(sigma, x_size=kernel_size, y_size=kernel_size)
-        kernel_array = kernel.array
-
-        convolved_images = torch.zeros_like(self.images)
-
-        for n in range(self.n_objects):
-            for c in range(self.n_bands):
-                image = self.images[n, c].detach().cpu().numpy()
-                convolved = convolve(image, kernel_array, boundary="extend")
-                convolved_images[n, c] = torch.tensor(convolved, dtype=torch.float32)
-
-        result = ImageTensorDict(
-            convolved_images,
-            self.wcs_list,
-            self.bands,
-            pixel_scale=self.pixel_scale,
-            exposure_time=self.get("exposure_time", None),
-            zero_point=self.get("zero_point", None),
-            image_type=self.image_type,
-            coordinates=self.get("coordinates", None),
-        )
-        result.add_history("convolve_psf", fwhm=fwhm, kernel_size=kernel_size)
-        return result
 
     def crop_center(self, crop_size: Tuple[int, int]) -> "ImageTensorDict":
         """Crop center region of images."""
@@ -594,28 +407,24 @@ class ImageTensorDict(
                 image = self.images[n, c]
 
                 # Basic statistics
-                img_features.extend(
-                    [
-                        torch.mean(image),
-                        torch.std(image),
-                        torch.median(image),
-                        torch.min(image),
-                        torch.max(image),
-                    ]
-                )
+                img_features.extend([
+                    torch.mean(image),
+                    torch.std(image),
+                    torch.median(image),
+                    torch.min(image),
+                    torch.max(image),
+                ])
 
                 # Image structure
                 gradient_x = torch.diff(image, dim=1)
                 gradient_y = torch.diff(image, dim=0)
 
-                img_features.extend(
-                    [
-                        torch.mean(torch.abs(gradient_x)),  # Edge strength X
-                        torch.mean(torch.abs(gradient_y)),  # Edge strength Y
-                        torch.std(gradient_x),  # Texture X
-                        torch.std(gradient_y),  # Texture Y
-                    ]
-                )
+                img_features.extend([
+                    torch.mean(torch.abs(gradient_x)),  # Edge strength X
+                    torch.mean(torch.abs(gradient_y)),  # Edge strength Y
+                    torch.std(gradient_x),  # Texture X
+                    torch.std(gradient_y),  # Texture Y
+                ])
 
             features.append(torch.stack(img_features))
 
@@ -623,16 +432,14 @@ class ImageTensorDict(
 
     def validate(self) -> bool:
         """Validate image tensor data."""
-        # Basic validation from parent
         if not super().validate():
             return False
 
-        # Image-specific validation
         return (
             "images" in self
             and self.images.dim() == 4
             and self.images.shape[1] == len(self.bands)
             and self.images.shape[2] > 10  # Minimum image size
             and self.images.shape[3] > 10
-            and torch.all(torch.isfinite(self.images))
+            and self.validate_finite_values("images")
         )

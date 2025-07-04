@@ -19,7 +19,7 @@ uv sync
 
 # Install PyG Extensions
 Write-Host "🔧 Installing PyG Extensions..." -ForegroundColor Yellow
-uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
+uv pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
 # Activate virtual environment
 Write-Host "🔌 Activating virtual environment..." -ForegroundColor Yellow

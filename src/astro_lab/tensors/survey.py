@@ -1,21 +1,23 @@
 """
+Survey TensorDict for multi-component astronomical survey data.
+
 TensorDict for survey data containing multiple components
-(spatial, photometric, images, etc.).
+(spatial, photometric, images, etc.) with unified feature extraction.
 """
 
-from typing import Any, Dict, Optional
-
+from typing import Any, Dict, List, Optional
 import torch
 
 from .base import AstroTensorDict
 from .image import ImageTensorDict
 from .photometric import PhotometricTensorDict
 from .spatial import SpatialTensorDict
+from .mixins import ValidationMixin
 
 
-class SurveyTensorDict(AstroTensorDict):
+class SurveyTensorDict(AstroTensorDict, ValidationMixin):
     """
-    TensorDict for Survey-Daten.
+    TensorDict for multi-component survey data.
 
     Structure:
     {
@@ -73,6 +75,54 @@ class SurveyTensorDict(AstroTensorDict):
             batch_size = image.batch_size
 
         super().__init__(data, batch_size=batch_size, **kwargs)
+
+    def extract_features(self, feature_types: Optional[List[str]] = None, **kwargs) -> Dict[str, torch.Tensor]:
+        """
+        Extract survey features from all available components.
+        
+        Args:
+            feature_types: Types of features to extract ('survey', 'spatial', 'photometric', 'image')
+            **kwargs: Additional extraction parameters
+            
+        Returns:
+            Dictionary of extracted features from all components
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Extract features from each component
+        if feature_types is None or "spatial" in feature_types:
+            if self.has_spatial():
+                spatial_features = self.spatial.extract_features(["spatial"], **kwargs)
+                # Prefix with component name to avoid conflicts
+                for key, value in spatial_features.items():
+                    features[f"spatial_{key}"] = value
+
+        if feature_types is None or "photometric" in feature_types:
+            if self.has_photometric():
+                photo_features = self.photometric.extract_features(["photometric"], **kwargs)
+                for key, value in photo_features.items():
+                    features[f"photometric_{key}"] = value
+
+        if feature_types is None or "image" in feature_types:
+            if self.has_image():
+                image_features = self.image.extract_features(["image"], **kwargs)
+                for key, value in image_features.items():
+                    features[f"image_{key}"] = value
+
+        if feature_types is None or "survey" in feature_types:
+            # Survey-level aggregated features
+            features["survey_name"] = torch.tensor(hash(self.survey_name) % 10000, dtype=torch.float32)
+            features["has_spatial"] = torch.tensor(float(self.has_spatial()))
+            features["has_photometric"] = torch.tensor(float(self.has_photometric()))
+            features["has_image"] = torch.tensor(float(self.has_image()))
+
+            # Component count
+            features["n_components"] = torch.tensor(
+                float(self.has_spatial() + self.has_photometric() + self.has_image())
+            )
+
+        return features
 
     @property
     def spatial(self) -> Optional[SpatialTensorDict]:

@@ -15,7 +15,7 @@ uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/
 ### First Steps
 ```bash
 # Process data (recommended first step)
-astro-lab process --surveys gaia --max-samples 1000
+astro-lab preprocess --survey gaia --max-samples 1000
 
 # Analyze cosmic web structure
 astro-lab cosmic-web gaia --max-samples 10000 --clustering-scales 5 10 25 --visualize
@@ -55,7 +55,7 @@ marimo run src/astro_lab/ui/app.py
 - **NASA Exoplanet Archive**: Confirmed exoplanets with host star clustering
 - **LINEAR**: Asteroid light curves with orbital family analysis
 
-### 🌌 **Advanced Cosmic Web Analysis**
+### 🌌 **Cosmic Web Analysis**
 
 #### **Interactive 3D Visualization**
 - **CosmographBridge**: Real-time cosmic web visualization with physics simulation
@@ -111,14 +111,14 @@ astro-lab <command> --help
 
 ### Data Processing
 ```bash
-# Process all surveys with cosmic web features
-astro-lab process --surveys gaia nsa sdss --max-samples 10000
+# Preprocess a single survey
+astro-lab preprocess gaia --max-samples 10000
 
-# Process specific surveys with spatial indexing
-astro-lab process --surveys gaia nsa --k-neighbors 8 --max-samples 10000
+# Preprocess with quality filtering
+astro-lab preprocess gaia --force
 
-# Preprocess raw data files
-astro-lab preprocess --surveys gaia sdss --max-samples 5000 --output-dir ./processed_data
+# Preprocess with custom output directory
+astro-lab preprocess gaia --output-dir ./processed_data
 ```
 
 ### Configuration Management
@@ -401,7 +401,7 @@ astro-lab/
 - **Marimo**: Reactive notebooks for interactive analysis
 - **scikit-learn**: Clustering algorithms (DBSCAN, K-means, etc.)
 
-## 🛠️ Modern Framework Stack
+## 🛠️ Framework Stack
 
 AstroLab is built on cutting-edge frameworks and libraries for astronomical machine learning:
 
@@ -482,7 +482,7 @@ widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 widget.show()  # Gold points for Gaia stars with real-time clustering
 ```
 
-### Advanced Filament Detection
+### Filament Detection
 ```python
 from astro_lab.tensors import SpatialTensorDict
 from astro_lab.data.cosmic_web import CosmicWebAnalyzer

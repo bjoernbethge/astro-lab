@@ -1,23 +1,24 @@
 ﻿"""
-Orbital TensorDict for AstroLab
-===============================
+Orbital TensorDict for orbital mechanics calculations.
 
-TensorDict for orbital elements and orbital mechanics calculations.
+TensorDict for orbital elements and orbital mechanics calculations
+with proper Keplerian mechanics and orbital propagation.
 """
 
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Dict, List, Optional
 
 import torch
 
 from .base import AstroTensorDict
+from .mixins import ValidationMixin
 
 
-class OrbitTensorDict(AstroTensorDict):
+class OrbitTensorDict(AstroTensorDict, ValidationMixin):
     """
-    TensorDict for Orbital-Elements.
+    TensorDict for orbital elements and mechanics.
 
     Structure:
     {
@@ -56,7 +57,7 @@ class OrbitTensorDict(AstroTensorDict):
         n_objects = elements.shape[0]
 
         if epoch is None:
-            epoch = torch.zeros(n_objects)  # Default-Epoch
+            epoch = torch.zeros(n_objects)
 
         data = {
             "elements": elements,
@@ -76,6 +77,67 @@ class OrbitTensorDict(AstroTensorDict):
         }
 
         super().__init__(data, batch_size=(n_objects,), **kwargs)
+
+    def extract_features(
+        self, feature_types: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Extract orbital features from the TensorDict.
+
+        Args:
+            feature_types: Types of features to extract ('orbital', 'dynamics', 'classification')
+            **kwargs: Additional extraction parameters
+
+        Returns:
+            Dictionary of extracted orbital features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add orbital-specific computed features
+        if feature_types is None or "orbital" in feature_types:
+            # Basic orbital elements
+            features["semi_major_axis"] = self.semi_major_axis
+            features["eccentricity"] = self.eccentricity
+            features["inclination"] = self.inclination
+            features["longitude_ascending_node"] = self.longitude_of_ascending_node
+            features["argument_periapsis"] = self.argument_of_periapsis
+            features["mean_anomaly"] = self.mean_anomaly
+
+        if feature_types is None or "dynamics" in feature_types:
+            # Dynamical features
+            features["orbital_period"] = self.compute_period()
+            features["aphelion_distance"] = self.semi_major_axis * (
+                1 + self.eccentricity
+            )
+            features["perihelion_distance"] = self.semi_major_axis * (
+                1 - self.eccentricity
+            )
+            features["orbital_energy"] = -1.0 / (
+                2 * self.semi_major_axis
+            )  # Specific orbital energy
+
+            # Angular momentum (simplified)
+            features["angular_momentum"] = torch.sqrt(
+                self.semi_major_axis * (1 - self.eccentricity**2)
+            )
+
+        if feature_types is None or "classification" in feature_types:
+            # Classification features for orbital families
+            a = self.semi_major_axis
+            e = self.eccentricity
+
+            # Asteroid belt classification
+            features["is_main_belt"] = ((a >= 2.1) & (a <= 3.3) & (e < 0.3)).float()
+            features["is_near_earth"] = (a < 1.3).float()
+            features["is_jupiter_trojan"] = ((a >= 5.0) & (a <= 5.5)).float()
+
+            # Eccentricity classification
+            features["is_circular"] = (e < 0.1).float()
+            features["is_elliptical"] = ((e >= 0.1) & (e < 0.9)).float()
+            features["is_highly_eccentric"] = (e >= 0.9).float()
+
+        return features
 
     @property
     def semi_major_axis(self) -> torch.Tensor:

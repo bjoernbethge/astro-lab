@@ -8,10 +8,9 @@ Collector for Gaia DR3 bright all-sky data using astroquery.
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 import numpy as np
-import pandas as pd
 import polars as pl
 from astroquery.gaia import Gaia
 

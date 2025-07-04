@@ -27,7 +27,9 @@ import numpy as np
 import pyvista as pv
 import torch
 
-from .albpy import bpy
+from astro_lab.config import get_data_config
+
+bpy = None  # Blender API only available inside Blender, do not import here
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +49,8 @@ class TNG50Visualizer:
             data_dir: Directory containing processed TNG50 graphs
         """
         if data_dir is None:
-            from astro_lab.config import get_data_config
-
             data_config = get_data_config()
-            self.data_dir = data_config.get_survey_processed_dir("tng50") / "graphs"
+            self.data_dir = Path(data_config["processed_dir"]) / "tng50" / "graphs"
         else:
             self.data_dir = data_dir
 
@@ -223,17 +223,8 @@ class TNG50Visualizer:
         object_name: str = "TNG50_particles",
         use_instancing: bool = True,
     ) -> List[Any]:
-        """
-        Convert TNG50 graph to Blender objects.
-
-        Args:
-            graph_data: Graph data from load_tng50_graph()
-            object_name: Base name for Blender objects
-            use_instancing: Use instancing for better performance
-
-        Returns:
-            List of created Blender objects
-        """
+        if bpy is None:
+            raise ImportError("Blender's bpy module is not available outside Blender.")
         positions = graph_data["positions"]
         graph_data["features"]
 
@@ -311,10 +302,8 @@ class TNG50Visualizer:
         animation: bool = False,
         **kwargs,
     ) -> bool:
-        """
-        Zentrale Render-Methode für TNG50-Visualisierungen.
-        Unterstützt Standbild und Animation.
-        """
+        if bpy is None:
+            raise ImportError("Blender's bpy module is not available outside Blender.")
         try:
             bpy.context.scene.render.engine = engine
             bpy.context.scene.render.filepath = output_path
@@ -365,7 +354,8 @@ def quick_pyvista_plot(particle_type: str = "gas", **kwargs):
 
 
 def quick_blender_import(particle_type: str = "gas", **kwargs):
-    """Quick Blender import of TNG50 data."""
+    if bpy is None:
+        raise ImportError("Blender's bpy module is not available outside Blender.")
     viz = TNG50Visualizer()
     return viz.quick_visualization(particle_type, "blender", **kwargs)
 

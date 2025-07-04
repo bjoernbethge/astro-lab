@@ -9,7 +9,7 @@ import logging
 import shutil
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 import polars as pl
 import requests
@@ -51,7 +51,7 @@ class BaseSurveyCollector(ABC):
     def _setup_paths(self):
         """Setup data paths for raw data."""
         data_config = get_data_config()
-        self.raw_dir = data_config.get_survey_raw_dir(self.survey_name)
+        self.raw_dir = Path(data_config["raw_dir"]) / f"{self.survey_name}"
         self.raw_dir.mkdir(parents=True, exist_ok=True)
 
     @abstractmethod

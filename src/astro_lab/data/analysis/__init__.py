@@ -2,17 +2,28 @@
 Astronomical Data Analysis Module
 =================================
 
-Clean, focused analysis tools for astronomical data with Graph Neural Networks.
+Comprehensive analysis tools for astronomical data with TensorDict integration.
 """
 
-from .cosmic_web import CosmicWebAnalyzer, analyze_cosmic_web
-from .clustering import SpatialClustering
-from .structures import FilamentDetector, StructureAnalyzer
+# Import autoencoders for analysis purposes
+from astro_lab.models import BaseAutoencoder, PointCloudAutoencoder
+
+from .clustering import SpatialClustering, analyze_with_autoencoder
+from .cosmic_web import ScalableCosmicWebAnalyzer, analyze_cosmic_web_50m
+from .structures import CosmicWebAnalyzer, FilamentDetector, StructureAnalyzer
 
 __all__ = [
-    "CosmicWebAnalyzer",
-    "analyze_cosmic_web",
+    # Clustering and spatial analysis
     "SpatialClustering",
+    "analyze_with_autoencoder",
+    # Cosmic web analysis
+    "ScalableCosmicWebAnalyzer",
+    "CosmicWebAnalyzer",
+    "analyze_cosmic_web_50m",
+    # Structure detection
     "FilamentDetector",
     "StructureAnalyzer",
+    # Autoencoders for analysis
+    "BaseAutoencoder",
+    "PointCloudAutoencoder",
 ]

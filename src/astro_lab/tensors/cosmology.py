@@ -1,8 +1,7 @@
 """
-Cosmology TensorDict
-===================
+Cosmology TensorDict for cosmological calculations.
 
-TensorDict for cosmological calculations with proper astropy integration.
+TensorDict for cosmological calculations with astropy integration.
 """
 
 import logging
@@ -11,7 +10,6 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import torch
 from astropy import units as u
-from astropy.constants import c as const_c
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import FLRW, FlatLambdaCDM, Planck18
 
@@ -23,21 +21,14 @@ logger = logging.getLogger(__name__)
 
 class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
     """
-    TensorDict for cosmological calculations with proper astropy integration.
+    TensorDict for cosmological calculations with astropy integration.
 
     Features:
-    - Proper astropy.cosmology integration for distance calculations
+    - Astropy.cosmology integration for distance calculations
     - Various cosmological models (ΛCDM, wCDM, etc.)
     - Luminosity distance, angular diameter distance, comoving volume
     - Age of universe, lookback time calculations
     - K-corrections and evolutionary corrections
-    - Cosmological parameter inference support
-
-    Best Practices:
-    - Always use explicit cosmology objects instead of global defaults
-    - For reproducible results, specify cosmology parameters explicitly
-    - Use astropy.cosmology fitting utilities for parameter estimation
-    - Validate input data before cosmological calculations
     """
 
     def __init__(
@@ -50,7 +41,7 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
         **kwargs,
     ):
         """
-        Initialize CosmologyTensorDict with proper astronomical cosmology.
+        Initialize CosmologyTensorDict.
 
         Args:
             redshifts: [N] Source redshifts
@@ -58,42 +49,24 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
             ra: Right ascension in degrees (optional)
             dec: Declination in degrees (optional)
             observed_magnitudes: Observed magnitudes for distance calculations
-
-        Note:
-            For reproducible results, always use explicit cosmology objects.
-            See astropy.cosmology documentation for available models.
         """
         if redshifts.dim() != 1:
-            raise ValueError(
-                f"Redshifts must be 1D tensor, got shape {redshifts.shape}"
-            )
+            raise ValueError(f"Redshifts must be 1D tensor, got shape {redshifts.shape}")
 
         n_objects = redshifts.shape[0]
 
-        # Handle cosmology - prefer explicit objects over defaults
+        # Handle cosmology
         if cosmology is None:
-            logger.warning(
-                "No cosmology specified, using Planck18. "
-                "For reproducible results, use explicit cosmology objects."
-            )
             self.cosmology = Planck18
         elif isinstance(cosmology, dict):
-            # Create cosmology from parameters
-            logger.info("Creating cosmology from parameters")
             H0 = cosmology.get("H0", 70) * u.Unit("km") / u.Unit("s") / u.Unit("Mpc")
             Om0 = cosmology.get("Om0", 0.3)
             Tcmb0 = cosmology.get("Tcmb0", 2.725) * u.Unit("K")
             self.cosmology = FlatLambdaCDM(H0=H0, Om0=Om0, Tcmb0=Tcmb0)
         else:
-            # Use provided cosmology object
             if not isinstance(cosmology, FLRW):
                 raise ValueError("Cosmology must be an astropy.cosmology.FLRW object")
             self.cosmology = cosmology
-            logger.info(f"Using cosmology: {cosmology.name}")
-
-        # Validate cosmology parameters
-        if not hasattr(self.cosmology, "H0") or not hasattr(self.cosmology, "Om0"):
-            raise ValueError("Cosmology must have H0 and Om0 parameters")
 
         data = {
             "redshifts": redshifts,
@@ -132,6 +105,49 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
         """Source redshifts."""
         return self["redshifts"]
 
+    def extract_features(self, feature_types: Optional[List[str]] = None, **kwargs) -> Dict[str, torch.Tensor]:
+        """
+        Extract cosmological features from the TensorDict.
+        
+        Args:
+            feature_types: Types of features to extract ('cosmological', 'distances', 'times')
+            **kwargs: Additional extraction parameters
+            
+        Returns:
+            Dictionary of extracted cosmological features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add cosmological-specific computed features
+        if feature_types is None or "cosmological" in feature_types:
+            # Basic cosmological properties
+            z = self.redshifts
+            features["redshift"] = z
+            features["scale_factor"] = 1.0 / (1.0 + z)
+            features["log_redshift"] = torch.log10(z + 1e-6)
+
+        if feature_types is None or "distances" in feature_types:
+            # Add distance features if calculated
+            if "luminosity_distance" not in self:
+                self.compute_distances()
+
+            for dist_key in ["luminosity_distance", "angular_diameter_distance",
+                           "comoving_distance", "distance_modulus"]:
+                if dist_key in self:
+                    features[dist_key] = self[dist_key]
+
+        if feature_types is None or "times" in feature_types:
+            # Add time features if calculated
+            if "age_at_redshift" not in self:
+                self.compute_times()
+
+            for time_key in ["age_at_redshift", "lookback_time"]:
+                if time_key in self:
+                    features[time_key] = self[time_key]
+
+        return features
+
     def compute_distances(self) -> Dict[str, torch.Tensor]:
         """
         Compute various cosmological distances using astropy.
@@ -143,21 +159,15 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
 
         # Compute distances using astropy cosmology
         luminosity_distance = self.cosmology.luminosity_distance(z).to_value("Mpc")
-        angular_diameter_distance = self.cosmology.angular_diameter_distance(
-            z
-        ).to_value("Mpc")
+        angular_diameter_distance = self.cosmology.angular_diameter_distance(z).to_value("Mpc")
         comoving_distance = self.cosmology.comoving_distance(z).to_value("Mpc")
 
         # Distance modulus
         distance_modulus = 5 * np.log10(luminosity_distance * 1e5)  # Convert Mpc to pc
 
         distances = {
-            "luminosity_distance": torch.tensor(
-                luminosity_distance, dtype=torch.float32
-            ),
-            "angular_diameter_distance": torch.tensor(
-                angular_diameter_distance, dtype=torch.float32
-            ),
+            "luminosity_distance": torch.tensor(luminosity_distance, dtype=torch.float32),
+            "angular_diameter_distance": torch.tensor(angular_diameter_distance, dtype=torch.float32),
             "comoving_distance": torch.tensor(comoving_distance, dtype=torch.float32),
             "distance_modulus": torch.tensor(distance_modulus, dtype=torch.float32),
         }
@@ -295,18 +305,13 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
         z = self.redshifts
 
         # Simplified K-correction templates
-        # In practice, would use proper SED fitting
         if sed_type == "elliptical":
-            # Early-type galaxy K-correction approximation
             k_corrections = 2.5 * torch.log10(1 + z) + 1.2 * z
         elif sed_type == "spiral":
-            # Late-type galaxy K-correction
             k_corrections = 2.5 * torch.log10(1 + z) + 0.8 * z
         elif sed_type == "starburst":
-            # Starburst galaxy K-correction
             k_corrections = 2.5 * torch.log10(1 + z) + 0.5 * z
         elif sed_type == "qso":
-            # Quasar K-correction
             k_corrections = 2.5 * torch.log10(1 + z) + 0.3 * z
         else:
             raise ValueError(f"Unknown SED type: {sed_type}")
@@ -335,24 +340,6 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
 
         return torch.tensor(H_z, dtype=torch.float32)
 
-    def critical_density(self, redshift: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        Compute critical density at given redshifts.
-
-        Args:
-            redshift: Redshifts (if None, use stored redshifts)
-
-        Returns:
-            Critical density in g/cm³
-        """
-        if redshift is None:
-            redshift = self.redshifts
-
-        z_array = redshift.detach().cpu().numpy()
-        rho_crit = self.cosmology.critical_density(z_array).to(u.g / u.cm**3).value
-
-        return torch.tensor(rho_crit, dtype=torch.float32)
-
     def scale_factor(self, redshift: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Compute scale factor a = 1/(1+z).
@@ -366,8 +353,7 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
         if redshift is None:
             redshift = self.redshifts
 
-        scale_factor = 1.0 / (1.0 + redshift)
-        return scale_factor
+        return 1.0 / (1.0 + redshift)
 
     def compute_survey_volume(
         self,
@@ -397,73 +383,24 @@ class CosmologyTensorDict(AstroTensorDict, NormalizationMixin, ValidationMixin):
 
         # Scale by survey area (assume full sphere is 4π steradians)
         area_steradians = area.to_value("steradian")
-        full_sphere = 4 * np.pi * area.to_value("steradian")
+        full_sphere = 4 * np.pi
 
         survey_volume = (vol_max - vol_min) * (area_steradians / full_sphere)
 
         return survey_volume.to(u.Unit("Mpc") ** 3)
 
-    def estimate_cosmological_parameters(
-        self,
-        observed_data: Dict[str, torch.Tensor],
-        parameter_priors: Optional[Dict[str, tuple[float, float]]] = None,
-    ) -> Dict[str, float]:
-        """
-        Estimate cosmological parameters from observed data.
-
-        Args:
-            observed_data: Dictionary with observed quantities
-            parameter_priors: Prior ranges for parameters
-
-        Returns:
-            Best-fit cosmological parameters
-
-        Raises:
-            NotImplementedError: If no real likelihood analysis is implemented.
-        """
-        raise NotImplementedError(
-            "Cosmological parameter estimation requires real data and a likelihood function. "
-            "Please implement a real fitting procedure."
-        )
-
-    def compare_cosmologies(
-        self, cosmologies: List[FLRW], observed_data: Dict[str, torch.Tensor]
-    ) -> Dict[str, float]:
-        """
-        Compare different cosmological models.
-
-        Args:
-            cosmologies: List of astropy cosmology objects
-            observed_data: Observed data for comparison
-
-        Returns:
-            Dictionary with comparison metrics
-
-        Raises:
-            NotImplementedError: If no real comparison is implemented.
-        """
-        raise NotImplementedError(
-            "Cosmology comparison requires real observed data and model predictions. "
-            "Please implement a real comparison procedure."
-        )
-
     def validate(self) -> bool:
         """Validate cosmology tensor data."""
-        # Basic validation from parent
         if not super().validate():
             return False
 
-        # Cosmology-specific validation
         return (
             "redshifts" in self
             and self.redshifts.dim() == 1
             and torch.all(self.redshifts >= 0)
             and torch.all(self.redshifts < 20)  # Reasonable redshift range
-            and torch.all(torch.isfinite(self.redshifts))
+            and self.validate_finite_values("redshifts")
         )
-
-    # Calculate redshift using velocity
-    c_kms = const_c.to_value("km/s")  # Speed of light in km/s
 
 
 def create_cosmology_from_parameters(
@@ -474,7 +411,7 @@ def create_cosmology_from_parameters(
     name: str = "CustomCosmology",
 ) -> FLRW:
     """
-    Create a cosmology object from parameters following Astropy best practices.
+    Create a cosmology object from parameters.
 
     Args:
         H0: Hubble constant in km/s/Mpc
@@ -487,7 +424,6 @@ def create_cosmology_from_parameters(
         Astropy cosmology object
     """
     if Ode0 is None:
-        # Flat universe: Ode0 = 1 - Om0
         Ode0 = 1.0 - Om0
 
     return FlatLambdaCDM(
@@ -497,38 +433,3 @@ def create_cosmology_from_parameters(
         Tcmb0=Tcmb0 * u.Unit("K"),
         name=name,
     )
-
-
-def validate_cosmology_parameters(
-    H0: float, Om0: float, Ode0: Optional[float] = None
-) -> bool:
-    """
-    Validate cosmology parameters for physical consistency.
-
-    Args:
-        H0: Hubble constant in km/s/Mpc
-        Om0: Matter density parameter
-        Ode0: Dark energy density parameter
-
-    Returns:
-        True if parameters are physically reasonable
-
-    Raises:
-        ValueError: If parameters are unphysical
-    """
-    if H0 <= 0:
-        raise ValueError("H0 must be positive")
-
-    if Om0 < 0 or Om0 > 1:
-        raise ValueError("Om0 must be between 0 and 1")
-
-    if Ode0 is not None:
-        if Ode0 < 0 or Ode0 > 1:
-            raise ValueError("Ode0 must be between 0 and 1")
-
-        # Check for flat universe consistency
-        total = Om0 + Ode0
-        if not (0.95 <= total <= 1.05):  # Allow small deviations from flatness
-            logger.warning(f"Universe may not be flat: Om0 + Ode0 = {total}")
-
-    return True

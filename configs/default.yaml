@@ -1,9 +1,0 @@
-batch_size: 64
-dataset: gaia
-learning_rate: 0.001
-max_epochs: 100
-model:
-  hidden_dim: 128
-  name: gaia_classifier
-  num_layers: 3
-experiment_name: gaia_experiment

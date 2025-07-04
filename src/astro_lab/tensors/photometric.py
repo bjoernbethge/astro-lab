@@ -1,6 +1,8 @@
 """
-TensorDict for photometric data with proper astronomical handling
-using real astropy APIs.
+TensorDict for photometric data with proper astronomical handling.
+
+Provides photometric operations using astropy units and astronomical
+magnitude systems (AB, Vega, ST).
 """
 
 from typing import Dict, List, Optional, Tuple, Union
@@ -10,8 +12,6 @@ import numpy as np
 import torch
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clipped_stats
-
-# Real astropy photometric units and functions
 from astropy.units import Unit
 from tensordict import TensorDict
 
@@ -23,15 +23,14 @@ class PhotometricTensorDict(
     AstroTensorDict, NormalizationMixin, FeatureExtractionMixin, ValidationMixin
 ):
     """
-    TensorDict for photometric data with real astropy integration.
+    TensorDict for photometric data with astropy integration.
 
     Features:
     - AB/Vega/ST magnitude systems with proper astropy units
-    - Proper magnitude and flux conversions using astropy
+    - Magnitude and flux conversions
     - K-corrections for cosmological sources
     - Color transformations between photometric systems
-    - Proper error propagation
-    - Integration with astropy.units.photometric
+    - Error propagation
     """
 
     # Standard zero points for Vega to AB conversion (AB - Vega)
@@ -68,7 +67,7 @@ class PhotometricTensorDict(
         "F160W": 0.0,
     }
 
-    # Effective wavelengths in Angstroms for spectral density conversions
+    # Effective wavelengths in Angstroms
     BAND_WAVELENGTHS = {
         "U": 3650,
         "B": 4450,
@@ -109,7 +108,7 @@ class PhotometricTensorDict(
         **kwargs,
     ):
         """
-        Initialize PhotometricTensorDict with astronomical features.
+        Initialize PhotometricTensorDict.
 
         Args:
             magnitudes: [N, B] Tensor with magnitudes/fluxes
@@ -155,35 +154,13 @@ class PhotometricTensorDict(
         if coordinates is not None:
             data["coordinates"] = coordinates
 
-        super().__init__(data, batch_size=magnitudes.shape[:-1], **kwargs)
-
-    def to_astropy_magnitudes(self, band_index: int = 0) -> u.Quantity:
-        """
-        Convert to proper astropy Magnitude objects.
-
-        Args:
-            band_index: Which band to convert (default: first band)
-
-        Returns:
-            Astropy Magnitude quantity with proper units
-        """
-        if not self.is_magnitude:
-            raise ValueError("Can only convert magnitude data to astropy Magnitudes")
-
-        mags = self["magnitudes"][:, band_index]
-
-        if self.filter_system == "AB":
-            return mags.detach().cpu().numpy() * u.mag
-        elif self.filter_system == "ST":
-            return mags.detach().cpu().numpy() * u.mag
-        else:
-            # Vega system - convert to AB first
-            offset = self.VEGA_AB_OFFSETS.get(self.bands[band_index], 0.0)
-            ab_mags = mags + offset
-            return ab_mags.detach().cpu().numpy() * u.mag
+        # Don't pass batch_size separately if it's already in kwargs
+        if "batch_size" not in kwargs:
+            kwargs["batch_size"] = magnitudes.shape[:-1]
+        super().__init__(data, **kwargs)
 
     def to_ab_system(self) -> "PhotometricTensorDict":
-        """Convert magnitudes to AB system using astropy units."""
+        """Convert magnitudes to AB system."""
         if self._metadata["filter_system"] == "AB":
             return self.clone()
 
@@ -213,7 +190,7 @@ class PhotometricTensorDict(
         return result
 
     def to_vega_system(self) -> "PhotometricTensorDict":
-        """Convert magnitudes to Vega system using astropy units."""
+        """Convert magnitudes to Vega system."""
         if self._metadata["filter_system"] == "Vega":
             return self.clone()
 
@@ -261,11 +238,9 @@ class PhotometricTensorDict(
         z = self["redshift"]
 
         # Simplified K-correction templates
-        # In practice, use kcorrect or template fitting
         k_corrections = {}
 
         if sed_type == "elliptical":
-            # Elliptical galaxy template (simplified)
             k_corrections = {
                 "g": 2.5 * torch.log10(1 + z) + 1.5 * z,
                 "r": 2.5 * torch.log10(1 + z) + 1.0 * z,
@@ -273,7 +248,6 @@ class PhotometricTensorDict(
                 "z": 2.5 * torch.log10(1 + z) + 0.6 * z,
             }
         elif sed_type == "spiral":
-            # Spiral galaxy template
             k_corrections = {
                 "g": 2.5 * torch.log10(1 + z) + 0.8 * z,
                 "r": 2.5 * torch.log10(1 + z) + 0.5 * z,
@@ -281,7 +255,6 @@ class PhotometricTensorDict(
                 "z": 2.5 * torch.log10(1 + z) + 0.2 * z,
             }
         elif sed_type == "starburst":
-            # Starburst galaxy template
             k_corrections = {
                 "g": 2.5 * torch.log10(1 + z) + 0.5 * z,
                 "r": 2.5 * torch.log10(1 + z) + 0.3 * z,
@@ -365,61 +338,29 @@ class PhotometricTensorDict(
 
         return result
 
-    def to_flux_density(
-        self, wavelength: Optional[u.Quantity] = None
-    ) -> "PhotometricTensorDict":
-        """
-        Convert magnitudes to flux densities using astropy units and equivalencies.
-
-        Args:
-            wavelength: Reference wavelength for conversion (if None, use band centers)
-        """
+    def to_flux_density(self) -> "PhotometricTensorDict":
+        """Convert magnitudes to flux densities."""
         if not self.is_magnitude:
             return self.clone()
 
-        device = self["magnitudes"].device
+        # device = self["magnitudes"].device  # Removed unused variable
         flux_data = torch.zeros_like(self["magnitudes"])
 
         for i, band in enumerate(self.bands):
-            # Get magnitude values for this band
             mags = self["magnitudes"][:, i]
 
-            # Convert to astropy magnitudes
+            # Standard flux conversion: f = 10^(-0.4 * (m - zp))
             if self.filter_system == "AB":
-                astropy_mags = mags.detach().cpu().numpy() * u.mag
+                # AB system: f_nu [Jy] = 10^(-0.4 * (m_AB + 48.6))
+                flux_data[:, i] = 10 ** (-0.4 * (mags + 48.6))
             elif self.filter_system == "ST":
-                astropy_mags = mags.detach().cpu().numpy() * u.mag
+                # ST system
+                flux_data[:, i] = 10 ** (-0.4 * (mags + 21.1))
             else:
-                # Vega - convert to AB first
+                # Vega system - convert to AB first
                 offset = self.VEGA_AB_OFFSETS.get(band, 0.0)
                 ab_mags = mags + offset
-                astropy_mags = ab_mags.detach().cpu().numpy() * u.mag
-
-            # Get wavelength for this band
-            if wavelength is not None:
-                pass  # band_wl is not used
-            else:
-                pass  # band_wl is not used
-
-            # Convert to flux density using astropy
-            flux_density = astropy_mags.to(
-                u.erg / u.Unit("s") / u.Unit("cm") ** 2 / u.Unit("AA"),
-                equivalencies=u.spectral(),
-            )
-
-            # Convert flux density units
-            if flux_density.unit.is_equivalent(
-                u.Unit("erg") / u.Unit("s") / u.Unit("cm") ** 2 / u.Unit("AA")
-            ):
-                # Convert from erg/s/cm²/Å to erg/s/cm²/Hz
-                flux_density = flux_density.to(
-                    u.Unit("erg") / u.Unit("s") / u.Unit("cm") ** 2 / u.Unit("Hz"),
-                    equivalencies=u.spectral(),
-                )
-
-            flux_data[:, i] = torch.tensor(
-                flux_density.value, device=device, dtype=torch.float32
-            )
+                flux_data[:, i] = 10 ** (-0.4 * (ab_mags + 48.6))
 
         # Error propagation
         new_errors = None
@@ -443,29 +384,26 @@ class PhotometricTensorDict(
     def to_magnitude(
         self, zeropoint: Optional[float] = None
     ) -> "PhotometricTensorDict":
-        """Convert fluxes to magnitudes with proper zero points."""
+        """Convert fluxes to magnitudes."""
         if self.is_magnitude:
             return self.clone()
 
         # Apply appropriate zero point based on filter system
         if self._metadata["filter_system"] == "AB":
-            # AB magnitude: m_AB = -2.5 * log10(f_nu) - 48.60
             mag_data = (
                 -2.5 * torch.log10(torch.clamp(self["magnitudes"], min=1e-30)) - 48.60
             )
         elif self._metadata["filter_system"] == "ST":
-            # ST magnitude: m_ST = -2.5 * log10(f_lambda) - 21.10
             mag_data = (
                 -2.5 * torch.log10(torch.clamp(self["magnitudes"], min=1e-30)) - 21.10
             )
         else:
-            # Default or custom zeropoint
             zp = zeropoint if zeropoint is not None else 0.0
             mag_data = (
                 -2.5 * torch.log10(torch.clamp(self["magnitudes"], min=1e-30)) + zp
             )
 
-        # Error propagation: sigma_m = 2.5 / ln(10) * sigma_f / f
+        # Error propagation
         new_errors = None
         if "errors" in self:
             factor = 2.5 / torch.log(torch.tensor(10.0))
@@ -486,21 +424,22 @@ class PhotometricTensorDict(
         return result
 
     def compute_absolute_magnitudes(
-        self, distance: Union[torch.Tensor, u.Quantity], cosmology=None
+        self, distance: Union[torch.Tensor, u.Quantity]
     ) -> torch.Tensor:
         """
         Compute absolute magnitudes from apparent magnitudes.
 
         Args:
             distance: Luminosity distance or distance modulus
-            cosmology: Astropy cosmology for redshift-based calculation
+
+        Returns:
+            Absolute magnitudes
         """
         if not self.is_magnitude:
             raise ValueError("Absolute magnitude requires magnitude data")
 
         # Handle different distance inputs
         if isinstance(distance, u.Quantity):
-            # Convert to distance modulus
             if distance.unit.is_equivalent(Unit("pc")):
                 distance_modulus = 5 * torch.log10(distance.to(Unit("pc")).value / 10)
             elif distance.unit.is_equivalent(Unit("Mpc")):
@@ -510,7 +449,7 @@ class PhotometricTensorDict(
             else:
                 raise ValueError(f"Unsupported distance unit: {distance.unit}")
         else:
-            # Assume it's already distance modulus or distance in pc
+            # Assume distance in pc or distance modulus
             if distance.max() < 100:
                 distance_modulus = distance
             else:
@@ -532,7 +471,7 @@ class PhotometricTensorDict(
         self, sigma: float = 3.0, maxiters: int = 5, band_index: Optional[int] = None
     ) -> torch.Tensor:
         """
-        Identify outliers using sigma clipping from astropy.stats.
+        Identify outliers using sigma clipping.
 
         Args:
             sigma: Sigma threshold for clipping
@@ -601,16 +540,113 @@ class PhotometricTensorDict(
         except ValueError:
             raise ValueError(f"Band '{band}' not found in {self.bands}")
 
+    def extract_features(
+        self, feature_types: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Extract photometric features from the TensorDict.
+
+        Args:
+            feature_types: Types of features to extract ('photometric', 'colors', 'magnitudes')
+            **kwargs: Additional extraction parameters
+
+        Returns:
+            Dictionary of extracted photometric features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add photometric-specific computed features
+        if feature_types is None or "photometric" in feature_types:
+            # Basic photometric properties
+            mags = self["magnitudes"]
+            features["mean_magnitude"] = torch.mean(mags, dim=-1)
+            features["magnitude_range"] = (
+                torch.max(mags, dim=-1)[0] - torch.min(mags, dim=-1)[0]
+            )
+            features["magnitude_std"] = torch.std(mags, dim=-1)
+
+            # Brightest and faintest magnitudes
+            features["brightest_magnitude"] = torch.min(mags, dim=-1)[0]
+            features["faintest_magnitude"] = torch.max(mags, dim=-1)[0]
+
+        if feature_types is None or "colors" in feature_types:
+            # Add color features if multiple bands available
+            if len(self.bands) >= 2:
+                colors = self.compute_colors()
+                for color_name, color_values in colors.items():
+                    if isinstance(color_values, torch.Tensor):
+                        features[f"color_{color_name}"] = color_values
+
+        return features
+
+    def extract_photometric_features(self) -> torch.Tensor:
+        """
+        Extract comprehensive photometric features for classification.
+
+        Returns:
+            [N, F] Feature tensor with photometric properties
+        """
+        features = []
+        mags = self["magnitudes"]
+
+        # Basic magnitude statistics
+        features.extend(
+            [
+                torch.mean(mags, dim=-1),  # Mean magnitude
+                torch.std(mags, dim=-1),  # Magnitude scatter
+                torch.min(mags, dim=-1)[0],  # Brightest magnitude
+                torch.max(mags, dim=-1)[0],  # Faintest magnitude
+                torch.median(mags, dim=-1)[0],  # Median magnitude
+            ]
+        )
+
+        # Magnitude range and ratios
+        mag_range = torch.max(mags, dim=-1)[0] - torch.min(mags, dim=-1)[0]
+        features.append(mag_range)
+
+        # Colors if multiple bands
+        if len(self.bands) >= 2:
+            try:
+                colors_dict = self.compute_colors()
+                for color_values in colors_dict.values():
+                    if isinstance(color_values, torch.Tensor):
+                        features.append(color_values)
+                        break  # Just add first color for now
+            except Exception:
+                pass
+
+        # Flux ratios between bands
+        if len(self.bands) >= 2:
+            # Convert to flux for ratios
+            flux_data = 10 ** (-0.4 * mags)  # Simple flux conversion
+
+            # Blue to red ratio (first vs last band)
+            blue_red_ratio = flux_data[:, 0] / (flux_data[:, -1] + 1e-10)
+            features.append(blue_red_ratio)
+
+        # Error-based features if available
+        if "errors" in self:
+            errors = self["errors"]
+            features.extend(
+                [
+                    torch.mean(errors, dim=-1),  # Mean error
+                    torch.mean(mags / (errors + 1e-10), dim=-1),  # Mean S/N ratio
+                ]
+            )
+
+        return (
+            torch.stack(features, dim=-1) if features else torch.zeros(mags.shape[0], 0)
+        )
+
     def validate(self) -> bool:
         """Validate photometric tensor data."""
-        # Basic validation from parent
         if not super().validate():
             return False
 
-        # Photometric-specific validation
         return (
-            self.validate_magnitudes()
-            and "magnitudes" in self
+            "magnitudes" in self
             and self["magnitudes"].shape[-1] == len(self.bands)
             and len(self.bands) > 0
+            and self.validate_finite_values("magnitudes")
         )

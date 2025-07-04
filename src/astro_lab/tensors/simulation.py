@@ -1,8 +1,8 @@
 ﻿"""
-Simulation TensorDict for AstroLab
-==================================
+Simulation TensorDict for N-Body simulations and cosmological data.
 
-TensorDict for N-Body simulations and cosmological data.
+TensorDict for N-Body simulations and cosmological data with proper
+gravitational dynamics and energy conservation.
 """
 
 from __future__ import annotations
@@ -13,10 +13,11 @@ from typing import Dict, List, Optional
 import torch
 
 from .base import AstroTensorDict
+from .mixins import ValidationMixin
 from .spatial import SpatialTensorDict
 
 
-class SimulationTensorDict(AstroTensorDict):
+class SimulationTensorDict(AstroTensorDict, ValidationMixin):
     """
     TensorDict for N-Body simulations and cosmological data.
 
@@ -106,6 +107,84 @@ class SimulationTensorDict(AstroTensorDict):
         }
 
         super().__init__(data, batch_size=(n_objects,), **kwargs)
+
+    def extract_features(
+        self, feature_types: Optional[List[str]] = None, **kwargs
+    ) -> Dict[str, torch.Tensor]:
+        """
+        Extract simulation features from the TensorDict.
+
+        Args:
+            feature_types: Types of features to extract ('simulation', 'dynamics', 'energetics')
+            **kwargs: Additional extraction parameters
+
+        Returns:
+            Dictionary of extracted simulation features
+        """
+        # Get base features
+        features = super().extract_features(feature_types, **kwargs)
+
+        # Add simulation-specific computed features
+        if feature_types is None or "simulation" in feature_types:
+            # Basic simulation properties
+            features["current_time"] = torch.tensor(
+                self["meta"]["current_time"], dtype=torch.float32
+            )
+            features["time_step"] = torch.tensor(
+                self["meta"]["time_step"], dtype=torch.float32
+            )
+            features["total_mass"] = torch.sum(self.masses)
+            features["n_particles"] = torch.tensor(float(self.n_objects))
+
+        if feature_types is None or "dynamics" in feature_types:
+            # Dynamical features
+            velocities = self.velocities
+            features["velocity_magnitude"] = torch.norm(velocities, dim=-1)
+            features["mean_velocity"] = torch.mean(torch.norm(velocities, dim=-1))
+            features["velocity_dispersion"] = torch.std(torch.norm(velocities, dim=-1))
+
+            # Center of mass
+            com = self.compute_center_of_mass()
+            features["center_of_mass_x"] = com[0]
+            features["center_of_mass_y"] = com[1]
+            features["center_of_mass_z"] = com[2]
+
+            # System size
+            com_distances = torch.norm(self.positions - com, dim=-1)
+            features["virial_radius"] = torch.std(com_distances)
+            features["max_radius"] = torch.max(com_distances)
+
+        if feature_types is None or "energetics" in feature_types:
+            # Energy features
+            kinetic_energies = self.compute_kinetic_energy()
+            features["kinetic_energy"] = torch.sum(kinetic_energies)
+            features["mean_kinetic_energy"] = torch.mean(kinetic_energies)
+
+            # Potential energy (if computed)
+            if torch.any(self["potential"] != 0):
+                features["potential_energy"] = torch.sum(self["potential"])
+                features["total_energy"] = (
+                    features["kinetic_energy"] + features["potential_energy"]
+                )
+                features["virial_ratio"] = (
+                    2
+                    * features["kinetic_energy"]
+                    / torch.abs(features["potential_energy"])
+                )
+            else:
+                # Compute potential energy
+                potential = self.compute_potential_energy()
+                features["potential_energy"] = torch.sum(potential)
+                features["total_energy"] = (
+                    features["kinetic_energy"] + features["potential_energy"]
+                )
+                features["virial_ratio"] = (
+                    2
+                    * features["kinetic_energy"]
+                    / torch.abs(features["potential_energy"])
+                )
+
+        return features
 
     @property
     def positions(self) -> torch.Tensor:

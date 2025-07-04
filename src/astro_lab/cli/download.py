@@ -5,7 +5,6 @@ Download CLI for AstroLab - Thin wrapper around data download functions.
 import argparse
 import logging
 import sys
-from pathlib import Path
 
 
 def main():

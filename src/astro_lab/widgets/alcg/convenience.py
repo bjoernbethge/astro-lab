@@ -41,10 +41,27 @@ def create_cosmograph_from_tensordict(
         config: Optional Cosmograph configuration
         build_graph: Whether to build connectivity graph
         interactive: Whether to enable interactive features
-        **kwargs: Additional parameters
+        **kwargs: Additional parameters:
+            - k_neighbors: Number of neighbors for graph construction (default: 8)
+            - node_size_range: Size range for nodes (default: [2, 8])
+            - link_color: Color for links (default: "#333333")
+            - show_labels: Whether to show node labels (default: False)
+            - auto_rotate: Whether to auto-rotate the visualization (default: False)
 
     Returns:
         Cosmograph widget or data structure for visualization
+
+    Examples:
+        >>> # Basic visualization
+        >>> widget = create_cosmograph_from_tensordict(spatial_tensor)
+        >>>
+        >>> # Custom configuration
+        >>> widget = create_cosmograph_from_tensordict(
+        ...     spatial_tensor,
+        ...     survey="gaia",
+        ...     k_neighbors=10,
+        ...     node_size_range=[3, 12]
+        ... )
     """
     # Create bridge and convert
     bridge = CosmographBridge()
@@ -303,9 +320,6 @@ def create_multimodal_cosmograph(
 
         return widget
 
-    except ImportError:
-        logger.warning("cosmograph package not available")
-        return result
     except Exception as e:
         logger.error(f"Failed to create multimodal cosmograph: {e}")
         return result
@@ -398,6 +412,171 @@ def _get_default_clustering_scales(coordinate_system: str) -> List[float]:
         return [5.0, 10.0, 25.0, 50.0]
 
 
+def display_cosmograph(result: Any) -> Any:
+    """
+    Display the result of a Cosmograph creation.
+
+    Args:
+        result: The result of a Cosmograph creation
+
+    Returns:
+        The created Cosmograph widget
+    """
+    # Handle different result types
+    if isinstance(result, dict) and "nodes" in result and "links" in result:
+        # Cosmograph data structure
+        return result
+    else:
+        # Assume it's a Cosmograph widget or compatible object
+        return result
+
+
+def create_cosmograph_from_coordinates(
+    coords: np.ndarray, survey: str = "unknown", radius: float = 5.0, **kwargs
+) -> Any:
+    """
+    Create Cosmograph visualization from numpy coordinate array.
+
+    Args:
+        coords: Numpy array of shape (N, 3) with coordinates
+        survey: Survey name for styling
+        radius: Radius for neighbor graph creation
+        **kwargs: Additional Cosmograph parameters
+
+    Returns:
+        Cosmograph widget
+    """
+    bridge = CosmographBridge()
+    result = bridge.from_coordinates(coords, radius=radius, survey=survey, **kwargs)
+    return display_cosmograph(result)
+
+
+def create_cosmograph_from_dataframe(
+    df,
+    x_col="x",
+    y_col="y",
+    z_col="z",
+    point_id_by="id",
+    point_color_by=None,
+    point_label_by=None,
+    point_size_by=None,
+    links=None,
+    k_neighbors=5,
+    background_color="#181A20",
+    **kwargs,
+):
+    # Convert Polars to Pandas if needed
+    if hasattr(df, "to_pandas"):
+        df = df.to_pandas()
+    if point_id_by not in df.columns:
+        df[point_id_by] = np.arange(len(df))
+    # 3D coordinates
+    points = df[[point_id_by, x_col, y_col, z_col]].copy()
+    points.columns = ["id", "x", "y", "z"]
+    # Optional: additional attributes
+    if point_color_by and point_color_by in df.columns:
+        points["color"] = df[point_color_by]
+    if point_label_by and point_label_by in df.columns:
+        points["label"] = df[point_label_by]
+    if point_size_by and point_size_by in df.columns:
+        points["size"] = df[point_size_by]
+    # Auto-generate links if not provided
+    if links is None:
+        coords = points[["x", "y", "z"]].values
+        nn = NearestNeighbors(n_neighbors=k_neighbors + 1).fit(coords)
+        indices = nn.kneighbors(coords, return_distance=False)
+        link_list = []
+        for i, neighbors in enumerate(indices):
+            for j in neighbors[1:]:
+                link_list.append(
+                    {"source": points.at[i, "id"], "target": points.at[j, "id"]}
+                )
+        links = pd.DataFrame(link_list)
+    # Remove invalid keys from kwargs
+    for key in ["survey", "point_z_by"]:
+        if key in kwargs:
+            kwargs.pop(key)
+
+    cosmo_kwargs = dict(
+        points=points,
+        links=links,
+        point_id_by="id",
+        link_source_by="source",
+        link_target_by="target",
+        background_color=background_color,
+        point_x_by="x",
+        point_y_by="y",
+        **kwargs,
+    )
+    if "color" in points.columns:
+        cosmo_kwargs["point_color_by"] = "color"
+    if "label" in points.columns:
+        cosmo_kwargs["point_label_by"] = "label"
+    if "size" in points.columns:
+        cosmo_kwargs["point_size_by"] = "size"
+    widget = cosmo(**cosmo_kwargs)
+    return widget
+
+
+def create_cosmograph_visualization(data_source: Any, **kwargs) -> Any:
+    """
+    Universal convenience function to create Cosmograph visualization.
+
+    Automatically detects data source type and routes to appropriate method.
+
+    Args:
+        data_source: Can be:
+            - SpatialTensorDict
+            - AnalysisTensorDict
+            - Survey data dict
+            - Numpy array of coordinates
+            - Polars/Pandas DataFrame
+            - Dict with 'coordinates' or 'spatial_tensor' key
+        **kwargs: Additional parameters
+
+    Returns:
+        Cosmograph widget
+    """
+    import numpy as np
+
+    # Check for TensorDict types
+    if hasattr(data_source, "__class__"):
+        class_name = data_source.__class__.__name__
+        if "SpatialTensorDict" in class_name:
+            return visualize_spatial_tensordict(data_source, **kwargs)
+        elif "AnalysisTensorDict" in class_name:
+            return visualize_analysis_results(data_source, **kwargs)
+
+    # Check for numpy array
+    if isinstance(data_source, np.ndarray):
+        return create_cosmograph_from_coordinates(data_source, **kwargs)
+
+    # Check for DataFrame
+    if hasattr(data_source, "select") or hasattr(data_source, "loc"):
+        return create_cosmograph_from_dataframe(data_source, **kwargs)
+
+    # Check for dict
+    if isinstance(data_source, dict):
+        if "coordinates" in data_source:
+            coords = data_source["coordinates"]
+            if hasattr(coords, "numpy"):
+                coords = coords.numpy()
+            elif hasattr(coords, "cpu"):
+                coords = coords.cpu().numpy()
+            return create_cosmograph_from_coordinates(coords, **kwargs)
+        elif "spatial_tensor" in data_source:
+            return visualize_spatial_tensordict(data_source["spatial_tensor"], **kwargs)
+        else:
+            raise ValueError(
+                "Dictionary must contain 'coordinates' or 'spatial_tensor' key"
+            )
+
+    raise ValueError(f"Unsupported data source type: {type(data_source)}")
+
+
+# Backwards compatibility aliases
+create_cosmic_web_visualization = create_cosmic_web_cosmograph
+
 # Export all convenience functions
 __all__ = [
     "create_cosmograph_from_tensordict",
@@ -406,4 +585,8 @@ __all__ = [
     "create_cosmic_web_cosmograph",
     "create_multimodal_cosmograph",
     "visualize",
+    "display_cosmograph",
+    "create_cosmograph_from_coordinates",
+    "create_cosmograph_from_dataframe",
+    "create_cosmograph_visualization",
 ]

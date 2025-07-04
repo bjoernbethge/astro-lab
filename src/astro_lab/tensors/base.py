@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from tensordict import TensorDict
 
@@ -18,32 +17,38 @@ logger = logging.getLogger(__name__)
 
 
 class AstroTensorDict(TensorDict):
-    """
-    Base class for all astronomical TensorDicts.
+    """Base class for all astronomical TensorDicts.
 
     Extends TensorDict with astronomical-specific functionality
     while maintaining native PyTorch performance.
+
+    Note: Metadata is stored separately from tensor data to maintain
+    TensorDict compatibility and performance.
     """
 
     def __init__(self, data: Dict[str, Any], **kwargs):
-        """
-        Initialize AstroTensorDict.
+        """Initialize AstroTensorDict.
 
         Args:
             data: Dictionary of tensors and metadata
-            **kwargs: Additional TensorDict arguments
+            **kwargs: Additional TensorDict arguments (batch_size, device, etc.)
         """
-        # Handle metadata separately to avoid batch dimension issues
-        metadata = data.pop("meta", {}) if "meta" in data else {}
+        # Extract metadata before passing to parent
+        metadata = data.pop("meta", {})
+
+        # Initialize parent TensorDict
         super().__init__(data, **kwargs)
 
-        self._metadata = metadata if metadata else {}
+        # Store metadata separately
+        self._metadata = metadata
+
+        # Add default metadata
         if "tensor_type" not in self._metadata:
             self._metadata["tensor_type"] = self.__class__.__name__
         if "creation_time" not in self._metadata:
-            import time
+            from datetime import datetime
 
-            self._metadata["creation_time"] = time.time()
+            self._metadata["creation_time"] = datetime.now().isoformat()
 
         logger.debug(f"Created {self.__class__.__name__} with {self.n_objects} objects")
 
@@ -58,145 +63,50 @@ class AstroTensorDict(TensorDict):
         return self.batch_size[0] if self.batch_size else 0
 
     def add_history(self, operation: str, **details) -> "AstroTensorDict":
-        """
-        Add operation to processing history.
+        """Add operation to processing history.
 
         Args:
             operation: Name of the operation
             **details: Additional details about the operation
+
+        Returns:
+            Self for chaining
         """
         if "history" not in self._metadata:
             self._metadata["history"] = []
 
-        import time
+        from datetime import datetime
 
         self._metadata["history"].append(
-            {"operation": operation, "timestamp": time.time(), "details": details}
+            {
+                "operation": operation,
+                "timestamp": datetime.now().isoformat(),
+                "details": details,
+            }
         )
+
         return self
 
-    def memory_info(self) -> Dict[str, Any]:
-        """Get memory usage information."""
-        info = {
-            "total_bytes": 0,
-            "n_tensors": 0,
-            "batch_size": self.batch_size,
-            "tensor_shapes": {},
-        }
-
-        devices = set()
-        for key, value in self.items():
-            if isinstance(value, torch.Tensor):
-                info["total_bytes"] += value.element_size() * value.nelement()
-                info["n_tensors"] += 1
-                info["tensor_shapes"][key] = tuple(value.shape)
-                devices.add(str(value.device))
-
-        info["total_mb"] = info["total_bytes"] / (1024 * 1024)
-        info["devices"] = list(devices) if devices else ["cpu"]
-        info["primary_device"] = list(devices)[0] if devices else "cpu"
-
-        return info
-
     def validate(self) -> bool:
-        """
-        Basic validation of tensor structure.
+        """Validate tensor structure.
 
         Returns:
-            True if valid, False otherwise
+            True if valid, raises ValueError if not
         """
-        try:
-            # Check that all tensors have compatible batch dimensions
-            batch_size = self.batch_size
-            for key, value in self.items():
-                if isinstance(value, torch.Tensor):
-                    if value.shape[: len(batch_size)] != batch_size:
-                        logger.warning(f"Tensor {key} has incompatible batch size")
-                        return False
-            return True
-        except Exception as e:
-            logger.error(f"Validation error: {e}")
-            return False
+        # Check that all tensors have compatible batch dimensions
+        batch_size = self.batch_size
 
-    def to_numpy(self) -> Dict[str, np.ndarray]:
-        """Convert all tensors to numpy arrays."""
-        return {
-            key: value.detach().cpu().numpy() if torch.is_tensor(value) else value
-            for key, value in self.items()
-        }
+        for key, value in self.items():
+            if isinstance(value, torch.Tensor) and value.numel() > 0:
+                # Check first dimensions match batch size
+                value_batch_dims = value.shape[: len(batch_size)]
+                if value_batch_dims != batch_size:
+                    raise ValueError(
+                        f"Tensor '{key}' has incompatible batch dimensions: "
+                        f"expected {batch_size}, got {value_batch_dims}"
+                    )
 
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to regular dictionary."""
-        return dict(self)
-
-    def summary(self) -> str:
-        """Generate a summary string of the tensor contents."""
-        lines = [
-            f"{self.__class__.__name__} Summary",
-            "=" * 40,
-            f"Objects: {self.n_objects}",
-            f"Batch size: {self.batch_size}",
-            f"Keys: {list(self.keys())}",
-        ]
-
-        # Memory info
-        mem_info = self.memory_info()
-        lines.append(f"Memory: {mem_info['total_mb']:.1f} MB")
-        lines.append(f"Device: {mem_info['primary_device']}")
-
-        # Tensor shapes
-        for key, shape in mem_info["tensor_shapes"].items():
-            lines.append(f"  {key}: {shape}")
-
-        # History (last few operations)
-        if "history" in self._metadata and self._metadata["history"]:
-            lines.append("\nRecent Operations:")
-            for op in self._metadata["history"][-3:]:  # Last 3 operations
-                lines.append(f"  - {op['operation']}")
-
-        return "\n".join(lines)
-
-    def clear_temp_tensors(self):
-        """Remove temporary tensors (keys starting with '_temp_')."""
-        temp_keys = [key for key in self.keys() if key.startswith("_temp_")]
-        for key in temp_keys:
-            del self[key]
-
-    def optimize_memory(self):
-        """Optimize memory usage."""
-        self.clear_temp_tensors()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-    def cleanup(self):
-        """Clean up resources."""
-        try:
-            self.clear_temp_tensors()
-            # Clear metadata tensors that might hold references
-            if hasattr(self, "_metadata"):
-                for key in list(self._metadata.keys()):
-                    if isinstance(self._metadata[key], (torch.Tensor, np.ndarray)):
-                        del self._metadata[key]
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-        except Exception as e:
-            logger.warning(f"Error during cleanup: {e}")
-
-    def __del__(self):
-        """Destructor with safe cleanup."""
-        try:
-            self.cleanup()
-        except Exception:
-            # Silent cleanup failure in destructor
-            pass
-
-    def clone(self) -> "AstroTensorDict":
-        """Create a deep copy of the tensor dict."""
-        cloned = super().clone()
-        # Clone metadata
-        cloned._metadata = self._metadata.copy()
-        return cloned
+        return True
 
     def select_subset(
         self, indices: Union[torch.Tensor, List[int], slice]
@@ -231,9 +141,10 @@ class AstroTensorDict(TensorDict):
 
         # Create new instance
         result = type(self)(subset_data)
+        n_selected = len(indices) if isinstance(indices, (list, torch.Tensor)) else 1
         result.add_history(
             "select_subset",
-            n_selected=len(indices) if hasattr(indices, "__len__") else 1,
+            n_selected=n_selected,
         )
 
         return result
@@ -278,13 +189,13 @@ class AstroTensorDict(TensorDict):
         split_tensor = self[split_key]
         if values is None:
             values = torch.unique(split_tensor).tolist()
-
+        if values is None:
+            return {}
         result = {}
         for value in values:
             mask = split_tensor == value
             subset = self.filter_by_condition(mask)
             result[str(value)] = subset
-
         return result
 
     def concatenate(self, other: "AstroTensorDict", dim: int = 0) -> "AstroTensorDict":
@@ -302,7 +213,7 @@ class AstroTensorDict(TensorDict):
             raise ValueError("Can only concatenate with another AstroTensorDict")
 
         # Find common keys
-        common_keys = set(self.keys()) & set(other.keys())
+        common_keys = set(list(self.keys())) & set(list(other.keys()))
 
         concat_data = {}
         for key in common_keys:
@@ -326,21 +237,98 @@ class AstroTensorDict(TensorDict):
 
         return result
 
-    def to(self, device: Union[str, torch.device]) -> "AstroTensorDict":
-        """Move tensor to device."""
-        device = torch.device(device) if isinstance(device, str) else device
+    def extract_features(self, feature_types: Optional[List[str]] = None, **kwargs) -> Dict[str, torch.Tensor]:
+        """
+        Extract features from the TensorDict.
+        
+        This is the central API for feature extraction that should be overridden 
+        by subclasses for domain-specific logic.
+        
+        Args:
+            feature_types: List of feature types to extract (e.g., ['spatial', 'temporal'])
+            **kwargs: Additional arguments for feature extraction
+            
+        Returns:
+            Dictionary mapping feature names to tensors
+        """
+        # Default implementation: return all tensor data except metadata
+        features = {}
 
-        # Move all tensors to device
         for key, value in self.items():
+            if key == "meta":
+                continue
+
             if isinstance(value, torch.Tensor):
-                self[key] = value.to(device)
+                # Filter by feature types if specified
+                if feature_types is None:
+                    features[key] = value
+                else:
+                    # Default classification of keys by type
+                    if self._classify_feature_type(key) in feature_types:
+                        features[key] = value
 
-        return self
+        return features
 
-    def cpu(self) -> "AstroTensorDict":
-        """Move tensor to CPU."""
-        return self.to("cpu")
+    def _classify_feature_type(self, key: str) -> str:
+        """
+        Classify a tensor key into a feature type.
+        
+        Args:
+            key: Tensor key name
+            
+        Returns:
+            Feature type classification
+        """
+        # Default classification logic
+        spatial_keys = {"coordinates", "pos", "position", "x", "y", "z", "ra", "dec"}
+        temporal_keys = {"time", "epoch", "mjd", "jd", "timestamp"}
+        photometric_keys = {"magnitudes", "flux", "colors", "g", "r", "i", "z", "bp", "rp"}
+        kinematic_keys = {"pmra", "pmdec", "proper_motion", "radial_velocity", "parallax"}
 
-    def cuda(self) -> "AstroTensorDict":
-        """Move tensor to CUDA."""
-        return self.to("cuda")
+        key_lower = key.lower()
+
+        if any(spatial_key in key_lower for spatial_key in spatial_keys):
+            return "spatial"
+        elif any(temporal_key in key_lower for temporal_key in temporal_keys):
+            return "temporal"
+        elif any(photo_key in key_lower for photo_key in photometric_keys):
+            return "photometric"
+        elif any(kinematic_key in key_lower for kinematic_key in kinematic_keys):
+            return "kinematic"
+        else:
+            return "generic"
+
+    def get_feature_summary(self) -> Dict[str, Any]:
+        """
+        Get a summary of available features and their properties.
+        
+        Returns:
+            Dictionary with feature summary statistics
+        """
+        features = self.extract_features()
+        summary = {
+            "total_features": len(features),
+            "feature_types": {},
+            "feature_shapes": {},
+            "feature_dtypes": {},
+        }
+
+        # Classify and summarize features
+        for key, tensor in features.items():
+            feature_type = self._classify_feature_type(key)
+
+            if feature_type not in summary["feature_types"]:
+                summary["feature_types"][feature_type] = []
+            summary["feature_types"][feature_type].append(key)
+
+            summary["feature_shapes"][key] = list(tensor.shape)
+            summary["feature_dtypes"][key] = str(tensor.dtype)
+
+        return summary
+
+    def clone(self) -> "AstroTensorDict":
+        """Create a deep copy of the tensor dict."""
+        cloned = super().clone()
+        # Clone metadata
+        cloned._metadata = self._metadata.copy()
+        return cloned

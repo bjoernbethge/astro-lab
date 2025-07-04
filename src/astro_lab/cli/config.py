@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-from astro_lab.config.surveys import SURVEY_CONFIGS, get_survey_config
+from ..config import get_config, get_survey_config
 
 
 def setup_logging() -> logging.Logger:
@@ -52,20 +52,20 @@ def load_and_prepare_training_config(
                 "model_type": "graph",
                 "hidden_dim": 64,
                 "num_layers": 2,
-                "learning_rate": 0.001
+                "learning_rate": 0.001,
             },
             "node_classifier_medium": {
                 "model_type": "node",
                 "hidden_dim": 128,
                 "num_layers": 3,
-                "learning_rate": 0.001
+                "learning_rate": 0.001,
             },
             "temporal_gnn": {
                 "model_type": "temporal",
                 "hidden_dim": 128,
                 "num_layers": 3,
-                "learning_rate": 0.0005
-            }
+                "learning_rate": 0.0005,
+            },
         }
 
         if preset in preset_configs:
@@ -151,7 +151,7 @@ def _show_surveys() -> int:
     print("📊 Available Surveys:")
     print("=" * 40)
 
-    for survey, config in SURVEY_CONFIGS.items():
+    for survey, config in get_config()["surveys"].items():
         print(f"\n🔭 {survey.upper()}: {config['name']}")
         print(f"   Coordinates: {', '.join(config['coord_cols'])}")
         print(f"   Magnitudes: {', '.join(config['mag_cols'])}")

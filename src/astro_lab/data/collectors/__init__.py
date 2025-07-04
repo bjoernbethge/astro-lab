@@ -7,8 +7,6 @@ Factory pattern for survey data collectors with proper download and caching.
 
 from typing import Type
 
-from astro_lab.config.registry import COLLECTOR_REGISTRY
-
 from .base import BaseSurveyCollector
 from .des import DESCollector
 from .euclid import EuclidCollector
@@ -22,6 +20,8 @@ from .sdss import SDSSCollector
 from .tng50 import TNG50Collector
 from .twomass import TwoMASSCollector
 from .wise import WISECollector
+
+COLLECTOR_REGISTRY = {}
 
 # Register collectors in the global registry
 COLLECTOR_REGISTRY["linear"] = LinearCollector
