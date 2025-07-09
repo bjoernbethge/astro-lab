@@ -12,6 +12,7 @@ from torch_geometric.loader import (
     GraphSAINTNodeSampler,
     GraphSAINTRandomWalkSampler,
 )
+from torch_geometric.nn import knn_graph
 
 from .base import AstroLabSampler, SpatialSamplerMixin
 
@@ -70,8 +71,9 @@ class GraphSAINTSampler(AstroLabSampler, SpatialSamplerMixin):
         self.validate_inputs(coordinates, features)
 
         # Create k-NN graph
+
         k = min(30, coordinates.size(0) // 20)
-        edge_index = self.knn_graph(coordinates, k=k, loop=False)
+        edge_index = knn_graph(coordinates, k=k, loop=False)
 
         # Calculate edge features and weights
         edge_attr = self.calculate_edge_features(coordinates, edge_index)

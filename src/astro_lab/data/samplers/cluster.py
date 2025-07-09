@@ -6,8 +6,11 @@ Implements clustering algorithms for graph construction.
 from typing import List, Optional, Union
 
 import torch
+from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.spatial.distance import pdist
 from torch_geometric.data import Data
 from torch_geometric.loader import ClusterData, ClusterLoader, DataLoader
+from torch_geometric.nn import knn_graph
 
 from .base import AstroLabSampler, ClusterSamplerMixin, SpatialSamplerMixin
 
@@ -64,7 +67,8 @@ class ClusterSampler(AstroLabSampler, ClusterSamplerMixin, SpatialSamplerMixin):
 
         # Create initial k-NN graph for connectivity
         k = min(20, coordinates.size(0) // 10)
-        edge_index = self.knn_graph(coordinates, k=k, loop=False)
+
+        edge_index = knn_graph(coordinates, k=k, loop=False)
 
         # Calculate edge weights based on distance
         edge_attr = self.calculate_edge_features(coordinates, edge_index)
@@ -197,7 +201,7 @@ class DBSCANClusterSampler(AstroLabSampler, ClusterSamplerMixin, SpatialSamplerM
             else:
                 # For larger clusters, use k-NN within cluster
                 cluster_coords = coordinates[cluster_nodes]
-                local_edges = self.knn_graph(cluster_coords, k=10)
+                local_edges = knn_graph(cluster_coords, k=10)
 
                 # Map back to global indices
                 global_edges = cluster_nodes[local_edges]
@@ -207,7 +211,7 @@ class DBSCANClusterSampler(AstroLabSampler, ClusterSamplerMixin, SpatialSamplerM
             edge_index = torch.tensor(edge_list, dtype=torch.long).T
         else:
             # Fallback to k-NN if no clusters found
-            edge_index = self.knn_graph(coordinates, k=10)
+            edge_index = knn_graph(coordinates, k=10)
 
         # Calculate edge features
         edge_attr = self.calculate_edge_features(coordinates, edge_index)
@@ -306,9 +310,6 @@ class HierarchicalClusterSampler(AstroLabSampler, ClusterSamplerMixin):
         """
         self.validate_inputs(coordinates, features)
 
-        from scipy.cluster.hierarchy import fcluster, linkage
-        from scipy.spatial.distance import pdist
-
         # Compute hierarchical clustering
         coords_np = coordinates.cpu().numpy()
         condensed_dist = pdist(coords_np)
@@ -349,7 +350,7 @@ class HierarchicalClusterSampler(AstroLabSampler, ClusterSamplerMixin):
             edge_index = torch.cat(edge_lists, dim=1)
         else:
             # Fallback to k-NN
-            edge_index = self.knn_graph(coordinates, k=10)
+            edge_index = knn_graph(coordinates, k=10)
 
         # Create Data object
         data = Data(

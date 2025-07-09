@@ -51,7 +51,7 @@ class TNG50Preprocessor(AstroLabDataPreprocessor, StatisticalPreprocessorMixin):
 
         # Subhalo filter
         if self.config["subhalo_only"] and "is_subhalo" in df.columns:
-            df = df.filter(pl.col("is_subhalo") == True)
+            df = df.filter(pl.col("is_subhalo"))
 
         # Particle type filter - from SURVEY_CONFIGS
         if "particle_type" in df.columns:

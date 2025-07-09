@@ -10,6 +10,10 @@ from typing import Optional
 
 import numpy as np
 import torch
+from scipy.interpolate import RegularGridInterpolator
+from scipy.sparse.csgraph import minimum_spanning_tree
+from scipy.spatial import distance_matrix
+from sklearn.neighbors import KernelDensity, NearestNeighbors
 from torch_geometric.data import Data
 from torch_geometric.nn import fps
 from torch_geometric.transforms import BaseTransform
@@ -116,8 +120,8 @@ class FilamentDetection(BaseTransform):
             return data
 
         try:
-            from scipy.sparse.csgraph import minimum_spanning_tree
-            from scipy.spatial import distance_matrix
+            # Use imported functions
+            pass
         except ImportError:
             logger.warning("scipy required for filament detection")
             return data
@@ -227,7 +231,6 @@ class DensityFieldEstimation(BaseTransform):
             centers.append((edge[:-1] + edge[1:]) / 2)
 
         # Interpolate back to particle positions
-        from scipy.interpolate import RegularGridInterpolator
 
         interpolator = RegularGridInterpolator(
             centers, H, bounds_error=False, fill_value=0
@@ -238,7 +241,8 @@ class DensityFieldEstimation(BaseTransform):
     def _kde_density(self, pos: np.ndarray) -> np.ndarray:
         """Kernel density estimation."""
         try:
-            from sklearn.neighbors import KernelDensity
+            # Use imported KernelDensity
+            pass
         except ImportError:
             logger.warning("sklearn required for KDE, falling back to grid")
             return self._grid_density(pos)
@@ -259,7 +263,6 @@ class DensityFieldEstimation(BaseTransform):
 
     def _sph_density(self, pos: np.ndarray) -> np.ndarray:
         """SPH-like density estimation using nearest neighbors."""
-        from sklearn.neighbors import NearestNeighbors
 
         # Find k nearest neighbors
         k = min(32, pos.shape[0] - 1)

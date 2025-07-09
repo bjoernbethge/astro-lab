@@ -21,38 +21,33 @@ from torch_geometric.transforms import BaseTransform
 
 logger = logging.getLogger(__name__)
 
-try:
-    from sklearn.cluster import KMeans
-
-    SKLEARN_AVAILABLE = True
-except ImportError:
-    SKLEARN_AVAILABLE = False
-    logger.warning("sklearn not available, some clustering features disabled")
+# sklearn.cluster.KMeans was unused - removed
 
 
 def spherical_to_cartesian(ra, dec, distance, degrees=True):
     """
-    Convert spherical coordinates (RA, Dec, distance) to Cartesian (x, y, z).
+    Convert spherical coordinates to cartesian coordinates.
+
     Args:
-        ra: Right ascension or longitude (array-like)
-        dec: Declination or latitude (array-like)
-        distance: Distance (array-like)
-        degrees: If True, input angles are in degrees, else radians
+        ra: Right ascension
+        dec: Declination
+        distance: Distance
+        degrees: Whether input angles are in degrees (default: True)
+
     Returns:
-        x, y, z arrays
+        x, y, z: Cartesian coordinates
     """
-    ra = np.asarray(ra)
-    dec = np.asarray(dec)
-    distance = np.asarray(distance)
     if degrees:
-        ra_rad = np.deg2rad(ra)
-        dec_rad = np.deg2rad(dec)
+        ra_rad = np.radians(ra)
+        dec_rad = np.radians(dec)
     else:
         ra_rad = ra
         dec_rad = dec
+
     x = distance * np.cos(dec_rad) * np.cos(ra_rad)
     y = distance * np.cos(dec_rad) * np.sin(ra_rad)
     z = distance * np.sin(dec_rad)
+
     return x, y, z
 
 
@@ -375,114 +370,4 @@ class MultiScaleSampling(BaseTransform):
 
             data.num_nodes = len(combined_indices)
 
-        return data
-
-
-class AdaptiveRadiusGraph(BaseTransform):
-    """Create adaptive radius graph based on local density."""
-
-    def __init__(self, base_radius: float = 10.0, density_factor: float = 2.0):
-        """
-        Initialize adaptive radius graph.
-
-        Args:
-            base_radius: Base radius for graph construction
-            density_factor: Factor for density-based radius adaptation
-        """
-        self.base_radius = base_radius
-        self.density_factor = density_factor
-
-    def __call__(self, data: Data) -> Data:
-        """Apply adaptive radius graph construction."""
-        if not hasattr(data, "pos") or data.pos is None:
-            return data
-
-        if not hasattr(data, "num_nodes") or data.num_nodes is None:
-            data.num_nodes = data.pos.size(0)
-
-        # Import here to avoid circular imports
-        from torch_geometric.nn import knn_graph, radius_graph
-
-        # Estimate local density using k-NN distances
-        k = min(10, data.num_nodes - 1)
-        knn_edges = knn_graph(data.pos, k=k, loop=False)
-
-        # Calculate average k-NN distance per node
-        row, col = knn_edges
-        distances = torch.norm(data.pos[row] - data.pos[col], dim=1)
-
-        # Group by source node and calculate mean distance
-        local_density = torch.zeros(data.num_nodes)
-        for i in range(data.num_nodes):
-            mask = row == i
-            if mask.any():
-                local_density[i] = distances[mask].mean()
-
-        # Adaptive radius based on local density
-        mean_density = local_density.mean()
-        adaptive_radius = self.base_radius * (local_density / mean_density).clamp(
-            0.5, self.density_factor
-        )
-
-        # Create radius graph with adaptive radius
-        # Use maximum adaptive radius for simplicity
-        max_radius = adaptive_radius.max().item()
-        edge_index = radius_graph(
-            data.pos, r=max_radius, loop=False, max_num_neighbors=32
-        )
-
-        # Filter edges based on node-specific radii
-        row, col = edge_index
-        edge_distances = torch.norm(data.pos[row] - data.pos[col], dim=1)
-        valid_edges = edge_distances <= adaptive_radius[row]
-
-        data.edge_index = edge_index[:, valid_edges]
-
-        logger.info(f"Adaptive radius graph: {data.edge_index.size(1)} edges")
-        return data
-
-
-class HierarchicalClustering(BaseTransform):
-    """Add hierarchical clustering information."""
-
-    def __init__(self, levels: int = 3, min_clusters: int = 10):
-        """
-        Initialize hierarchical clustering.
-
-        Args:
-            levels: Number of hierarchy levels
-            min_clusters: Minimum number of clusters at base level
-        """
-        self.levels = levels
-        self.min_clusters = min_clusters
-
-    def __call__(self, data: Data) -> Data:
-        """Apply hierarchical clustering."""
-        if not hasattr(data, "pos") or data.pos is None:
-            return data
-
-        if not hasattr(data, "num_nodes") or data.num_nodes is None:
-            data.num_nodes = data.pos.size(0)
-
-        cluster_assignments = []
-        current_pos = data.pos.clone()
-
-        for level in range(self.levels):
-            # Number of clusters decreases with level
-            n_clusters = max(self.min_clusters, data.num_nodes // (10 ** (level + 1)))
-
-            # Use k-means for clustering
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init="auto")
-            clusters = kmeans.fit_predict(current_pos.cpu().numpy())
-
-            cluster_tensor = torch.tensor(clusters, dtype=torch.long)
-            cluster_assignments.append(cluster_tensor)
-
-            # Update positions to cluster centers for next level
-            current_pos = torch.tensor(kmeans.cluster_centers_, dtype=torch.float32)
-
-        # Add cluster assignments as node features
-        data.cluster_hierarchy = torch.stack(cluster_assignments, dim=1)
-
-        logger.info(f"Added {self.levels}-level hierarchical clustering")
         return data

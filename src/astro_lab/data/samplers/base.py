@@ -8,8 +8,10 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Union
 
 import torch
+from sklearn.cluster import DBSCAN, KMeans
 from torch_geometric.data import Data, HeteroData
 from torch_geometric.loader import DataLoader, NeighborLoader
+from torch_geometric.nn import knn_graph
 
 
 class AstroLabSampler(ABC):
@@ -114,48 +116,6 @@ class SpatialSamplerMixin:
     """Mixin providing spatial sampling utilities."""
 
     @staticmethod
-    def knn_graph(
-        coordinates: torch.Tensor, k: int = 8, loop: bool = False
-    ) -> torch.Tensor:
-        """Create k-NN graph from coordinates.
-
-        Args:
-            coordinates: Node coordinates [N, D]
-            k: Number of neighbors
-            loop: Include self-loops
-
-        Returns:
-            Edge index tensor [2, E]
-        """
-        from torch_geometric.nn import knn_graph
-
-        return knn_graph(coordinates, k=k, loop=loop)
-
-    @staticmethod
-    def radius_graph(
-        coordinates: torch.Tensor,
-        r: float,
-        loop: bool = False,
-        max_num_neighbors: int = 64,
-    ) -> torch.Tensor:
-        """Create radius graph from coordinates.
-
-        Args:
-            coordinates: Node coordinates [N, D]
-            r: Connection radius
-            loop: Include self-loops
-            max_num_neighbors: Maximum neighbors per node
-
-        Returns:
-            Edge index tensor [2, E]
-        """
-        from torch_geometric.nn import radius_graph
-
-        return radius_graph(
-            coordinates, r=r, loop=loop, max_num_neighbors=max_num_neighbors
-        )
-
-    @staticmethod
     def calculate_edge_features(
         coordinates: torch.Tensor, edge_index: torch.Tensor
     ) -> torch.Tensor:
@@ -179,10 +139,9 @@ class SpatialSamplerMixin:
     def default_graph(
         coordinates: torch.Tensor, features: torch.Tensor, **kwargs
     ) -> Data:
-        """Create a default k-NN graph (k=8) for fallback usage."""
-        from torch_geometric.data import Data
+        """Create a default k-NN graph (k=2) for fallback usage."""
 
-        edge_index = SpatialSamplerMixin.knn_graph(coordinates, k=8, loop=False)
+        edge_index = knn_graph(coordinates, k=2, loop=False)
         edge_attr = SpatialSamplerMixin.calculate_edge_features(coordinates, edge_index)
         data = Data(
             x=features,
@@ -213,7 +172,6 @@ class ClusterSamplerMixin:
         Returns:
             Cluster labels tensor [N]
         """
-        from sklearn.cluster import DBSCAN
 
         coords_np = coordinates.cpu().numpy()
         clustering = DBSCAN(eps=eps, min_samples=min_samples)
@@ -231,7 +189,6 @@ class ClusterSamplerMixin:
         Returns:
             Cluster labels tensor [N]
         """
-        from sklearn.cluster import KMeans
 
         coords_np = coordinates.cpu().numpy()
         clustering = KMeans(n_clusters=n_clusters, random_state=42)

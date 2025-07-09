@@ -629,6 +629,7 @@ class GaiaPreprocessor(
             return pl.Series([1.0] * len(df))
 
     def add_standard_fields(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Add standard fields for compatibility with other surveys."""
         # Add object_id if missing
         if "object_id" not in df.columns:
             id_candidates = [
@@ -663,8 +664,5 @@ class GaiaPreprocessor(
                 df = df.with_columns([(25.0 - pl.col("magnitude")).alias("brightness")])
             else:
                 df = df.with_columns([pl.lit(1.0).alias("brightness")])
-        # Remove synthetic fields that are not useful
-        for col in ["object_type", "survey_name"]:
-            if col in df.columns:
-                df = df.drop(col)
+        
         return df
