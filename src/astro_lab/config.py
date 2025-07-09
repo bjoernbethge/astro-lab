@@ -29,11 +29,14 @@ def find_project_root():
 
 
 def load_yaml(filename):
+    """Load YAML config file with proper error handling."""
     path = Path(__file__).parent.parent.parent / "configs" / filename
     if not path.exists():
         return None
     with open(path) as f:
-        return yaml.safe_load(f)
+        content = yaml.safe_load(f)
+        # Handle empty YAML files
+        return content if content else {}
 
 
 SURVEY_CONFIGS = {}
@@ -52,7 +55,12 @@ for section in [
         if section == "surveys":
             SURVEY_CONFIGS[section] = loaded
         else:
-            SURVEY_CONFIGS[section] = loaded[section]
+            # Handle both nested and flat config structures
+            if isinstance(loaded, dict) and section in loaded:
+                SURVEY_CONFIGS[section] = loaded[section]
+            else:
+                # For flat configs or empty configs
+                SURVEY_CONFIGS[section] = loaded
 
 # Config getter functions
 
@@ -63,35 +71,43 @@ def get_config() -> Dict[str, Any]:
 
 
 def get_data_config() -> dict:
-    return SURVEY_CONFIGS["data"]
+    return SURVEY_CONFIGS.get("data", {})
 
 
 def get_model_config() -> dict:
-    return SURVEY_CONFIGS["model"]
+    return SURVEY_CONFIGS.get("model", {})
 
 
 def get_training_config() -> dict:
-    return SURVEY_CONFIGS["training"]
+    return SURVEY_CONFIGS.get("training", {})
 
 
 def get_mlflow_config() -> dict:
-    return SURVEY_CONFIGS["mlflow"]
+    return SURVEY_CONFIGS.get("mlflow", {})
 
 
 def get_task_config(task: str) -> dict:
-    return SURVEY_CONFIGS["tasks"][task]
+    tasks = SURVEY_CONFIGS.get("tasks", {})
+    if task not in tasks:
+        # Return sensible defaults for unknown tasks
+        return {
+            "task": task,
+            "conv_type": "gcn",
+            "pooling": "mean" if "graph" in task else None
+        }
+    return tasks[task]
 
 
 def get_hpo_config() -> dict:
-    return SURVEY_CONFIGS["hpo"]
+    return SURVEY_CONFIGS.get("hpo", {})
 
 
 def get_albpy_config() -> dict:
-    return SURVEY_CONFIGS["albpy"]
+    return SURVEY_CONFIGS.get("albpy", {})
 
 
 def get_survey_config(survey: str) -> dict:
-    surveys = SURVEY_CONFIGS["surveys"]
+    surveys = SURVEY_CONFIGS.get("surveys", {})
     if survey not in surveys:
         raise ValueError(f"Survey '{survey}' not found in surveys config.")
     return surveys[survey]
@@ -99,16 +115,53 @@ def get_survey_config(survey: str) -> dict:
 
 def get_combined_config(survey: str, task: str) -> Dict[str, Any]:
     """Get combined configuration for survey and task."""
-    data_config = get_survey_config(survey)
-    model_config = get_task_config(task)
+    # Start with base configs
+    data_config = get_data_config()
+    model_config = get_model_config()
     training_config = get_training_config()
     mlflow_config = get_mlflow_config()
-    return {
-        **data_config,
-        **model_config,
-        **training_config,
-        **mlflow_config,
+    
+    # Get survey-specific config
+    survey_config = get_survey_config(survey)
+    
+    # Get task-specific config
+    task_config = get_task_config(task)
+    
+    # Merge configs with priority: Survey > Task > General
+    combined = {}
+    
+    # Base configs
+    combined.update(data_config)
+    combined.update(model_config)
+    combined.update(training_config)
+    combined.update(mlflow_config)
+    
+    # Task-specific overrides
+    combined.update(task_config)
+    
+    # Survey-specific overrides (highest priority for survey fields)
+    # But don't override all fields, just the ones that make sense
+    survey_overrides = {
+        'batch_size': survey_config.get('batch_size'),
+        'k_neighbors': survey_config.get('k_neighbors'),
+        'precision': survey_config.get('precision'),
+        'gradient_clip_val': survey_config.get('gradient_clip_val'),
+        'experiment_name': survey_config.get('experiment_name'),
     }
+    
+    # Add non-None survey overrides
+    for key, value in survey_overrides.items():
+        if value is not None:
+            combined[key] = value
+    
+    # If survey has recommended model and no model type specified yet, use it
+    if 'recommended_model' in survey_config and 'conv_type' not in combined:
+        combined.update(survey_config['recommended_model'])
+    
+    # Ensure task is set
+    combined['task'] = task
+    
+    return combined
 
 
 def get_checkpoint_filename(
@@ -151,10 +204,10 @@ def get_data_paths() -> Dict[str, str]:
     data_cfg = get_data_config()
     mlflow_cfg = get_mlflow_config()
     return {
-        "base_dir": data_cfg.get("base_dir", ""),
-        "raw_dir": data_cfg.get("raw_dir", ""),
-        "processed_dir": data_cfg.get("processed_dir", ""),
-        "cache_dir": data_cfg.get("cache_dir", ""),
-        "checkpoint_dir": data_cfg.get("checkpoint_dir", ""),
-        "mlruns_dir": mlflow_cfg.get("tracking_uri", ""),
+        "base_dir": data_cfg.get("base_dir", "data"),
+        "raw_dir": data_cfg.get("raw_dir", "data/raw"),
+        "processed_dir": data_cfg.get("processed_dir", "data/processed"),
+        "cache_dir": data_cfg.get("cache_dir", "data/cache"),
+        "checkpoint_dir": data_cfg.get("checkpoint_dir", "data/checkpoints"),
+        "mlruns_dir": mlflow_cfg.get("tracking_uri", "data/mlruns"),
     }

@@ -12,7 +12,6 @@ from typing import Any, Dict, List, Optional
 import polars as pl
 
 from astro_lab.config import get_data_paths
-from astro_lab.data.preprocessors import get_preprocessor, list_available_surveys
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +25,21 @@ class SurveyInfo:
 
     def list_available_surveys(self) -> List[str]:
         """List all available survey preprocessors."""
-        return list_available_surveys()
+        # Return the actual available surveys from the CLI
+        return [
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+            "linear",
+            "rrlyrae",
+        ]
 
     def get_survey_status(self, survey: str) -> Dict[str, Any]:
         """Get status of a specific survey's data."""
@@ -35,7 +48,7 @@ class SurveyInfo:
 
         result = {
             "survey": survey,
-            "has_preprocessor": survey in list_available_surveys(),
+            "has_preprocessor": survey in self.list_available_surveys(),
             "raw_data": None,
             "processed_data": None,
             "status": "not_found",
@@ -90,21 +103,23 @@ class SurveyInfo:
             return {"error": f"Survey {survey} has no data available", "status": status}
 
         try:
-            # Get preprocessor
-            preprocessor = get_preprocessor(survey)
-
-            # Get data path
-            data_path = preprocessor._find_data_file()
+            # Get data path - look for survey files with various patterns
+            raw_dir = Path(self.data_paths["raw_dir"]) / survey
+            if raw_dir.exists():
+                # Look for parquet files in the survey directory
+                parquet_files = list(raw_dir.glob("*.parquet"))
+                if parquet_files:
+                    data_path = parquet_files[0]  # Use the first parquet file found
+                else:
+                    data_path = raw_dir / f"{survey}.parquet"  # Fallback
+            else:
+                data_path = raw_dir / f"{survey}.parquet"  # Fallback
 
             if not data_path.exists():
                 return {"error": f"Data file not found: {data_path}"}
 
             # Load sample
-            if data_path.suffix == ".parquet":
-                df = pl.read_parquet(data_path)
-            else:
-                # Let preprocessor handle other formats
-                df = preprocessor.load_data()
+            df = pl.read_parquet(data_path)
 
             # Get info
             info = {
@@ -114,8 +129,8 @@ class SurveyInfo:
                 "n_objects": len(df),
                 "n_columns": len(df.columns),
                 "columns": df.columns,
-                "coordinate_columns": preprocessor.get_coordinate_columns(),
-                "magnitude_columns": preprocessor.get_magnitude_columns(),
+                "coordinate_columns": ["ra", "dec"],
+                "magnitude_columns": ["mag"],
                 "memory_usage_mb": df.estimated_size() / (1024 * 1024),
                 "sample": None,
                 "column_info": {},
@@ -155,11 +170,11 @@ class SurveyInfo:
                 info["sample"] = sample_df.to_dicts()
 
             # Quality validation
-            is_valid, issues = preprocessor.validate_data(df)
+            is_valid, issues = self.validate_data(df)
             info["validation"] = {"is_valid": is_valid, "issues": issues}
 
             # Statistics
-            info["statistics"] = preprocessor.get_survey_statistics(df)
+            info["statistics"] = self.get_survey_statistics(df)
 
             return info
 
@@ -325,6 +340,74 @@ class SurveyInfo:
             print(f"\n🟡 Only in raw:        {', '.join(cmp['only_in_raw'])}")
         if cmp["only_in_processed"]:
             print(f"\n🟢 Only in processed:  {', '.join(cmp['only_in_processed'])}")
+
+    def validate_data(self, df: pl.DataFrame) -> tuple[bool, list[str]]:
+        """Validate data quality and return (is_valid, issues)."""
+        issues = []
+
+        # Check for null values in key columns
+        if "ra" in df.columns and df["ra"].null_count() > 0:
+            issues.append(f"RA column has {df['ra'].null_count()} null values")
+        if "dec" in df.columns and df["dec"].null_count() > 0:
+            issues.append(f"DEC column has {df['dec'].null_count()} null values")
+
+        # Check coordinate ranges
+        if "ra" in df.columns:
+            ra_min, ra_max = df["ra"].min(), df["ra"].max()
+            if ra_min is not None and ra_max is not None:
+                if float(ra_min) < 0 or float(ra_max) > 360:
+                    issues.append(
+                        f"RA values out of range [0, 360]: [{ra_min}, {ra_max}]"
+                    )
+
+        if "dec" in df.columns:
+            dec_min, dec_max = df["dec"].min(), df["dec"].max()
+            if dec_min is not None and dec_max is not None:
+                if float(dec_min) < -90 or float(dec_max) > 90:
+                    issues.append(
+                        f"DEC values out of range [-90, 90]: [{dec_min}, {dec_max}]"
+                    )
+
+        # Check for reasonable data size
+        if len(df) < 10:
+            issues.append(f"Very small dataset: {len(df)} rows")
+        if len(df.columns) < 3:
+            issues.append(f"Very few columns: {len(df.columns)}")
+
+        return len(issues) == 0, issues
+
+    def get_survey_statistics(self, df: pl.DataFrame) -> dict[str, any]:
+        """Get basic statistics about the survey data."""
+        stats = {
+            "total_objects": len(df),
+            "total_columns": len(df.columns),
+            "memory_usage_mb": df.estimated_size() / (1024 * 1024),
+            "coordinate_columns": [],
+            "magnitude_columns": [],
+            "numeric_columns": [],
+            "categorical_columns": [],
+        }
+
+        # Categorize columns
+        for col in df.columns:
+            col_data = df[col]
+            if col_data.dtype in [pl.Float32, pl.Float64, pl.Int32, pl.Int64]:
+                stats["numeric_columns"].append(col)
+            elif col_data.dtype in [pl.Utf8, pl.Categorical]:
+                stats["categorical_columns"].append(col)
+
+        # Identify coordinate and magnitude columns
+        coord_keywords = ["ra", "dec", "x", "y", "z", "l", "b"]
+        mag_keywords = ["mag", "flux", "brightness", "phot"]
+
+        for col in df.columns:
+            col_lower = col.lower()
+            if any(keyword in col_lower for keyword in coord_keywords):
+                stats["coordinate_columns"].append(col)
+            elif any(keyword in col_lower for keyword in mag_keywords):
+                stats["magnitude_columns"].append(col)
+
+        return stats
 
 
 # Convenience functions

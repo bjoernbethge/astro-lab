@@ -18,9 +18,10 @@ def show_info(args) -> int:
     survey = args.survey
 
     # Check if survey exists
-    if survey not in info.list_available_surveys():
+    available_surveys = info.list_available_surveys()
+    if survey not in available_surveys:
         print(f"\n❌ Error: Unknown survey '{survey}'")
-        print(f"Available surveys: {', '.join(info.list_available_surveys())}")
+        print(f"Available surveys: {', '.join(available_surveys)}")
         return 1
 
     # Show basic info
@@ -95,53 +96,6 @@ def show_info(args) -> int:
     return 0
 
 
-# Legacy function for old CLI structure
 def main(args):
-    """Legacy main function for old CLI structure."""
-    if hasattr(args, "info_command"):
-        # Old style with subcommands
-        if args.info_command == "surveys":
-
-            class NewArgs:
-                survey = "all"
-                columns = False
-                validate = False
-                sample = 0
-
-            return show_info(NewArgs())
-
-        elif args.info_command == "show":
-
-            class NewArgs:
-                def __init__(self, survey, sample=0):
-                    self.survey = survey
-                    self.columns = False
-                    self.validate = False
-                    self.sample = sample
-
-            return show_info(NewArgs(args.survey, args.sample))
-
-        elif args.info_command == "columns":
-
-            class NewArgs:
-                def __init__(self, survey):
-                    self.survey = survey
-                    self.columns = True
-                    self.validate = False
-                    self.sample = 0
-
-            return show_info(NewArgs(args.survey))
-
-        elif args.info_command == "validate":
-
-            class NewArgs:
-                def __init__(self, survey):
-                    self.survey = survey
-                    self.columns = False
-                    self.validate = True
-                    self.sample = 0
-
-            return show_info(NewArgs(args.survey))
-    else:
-        # New style
-        return show_info(args)
+    """Main function for CLI info command (only new argument structure)."""
+    return show_info(args)

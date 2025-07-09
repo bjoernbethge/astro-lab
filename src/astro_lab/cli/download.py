@@ -7,45 +7,50 @@ import logging
 import sys
 
 
-def main():
+def main(args=None):
     """Main entry point for download command."""
-    parser = argparse.ArgumentParser(
-        description="Download astronomical survey data from various catalogs"
-    )
-    parser.add_argument(
-        "--survey",
-        choices=[
-            "gaia",
-            "sdss",
-            "nsa",
-            "tng50",
-            "exoplanet",
-            "twomass",
-            "wise",
-            "panstarrs",
-            "des",
-            "euclid",
-        ],
-        help="Survey to download",
-    )
-    parser.add_argument(
-        "--magnitude-limit",
-        type=float,
-        default=12.0,
-        help="Magnitude limit (default: 12.0)",
-    )
-    parser.add_argument(
-        "--region",
-        default="all_sky",
-        help="Region to download (all_sky, lmc, smc, etc.)",
-    )
-    parser.add_argument("--list", action="store_true", help="List available datasets")
-    parser.add_argument(
-        "--verbose", "-v", action="store_true", help="Enable verbose logging"
-    )
-    parser.add_argument("--force", "-f", action="store_true", help="Force re-download")
-
-    args = parser.parse_args()
+    # If called directly (not from main CLI), create our own parser
+    if args is None:
+        parser = argparse.ArgumentParser(
+            description="Download astronomical survey data from various catalogs"
+        )
+        parser.add_argument(
+            "survey",
+            choices=[
+                "gaia",
+                "sdss",
+                "nsa",
+                "tng50",
+                "exoplanet",
+                "twomass",
+                "wise",
+                "panstarrs",
+                "des",
+                "euclid",
+            ],
+            help="Survey to download",
+        )
+        parser.add_argument(
+            "--magnitude-limit",
+            type=float,
+            default=12.0,
+            help="Magnitude limit (default: 12.0)",
+        )
+        parser.add_argument(
+            "--region",
+            default="all_sky",
+            help="Region to download (all_sky, lmc, smc, etc.)",
+        )
+        parser.add_argument(
+            "--list", action="store_true", help="List available datasets"
+        )
+        parser.add_argument(
+            "--verbose", "-v", action="store_true", help="Enable verbose logging"
+        )
+        parser.add_argument(
+            "--force", "-f", action="store_true", help="Force re-download"
+        )
+        args = parser.parse_args()
 
     # Setup logging
     log_level = logging.DEBUG if args.verbose else logging.INFO
@@ -57,7 +62,11 @@ def main():
     logger = logging.getLogger(__name__)
 
     try:
-        if args.list:
+        # Check if we have a survey argument (either positional or --survey)
+        survey = getattr(args, "survey", None)
+        list_surveys = getattr(args, "list", False)
+
+        if list_surveys:
             logger.info("Available surveys:")
             surveys = [
                 "gaia",
@@ -74,8 +83,8 @@ def main():
             for survey in surveys:
                 logger.info(f"  - {survey}")
             return 0
-        elif args.survey:
-            logger.info(f"Downloading {args.survey} data...")
+        elif survey:
+            logger.info(f"Downloading {survey} data...")
 
             # Import the appropriate collector
             collector_map = {
@@ -91,22 +100,22 @@ def main():
                 "euclid": "astro_lab.data.collectors.euclid.EUCLIDCollector",
             }
 
-            if args.survey not in collector_map:
-                logger.error(f"Survey {args.survey} not supported")
+            if survey not in collector_map:
+                logger.error(f"Survey {survey} not supported")
                 return 1
 
             # Dynamic import
             import importlib
 
-            module_name, class_name = collector_map[args.survey].rsplit(".", 1)
+            module_name, class_name = collector_map[survey].rsplit(".", 1)
             module = importlib.import_module(module_name)
             collector_class = getattr(module, class_name)
 
             # Create collector and download
-            collector = collector_class(args.survey)
+            collector = collector_class(survey)
             downloaded_files = collector.download(force=args.force)
 
-            logger.info(f"✅ Downloaded {args.survey} data to:")
+            logger.info(f"✅ Downloaded {survey} data to:")
             for file_path in downloaded_files:
                 logger.info(f"   {file_path}")
 

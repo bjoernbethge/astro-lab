@@ -151,9 +151,18 @@ Examples:
     )
     train_parser.add_argument(
         "--model",
-        choices=["gcn", "gat", "sage", "gin"],
-        default="gcn",
-        help="Model architecture (default: gcn)",
+        choices=[
+            "gcn",
+            "gat",
+            "sage",
+            "gin",
+            "transformer",
+            "pointnet",
+            "temporal",
+            "auto",
+        ],
+        default="auto",
+        help="Model architecture (default: auto - uses survey recommendation)",
     )
     train_parser.add_argument(
         "--epochs",
@@ -286,10 +295,50 @@ Examples:
         help="Output directory for results",
     )
 
-    # ==================== HPO ====================
+    # ==================== OPTIMIZE (renamed from HPO) ====================
+    optimize_parser = subparsers.add_parser(
+        "optimize",
+        help="Hyperparameter optimization",
+        description="Run hyperparameter optimization for a survey",
+    )
+    optimize_parser.add_argument(
+        "survey",
+        choices=AVAILABLE_SURVEYS,
+        help="Survey to optimize",
+    )
+    optimize_parser.add_argument(
+        "--task",
+        choices=[
+            "node_classification",
+            "graph_classification",
+            "node_regression",
+            "graph_regression",
+        ],
+        default="node_classification",
+        help="Task type (default: node_classification)",
+    )
+    optimize_parser.add_argument(
+        "--trials",
+        type=int,
+        default=50,
+        help="Number of optimization trials (default: 50)",
+    )
+    optimize_parser.add_argument(
+        "--max-epochs",
+        type=int,
+        default=20,
+        help="Maximum epochs per trial (default: 20)",
+    )
+    optimize_parser.add_argument(
+        "--timeout",
+        type=int,
+        help="Optimization timeout in seconds",
+    )
+
+    # ==================== HPO (kept for backwards compatibility) ====================
     hpo_parser = subparsers.add_parser(
         "hpo",
-        help="Hyperparameter optimization",
+        help="Hyperparameter optimization (use 'optimize' instead)",
         description="Run hyperparameter optimization for a survey",
     )
     hpo_parser.add_argument(
@@ -332,22 +381,51 @@ Examples:
         help="Configuration management",
         description="Show or create configuration files",
     )
-    config_parser.add_argument(
-        "action",
-        choices=["show", "create"],
-        help="Action to perform",
+    config_subparsers = config_parser.add_subparsers(
+        dest="action",
+        help="Configuration action",
     )
-    config_parser.add_argument(
+
+    # config show
+    show_parser = config_subparsers.add_parser(
+        "show",
+        help="Show configuration",
+    )
+    show_parser.add_argument(
         "survey",
         nargs="?",
         choices=AVAILABLE_SURVEYS,
-        help="Survey configuration",
+        help="Survey configuration to show",
     )
-    config_parser.add_argument(
+
+    # config create
+    create_parser = config_subparsers.add_parser(
+        "create",
+        help="Create configuration file",
+    )
+    create_parser.add_argument(
         "-o",
         "--output",
         type=Path,
-        help="Output file for 'create' action",
+        required=True,
+        help="Output file path",
+    )
+    create_parser.add_argument(
+        "--template",
+        choices=AVAILABLE_SURVEYS,
+        help="Use survey as template",
+    )
+
+    # config surveys
+    config_subparsers.add_parser(
+        "surveys",
+        help="List available surveys",
+    )
+
+    # config validate
+    config_subparsers.add_parser(
+        "validate",
+        help="Validate configuration files",
     )
 
     # ==================== DOWNLOAD ====================
@@ -365,6 +443,9 @@ Examples:
         "--output-dir",
         type=Path,
         help="Custom output directory",
+    )
+    download_parser.add_argument(
+        "--force", "-f", action="store_true", help="Force re-download"
     )
 
     # ==================== BUILD-DATASET ====================
@@ -421,37 +502,51 @@ def main() -> int:
         if args.command == "preprocess":
             from .preprocess import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
 
         elif args.command == "train":
             from .train import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
 
         elif args.command == "info":
             from .info import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
 
         elif args.command == "cosmic-web":
             from .cosmic_web import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
 
-        elif args.command == "hpo":
+        elif args.command == "optimize":
             from .hpo import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
+
+        elif args.command == "hpo":
+            # Backwards compatibility
+            from .hpo import main
+
+            result = main(args)
+            return result if result is not None else 1
 
         elif args.command == "config":
             from .config import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
 
         elif args.command == "download":
             from .download import main
 
-            return main(args)
+            result = main(args)
+            return result if result is not None else 1
 
         elif args.command == "build-dataset":
             # Build ML-ready dataset from harmonized .parquet

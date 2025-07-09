@@ -2,7 +2,8 @@
 DES Survey Collector
 ===================
 
-Collector for DES (Dark Energy Survey) data using multiple astroquery sources.
+Collector for DES (Dark Energy Survey) data using astroquery sources.
+Only real astronomical data - no synthetic generation.
 """
 
 import logging
@@ -20,312 +21,225 @@ logger = logging.getLogger(__name__)
 
 class DESCollector(BaseSurveyCollector):
     """
-    Collector for DES data using SIMBAD (real data only, no fallback, no synthetic).
+    Collector for DES data using astronomical data sources.
+    Downloads real galaxy data from SIMBAD within the DES footprint.
     """
 
     def __init__(self, survey_name: str = "des", data_config=None):
         super().__init__(survey_name, data_config)
 
     def get_download_urls(self) -> List[str]:
+        """No direct download URLs - uses astroquery."""
         return []
 
     def get_target_files(self) -> List[str]:
-        return ["des_simbad.parquet"]
+        """Target files to be created."""
+        return ["des_galaxies.parquet"]
 
     def download(self, force: bool = False) -> List[Path]:
         """
-        Download real DES galaxy data from SIMBAD for Cosmic Web analysis.
+        Download real DES galaxy data from SIMBAD for cosmic web analysis.
+        
+        Args:
+            force: Force re-download even if file exists
+            
+        Returns:
+            List of downloaded file paths
         """
         logger.info("📥 Downloading DES galaxy data from SIMBAD...")
-        target_parquet = self.raw_dir / "des_simbad.parquet"
+        target_parquet = self.raw_dir / "des_galaxies.parquet"
+        
         if target_parquet.exists() and not force:
-            logger.info(f"✓ DES SIMBAD data already exists: {target_parquet}")
+            logger.info(f"✓ DES data already exists: {target_parquet}")
             return [target_parquet]
 
-        from astroquery.simbad import Simbad
-
-        # Check available votable fields
-        available_fields = set(Simbad.get_votable_fields())
-        logger.info(f"Available SIMBAD fields: {sorted(list(available_fields))}")
-
-        # Only add fields that are available
-        fields_to_add = []
-        for f in ["otype", "redshift", "flux(V)", "flux(B)", "flux(R)", "flux(I)"]:
-            if f in available_fields:
-                fields_to_add.append(f)
-        for f in fields_to_add:
-            Simbad.add_votable_fields(f)
-        logger.info(f"Querying with fields: {fields_to_add}")
-
-        # DES footprint: RA 40-75°, Dec -35 to -15° (split into tiles for large queries)
-        regions = [
-            (56.75, -24.1167, 5.0),
-            (60.0, -25.0, 3.0),
-            (55.0, -20.0, 3.0),
-            (50.0, -30.0, 3.0),
-            (65.0, -30.0, 3.0),
-        ]
-        all_results = []
-        for ra, dec, radius in regions:
-            coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg), frame="icrs")
-            logger.info(
-                f"📡 Querying SIMBAD region: RA={ra}, Dec={dec}, Radius={radius}°"
-            )
-            try:
-                result = Simbad.query_region(coord, radius=radius * u.deg)
-                if result is None or len(result) == 0:
-                    logger.warning(f"No objects found in region RA={ra}, Dec={dec}")
-                    continue
-                # Filter for galaxies (otype G) and with redshift if available
-                otype_col = next(
-                    (c for c in result.colnames if c.upper() == "OTYPE"), None
-                )
-                redshift_col = next(
-                    (c for c in result.colnames if c.upper() == "REDSHIFT"), None
-                )
-                if otype_col:
-                    mask = [str(val).startswith("G") for val in result[otype_col]]
-                    filtered = result[mask]
-                else:
-                    filtered = result
-                if redshift_col:
-                    filtered = filtered[[v is not None for v in filtered[redshift_col]]]
-                if len(filtered) > 0:
-                    df = pl.from_pandas(filtered.to_pandas())
-                    df = df.with_columns(
-                        pl.lit(f"region_{ra}_{dec}").alias("source_region")
-                    )
-                    all_results.append(df)
-                    logger.info(f"✅ Added {len(df)} galaxies from region {ra}, {dec}")
-            except Exception as e:
-                logger.error(
-                    f"❌ SIMBAD query failed for region RA={ra}, Dec={dec}: {e}"
-                )
-                continue
-        if not all_results:
-            raise RuntimeError(
-                "No real data could be downloaded from SIMBAD. "
-                "Please try again later or check your network."
-            )
-        combined_df = pl.concat(all_results, how="vertical")
-        logger.info(f"✅ Downloaded total {len(combined_df)} galaxies from SIMBAD.")
-        combined_df.write_parquet(target_parquet)
-        logger.info(f"✅ DES SIMBAD data saved: {target_parquet}")
-        return [target_parquet]
-
-    def _try_large_simbad_galaxies(self) -> pl.DataFrame:
-        """Download large galaxy dataset from SIMBAD."""
         try:
             from astroquery.simbad import Simbad
+        except ImportError:
+            logger.error("astroquery is required for DES data collection")
+            raise ImportError("Please install astroquery: pip install astroquery")
 
-            logger.info("📡 Querying large SIMBAD dataset...")
+        # Configure SIMBAD for galaxy queries
+        simbad = Simbad()
+        
+        # Add available votable fields for galaxies
+        available_fields = set(simbad.get_votable_fields())
+        logger.info(f"Available SIMBAD fields: {len(available_fields)}")
 
-            # Define multiple regions to cover larger area
-            regions = [
-                # DES footprint regions
-                (56.75, -24.1167, 5.0),  # Main DES region
-                (60.0, -25.0, 3.0),  # Extended region 1
-                (55.0, -20.0, 3.0),  # Extended region 2
-                (50.0, -30.0, 3.0),  # Extended region 3
-                (65.0, -30.0, 3.0),  # Extended region 4
-            ]
+        # Only add fields that are actually available
+        fields_to_add = []
+        for field in ["otype", "z_value", "flux(V)", "flux(B)", "flux(R)", "flux(I)"]:
+            if field in available_fields:
+                fields_to_add.append(field)
+                
+        for field in fields_to_add:
+            simbad.add_votable_fields(field)
+            
+        logger.info(f"Querying with fields: {fields_to_add}")
 
-            all_results = []
+        # DES footprint regions: Southern hemisphere, specific RA/Dec ranges
+        # Split into smaller regions to avoid timeouts
+        des_regions = [
+            (30.0, -30.0, 8.0),   # Eastern region
+            (45.0, -25.0, 8.0),   # Central-east region
+            (60.0, -20.0, 8.0),   # Central region
+            (75.0, -25.0, 8.0),   # Central-west region
+            (90.0, -30.0, 8.0),   # Western region
+        ]
 
-            for ra, dec, radius in regions:
-                coord = SkyCoord(ra=ra, dec=dec, unit=(u.deg, u.deg), frame="icrs")
-                radius_deg = radius * u.deg
-
+        all_results = []
+        
+        for ra_center, dec_center, radius in des_regions:
+            try:
+                coord = SkyCoord(
+                    ra=ra_center, 
+                    dec=dec_center, 
+                    unit=(u.deg, u.deg), 
+                    frame="icrs"
+                )
+                
                 logger.info(
-                    f"📡 Querying SIMBAD region: RA={ra}, Dec={dec}, Radius={radius}°"
+                    f"📡 Querying SIMBAD region: RA={ra_center}°, Dec={dec_center}°, "
+                    f"Radius={radius}°"
                 )
+                
+                # Query for objects in this region
+                result = simbad.query_region(coord, radius=radius * u.deg)
+                
+                if result is None or len(result) == 0:
+                    logger.warning(
+                        f"No objects found in region RA={ra_center}, Dec={dec_center}"
+                    )
+                    continue
 
-                # Configure SIMBAD for galaxies
-                Simbad.add_votable_fields(
-                    "otype", "z_value", "flux(V)", "flux(B)", "flux(R)", "flux(I)"
-                )
+                # Filter for galaxies if object type information is available
+                if "OTYPE" in result.colnames:
+                    # Filter for galaxy types
+                    galaxy_mask = []
+                    for obj_type in result["OTYPE"]:
+                        if obj_type is not None:
+                            # Galaxy types in SIMBAD: G, GiC, GiG, etc.
+                            is_galaxy = str(obj_type).upper().startswith("G")
+                            galaxy_mask.append(is_galaxy)
+                        else:
+                            galaxy_mask.append(False)
+                    
+                    filtered_result = result[galaxy_mask]
+                    logger.info(
+                        f"Filtered to {len(filtered_result)} galaxies from "
+                        f"{len(result)} total objects"
+                    )
+                else:
+                    # No object type info, use all results
+                    filtered_result = result
+                    logger.info(f"No object type filtering, using all {len(result)} objects")
 
-                # Query for galaxies in the region
-                result = Simbad.query_region(coord, radius=radius_deg)
-
-                if result and len(result) > 0:
-                    # Check if OTYPE column exists
-                    if "OTYPE" in result.colnames:
-                        # Filter for galaxies and objects with redshift
-                        galaxy_mask = []
-                        for i, obj_type in enumerate(result["OTYPE"]):
-                            is_galaxy = obj_type.startswith("G") if obj_type else False
-                            has_redshift = result["Z_VALUE"][i] is not None
-                            galaxy_mask.append(is_galaxy and has_redshift)
-
-                        filtered_result = result[galaxy_mask]
-                    else:
-                        # If no OTYPE, use all results with redshift
-                        redshift_mask = [
-                            result["Z_VALUE"][i] is not None for i in range(len(result))
-                        ]
-                        filtered_result = result[redshift_mask]
-
-                    if len(filtered_result) > 0:
-                        # Convert to Polars DataFrame
-                        df = pl.from_pandas(filtered_result.to_pandas())
-
-                        # Add region identifier
-                        df = df.with_columns(
-                            pl.lit(f"region_{ra}_{dec}").alias("source_region")
-                        )
-                        all_results.append(df)
-
+                # Further filter for objects with redshift if available
+                if "Z_VALUE" in filtered_result.colnames:
+                    redshift_mask = [
+                        z is not None and not str(z).strip() == "" 
+                        for z in filtered_result["Z_VALUE"]
+                    ]
+                    redshift_filtered = filtered_result[redshift_mask]
+                    
+                    if len(redshift_filtered) > 0:
+                        filtered_result = redshift_filtered
                         logger.info(
-                            f"✅ Added {len(filtered_result)} galaxies from region {ra}, {dec}"
+                            f"Found {len(filtered_result)} objects with redshift data"
                         )
 
-            if all_results:
-                combined_df = pl.concat(all_results, how="vertical")
+                if len(filtered_result) > 0:
+                    # Convert to Polars DataFrame
+                    df = pl.from_pandas(filtered_result.to_pandas())
+                    
+                    # Add region identifier for tracking
+                    df = df.with_columns(
+                        pl.lit(f"des_region_{ra_center}_{dec_center}").alias("source_region")
+                    )
+                    
+                    all_results.append(df)
+                    logger.info(
+                        f"✅ Added {len(df)} objects from region "
+                        f"RA={ra_center}, Dec={dec_center}"
+                    )
+                else:
+                    logger.warning(
+                        f"No suitable objects found in region "
+                        f"RA={ra_center}, Dec={dec_center}"
+                    )
 
-                logger.info(f"✅ Total SIMBAD galaxies: {len(combined_df)}")
-                return combined_df
+            except Exception as e:
+                logger.error(
+                    f"❌ SIMBAD query failed for region RA={ra_center}, "
+                    f"Dec={dec_center}: {e}"
+                )
+                continue
 
-            return pl.DataFrame()  # Return empty DataFrame instead of None
+        if not all_results:
+            logger.error(
+                "No real data could be downloaded from any region. "
+                "Please check network connection and try again."
+            )
+            raise RuntimeError(
+                "Failed to download any real DES data from SIMBAD. "
+                "This may be due to network issues or SIMBAD availability."
+            )
 
-        except Exception as e:
-            logger.error(f"❌ Large SIMBAD download failed: {e}")
-            return pl.DataFrame()  # Return empty DataFrame instead of raising
+        # Combine all results
+        combined_df = pl.concat(all_results, how="vertical")
+        
+        # Remove duplicates if any
+        if "MAIN_ID" in combined_df.columns:
+            initial_count = len(combined_df)
+            combined_df = combined_df.unique(subset=["MAIN_ID"])
+            final_count = len(combined_df)
+            if initial_count != final_count:
+                logger.info(f"Removed {initial_count - final_count} duplicate objects")
 
-    def _try_large_vizier_catalogs(self) -> pl.DataFrame:
-        """Download large dataset from Vizier catalogs."""
+        logger.info(f"✅ Downloaded total {len(combined_df)} real objects from SIMBAD")
+        
+        # Save to parquet
+        combined_df.write_parquet(target_parquet)
+        logger.info(f"✅ DES data saved to: {target_parquet}")
+        
+        return [target_parquet]
+
+    def _validate_downloaded_data(self, file_path: Path) -> bool:
+        """Validate that downloaded data is real and usable."""
         try:
-            from astroquery.vizier import Vizier
-
-            logger.info("📡 Querying large Vizier dataset...")
-
-            # Large catalogs for cosmic web analysis
-            catalogs = [
-                ("II/349/ps1", "Pan-STARRS1 DR1"),  # Large optical survey
-                ("II/328/allwise", "AllWISE Source Catalog"),  # Infrared survey
-                ("II/246/out", "2MASS All-Sky Point Source Catalog"),  # Near-infrared
-                ("II/311/wise", "WISE All-Sky Data Release"),  # Wide-field infrared
-            ]
-
-            all_results = []
-
-            for catalog_id, catalog_name in catalogs:
-                try:
-                    logger.info(f"📡 Querying {catalog_name}...")
-
-                    # Query large regions
-                    regions = [
-                        (56.75, -24.1167, 10.0),  # Large DES region
-                        (60.0, -25.0, 8.0),  # Extended region
-                        (50.0, -30.0, 8.0),  # Another region
-                    ]
-
-                    for ra, dec, radius in regions:
-                        coord = SkyCoord(
-                            ra=ra, dec=dec, unit=(u.deg, u.deg), frame="icrs"
-                        )
-                        radius_deg = radius * u.deg
-
-                        Vizier.ROW_LIMIT = 50000  # Large limit
-                        result = Vizier.query_region(
-                            coord, radius=radius_deg, catalog=catalog_id
-                        )
-
-                        if result and len(result) > 0:
-                            # Convert to Polars DataFrame
-                            df = pl.from_pandas(result[0].to_pandas())
-
-                            # Add source information
-                            df = df.with_columns(
-                                [
-                                    pl.lit(catalog_name).alias("source_catalog"),
-                                    pl.lit(f"region_{ra}_{dec}").alias("source_region"),
-                                ]
-                            )
-
-                            all_results.append(df)
-                            logger.info(
-                                f"✅ Added {len(df)} objects from {catalog_name} region {ra}, {dec}"
-                            )
-
-                except Exception as e:
-                    logger.warning(f"⚠️ Catalog {catalog_name} failed: {e}")
-                    continue
-
-            if all_results:
-                combined_df = pl.concat(all_results, how="vertical")
-
-                logger.info(f"✅ Total Vizier objects: {len(combined_df)}")
-                return combined_df
-
-            return pl.DataFrame()  # Return empty DataFrame instead of None
-
+            df = pl.read_parquet(file_path)
+            
+            # Check basic requirements
+            if len(df) == 0:
+                logger.error("Downloaded file is empty")
+                return False
+                
+            # Check for coordinate columns
+            required_coords = ["RA", "DEC"]  # SIMBAD standard column names
+            missing_coords = [col for col in required_coords if col not in df.columns]
+            
+            if missing_coords:
+                logger.error(f"Missing coordinate columns: {missing_coords}")
+                return False
+                
+            # Check coordinate ranges are reasonable
+            ra_values = df["RA"].to_numpy()
+            dec_values = df["DEC"].to_numpy()
+            
+            if not (0 <= ra_values.min() and ra_values.max() <= 360):
+                logger.error(f"Invalid RA range: {ra_values.min()} to {ra_values.max()}")
+                return False
+                
+            if not (-90 <= dec_values.min() and dec_values.max() <= 90):
+                logger.error(f"Invalid Dec range: {dec_values.min()} to {dec_values.max()}")
+                return False
+                
+            logger.info(f"✅ Data validation passed: {len(df)} real objects")
+            logger.info(f"RA range: {ra_values.min():.2f} to {ra_values.max():.2f}")
+            logger.info(f"Dec range: {dec_values.min():.2f} to {dec_values.max():.2f}")
+            
+            return True
+            
         except Exception as e:
-            logger.error(f"❌ Large Vizier download failed: {e}")
-            raise
-
-    def _try_large_esasky_catalogs(self) -> pl.DataFrame:
-        """Download large dataset from ESASky catalogs."""
-        try:
-            from astroquery.esasky import ESASky
-
-            logger.info("📡 Querying large ESASky dataset...")
-
-            # ESASky catalogs
-            catalogs = ["GAIA", "2MASS", "WISE", "PANSTARRS"]
-
-            all_results = []
-
-            for catalog in catalogs:
-                try:
-                    logger.info(f"📡 Querying ESASky {catalog}...")
-
-                    # Query large regions
-                    regions = [
-                        (56.75, -24.1167, 8.0),
-                        (60.0, -25.0, 6.0),
-                        (50.0, -30.0, 6.0),
-                    ]
-
-                    for ra, dec, radius in regions:
-                        coord = SkyCoord(
-                            ra=ra, dec=dec, unit=(u.deg, u.deg), frame="icrs"
-                        )
-                        radius_deg = radius * u.deg
-
-                        result = ESASky.query_region_catalogs(
-                            coord, radius=radius_deg, catalogs=catalog
-                        )
-
-                        if result and len(result) > 0:
-                            # Convert to Polars DataFrame
-                            df = pl.from_pandas(result[0].to_pandas())
-
-                            # Add source information
-                            df = df.with_columns(
-                                [
-                                    pl.lit(f"ESASky_{catalog}").alias("source_catalog"),
-                                    pl.lit(f"region_{ra}_{dec}").alias("source_region"),
-                                ]
-                            )
-
-                            all_results.append(df)
-                            logger.info(
-                                f"✅ Added {len(df)} objects from ESASky {catalog} region {ra}, {dec}"
-                            )
-
-                except Exception as e:
-                    logger.warning(f"⚠️ ESASky catalog {catalog} failed: {e}")
-                    continue
-
-            if all_results:
-                combined_df = pl.concat(all_results, how="vertical")
-
-                logger.info(f"✅ Total ESASky objects: {len(combined_df)}")
-                return combined_df
-
-            return pl.DataFrame()  # Return empty DataFrame instead of None
-
-        except Exception as e:
-            logger.error(f"❌ Large ESASky download failed: {e}")
-            raise
+            logger.error(f"Data validation failed: {e}")
+            return False

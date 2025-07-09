@@ -3,7 +3,7 @@ AstroLab CLI Package
 ===================
 
 Command-line interface for AstroLab astronomical machine learning framework.
-
+@
 Available Commands:
 ------------------
 - preprocess: Preprocess raw data files into training-ready format
@@ -29,9 +29,6 @@ Available Surveys:
 # Show available surveys
 astro-lab config surveys
 """
-
-__version__ = "0.1.0"
-__author__ = "AstroLab Team"
 
 # Export main CLI function
 from .__main__ import main

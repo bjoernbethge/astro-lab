@@ -10,9 +10,7 @@ import torch
 
 from astro_lab.config import get_optimal_batch_size
 
-from ..config import get_data_paths, get_survey_config
-from ..data.preprocessors import get_preprocessor
-from ..data.preprocessors.nsa import NSAPreprocessor
+from ..config import get_data_paths
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +24,38 @@ def preprocess_survey(args) -> int:
     print(f"{'=' * 60}")
 
     try:
-        # Get preprocessor
-        config = get_survey_config(survey)
-        # handle_missing wird nicht mehr unterstützt, immer generische Imputation
-        preprocessor = get_preprocessor(survey, config=config)
+        # Get preprocessor instance
+        from astro_lab.data.preprocessors import (
+            DESPreprocessor,
+            ExoplanetPreprocessor,
+            GaiaPreprocessor,
+            LINEARPreprocessor,
+            NSAPreprocessor,
+            RRLyraePreprocessor,
+            SDSSPreprocessor,
+            TNG50Preprocessor,
+            TwoMASSPreprocessor,
+            WISEPreprocessor,
+        )
+
+        # Map survey names to preprocessor classes
+        preprocessor_map = {
+            "gaia": GaiaPreprocessor,
+            "sdss": SDSSPreprocessor,
+            "nsa": NSAPreprocessor,
+            "tng50": TNG50Preprocessor,
+            "exoplanet": ExoplanetPreprocessor,
+            "twomass": TwoMASSPreprocessor,
+            "wise": WISEPreprocessor,
+            "des": DESPreprocessor,
+            "linear": LINEARPreprocessor,
+            "rrlyrae": RRLyraePreprocessor,
+        }
+
+        if survey not in preprocessor_map:
+            raise ValueError(f"Survey '{survey}' not supported")
+
+        preprocessor = preprocessor_map[survey]()
 
         # Check if data exists
         data_path = preprocessor._find_data_file()
@@ -72,7 +98,7 @@ def preprocess_survey(args) -> int:
         elif data_path.suffix == ".csv":
             raw_df = pl.read_csv(data_path)
         elif data_path.suffix == ".fits" and survey == "nsa":
-            raw_df = NSAPreprocessor(config)._load_fits_data(str(data_path))
+            raw_df = preprocessor._load_fits_data(str(data_path))
         else:
             raise ValueError(f"Unsupported file format: {data_path.suffix}")
         df = preprocessor.preprocess(raw_df)
@@ -131,7 +157,7 @@ def preprocess_survey(args) -> int:
             sampling_strategy=getattr(args, "sampling_strategy", "knn"),
             sampler_kwargs=sampling_kwargs,
         )
-        dataset.process(batch_size=batch_size, device=device)
+        dataset.process()
         pt_path = dataset.processed_paths[0]
         print(f"\n✅ ML-ready dataset saved to: {pt_path}")
         print(

@@ -5,19 +5,14 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
 
 import yaml
 
 from ..config import (
     get_combined_config,
-    # get_data_config,  # removed unused
-    # get_data_paths,   # removed unused
-    # get_model_config, # removed unused
-    # get_training_config, # removed unused
+    get_survey_config,
 )
-from ..models import AstroModel
-from ..training import AstroTrainer, train_model
+from ..training import train_model
 
 
 def setup_logging(verbose: bool = False) -> logging.Logger:
@@ -72,10 +67,16 @@ All other settings (model architecture, hyperparameters, callbacks, logging, etc
         help="Survey to train on",
     )
     parser.add_argument(
-        "--task", type=str, default=None, help="Task type (overrides config)"
+        "--task",
+        type=str,
+        default="node_classification",  # Default task
+        help="Task type (default: node_classification)",
     )
     parser.add_argument(
-        "--model-type", type=str, default=None, help="Model type (e.g., gcn, gat, sage)"
+        "--model",
+        type=str,
+        default=None,
+        help="Model type (e.g., gcn, gat, sage, gin, transformer, pointnet, temporal, auto)",
     )
     parser.add_argument(
         "--max-epochs", type=int, default=None, help="Maximum training epochs"
@@ -112,27 +113,43 @@ def main(args=None) -> int:
         parsed_args = parser.parse_args(args)
     logger = setup_logging(parsed_args.verbose)
 
-    # Use get_combined_config to build a flat config
+    # Ensure task has a default
+    task = parsed_args.task or "node_classification"
+
+    # Get combined config (survey + task)
     config = get_combined_config(
         parsed_args.survey,
-        parsed_args.task,
+        task,
     )
 
-    # Ensure survey is set in config
+    # Ensure survey and task are set in config
     config["survey"] = parsed_args.survey
+    config["task"] = task
 
-    # Override config with CLI arguments
-    if hasattr(parsed_args, "model") and parsed_args.model:
+    # Load custom config file if provided
+    if parsed_args.config:
+        try:
+            with open(parsed_args.config, "r") as f:
+                custom_config = yaml.safe_load(f)
+                if custom_config:
+                    config.update(custom_config)
+                    logger.info(f"Loaded custom config from {parsed_args.config}")
+        except Exception as e:
+            logger.error(f"Failed to load config file {parsed_args.config}: {e}")
+            return 1
+
+    # Override config with CLI arguments (CLI has highest priority)
+    if parsed_args.model:
         config["conv_type"] = parsed_args.model
-    if hasattr(parsed_args, "max_epochs") and parsed_args.max_epochs:
+    if parsed_args.max_epochs is not None:
         config["max_epochs"] = parsed_args.max_epochs
-    if hasattr(parsed_args, "batch_size") and parsed_args.batch_size:
+    if parsed_args.batch_size is not None:
         config["batch_size"] = parsed_args.batch_size
-    if hasattr(parsed_args, "learning_rate") and parsed_args.learning_rate:
+    if parsed_args.learning_rate is not None:
         config["learning_rate"] = parsed_args.learning_rate
-    if hasattr(parsed_args, "hidden_dim") and parsed_args.hidden_dim:
+    if parsed_args.hidden_dim is not None:
         config["hidden_dim"] = parsed_args.hidden_dim
-    if hasattr(parsed_args, "num_layers") and parsed_args.num_layers:
+    if parsed_args.num_layers is not None:
         config["num_layers"] = parsed_args.num_layers
 
     # Ensure required parameters
@@ -142,28 +159,74 @@ def main(args=None) -> int:
         )
         return 1
 
+    # Log configuration summary
+    logger.info("\n" + "=" * 60)
+    logger.info("Training Configuration Summary")
+    logger.info("=" * 60)
+    logger.info(f"Survey: {config['survey']}")
+    logger.info(f"Task: {config['task']}")
+
+    # Get survey-specific information
+    try:
+        survey_config = get_survey_config(config["survey"])
+        logger.info(f"Survey Name: {survey_config.get('name', 'N/A')}")
+        if "recommended_model" in survey_config:
+            rec_model = survey_config["recommended_model"]
+            logger.info(f"Recommended Model: {rec_model.get('conv_type', 'N/A')}")
+    except Exception:
+        pass
+
+    logger.info(f"Model Type: {config.get('conv_type', 'auto')}")
+    logger.info(f"Batch Size: {config.get('batch_size', 'default')}")
+    logger.info(f"Learning Rate: {config.get('learning_rate', 'default')}")
+    logger.info(f"Max Epochs: {config.get('max_epochs', 'default')}")
+    logger.info("=" * 60 + "\n")
+
     # Create output directory
     output_dir = Path("results")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         logger.info("Starting training...")
+
+        # Pass model_type from config if not explicitly set
+        model_type = config.get("conv_type") or config.get("model_type")
+
         results = train_model(
             survey=config["survey"],
-            task=config.get("task") or "node_classification",
+            task=config["task"],
+            model_type=model_type,
             config=config,
         )
 
         # Save results
-        results_file = output_dir / "results.yaml"
+        results_file = output_dir / f"{config['survey']}_{config['task']}_results.yaml"
+
+        # Prepare results for YAML serialization
+        save_results = {
+            "survey": config["survey"],
+            "task": config["task"],
+            "model_type": model_type,
+            "config": config,
+        }
+
+        if results.get("test_results"):
+            test_results = results["test_results"]
+            # Extract metrics safely
+            save_results["test_results"] = {
+                "test_loss": float(test_results.get("test_loss", 0.0)),
+                "test_acc": float(test_results.get("test_acc", 0.0)),
+                "test_f1": float(test_results.get("test_f1", 0.0)),
+            }
+
         with open(results_file, "w") as f:
-            yaml.dump(results, f, default_flow_style=False)
+            yaml.dump(save_results, f, default_flow_style=False)
 
         logger.info(f"Training completed! Results saved to {results_file}")
-        if results["test_results"]:
-            logger.info(
-                f"Test accuracy: {results['test_results'].get('test_metric', 0):.4f}"
-            )
+
+        if results.get("test_results"):
+            test_acc = results["test_results"].get("test_acc", 0.0)
+            logger.info(f"Test accuracy: {test_acc:.4f}")
 
         return 0
 

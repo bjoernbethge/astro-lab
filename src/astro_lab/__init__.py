@@ -1,17 +1,26 @@
 """
-Comprehensive Astronomical Data Analysis Framework
+AstroLab - Astronomical Machine Learning Framework
+=================================================
 
-A modern Python framework for astronomical data analysis, machine learning,
-and visualization that combines specialized astronomy libraries with
-cutting-edge ML tools.
+A comprehensive framework for astronomical data processing, machine learning,
+and visualization with support for multiple surveys and data formats.
 """
 
+# Set tensordict behavior globally for the entire package
+# We want lists to be stacked as tensors since we work with PyG Data objects
 import os
+
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
 import warnings
 from pathlib import Path
 
 # Import data module with relative import
-from . import data
+# Core imports
+from . import cli, config, data, models, tensors, training, ui, widgets
 
 # Import config module with relative import
 from .config import (

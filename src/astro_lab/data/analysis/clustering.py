@@ -6,14 +6,12 @@ Efficient clustering algorithms using PyTorch Geometric and TensorDict integrati
 """
 
 import logging
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Union
 
 import torch
 from torch_geometric.nn import radius_graph
 from torch_geometric.utils import to_undirected
 
-from astro_lab.models.autoencoders.base import BaseAutoencoder
-from astro_lab.models.autoencoders.pointcloud_autoencoder import PointCloudAutoencoder
 from astro_lab.tensors import SpatialTensorDict
 
 logger = logging.getLogger(__name__)
@@ -294,41 +292,3 @@ class SpatialClustering:
             "mean_cluster_size": mean_cluster_size,
             "cluster_sizes": counts[cluster_mask].tolist() if n_clusters > 0 else [],
         }
-
-
-def analyze_with_autoencoder(
-    coordinates: Union[torch.Tensor, SpatialTensorDict],
-    autoencoder: Optional[BaseAutoencoder] = None,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
-) -> Dict:
-    """
-    Analyze spatial data using autoencoder for dimensionality reduction.
-
-    Args:
-        coordinates: Input coordinates
-        autoencoder: Pre-trained autoencoder (optional)
-        device: Computation device
-
-    Returns:
-        Analysis results with latent representations
-    """
-    if autoencoder is None:
-        # Create default autoencoder
-        autoencoder = PointCloudAutoencoder(
-            input_dim=3, latent_dim=16, hidden_dim=64, use_geometric=True
-        ).to(device)
-
-    # Get latent representations
-    latent_repr = autoencoder.encode(coordinates)
-
-    # Perform clustering on latent space
-    clustering = SpatialClustering(device=device)
-    clustering_results = clustering.multi_scale_analysis(
-        latent_repr, scales=[0.5, 1.0, 2.0], min_samples=3
-    )
-
-    return {
-        "latent_representations": latent_repr,
-        "clustering_results": clustering_results,
-        "autoencoder": autoencoder,
-    }
