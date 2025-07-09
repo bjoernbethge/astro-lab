@@ -7,6 +7,9 @@ import torch
 from torch_geometric.data import Data
 
 from astro_lab.models import AstroModel
+from src.astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
+from src.astro_lab.data.dataset.lightning import AstroLabDataModule
+from src.astro_lab.data.samplers.neighbor import KNNSampler
 
 
 class TestModelCreation:
@@ -43,16 +46,24 @@ class TestModelCreation:
 class TestModelFunctionality:
     """Test model forward passes and features."""
 
-    @pytest.fixture
-    def sample_data(self):
-        """Create sample graph data."""
-        x = torch.randn(100, 10)
-        edge_index = torch.randint(0, 100, (2, 200))
-        batch = torch.zeros(100, dtype=torch.long)
-        return Data(x=x, edge_index=edge_index, batch=batch)
+    def _get_nonempty_graph(self, dataset, indices):
+        for idx in indices[:10]:  # Try first 10 indices
+            graph = dataset.get(idx)
+            if hasattr(graph, "edge_index") and graph.edge_index.size(1) > 0:
+                return graph
+        import pytest
 
-    def test_node_classification_forward(self, sample_data):
-        """Test node classification forward pass."""
+        pytest.skip("No graph with edges found in first 10 indices.")
+
+    def test_node_classification_forward(self):
+        from src.astro_lab.data.samplers import KNNSampler
+
+        ds = AstroLabInMemoryDataset(survey_name="gaia", task="node_classification")
+        dm = AstroLabDataModule(dataset=ds, batch_size=1, num_workers=0)
+        dm.setup()
+        graph = self._get_nonempty_graph(ds, dm.train_indices)
+        from astro_lab.models import AstroModel
+
         model = AstroModel(
             num_features=10,
             num_classes=3,
@@ -60,11 +71,18 @@ class TestModelFunctionality:
             num_layers=2,
             task="node_classification",
         )
-        out = model(sample_data)
-        assert out.shape[0] == 100
+        out = model(graph)
+        assert out.shape[0] == graph.x.shape[0]
 
-    def test_graph_classification_forward(self, sample_data):
-        """Test graph classification forward pass."""
+    def test_graph_classification_forward(self):
+        from src.astro_lab.data.samplers import KNNSampler
+
+        ds = AstroLabInMemoryDataset(survey_name="gaia", task="graph_classification")
+        dm = AstroLabDataModule(dataset=ds, batch_size=1, num_workers=0)
+        dm.setup()
+        graph = self._get_nonempty_graph(ds, dm.train_indices)
+        from astro_lab.models import AstroModel
+
         model = AstroModel(
             num_features=10,
             num_classes=3,
@@ -72,11 +90,18 @@ class TestModelFunctionality:
             num_layers=2,
             task="graph_classification",
         )
-        out = model(sample_data)
+        out = model(graph)
         assert out.shape[1] == 3
 
-    def test_node_regression_forward(self, sample_data):
-        """Test node regression forward pass."""
+    def test_node_regression_forward(self):
+        from src.astro_lab.data.samplers import KNNSampler
+
+        ds = AstroLabInMemoryDataset(survey_name="gaia", task="node_regression")
+        dm = AstroLabDataModule(dataset=ds, batch_size=1, num_workers=0)
+        dm.setup()
+        graph = self._get_nonempty_graph(ds, dm.train_indices)
+        from astro_lab.models import AstroModel
+
         model = AstroModel(
             num_features=10,
             num_classes=1,  # Regression output
@@ -84,8 +109,8 @@ class TestModelFunctionality:
             num_layers=2,
             task="node_regression",
         )
-        out = model(sample_data)
-        assert out.shape[0] == 100
+        out = model(graph)
+        assert out.shape[0] == graph.x.shape[0]
 
 
 class TestModelUtils:

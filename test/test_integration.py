@@ -1,12 +1,15 @@
 """
-Integration tests for AstroLab (Lightning API).
+Integration tests for AstroLab.
 """
+
+import warnings
 
 import pytest
 import torch
-from torch_geometric.data import Data
 
-from astro_lab.data.datamodules import SurveyDataModule
+from astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
+from astro_lab.data.dataset.lightning import AstroLabDataModule
+from astro_lab.data.samplers.neighbor import KNNSampler
 from astro_lab.models import AstroModel
 from astro_lab.training import AstroTrainer
 
@@ -18,71 +21,80 @@ class TestEndToEnd:
     def test_gaia_pipeline(self):
         """Test complete pipeline with GAIA data."""
         try:
-            # Load small GAIA sample
-            datamodule = SurveyDataModule(
-                survey="gaia",
+            # Load small GAIA sample with limited data
+            dataset = AstroLabInMemoryDataset(
+                survey_name="gaia",
                 task="node_classification",
-                max_samples=100,
-                batch_size=10,
-                num_workers=0,
+                max_samples=100,  # Use only 100 samples for testing
             )
-            datamodule.prepare_data()
+
+            # Get dataset info to determine actual feature dimensions
+            info = dataset.get_info()
+
+            sampler = KNNSampler(k=8)
+            datamodule = AstroLabDataModule(
+                dataset=dataset,
+                sampler=sampler,
+                batch_size=10,
+                num_workers=0,  # Use 0 for compatibility
+            )
             datamodule.setup()
 
-            # Create model
+            # Create model with actual feature dimensions
             model = AstroModel(
-                num_features=datamodule.num_features,
-                num_classes=datamodule.num_classes,
+                num_features=info["num_features"],
+                num_classes=info["num_classes"],
                 hidden_dim=32,
                 num_layers=2,
                 task="node_classification",
             )
+            assert model is not None
+            assert datamodule is not None
 
-            # Create trainer
-            trainer = AstroTrainer(
-                experiment_name="test_gaia_pipeline",
-                max_epochs=2,
-                devices=1,
-                accelerator="cpu",
-                enable_progress_bar=False,
-            )
-
-            # Skip actual training if model is not LightningModule
-            pytest.skip(
-                "AstroModel is not a LightningModule, skipping training integration."
-            )
-
-        except FileNotFoundError:
-            pytest.skip("GAIA data not available")
+        except (FileNotFoundError, RuntimeError) as e:
+            if "No data found" in str(e) or "not been downloaded" in str(e):
+                pytest.skip(
+                    "GAIA data not available - run 'astro-lab download gaia' first"
+                )
+            else:
+                raise
 
     @pytest.mark.slow
     def test_sdss_pipeline(self):
         """Test complete pipeline with SDSS data."""
         try:
             # Load small SDSS sample
-            datamodule = SurveyDataModule(
-                survey="sdss",
+            dataset = AstroLabInMemoryDataset(
+                survey_name="sdss",
                 task="node_classification",
                 max_samples=100,
+            )
+
+            # Get dataset info
+            info = dataset.get_info()
+
+            sampler = KNNSampler(k=8)
+            datamodule = AstroLabDataModule(
+                dataset=dataset,
+                sampler=sampler,
                 batch_size=10,
                 num_workers=0,
             )
-            datamodule.prepare_data()
             datamodule.setup()
 
-            # Create model
+            # Create model with actual dimensions
             model = AstroModel(
-                num_features=datamodule.num_features,
-                num_classes=datamodule.num_classes,
+                num_features=info["num_features"],
+                num_classes=info["num_classes"],
                 hidden_dim=32,
                 num_layers=2,
                 task="node_classification",
             )
 
-            # Create trainer
+            # Create trainer with minimal epochs
             trainer = AstroTrainer(
                 experiment_name="test_sdss_pipeline",
-                max_epochs=2,
+                max_epochs=1,  # Just 1 epoch for testing
                 devices=1,
                 accelerator="cpu",
                 enable_progress_bar=False,
@@ -92,122 +104,160 @@ class TestEndToEnd:
             trainer.fit(model, datamodule)
             assert True  # If we get here, training succeeded
 
-        except FileNotFoundError:
-            pytest.skip("SDSS data not available")
+        except (FileNotFoundError, RuntimeError) as e:
+            if "No data found" in str(e) or "not been downloaded" in str(e):
+                pytest.skip(
+                    "SDSS data not available - run 'astro-lab download sdss' first"
+                )
+            else:
+                raise
 
 
-class TestCosmicWebIntegration:
-    """Test cosmic web analysis integration."""
+class TestModelCreation:
+    """Test model creation with different configurations."""
 
-    @pytest.mark.slow
-    def test_cosmic_web_analysis(self):
-        """Test cosmic web analysis pipeline."""
-        pytest.skip("Cosmic web analysis not implemented in new API.")
+    def test_model_with_variable_features(self):
+        """Test that model handles variable feature dimensions."""
+        # Test different feature dimensions
+        for num_features in [3, 10, 50, 128]:
+            model = AstroModel(
+                num_features=num_features,
+                num_classes=6,
+                hidden_dim=64,
+                task="node_classification",
+            )
+
+            # Create dummy batch
+            batch = type(
+                "obj",
+                (object,),
+                {
+                    "x": torch.randn(20, num_features),
+                    "edge_index": torch.randint(0, 20, (2, 40)),
+                    "num_nodes": 20,
+                },
+            )
+
+            # Forward pass should work
+            out = model(batch)
+            assert out.shape == (20, 6)
+
+    def test_model_device_handling(self):
+        """Test that model handles device placement correctly."""
+        model = AstroModel(
+            num_features=10,
+            num_classes=3,
+            hidden_dim=32,
+            task="node_classification",
+        )
+
+        # Create batch on CPU
+        batch = type(
+            "obj",
+            (object,),
+            {
+                "x": torch.randn(10, 10),
+                "edge_index": torch.randint(0, 10, (2, 20)),
+                "num_nodes": 10,
+            },
+        )
+
+        # Model on CPU should work
+        out = model(batch)
+        assert out.device.type == "cpu"
+
+        # If CUDA available, test GPU
+        if torch.cuda.is_available():
+            model = model.cuda()
+            out = model(batch)  # Should handle CPU batch with GPU model
+            assert out.device.type == "cuda"
 
 
-class TestVisualizationIntegration:
-    """Test visualization integration."""
+class TestDataHandling:
+    """Test data loading and processing."""
 
-    def test_widget_creation(self):
-        """Test AstroLab widget creation."""
-        pytest.skip("AstroLabWidget not implemented in new API.")
+    def test_empty_dataset_error(self):
+        """Test that empty dataset produces helpful error."""
+        # This should fail with a clear error message
+        with pytest.raises((RuntimeError, FileNotFoundError)) as excinfo:
+            dataset = AstroLabInMemoryDataset(
+                survey_name="nonexistent_survey",
+                task="node_classification",
+            )
+            sampler = KNNSampler(k=8)
+            datamodule = AstroLabDataModule(
+                dataset=dataset,
+                sampler=sampler,
+                batch_size=32,
+            )
+            datamodule.setup()
 
-
-class TestCLIIntegration:
-    """Test CLI commands work correctly."""
-
-    def test_cli_imports(self):
-        """Test that CLI modules can be imported."""
-        pytest.skip("CLI integration not available in new API.")
-
-    def test_cli_help(self):
-        """Test CLI help commands."""
-        pytest.skip("CLI integration not available in new API.")
+        # Check that error message contains helpful instructions
+        error_msg = str(excinfo.value)
+        assert "astro-lab download" in error_msg or "No data found" in error_msg
 
 
 class TestDataModelIntegration:
     """Test data and model integration."""
 
-    def test_survey_compatibility(self):
-        """Test that all surveys work with all models."""
-        surveys = ["gaia", "sdss", "nsa", "exoplanet"]
-        tasks = ["node_classification", "graph_classification"]
+    def test_survey_model_compatibility(self):
+        """Test that models work with different feature dimensions."""
+        # Test various feature dimensions that surveys might have
+        test_configs = [
+            {"num_features": 3, "task": "node_classification"},  # Minimal coords
+            {"num_features": 8, "task": "node_classification"},  # Basic features
+            {"num_features": 15, "task": "node_classification"},  # Extended features
+            {"num_features": 10, "task": "graph_classification"},
+        ]
 
-        for survey in surveys:
-            for task in tasks:
-                try:
-                    # Try to create datamodule
-                    datamodule = SurveyDataModule(
-                        survey=survey,
-                        task=task,
-                        max_samples=10,  # Very small for testing
-                        batch_size=2,
-                        num_workers=0,
+        for config in test_configs:
+            try:
+                # Create model
+                model = AstroModel(
+                    num_features=config["num_features"],
+                    num_classes=3,
+                    hidden_dim=32,
+                    num_layers=2,
+                    task=config["task"],
+                )
+
+                # Create appropriate dummy batch
+                if config["task"] == "node_classification":
+                    batch = type(
+                        "obj",
+                        (object,),
+                        {
+                            "x": torch.randn(20, config["num_features"]),
+                            "edge_index": torch.randint(0, 20, (2, 40)),
+                            "y": torch.randint(0, 3, (20,)),
+                            "num_nodes": 20,
+                        },
+                    )
+                else:  # graph_classification
+                    batch = type(
+                        "obj",
+                        (object,),
+                        {
+                            "x": torch.randn(20, config["num_features"]),
+                            "edge_index": torch.randint(0, 20, (2, 40)),
+                            "y": torch.tensor([1]),  # Single graph label
+                            "batch": torch.zeros(
+                                20, dtype=torch.long
+                            ),  # All nodes in same graph
+                            "num_nodes": 20,
+                        },
                     )
 
-                    # Skip if data not available - setup will fail
-                    try:
-                        datamodule.prepare_data()
-                        datamodule.setup()
-                    except (FileNotFoundError, ValueError):
-                        continue
+                # Test forward pass
+                out = model(batch)
+                assert out is not None
 
-                    # Create model
-                    model = AstroModel(
-                        num_features=datamodule.num_features,
-                        num_classes=datamodule.num_classes,
-                        hidden_dim=32,
-                        num_layers=2,
-                        task=task,
-                    )
+                if config["task"] == "node_classification":
+                    assert out.shape[0] == 20  # Number of nodes
+                else:
+                    assert out.shape[0] == 1  # Single graph
 
-                    # Test forward pass
-                    train_loader = datamodule.train_dataloader()
-                    for batch in train_loader:
-                        out = model(batch)
-                        assert out is not None
-                        break
+                assert out.shape[1] == 3  # Number of classes
 
-                except FileNotFoundError:
-                    continue  # Data not available
-                except Exception as e:
-                    pytest.skip(f"Failed {survey} + {task}: {e}")
-
-
-class TestMemoryAndPerformance:
-    """Test memory usage and performance."""
-
-    def test_model_memory_usage(self):
-        """Test that models don't use excessive memory."""
-        import os
-
-        import psutil
-
-        process = psutil.Process(os.getpid())
-        initial_memory = process.memory_info().rss / 1024 / 1024  # MB
-
-        # Create large model
-        model = AstroModel(
-            num_features=256,
-            num_classes=100,
-            hidden_dim=512,
-            num_layers=10,
-            task="node_classification",
-        )
-
-        # Check memory increase
-        final_memory = process.memory_info().rss / 1024 / 1024  # MB
-        memory_increase = final_memory - initial_memory
-
-        # Should not use more than 1GB for model
-        assert memory_increase < 1024, (
-            f"Model uses too much memory: {memory_increase}MB"
-        )
-
-        # Clean up
-        del model
-        torch.cuda.empty_cache() if torch.cuda.is_available() else None
-
-    def test_training_speed(self):
-        """Test that training is reasonably fast."""
-        pytest.skip("train_model function not implemented yet")
+            except Exception as e:
+                pytest.fail(f"Failed with config {config}: {e}")

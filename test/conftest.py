@@ -4,6 +4,12 @@ Test configuration and fixtures for AstroLab.
 Uses real data from the data module for comprehensive testing.
 """
 
+"""
+Test configuration and fixtures for AstroLab.
+
+Uses real data from the data module for comprehensive testing.
+"""
+
 from pathlib import Path
 
 import polars as pl
@@ -12,13 +18,12 @@ import torch
 from torch_geometric.data import Data
 
 from astro_lab.config import get_data_config
-from astro_lab.data import (
-    AstroDataModule,
-    SurveyDataModule,
-    create_graph_from_survey,
-    get_preprocessor,
-)
-from astro_lab.data.dataset import SurveyGraphDataset
+from astro_lab.data.collectors.gaia import GaiaCollector
+from astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
+from astro_lab.data.dataset.lightning import AstroLabDataModule
+from astro_lab.data.info import SurveyInfo
+from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
+from astro_lab.data.samplers.neighbor import KNNSampler
 from astro_lab.models import AstroModel
 
 # Get central data configuration
@@ -40,7 +45,7 @@ def processed_dir():
 @pytest.fixture(scope="session")
 def survey_configs():
     """Available survey configurations."""
-    return ["gaia", "nsa", "exoplanet", "sdss", "twomass"]
+    return SurveyInfo().list_available_surveys()
 
 
 @pytest.fixture(scope="session")
@@ -51,11 +56,15 @@ def small_survey():
 
 @pytest.fixture
 def astro_datamodule(small_survey):
-    """Create SurveyDataModule with small dataset."""
-    return SurveyDataModule(
-        survey=small_survey,
-        task="node_classification",
-        max_samples=100,
+    """Create AstroLabDataModule with small dataset."""
+    # Create dataset
+    dataset = AstroLabInMemoryDataset(
+        survey_name=small_survey,
+    )
+
+    # Create datamodule
+    return AstroLabDataModule(
+        dataset=dataset,
         batch_size=1,
         num_workers=0,
     )
@@ -63,72 +72,31 @@ def astro_datamodule(small_survey):
 
 @pytest.fixture
 def survey_graph_dataset(small_survey, processed_dir):
-    """Create SurveyGraphDataset with real data."""
-    return SurveyGraphDataset(
-        root=str(processed_dir),
-        survey=small_survey,
-        task="node_classification",
-        k_neighbors=8,
-        max_samples=100,
+    """Create AstroLabInMemoryDataset with real data."""
+    return AstroLabInMemoryDataset(
+        survey_name=small_survey,
     )
 
 
 @pytest.fixture
-def sample_graph_data():
-    """Create a sample PyG Data object for testing."""
-    n_nodes = 50
-    n_features = 10
-    n_edges = 200
+def real_survey_data(small_survey, processed_dir):
+    """Load real survey data as Polars DataFrame from harmonized parquet file."""
+    import os
 
-    # Create node features
-    x = torch.randn(n_nodes, n_features, dtype=torch.float32)
-
-    # Create 3D positions
-    pos = torch.randn(n_nodes, 3, dtype=torch.float32)
-
-    # Create random edges
-    edge_index = torch.randint(0, n_nodes, (2, n_edges), dtype=torch.long)
-
-    # Create labels for classification
-    y = torch.randint(0, 3, (n_nodes,), dtype=torch.long)
-
-    # Create Data object
-    data = Data(x=x, edge_index=edge_index, pos=pos, y=y)
-
-    # Add metadata
-    data.survey = "test_survey"
-    data.feature_names = [f"feat_{i}" for i in range(n_features)]
-    data.num_objects = n_nodes
-
-    return data
-
-
-@pytest.fixture
-def sample_survey_data():
-    """Create sample survey data as Polars DataFrame."""
-    n_objects = 100
-
-    return pl.DataFrame(
-        {
-            "source_id": range(n_objects),
-            "ra": torch.rand(n_objects).numpy() * 360,
-            "dec": (torch.rand(n_objects).numpy() - 0.5) * 180,
-            "parallax": torch.rand(n_objects).numpy() * 10 + 0.1,
-            "parallax_error": torch.rand(n_objects).numpy() * 0.1,
-            "pmra": torch.randn(n_objects).numpy() * 5,
-            "pmdec": torch.randn(n_objects).numpy() * 5,
-            "phot_g_mean_mag": torch.rand(n_objects).numpy() * 10 + 10,
-            "phot_bp_mean_mag": torch.rand(n_objects).numpy() * 10 + 10.5,
-            "phot_rp_mean_mag": torch.rand(n_objects).numpy() * 10 + 9.5,
-            "ruwe": torch.rand(n_objects).numpy() * 0.5 + 0.8,
-        }
-    )
+    parquet_path = os.path.join(processed_dir, small_survey, f"{small_survey}.parquet")
+    if not os.path.exists(parquet_path):
+        pytest.skip(f"No harmonized parquet file found for survey: {small_survey}")
+    return pl.read_parquet(parquet_path)
 
 
 @pytest.fixture
 def preprocessor(small_survey):
     """Get preprocessor for the default survey."""
-    return get_preprocessor(small_survey)
+    if small_survey == "gaia":
+        return GaiaPreprocessor()
+    else:
+        # For other surveys, use Gaia as default for now
+        return GaiaPreprocessor()
 
 
 @pytest.fixture
@@ -149,7 +117,7 @@ def lightning_model():
 def available_surveys():
     """Check which surveys have data available."""
     surveys = []
-    for survey in ["gaia", "nsa", "exoplanet", "sdss", "twomass"]:
+    for survey in SurveyInfo().list_available_surveys():
         # Check if processed data exists using central config
         processed_path = (
             Path(data_config["processed_dir"]) / survey / f"{survey}.parquet"

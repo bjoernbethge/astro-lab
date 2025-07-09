@@ -7,11 +7,9 @@ for seamless integration with modern PyTorch data pipelines.
 """
 
 import logging
-from pathlib import Path
 from typing import Dict, List, Optional, Union, cast
 
 import lightning as L
-import torch
 from lightning.pytorch.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
@@ -21,15 +19,17 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.loggers import MLFlowLogger
 from lightning.pytorch.trainer.trainer import _PRECISION_INPUT
 
-from astro_lab.config import get_combined_config, get_data_paths, get_run_name
-from astro_lab.data.dataset.lightning import AstroLabDataModule
-from astro_lab.models.base_model import AstroBaseModel
+from astro_lab.config import get_data_paths
+from astro_lab.training import BatchProcessingMixin, MemoryEfficientMixin
 
 logger = logging.getLogger(__name__)
 
 
-class AstroTrainer(L.Trainer):
-    """Extension of PyTorch Lightning Trainer with config-driven defaults and MLflow integration."""
+class AstroTrainer(L.Trainer, BatchProcessingMixin, MemoryEfficientMixin):
+    """
+    Extension of PyTorch Lightning Trainer with config-driven defaults, MLflow integration,
+    and batch/memory utilities via Mixins.
+    """
 
     def __init__(
         self,
@@ -56,11 +56,15 @@ class AstroTrainer(L.Trainer):
         val_check_interval: Union[int, float] = 1.0,
         limit_train_batches: Union[int, float] = 1.0,
         limit_val_batches: Union[int, float] = 1.0,
+        scheduler_config: Optional[Dict] = None,
         config: Optional[dict] = None,
         **kwargs,
     ):
         if "config" in kwargs:
             kwargs.pop("config")
+
+        # Store scheduler config for model initialization
+        self.scheduler_config = scheduler_config or {}
 
         if config is not None:
             experiment_name = experiment_name or config.get(
@@ -120,6 +124,13 @@ class AstroTrainer(L.Trainer):
             limit_val_batches = limit_val_batches or config.get(
                 "limit_val_batches", 1.0
             )
+
+            # Update scheduler config from config
+            if not self.scheduler_config:
+                self.scheduler_config = {
+                    "scheduler": config.get("scheduler", "cosine"),
+                    "warmup_epochs": config.get("warmup_epochs", 5),
+                }
 
         # Callbacks
         callbacks = []
@@ -191,3 +202,23 @@ class AstroTrainer(L.Trainer):
         )
 
         logger.info(f"AstroTrainer initialized with {devices} devices")
+        if self.scheduler_config:
+            logger.info(f"Scheduler config: {self.scheduler_config}")
+
+    def fit(
+        self,
+        model,
+        train_dataloaders=None,
+        val_dataloaders=None,
+        datamodule=None,
+        ckpt_path=None,
+    ):
+        """Override fit to pass scheduler config to model if needed."""
+        # Pass scheduler config to model if it supports it
+        if hasattr(model, "scheduler_config") and self.scheduler_config:
+            object.__setattr__(model, "scheduler_config", self.scheduler_config)
+            logger.info(f"Passed scheduler config to model: {self.scheduler_config}")
+
+        return super().fit(
+            model, train_dataloaders, val_dataloaders, datamodule, ckpt_path
+        )
