@@ -14,7 +14,10 @@ uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/
 
 ### First Steps
 ```bash
-# Process data (recommended first step)
+# Download data (optional - data may already be available)
+astro-lab download gaia
+
+# Preprocess data (recommended first step)
 astro-lab preprocess --survey gaia --max-samples 1000
 
 # Analyze cosmic web structure
@@ -27,10 +30,41 @@ marimo run src/astro_lab/ui/app.py
 ## 🧠 Astro GNN Models & Tasks
 
 ### **Core GNN Models**
+AstroLab provides ready-to-use model factory functions for all main tasks:
+
 - **AstroGraphGNN**: Spatial graph neural networks for cosmic web structure detection
+  - Factory: `create_astro_graph_gnn(num_features, num_classes, **kwargs)`
+  - Example:
+    ```python
+    from astro_lab.models.astro_model import create_astro_graph_gnn
+    model = create_astro_graph_gnn(num_features=16, num_classes=3)
+    ```
 - **AstroNodeGNN**: Node classification for stellar/galaxy properties
+  - Factory: `create_astro_node_gnn(num_features, num_classes, **kwargs)`
+  - Example:
+    ```python
+    from astro_lab.models.astro_model import create_astro_node_gnn
+    model = create_astro_node_gnn(num_features=8, num_classes=5)
+    ```
 - **AstroPointNet**: Point cloud processing for 3D astronomical data
+  - Factory: `create_astro_pointnet(num_features, num_classes, **kwargs)`
+  - Example:
+    ```python
+    from astro_lab.models.astro_model import create_astro_pointnet
+    model = create_astro_pointnet(num_features=3, num_classes=2)
+    ```
 - **AstroTemporalGNN**: Time-series analysis for variable objects
+  - Factory: `create_astro_temporal_gnn(num_features, num_classes, **kwargs)`
+  - Example:
+    ```python
+    from astro_lab.models.astro_model import create_astro_temporal_gnn
+    model = create_astro_temporal_gnn(num_features=12, num_classes=4)
+    ```
+
+Legacy/specialized factories (for compatibility):
+- `create_cosmic_web_model` → use `create_astro_graph_gnn`
+- `create_stellar_model` → use `create_astro_node_gnn`
+- `create_galaxy_model`, `create_exoplanet_model` for specialized galaxy/exoplanet tasks
 
 ### **Primary Tasks**
 - **Cosmic Web Clustering**: Multi-scale structure detection (stellar to galactic scales)
@@ -111,6 +145,11 @@ astro-lab <command> --help
 
 ### Data Processing
 ```bash
+# Download raw survey data
+astro-lab download gaia
+astro-lab download gaia --force
+astro-lab download --list
+
 # Preprocess a single survey
 astro-lab preprocess gaia --max-samples 10000
 
@@ -140,24 +179,24 @@ astro-lab config show nsa
 astro-lab train -c my_experiment.yaml --verbose
 
 # Train with command-line parameters
-astro-lab train --dataset gaia --model astro_graph_gnn --epochs 50 --batch-size 32
-astro-lab train --dataset nsa --model astro_node_gnn --learning-rate 0.001 --devices 2
+astro-lab train --survey gaia --model gcn --epochs 50 --batch-size 32
+astro-lab train --survey nsa --model astro_node_gnn --learning-rate 0.001 --devices 2
 
 # Resume from checkpoint
 astro-lab train -c config.yaml --checkpoint path/to/checkpoint.ckpt
 
 # Debug training with small dataset
-astro-lab train --dataset gaia --max-samples 1000 --overfit-batches 10
+astro-lab train --survey gaia --max-samples 1000 --overfit-batches 10
 ```
 
 ### Hyperparameter Optimization
 ```bash
 # Optimize hyperparameters
-astro-lab optimize config.yaml --trials 50 --timeout 3600
-astro-lab optimize config.yaml --algorithm optuna --trials 100
+astro-lab optimize gaia --trials 50 --timeout 3600
+astro-lab optimize gaia --trials 100
 
 # Quick optimization for debugging
-astro-lab optimize config.yaml --trials 10 --max-samples 1000
+astro-lab optimize gaia --trials 10 --max-samples 1000
 ```
 
 ### Cosmic Web Analysis
@@ -591,3 +630,34 @@ MIT License - see [LICENSE](LICENSE) for details.
 ---
 
 **AstroLab** - An Astro GNN laboratory for exploring cosmic web structures across all scales of the universe. 🌌✨ 
+
+## 🛠️ CLI Command Overview
+
+| Command         | Beschreibung / Zweck                                 |
+|----------------|------------------------------------------------------|
+| download       | Lade Rohdaten eines Surveys herunter                 |
+| preprocess     | Verarbeite Rohdaten zu ML-tauglichen Formaten        |
+| train          | Trainiere ein Modell auf Survey-Daten                |
+| optimize       | Hyperparameter-Optimierung für ein Modell            |
+| info           | Zeige Metadaten, Spalten, Beispiele, Validierung     |
+| cosmic-web     | Analysiere kosmische Netzwerke/Strukturen            |
+| config         | Konfigurationsdateien anzeigen/erstellen/validieren  |
+| build-dataset  | Erzeuge ML-Ready Dataset aus harmonisierten Daten    |
+
+### Data Inspection & Info
+```bash
+# Zeige Übersicht aller verfügbaren Surveys
+astro-lab info
+
+# Zeige Metadaten für einen Survey
+astro-lab info gaia
+
+# Zeige Spalteninformationen
+astro-lab info gaia --columns
+
+# Zeige Beispielzeilen
+astro-lab info gaia --sample 5
+
+# Führe Datenvalidierung durch
+astro-lab info gaia --validate
+``` 
