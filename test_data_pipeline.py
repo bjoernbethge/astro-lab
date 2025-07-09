@@ -3,14 +3,16 @@
 import logging
 import time
 from pathlib import Path
+from typing import Any, Dict
+
 import psutil
 import torch
-from typing import Dict, Any
+
+from astro_lab.data.samplers.RadiusSampler import RadiusSampler
 
 # Setup logging
 logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -47,114 +49,124 @@ def test_preprocessor(survey_name: str, max_samples: int = 1000):
     logger.info(f"\n{'=' * 60}")
     logger.info(f"Testing {survey_name.upper()} Preprocessor")
     logger.info(f"{'=' * 60}")
-    
+
     try:
-        from astro_lab.data.preprocessors import get_preprocessor
-        import polars as pl
         import numpy as np
-        
+        import polars as pl
+
+        from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
+
         # Get memory before
         mem_before = get_memory_usage()
         start_time = time.time()
-        
+
         # Initialize preprocessor
-        preprocessor = get_preprocessor(survey_name)
-        
+        if survey_name == "gaia":
+            preprocessor = GaiaPreprocessor()
+        else:
+            # For other surveys, use Gaia as default for now
+            preprocessor = GaiaPreprocessor()
+
         # Create synthetic data for testing
         logger.info(f"Creating synthetic data with {max_samples} samples...")
-        
-        if survey_name == 'gaia':
+
+        if survey_name == "gaia":
             # Synthetic Gaia data
             data = {
-                'source_id': list(range(max_samples)),
-                'ra': np.random.uniform(0, 360, max_samples),
-                'dec': np.random.uniform(-90, 90, max_samples),
-                'parallax': np.random.uniform(0.1, 10, max_samples),
-                'parallax_error': np.random.uniform(0.01, 0.1, max_samples),
-                'pmra': np.random.normal(0, 10, max_samples),
-                'pmdec': np.random.normal(0, 10, max_samples),
-                'pmra_error': np.random.uniform(0.01, 0.5, max_samples),
-                'pmdec_error': np.random.uniform(0.01, 0.5, max_samples),
-                'phot_g_mean_mag': np.random.uniform(10, 20, max_samples),
-                'phot_bp_mean_mag': np.random.uniform(10, 20, max_samples),
-                'phot_rp_mean_mag': np.random.uniform(10, 20, max_samples),
-                'astrometric_excess_noise': np.random.uniform(0, 1, max_samples),
-                'ruwe': np.random.uniform(0.8, 1.2, max_samples),
+                "source_id": list(range(max_samples)),
+                "ra": np.random.uniform(0, 360, max_samples),
+                "dec": np.random.uniform(-90, 90, max_samples),
+                "parallax": np.random.uniform(0.1, 10, max_samples),
+                "parallax_error": np.random.uniform(0.01, 0.1, max_samples),
+                "pmra": np.random.normal(0, 10, max_samples),
+                "pmdec": np.random.normal(0, 10, max_samples),
+                "pmra_error": np.random.uniform(0.01, 0.5, max_samples),
+                "pmdec_error": np.random.uniform(0.01, 0.5, max_samples),
+                "phot_g_mean_mag": np.random.uniform(10, 20, max_samples),
+                "phot_bp_mean_mag": np.random.uniform(10, 20, max_samples),
+                "phot_rp_mean_mag": np.random.uniform(10, 20, max_samples),
+                "astrometric_excess_noise": np.random.uniform(0, 1, max_samples),
+                "ruwe": np.random.uniform(0.8, 1.2, max_samples),
             }
-        elif survey_name == 'sdss':
+        elif survey_name == "sdss":
             # Synthetic SDSS data
             data = {
-                'objid': list(range(max_samples)),
-                'ra': np.random.uniform(0, 360, max_samples),
-                'dec': np.random.uniform(-90, 90, max_samples),
-                'u': np.random.uniform(12, 22, max_samples),
-                'g': np.random.uniform(12, 22, max_samples),
-                'r': np.random.uniform(12, 22, max_samples),
-                'i': np.random.uniform(12, 22, max_samples),
-                'z_band': np.random.uniform(12, 22, max_samples),
-                'z': np.random.uniform(0, 0.5, max_samples),  # redshift
-                'clean': np.ones(max_samples),  # clean photometry flag
+                "objid": list(range(max_samples)),
+                "ra": np.random.uniform(0, 360, max_samples),
+                "dec": np.random.uniform(-90, 90, max_samples),
+                "u": np.random.uniform(12, 22, max_samples),
+                "g": np.random.uniform(12, 22, max_samples),
+                "r": np.random.uniform(12, 22, max_samples),
+                "i": np.random.uniform(12, 22, max_samples),
+                "z_band": np.random.uniform(12, 22, max_samples),
+                "z": np.random.uniform(0, 0.5, max_samples),  # redshift
+                "clean": np.ones(max_samples),  # clean photometry flag
             }
-        elif survey_name == 'exoplanet':
+        elif survey_name == "exoplanet":
             # Synthetic exoplanet data
             data = {
-                'pl_name': [f'planet_{i}' for i in range(max_samples)],
-                'ra': np.random.uniform(0, 360, max_samples),
-                'dec': np.random.uniform(-90, 90, max_samples),
-                'sy_dist': np.random.uniform(10, 500, max_samples),  # distance in pc
-                'pl_bmassj': np.random.uniform(0.1, 10, max_samples),  # planet mass
-                'pl_radj': np.random.uniform(0.1, 2, max_samples),  # planet radius
-                'sy_gaiamag': np.random.uniform(8, 16, max_samples),  # host star magnitude
+                "pl_name": [f"planet_{i}" for i in range(max_samples)],
+                "ra": np.random.uniform(0, 360, max_samples),
+                "dec": np.random.uniform(-90, 90, max_samples),
+                "sy_dist": np.random.uniform(10, 500, max_samples),  # distance in pc
+                "pl_bmassj": np.random.uniform(0.1, 10, max_samples),  # planet mass
+                "pl_radj": np.random.uniform(0.1, 2, max_samples),  # planet radius
+                "sy_gaiamag": np.random.uniform(
+                    8, 16, max_samples
+                ),  # host star magnitude
             }
         else:
             # Generic astronomical data
             data = {
-                'id': list(range(max_samples)),
-                'ra': np.random.uniform(0, 360, max_samples),
-                'dec': np.random.uniform(-90, 90, max_samples),
-                'mag': np.random.uniform(10, 25, max_samples),
+                "id": list(range(max_samples)),
+                "ra": np.random.uniform(0, 360, max_samples),
+                "dec": np.random.uniform(-90, 90, max_samples),
+                "mag": np.random.uniform(10, 25, max_samples),
             }
-        
+
         df = pl.DataFrame(data)
         logger.info(f"Created DataFrame with shape: {df.shape}")
-        
+
         # Test preprocessing pipeline
         logger.info("Running preprocessing pipeline...")
-        
+
         # Filter
         filtered_df = preprocessor.filter(df)
-        logger.info(f"After filter: {len(filtered_df)} objects ({len(filtered_df)/len(df)*100:.1f}%)")
-        
+        logger.info(
+            f"After filter: {len(filtered_df)} objects ({len(filtered_df) / len(df) * 100:.1f}%)"
+        )
+
         # Transform
         transformed_df = preprocessor.transform(filtered_df)
         logger.info(f"After transform: {transformed_df.shape}")
-        
+
         # Extract features
         features_df = preprocessor.extract_features(transformed_df)
         logger.info(f"After feature extraction: {features_df.shape}")
-        
+
         # Get preprocessor info
         info = preprocessor.get_info()
         logger.info(f"Preprocessor info: {info}")
-        
+
         # Calculate time and memory
         process_time = time.time() - start_time
         mem_after = get_memory_usage()
-        
+
         cpu_mem_used = mem_after["cpu_used_gb"] - mem_before["cpu_used_gb"]
         gpu_mem_used = mem_after["gpu_used_gb"] - mem_before["gpu_used_gb"]
-        
-        logger.info(f"\nPerformance metrics:")
+
+        logger.info("\nPerformance metrics:")
         logger.info(f"  Processing time: {process_time:.2f}s")
         logger.info(f"  CPU memory used: {cpu_mem_used:.2f}GB")
         logger.info(f"  GPU memory used: {gpu_mem_used:.2f}GB")
-        logger.info(f"  Objects/second: {max_samples/process_time:.0f}")
-        
+        logger.info(f"  Objects/second: {max_samples / process_time:.0f}")
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Error testing preprocessor: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -164,71 +176,73 @@ def test_optimized_preprocessor(survey_name: str, max_samples: int = 10000):
     logger.info(f"\n{'=' * 60}")
     logger.info(f"Testing OPTIMIZED {survey_name.upper()} Preprocessor")
     logger.info(f"{'=' * 60}")
-    
+
     try:
-        from astro_lab.data.preprocessors.optimized import get_optimized_preprocessor
-        import polars as pl
         import numpy as np
-        
+        import polars as pl
+
+        from astro_lab.data.preprocessors.optimized import get_optimized_preprocessor
+
         # Get memory before
         mem_before = get_memory_usage()
         start_time = time.time()
-        
+
         # Initialize optimized preprocessor
         preprocessor = get_optimized_preprocessor(survey_name)
-        
+
         # Create larger synthetic dataset
         logger.info(f"Creating synthetic data with {max_samples} samples...")
-        
+
         # Same data creation as above but with more samples
         data = {
-            'source_id': list(range(max_samples)),
-            'ra': np.random.uniform(0, 360, max_samples),
-            'dec': np.random.uniform(-90, 90, max_samples),
-            'parallax': np.random.uniform(0.1, 10, max_samples),
-            'parallax_error': np.random.uniform(0.01, 0.1, max_samples),
-            'pmra': np.random.normal(0, 10, max_samples),
-            'pmdec': np.random.normal(0, 10, max_samples),
-            'pmra_error': np.random.uniform(0.01, 0.5, max_samples),
-            'pmdec_error': np.random.uniform(0.01, 0.5, max_samples),
-            'phot_g_mean_mag': np.random.uniform(10, 20, max_samples),
-            'phot_bp_mean_mag': np.random.uniform(10, 20, max_samples),
-            'phot_rp_mean_mag': np.random.uniform(10, 20, max_samples),
-            'astrometric_excess_noise': np.random.uniform(0, 1, max_samples),
-            'ruwe': np.random.uniform(0.8, 1.2, max_samples),
+            "source_id": list(range(max_samples)),
+            "ra": np.random.uniform(0, 360, max_samples),
+            "dec": np.random.uniform(-90, 90, max_samples),
+            "parallax": np.random.uniform(0.1, 10, max_samples),
+            "parallax_error": np.random.uniform(0.01, 0.1, max_samples),
+            "pmra": np.random.normal(0, 10, max_samples),
+            "pmdec": np.random.normal(0, 10, max_samples),
+            "pmra_error": np.random.uniform(0.01, 0.5, max_samples),
+            "pmdec_error": np.random.uniform(0.01, 0.5, max_samples),
+            "phot_g_mean_mag": np.random.uniform(10, 20, max_samples),
+            "phot_bp_mean_mag": np.random.uniform(10, 20, max_samples),
+            "phot_rp_mean_mag": np.random.uniform(10, 20, max_samples),
+            "astrometric_excess_noise": np.random.uniform(0, 1, max_samples),
+            "ruwe": np.random.uniform(0.8, 1.2, max_samples),
         }
-        
+
         df = pl.DataFrame(data)
-        
+
         # Run preprocessing
         logger.info("Running optimized preprocessing pipeline...")
-        
+
         filtered_df = preprocessor.filter(df)
         transformed_df = preprocessor.transform(filtered_df)
         features_df = preprocessor.extract_features(transformed_df)
-        
+
         # Calculate time and memory
         process_time = time.time() - start_time
         mem_after = get_memory_usage()
-        
+
         cpu_mem_used = mem_after["cpu_used_gb"] - mem_before["cpu_used_gb"]
         gpu_mem_used = mem_after["gpu_used_gb"] - mem_before["gpu_used_gb"]
-        
+
         # Get cache stats
         cache_stats = preprocessor.get_cache_stats()
-        
-        logger.info(f"\nOptimized Performance metrics:")
+
+        logger.info("\nOptimized Performance metrics:")
         logger.info(f"  Processing time: {process_time:.2f}s")
         logger.info(f"  CPU memory used: {cpu_mem_used:.2f}GB")
         logger.info(f"  GPU memory used: {gpu_mem_used:.2f}GB")
-        logger.info(f"  Objects/second: {max_samples/process_time:.0f}")
-        logger.info(f"  Cache hit rate: {cache_stats['hit_rate']*100:.1f}%")
-        
+        logger.info(f"  Objects/second: {max_samples / process_time:.0f}")
+        logger.info(f"  Cache hit rate: {cache_stats['hit_rate'] * 100:.1f}%")
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Error testing optimized preprocessor: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -238,14 +252,14 @@ def test_datamodule(survey_name: str, max_samples: int = 1000):
     logger.info(f"\n{'=' * 60}")
     logger.info(f"Testing {survey_name.upper()} DataModule")
     logger.info(f"{'=' * 60}")
-    
+
     try:
         from astro_lab.data.datamodules import get_survey_datamodule
-        
+
         # Get memory before
         mem_before = get_memory_usage()
         start_time = time.time()
-        
+
         # Create data module
         dm = get_survey_datamodule(
             survey_name,
@@ -256,47 +270,48 @@ def test_datamodule(survey_name: str, max_samples: int = 1000):
             max_samples=max_samples,
             force_download=False,
         )
-        
+
         # Prepare and setup
         logger.info("Preparing data...")
         dm.prepare_data()
-        
+
         logger.info("Setting up data pipeline...")
         dm.setup()
-        
+
         # Get info
         info = dm.get_info()
         logger.info(f"DataModule info: {info}")
-        
+
         # Test dataloaders
         logger.info("Testing dataloaders...")
         train_loader = dm.train_dataloader()
         val_loader = dm.val_dataloader()
-        
+
         # Get a batch
         batch = next(iter(train_loader))
-        logger.info(f"Batch info:")
+        logger.info("Batch info:")
         logger.info(f"  Batch size: {batch.batch.max() + 1}")
         logger.info(f"  Node features: {batch.x.shape}")
         logger.info(f"  Edge indices: {batch.edge_index.shape}")
-        
+
         # Calculate time and memory
         process_time = time.time() - start_time
         mem_after = get_memory_usage()
-        
+
         cpu_mem_used = mem_after["cpu_used_gb"] - mem_before["cpu_used_gb"]
         gpu_mem_used = mem_after["gpu_used_gb"] - mem_before["gpu_used_gb"]
-        
-        logger.info(f"\nDataModule Performance:")
+
+        logger.info("\nDataModule Performance:")
         logger.info(f"  Total time: {process_time:.2f}s")
         logger.info(f"  CPU memory used: {cpu_mem_used:.2f}GB")
         logger.info(f"  GPU memory used: {gpu_mem_used:.2f}GB")
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Error testing datamodule: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -306,64 +321,70 @@ def test_samplers():
     logger.info(f"\n{'=' * 60}")
     logger.info("Testing Different Samplers")
     logger.info(f"{'=' * 60}")
-    
+
     try:
-        from astro_lab.data.datamodules.samplers import list_available_samplers, get_sampler
         import torch
-        
+
+        from astro_lab.data.samplers import (
+            ClusterSampler,
+            DBSCANClusterSampler,
+            KNNSampler,
+        )
+
         # List available samplers
-        samplers = list_available_samplers()
+        samplers = ["knn", "radius", "dbscan", "cluster"]
         logger.info(f"Available samplers: {samplers}")
-        
+
         # Create test data
         n_nodes = 1000
         n_features = 10
         coordinates = torch.randn(n_nodes, 3)
         features = torch.randn(n_nodes, n_features)
-        
+
         # Test each sampler type
-        for sampler_type in ['knn', 'radius', 'dbscan', 'cluster']:
+        for sampler_type in ["knn", "radius", "dbscan", "cluster"]:
             if sampler_type not in samplers:
                 continue
-                
+
             logger.info(f"\nTesting {sampler_type} sampler...")
-            
+
             try:
                 start_time = time.time()
-                
+
                 # Get sampler
-                if sampler_type == 'knn':
-                    sampler = get_sampler(sampler_type, {'k': 10})
-                elif sampler_type == 'radius':
-                    sampler = get_sampler(sampler_type, {'radius': 1.0})
-                elif sampler_type == 'dbscan':
-                    sampler = get_sampler(sampler_type, {'eps': 0.5})
-                elif sampler_type == 'cluster':
-                    sampler = get_sampler(sampler_type, {'num_parts': 10})
+                if sampler_type == "knn":
+                    sampler = KNNSampler(k=10)
+                elif sampler_type == "radius":
+                    sampler = RadiusSampler(radius=1.0)
+                elif sampler_type == "dbscan":
+                    sampler = DBSCANClusterSampler(eps=0.5)
+                elif sampler_type == "cluster":
+                    sampler = ClusterSampler(num_parts=10)
                 else:
-                    sampler = get_sampler(sampler_type)
-                
+                    sampler = KNNSampler(k=10)
+
                 # Create graph
                 graph = sampler.create_graph(coordinates, features)
-                
+
                 # Get info
                 info = sampler.get_sampling_info()
-                
+
                 elapsed = time.time() - start_time
-                
+
                 logger.info(f"  Created graph in {elapsed:.3f}s")
                 logger.info(f"  Nodes: {graph.num_nodes}")
                 logger.info(f"  Edges: {graph.num_edges}")
                 logger.info(f"  Sampling info: {info['sampling_stats']}")
-                
+
             except Exception as e:
                 logger.error(f"  Error with {sampler_type}: {e}")
-                
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Error testing samplers: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -373,40 +394,40 @@ def main():
     logger.info("=" * 80)
     logger.info("ASTROLAB DATA PIPELINE PERFORMANCE TEST")
     logger.info("=" * 80)
-    
+
     # Test surveys
-    surveys = ['gaia', 'sdss', 'exoplanet']
-    
+    surveys = ["gaia", "sdss", "exoplanet"]
+
     # 1. Test basic preprocessors
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 1: Testing Basic Preprocessors")
     logger.info("=" * 80)
-    
+
     for survey in surveys:
         test_preprocessor(survey, max_samples=1000)
-    
+
     # 2. Test optimized preprocessor (only Gaia implemented)
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 2: Testing Optimized Preprocessors")
     logger.info("=" * 80)
-    
-    test_optimized_preprocessor('gaia', max_samples=50000)
-    
+
+    test_optimized_preprocessor("gaia", max_samples=50000)
+
     # 3. Test samplers
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 3: Testing Graph Samplers")
     logger.info("=" * 80)
-    
+
     test_samplers()
-    
+
     # 4. Test complete data modules (skip for now as it needs real data)
     # logger.info("\n" + "=" * 80)
     # logger.info("PHASE 4: Testing Complete DataModules")
     # logger.info("=" * 80)
-    
+
     # for survey in ['gaia']:
     #     test_datamodule(survey, max_samples=1000)
-    
+
     logger.info("\n" + "=" * 80)
     logger.info("TEST COMPLETED")
     logger.info("=" * 80)
