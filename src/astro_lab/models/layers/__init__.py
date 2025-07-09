@@ -2,58 +2,79 @@
 Layers for AstroLab Models
 =========================
 
-Modular layers for astronomical neural networks.
+Neural network layers for astronomical data processing.
 """
 
 # Base layers
 from .base import (
     BaseGraphLayer,
+    BaseLayer,
     BasePoolingLayer,
-    BaseAttentionLayer,
-    TensorDictLayer,
 )
 
 # Convolution layers
 from .convolution import (
-    FlexibleGraphConv,
     AstronomicalGraphConv,
-    DistanceEncoder,
+    FlexibleGraphConv,
+)
+
+# Graph layers
+from .graph import GraphPooling
+
+# Heterogeneous layers
+from .hetero import HeteroGNNLayer
+
+# Normalization layers
+from .normalization import (
+    BatchNorm,
+    GraphNorm,
+    InstanceNorm,
+    LayerNorm,
+)
+
+# Point cloud layers
+from .point_cloud import (
+    AdaptivePointCloudLayer,
+    AstroPointCloudLayer,
+    MultiScalePointCloudEncoder,
 )
 
 # Pooling layers
 from .pooling import (
-    MultiScalePooling,
+    AdaptivePooling,
     AttentivePooling,
     HierarchicalPooling,
+    LambdaPooling,
+    MultiScalePooling,
     StatisticalPooling,
-    AdaptivePooling,
-)
-
-# Normalization layers
-from .normalization import (
-    AdaptiveNormalization,
-    AstronomicalFeatureNorm,
-    RobustNormalization,
 )
 
 __all__ = [
     # Base layers
+    "BaseLayer",
     "BaseGraphLayer",
     "BasePoolingLayer",
-    "BaseAttentionLayer",
-    "TensorDictLayer",
     # Convolution layers
     "FlexibleGraphConv",
     "AstronomicalGraphConv",
-    "DistanceEncoder",
+    # Graph layers
+    "GraphPooling",
+    # Heterogeneous layers
+    "HeteroGNNLayer",
+    # Normalization layers
+    "GraphNorm",
+    "LayerNorm",
+    "BatchNorm",
+    "InstanceNorm",
+    # Point cloud layers
+    "AstroPointCloudLayer",
+    "MultiScalePointCloudEncoder",
+    "AdaptivePointCloudLayer",
     # Pooling layers
-    "MultiScalePooling",
     "AttentivePooling",
+    "MultiScalePooling",
     "HierarchicalPooling",
     "StatisticalPooling",
     "AdaptivePooling",
-    # Normalization layers
-    "AdaptiveNormalization",
-    "AstronomicalFeatureNorm",
-    "RobustNormalization",
+    "LambdaPooling",
 ]

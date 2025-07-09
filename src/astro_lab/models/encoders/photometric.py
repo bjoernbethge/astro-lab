@@ -5,11 +5,19 @@ Photometric Encoders
 TensorDict-based encoders for astronomical photometric data.
 """
 
+# Set tensordict behavior globally for this module
+import os
+
+os.environ["LIST_TO_STACK"] = "1"
+
 from typing import List, Optional
 
+import tensordict
 import torch
 import torch.nn as nn
 from tensordict.nn import TensorDictModule
+
+tensordict.set_list_to_stack(True)
 
 
 class PhotometricEncoderModule(TensorDictModule):

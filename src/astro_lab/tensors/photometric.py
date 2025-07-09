@@ -1,3 +1,12 @@
+# Set tensordict behavior globally for this module
+import os
+
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
+
 """
 TensorDict for photometric data with proper astronomical handling.
 

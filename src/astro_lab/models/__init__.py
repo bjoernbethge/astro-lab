@@ -1,30 +1,86 @@
-"""AstroLab Models Module - Graph neural networks for astronomical data."""
+"""
+AstroLab Models
+==============
 
-from .astro_model import (
-    AstroModel,
-    create_cosmic_web_model,
-    create_exoplanet_model,
-    create_galaxy_model,
-    create_stellar_model,
-)
-from .autoencoders.base import BaseAutoencoder
+Neural network models for astronomical data processing.
+"""
+
+# Core models
+from .astro_model import AstroModel
+
+# Autoencoders
 from .autoencoders.pointcloud_autoencoder import PointCloudAutoencoder
 from .base_model import AstroBaseModel
-from .mixins import ExplainabilityMixin
+
+# Encoders
+from .encoders import (
+    PhotometricEncoderModule,
+)
+
+# Layers - Other
+from .layers import (
+    AdaptivePointCloudLayer,
+    AdaptivePooling,
+    AstronomicalGraphConv,
+    # Point cloud layers
+    AstroPointCloudLayer,
+    # Pooling layers
+    AttentivePooling,
+    BaseGraphLayer,
+    # Base layers
+    BaseLayer,
+    BasePoolingLayer,
+    BatchNorm,
+    # Convolution layers
+    FlexibleGraphConv,
+    # Normalization layers
+    GraphNorm,
+    # Graph layers
+    GraphPooling,
+    # Heterogeneous layers
+    HeteroGNNLayer,
+    HierarchicalPooling,
+    InstanceNorm,
+    LambdaPooling,
+    LayerNorm,
+    MultiScalePointCloudEncoder,
+    MultiScalePooling,
+    StatisticalPooling,
+)
+
+# Layers - Decoders
+from .layers.decoders import (
+    AdvancedTemporalDecoder,
+    MLPDecoder,
+    ModernGraphDecoder,
+    PointNetDecoder,
+)
+
+# Layers - Encoders
+from .layers.encoders import (
+    AdvancedTemporalEncoder,
+    MLPEncoder,
+    ModernGraphEncoder,
+    PointNetEncoder,
+)
+
+# Layers - Heads
+from .layers.heads import (
+    ClassificationHead,
+    PeriodDetectionHead,
+    RegressionHead,
+    ShapeModelingHead,
+)
+from .mixins.analysis import ModelAnalysisMixin
+
+# Mixins
+from .mixins.explainability import ExplainabilityMixin
 
 __all__ = [
     "AstroModel",
     "AstroBaseModel",
-    "BaseAutoencoder",
-    "PointCloudAutoencoder",
-    "create_cosmic_web_model",
-    "create_stellar_model",
-    "create_galaxy_model",
-    "create_exoplanet_model",
     "ExplainabilityMixin",
+    "ModelAnalysisMixin",
 ]
 
-# For details on layers, encoders, components etc., import from the respective submodules:
-#   from astro_lab.models.layers import FlexibleGraphConv
-#   from astro_lab.models.encoders import PhotometricEncoder
-#   from astro_lab.models.components import EnhancedMLPBlock
+# For layers, encoders, decoders, heads: import from their respective submodules.

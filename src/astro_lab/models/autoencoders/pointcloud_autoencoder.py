@@ -9,9 +9,16 @@ Autoencoder module for astronomical point clouds (e.g., galaxies, stars, simulat
 - Extensible for various point cloud features
 """
 
+import os
+
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
 import torch.nn as nn
 from tensordict import TensorDict
 from torch_geometric.data import Data
+
+tensordict.set_list_to_stack(True)
 
 from .base import BaseAutoencoder
 

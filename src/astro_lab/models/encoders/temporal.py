@@ -5,6 +5,15 @@ Temporal Encoders
 TensorDict-based encoders for time-series astronomical data.
 """
 
+# Set tensordict behavior globally for this module
+import os
+
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
+
 from typing import List, Optional
 
 import torch

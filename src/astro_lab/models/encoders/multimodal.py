@@ -5,11 +5,19 @@ Multimodal Encoders
 TensorDict-based fusion of multiple astronomical data modalities.
 """
 
+# Set tensordict behavior globally for this module
+import os
 from typing import Dict, List, Optional
 
 import torch
 import torch.nn as nn
 from tensordict.nn import TensorDictModule
+
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
 
 
 class MultiModalFusionModule(TensorDictModule):

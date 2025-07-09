@@ -8,10 +8,18 @@ statistical computations, and clustering algorithms.
 
 from __future__ import annotations
 
+import os
 from typing import Dict, List, Optional
 
 import torch
 from tensordict import TensorDict
+
+# Set tensordict behavior globally for this module
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
 
 from .base import AstroTensorDict
 from .mixins import FeatureExtractionMixin, NormalizationMixin, ValidationMixin

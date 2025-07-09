@@ -1,9 +1,10 @@
-"""Unified AstroLab Model - Clean GNN implementation for astronomical data."""
+"""Unified AstroLab Model - GNN implementation with native TensorDict support."""
 
-from typing import Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+from tensordict import TensorDict
 from torch import Tensor
 from torch_geometric.data import Batch, Data, HeteroData
 from torch_geometric.nn import (
@@ -17,380 +18,358 @@ from torch_geometric.nn import (
     global_mean_pool,
 )
 
+from astro_lab.models.layers.encoders.temporal_encoder import AdvancedTemporalEncoder
 from astro_lab.models.layers.hetero import HeteroGNNLayer
+from astro_lab.models.layers.normalization import AdaptiveNormalization
+from astro_lab.models.layers.point_cloud import AstroPointCloudLayer
+from astro_lab.models.layers.pooling import AttentivePooling, HierarchicalPooling
 
 from .base_model import AstroBaseModel
 
 
 class AstroModel(AstroBaseModel):
     """
-    Unified astronomical GNN model.
+    Unified AstroLab Model for astronomical data processing.
 
-    Supports:
-    - Node classification/regression
-    - Graph classification/regression
-    - Link prediction
-    - Multiple convolution types (GCN, GAT, GIN, SAGE, Transformer)
-    - Flexible pooling strategies
+    Supports multiple GNN architectures and data formats with native TensorDict integration.
     """
 
     def __init__(
         self,
         num_features: int,
-        num_classes: int,
         hidden_dim: int = 128,
+        num_classes: int = 10,
+        conv_type: str = "GAT",
         num_layers: int = 3,
-        conv_type: str = "gat",
-        heads: int = 4,
         dropout: float = 0.1,
-        edge_dim: Optional[int] = None,
-        pooling: str = "mean",
+        heads: int = 4,
+        pooling: Optional[str] = None,
         task: str = "node_classification",
-        activation: str = "gelu",
+        metadata: Optional[Tuple[List[str], List[Tuple[str, str, str]]]] = None,
+        temporal_features: Optional[int] = None,
+        point_cloud_features: Optional[int] = None,
+        learning_rate: float = 1e-3,
+        weight_decay: float = 1e-4,
+        optimizer: str = "adamw",
+        scheduler: str = "cosine",
+        max_epochs: int = 100,
+        activation: str = "relu",
         norm: str = "layer",
         residual: bool = True,
-        metadata: tuple = (),  # (node_types, edge_types) for HeteroData
+        edge_dim: Optional[int] = None,
         **kwargs,
     ):
+        """
+        Initialize the AstroModel.
+
+        Args:
+            num_features: Number of input features
+            hidden_dim: Hidden dimension size
+            num_classes: Number of output classes/dimensions
+            conv_type: Type of convolution layer (GAT, GCN, GIN, SAGE, Transformer)
+            num_layers: Number of GNN layers
+            dropout: Dropout rate
+            heads: Number of attention heads (for GAT/Transformer)
+            pooling: Global pooling type (mean, max, add, attention, hierarchical)
+            task: Task type (node_classification, graph_classification, regression)
+            metadata: Metadata for heterogeneous graphs
+            temporal_features: Number of temporal features
+            point_cloud_features: Number of point cloud features
+            learning_rate: Learning rate for optimizer
+            weight_decay: Weight decay for optimizer
+            optimizer: Optimizer type
+            scheduler: Learning rate scheduler type
+            max_epochs: Maximum number of epochs
+            activation: Activation function (relu, elu, leaky_relu)
+            norm: Normalization type (layer, batch, adaptive)
+            residual: Whether to use residual connections
+            edge_dim: Edge feature dimension
+        """
+        # Initialize base model
         super().__init__(
             task=task,
             num_features=num_features,
             num_classes=num_classes,
             hidden_dim=hidden_dim,
+            learning_rate=learning_rate,
+            weight_decay=weight_decay,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            max_epochs=max_epochs,
             **kwargs,
         )
 
+        self.conv_type = conv_type.upper()
         self.num_layers = num_layers
-        self.conv_type = conv_type.lower()
-        self.heads = heads
         self.dropout = dropout
-        self.edge_dim = edge_dim
-        self.pooling = pooling.lower()
+        self.heads = heads
+        self.pooling = pooling
+        self.metadata = metadata
+        self.activation = activation
+        self.norm = norm
         self.residual = residual
-        self.is_hetero = metadata is not None
+        self.edge_dim = edge_dim
 
-        # Always at least 2 classes for node classification
-        if task == "node_classification" and num_classes < 2:
-            self.num_classes = 2
-        else:
-            self.num_classes = num_classes
+        # Build the model
+        self._build_model(temporal_features, point_cloud_features)
+
+    def _build_model(
+        self,
+        temporal_features: Optional[int] = None,
+        point_cloud_features: Optional[int] = None,
+    ):
+        """Build the model architecture."""
 
         # Input projection
-        self.input_proj = nn.Linear(num_features, hidden_dim)
+        self.input_proj = nn.Linear(self.num_features, self.hidden_dim)
 
-        # Build convolution layers
+        # Optional temporal encoder
+        if temporal_features:
+            self.temporal_encoder = AdvancedTemporalEncoder(
+                input_size=temporal_features,
+                hidden_size=self.hidden_dim,
+                num_layers=2,
+                dropout=self.dropout,
+            )
+        else:
+            self.temporal_encoder = None
+
+        # Optional point cloud layer
+        if point_cloud_features:
+            self.point_cloud_layer = AstroPointCloudLayer(
+                in_channels=point_cloud_features,
+                out_channels=self.hidden_dim,
+                k=16,
+                aggr="max",
+            )
+        else:
+            self.point_cloud_layer = None
+
+        # GNN layers
         self.convs = nn.ModuleList()
         self.norms = nn.ModuleList()
         self.dropouts = nn.ModuleList()
 
-        if self.is_hetero:
-            self.hetero_layers = nn.ModuleList(
-                [HeteroGNNLayer(metadata, hidden_dim) for _ in range(num_layers)]
-            )
+        in_channels = self.hidden_dim
 
-        for i in range(num_layers):
-            # Convolution layer
-            conv = self._build_conv_layer(
-                in_dim=hidden_dim,
-                out_dim=hidden_dim,
-                is_first=(i == 0),
-                is_last=(i == num_layers - 1),
-            )
+        for i in range(self.num_layers):
+            out_channels = self.hidden_dim
+
+            # Create convolution layer based on type
+            if self.conv_type == "GAT":
+                conv = GATConv(
+                    in_channels,
+                    out_channels // self.heads,
+                    heads=self.heads,
+                    dropout=self.dropout,
+                    concat=True if i < self.num_layers - 1 else False,
+                    edge_dim=self.edge_dim,
+                )
+                if i < self.num_layers - 1:
+                    out_channels = out_channels
+                else:
+                    out_channels = (out_channels // self.heads) * self.heads
+
+            elif self.conv_type == "GCN":
+                conv = GCNConv(
+                    in_channels, out_channels, improved=True, add_self_loops=True
+                )
+
+            elif self.conv_type == "GIN":
+                mlp = nn.Sequential(
+                    nn.Linear(in_channels, out_channels),
+                    self._get_activation(),
+                    nn.Linear(out_channels, out_channels),
+                )
+                conv = GINConv(mlp)
+
+            elif self.conv_type == "SAGE":
+                conv = SAGEConv(in_channels, out_channels, normalize=True)
+
+            elif self.conv_type == "TRANSFORMER":
+                conv = TransformerConv(
+                    in_channels,
+                    out_channels // self.heads,
+                    heads=self.heads,
+                    dropout=self.dropout,
+                    concat=True if i < self.num_layers - 1 else False,
+                    edge_dim=self.edge_dim,
+                )
+                if i < self.num_layers - 1:
+                    out_channels = out_channels
+                else:
+                    out_channels = (out_channels // self.heads) * self.heads
+            else:
+                raise ValueError(f"Unknown conv_type: {self.conv_type}")
+
             self.convs.append(conv)
 
-            # Normalization layer
-            if norm == "layer":
-                self.norms.append(nn.LayerNorm(hidden_dim))
-            elif norm == "batch":
-                self.norms.append(nn.BatchNorm1d(hidden_dim))
+            # Normalization
+            if self.norm == "layer":
+                self.norms.append(nn.LayerNorm(out_channels))
+            elif self.norm == "batch":
+                self.norms.append(nn.BatchNorm1d(out_channels))
+            elif self.norm == "adaptive":
+                self.norms.append(AdaptiveNormalization(out_channels))
             else:
                 self.norms.append(nn.Identity())
 
-            # Dropout
-            self.dropouts.append(nn.Dropout(dropout))
+            self.dropouts.append(nn.Dropout(self.dropout))
+            in_channels = out_channels
 
-        # Activation function
-        self.activation = self._get_activation(activation)
-
-        # Output projection (must use self.num_classes)
-        self.output_proj = nn.Linear(hidden_dim, self.num_classes)
-
-    def _build_conv_layer(
-        self,
-        in_dim: int,
-        out_dim: int,
-        is_first: bool,
-        is_last: bool,
-    ) -> nn.Module:
-        """Build a convolution layer based on conv_type."""
-        if self.conv_type == "gcn":
-            return GCNConv(in_dim, out_dim)
-
-        elif self.conv_type == "gat":
-            # Adjust dimensions for multi-head attention
-            if is_last:
-                return GATConv(
-                    in_dim,
-                    out_dim,
-                    heads=1,
-                    dropout=self.dropout,
-                    edge_dim=self.edge_dim,
+        # Pooling for graph-level tasks
+        if self.pooling:
+            if self.pooling == "mean":
+                self.pool = global_mean_pool
+            elif self.pooling == "max":
+                self.pool = global_max_pool
+            elif self.pooling == "add":
+                self.pool = global_add_pool
+            elif self.pooling == "attention":
+                self.pool = AttentivePooling(
+                    in_channels, hidden_channels=self.hidden_dim
                 )
+            elif self.pooling == "hierarchical":
+                self.pool = HierarchicalPooling(in_channels, ratio=0.5, method="top_k")
             else:
-                return GATConv(
-                    in_dim,
-                    out_dim // self.heads,
-                    heads=self.heads,
-                    dropout=self.dropout,
-                    edge_dim=self.edge_dim,
-                    concat=True,
-                )
-
-        elif self.conv_type == "gin":
-            mlp = nn.Sequential(
-                nn.Linear(in_dim, out_dim * 2),
-                nn.BatchNorm1d(out_dim * 2),
-                nn.ReLU(),
-                nn.Linear(out_dim * 2, out_dim),
-            )
-            return GINConv(mlp)
-
-        elif self.conv_type == "sage":
-            return SAGEConv(in_dim, out_dim)
-
-        elif self.conv_type == "transformer":
-            return TransformerConv(
-                in_dim,
-                out_dim // self.heads,
-                heads=self.heads,
-                dropout=self.dropout,
-                edge_dim=self.edge_dim,
-                beta=True,
-            )
-
+                raise ValueError(f"Unknown pooling type: {self.pooling}")
         else:
-            raise ValueError(f"Unknown conv_type: {self.conv_type}")
+            self.pool = None
 
-    def _get_activation(self, activation: str) -> nn.Module:
+        # Output projection
+        self.output_proj = nn.Sequential(
+            nn.Linear(in_channels, self.hidden_dim),
+            self._get_activation(),
+            nn.Dropout(self.dropout),
+            nn.Linear(self.hidden_dim, self.num_classes),
+        )
+
+        # Heterogeneous support
+        if self.metadata:
+            self.hetero_layer = HeteroGNNLayer(
+                metadata=self.metadata,
+                hidden_channels=self.hidden_dim,
+                out_channels=self.hidden_dim,
+                num_layers=2,
+            )
+        else:
+            self.hetero_layer = None
+
+    def _get_activation(self):
         """Get activation function."""
-        if activation.lower() == "gelu":
-            return nn.GELU()
-        elif activation.lower() == "relu":
+        if self.activation == "relu":
             return nn.ReLU()
-        elif activation.lower() == "leaky_relu":
+        elif self.activation == "elu":
+            return nn.ELU()
+        elif self.activation == "leaky_relu":
             return nn.LeakyReLU(0.2)
         else:
             return nn.ReLU()
 
-    def forward(self, batch):
-        if hasattr(batch, "node_types") and hasattr(batch, "edge_types"):
-            # True HeteroData
-            x_dict, edge_index_dict = batch.x_dict, batch.edge_index_dict
-            for layer in self.hetero_layers:
-                x_dict = layer(x_dict, edge_index_dict)
-                x_dict = {k: torch.relu(v) for k, v in x_dict.items()}
-            # Output projection for each node type
-            out_dict = {k: self.output_proj(v) for k, v in x_dict.items()}
-            return out_dict
-        else:
-            return self._forward_homogeneous(batch)
+    def forward(
+        self,
+        x: Union[Tensor, TensorDict, Data, Batch, HeteroData],
+        edge_index: Optional[Tensor] = None,
+        edge_attr: Optional[Tensor] = None,
+        batch: Optional[Tensor] = None,
+        pos: Optional[Tensor] = None,
+        **kwargs,
+    ) -> Tensor:
+        """
+        Forward pass of the model.
 
-    def _forward_homogeneous(self, batch):
-        """Forward pass for regular Data."""
-        # Extract features
-        x = getattr(batch, "x", None)
-        edge_index = getattr(batch, "edge_index", None)
-        edge_attr = getattr(batch, "edge_attr", None)
+        Args:
+            x: Input features or data object
+            edge_index: Edge connectivity
+            edge_attr: Edge features
+            batch: Batch indices for graph-level tasks
+            pos: Positional information
 
-        # Comprehensive null checks and error handling
-        if x is None:
-            # Create default features on the same device as the batch
-            num_nodes = getattr(batch, "num_nodes", 1)
-            # Get device from batch or use default
-            device = getattr(batch, "device", torch.device("cpu"))
-            x = torch.ones((num_nodes, self.num_features), device=device)
-
-        # Ensure all tensors are on the same device as the model
-        model_device = next(self.parameters()).device
-
-        x = x.to(model_device)
-
-        if edge_index is not None:
-            edge_index = edge_index.to(model_device)
-        if edge_attr is not None:
-            edge_attr = edge_attr.to(model_device)
-
-        # Additional safety checks based on PyTorch best practices
-        if x is None or not isinstance(x, torch.Tensor):
-            raise ValueError(f"Invalid x tensor: {x}")
-        if not x.numel() > 0:
-            raise ValueError(f"Empty x tensor with shape: {x.shape}")
-        if edge_index is None:
-            # Create self-loops if no edges
-            num_nodes = x.shape[0]
-            edge_index = torch.arange(num_nodes, device=model_device).repeat(2, 1)
+        Returns:
+            Output tensor
+        """
+        # Handle different input types
+        if isinstance(x, (Data, Batch)):
+            data = x
+            x = data.x  # type: ignore[attr-defined]
+            edge_index = data.edge_index  # type: ignore[attr-defined]
+            edge_attr = getattr(data, "edge_attr", None)
+            batch = getattr(data, "batch", None)
+            pos = getattr(data, "pos", None)
+        elif isinstance(x, HeteroData):
+            # Handle heterogeneous data
+            if self.hetero_layer:
+                return self.hetero_layer(x)
+            else:
+                raise ValueError("Model not configured for heterogeneous data")
+        elif isinstance(x, TensorDict):
+            # Convert TensorDict to tensor
+            x = self.from_tensordict(x)
 
         # Input projection
-        x = self.input_proj(x)
+        h = self.input_proj(x)
 
-        # Apply convolution layers
-        for i in range(self.num_layers):
-            identity = x
-            conv = self.convs[i]
-            if self.conv_type in ["gat", "transformer"]:
-                x = conv(x, edge_index, edge_attr=edge_attr)
+        # Optional temporal encoding
+        if self.temporal_encoder and "temporal_features" in kwargs:
+            temporal_h = self.temporal_encoder(kwargs["temporal_features"])
+            h = h + temporal_h
+
+        # Optional point cloud processing
+        if self.point_cloud_layer and pos is not None:
+            pc_h = self.point_cloud_layer(h, pos, batch)
+            h = h + pc_h
+
+        # GNN layers
+        for i, (conv, norm, dropout) in enumerate(
+            zip(self.convs, self.norms, self.dropouts)
+        ):
+            h_prev = h
+
+            # Convolution
+            if self.conv_type in ["GAT", "TRANSFORMER"] and edge_attr is not None:
+                h = conv(h, edge_index, edge_attr=edge_attr)
             else:
-                x = conv(x, edge_index)
+                h = conv(h, edge_index)
 
-            # Normalization
-            x = self.norms[i](x)
-
-            # Activation
-            x = self.activation(x)
-
-            # Dropout
-            x = self.dropouts[i](x)
+            # Normalization and activation
+            h = norm(h)
+            activation = self._get_activation()
+            h = activation(h)
+            h = dropout(h)
 
             # Residual connection
-            if self.residual and i > 0:
-                x = x + identity
+            if self.residual and h_prev.shape == h.shape:
+                h = h + h_prev
 
-        # Task-specific output
-        if self.task in ["node_classification", "node_regression"]:
-            # Always output [batch_size, num_classes] for classification
-            out = self.output_proj(x)
-            if self.task == "node_classification" and self.num_classes == 1:
-                # For binary classification, output logits for 2 classes
-                out = torch.cat([-out, out], dim=1)
-            return out
-
-        elif self.task in ["graph_classification", "graph_regression"]:
-            # Pooling
-            batch_idx = getattr(batch, "batch", None)
-
-            if self.pooling == "mean":
-                x = global_mean_pool(x, batch_idx)
-            elif self.pooling == "max":
-                x = global_max_pool(x, batch_idx)
-            elif self.pooling == "sum":
-                x = global_add_pool(x, batch_idx)
-            elif self.pooling == "cat":
-                # Concatenate multiple pooling methods
-                x_mean = global_mean_pool(x, batch_idx)
-                x_max = global_max_pool(x, batch_idx)
-                x_sum = global_add_pool(x, batch_idx)
-                x = torch.cat([x_mean, x_max, x_sum], dim=-1)
-
-            return self.output_proj(x)
-
-        elif self.task == "link_prediction":
-            # For link prediction, we need edge indices to predict
-            edge_index_pred = getattr(batch, "edge_index_pred", edge_index)
-
-            # Get embeddings for source and target nodes
-            src_emb = x[edge_index_pred[0]]
-            dst_emb = x[edge_index_pred[1]]
-
-            # Concatenate and predict
-            edge_emb = torch.cat([src_emb, dst_emb], dim=-1)
-            return self.output_proj(edge_emb).squeeze(-1)
-
-        else:
-            raise ValueError(f"Unknown task: {self.task}")
-
-    def get_embeddings(self, batch: Union[Data, HeteroData, Batch]) -> Tensor:
-        """Get node embeddings without final projection."""
-        # Handle HeteroData case
-        if isinstance(batch, HeteroData):
-            raise NotImplementedError("HeteroData support not yet implemented")
-
-        x = batch.x
-        edge_index = batch.edge_index
-        edge_attr = getattr(batch, "edge_attr", None)
-
-        # Input projection
-        x = self.input_proj(x)
-
-        # Apply convolution layers
-        for i in range(self.num_layers):
-            identity = x
-            conv = self.convs[i]
-            if self.conv_type in ["gat", "transformer"]:
-                x = conv(x, edge_index, edge_attr=edge_attr)
+        # Pooling for graph-level tasks
+        if self.pool is not None and batch is not None:
+            if isinstance(self.pool, (AttentivePooling, HierarchicalPooling)):
+                if isinstance(self.pool, AttentivePooling):
+                    h = self.pool(h, batch=batch)
+                else:  # HierarchicalPooling
+                    h, _, _, batch, _, _ = self.pool(h, edge_index, batch=batch)
             else:
-                x = conv(x, edge_index)
+                h = self.pool(h, batch)
 
-            # Normalization
-            x = self.norms[i](x)
+        # Output projection
+        out = self.output_proj(h)
 
-            # Activation
-            x = self.activation(x)
+        return out
 
-            # Dropout (only in training)
-            if self.training:
-                x = self.dropouts[i](x)
+    def predict(self, x: Union[Data, Batch, TensorDict], **kwargs) -> Tensor:
+        """
+        Make predictions on input data.
 
-            # Residual connection
-            if self.residual and i > 0:
-                x = x + identity
+        Args:
+            x: Input data
 
-        return x
-
-
-# Factory functions for common configurations
-def create_cosmic_web_model(
-    num_features: int, num_classes: int, **kwargs
-) -> AstroModel:
-    """Create model for cosmic web analysis."""
-    defaults = {
-        "conv_type": "gat",
-        "num_layers": 4,
-        "hidden_dim": 256,
-        "heads": 8,
-        "pooling": "cat",
-        "task": "graph_classification",
-        "dropout": 0.2,
-    }
-    defaults.update(kwargs)
-    return AstroModel(num_features=num_features, num_classes=num_classes, **defaults)
-
-
-def create_stellar_model(num_features: int, num_classes: int, **kwargs) -> AstroModel:
-    """Create model for stellar classification."""
-    defaults = {
-        "conv_type": "sage",
-        "num_layers": 3,
-        "hidden_dim": 128,
-        "task": "node_classification",
-        "dropout": 0.1,
-    }
-    defaults.update(kwargs)
-    return AstroModel(num_features=num_features, num_classes=num_classes, **defaults)
-
-
-def create_galaxy_model(num_features: int, num_classes: int, **kwargs) -> AstroModel:
-    """Create model for galaxy analysis."""
-    defaults = {
-        "conv_type": "gin",
-        "num_layers": 5,
-        "hidden_dim": 256,
-        "pooling": "mean",
-        "task": "graph_classification",
-        "dropout": 0.2,
-    }
-    defaults.update(kwargs)
-    return AstroModel(num_features=num_features, num_classes=num_classes, **defaults)
-
-
-def create_exoplanet_model(num_features: int, num_classes: int, **kwargs) -> AstroModel:
-    """Create model for exoplanet detection."""
-    defaults = {
-        "conv_type": "transformer",
-        "num_layers": 3,
-        "hidden_dim": 128,
-        "heads": 4,
-        "task": "node_classification",
-        "dropout": 0.1,
-    }
-    defaults.update(kwargs)
-    return AstroModel(num_features=num_features, num_classes=num_classes, **defaults)
+        Returns:
+            Predictions
+        """
+        self.eval()
+        with torch.no_grad():
+            logits = self.forward(x, **kwargs)
+            if "classification" in self.task:
+                return logits.argmax(dim=-1)
+            else:
+                return logits
