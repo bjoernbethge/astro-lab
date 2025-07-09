@@ -110,22 +110,6 @@ def to_cosmograph(
     )
 
 
-def quick_plot(
-    data: Union[Dict[str, Any], np.ndarray], backend: Optional[str] = None, **kwargs
-) -> Any:
-    """Quick plot with automatic backend selection.
-
-    Args:
-        data: Input data
-        backend: Optional backend override
-        **kwargs: Visualization options
-
-    Returns:
-        Visualization object
-    """
-    return bridge.to_visualization(data, backend=backend or "auto", **kwargs)
-
-
 # Legacy compatibility functions
 def transfer_astronomical_tensor(
     tensor: Any, backend: str = "pyvista", **kwargs
@@ -148,7 +132,6 @@ __all__ = [
     "to_blender",
     "to_plotly",
     "to_cosmograph",
-    "quick_plot",
     # Legacy compatibility
     "transfer_astronomical_tensor",
     "astronomical_tensor_zero_copy_context",

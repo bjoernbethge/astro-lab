@@ -4,10 +4,18 @@ This module provides efficient conversion between different tensor formats
 without copying data when possible, using memory views and buffer protocols.
 """
 
+import os
 from typing import Any, Dict, Optional, Tuple, Union
 
 import numpy as np
 import torch
+
+# Set tensordict behavior globally for this module
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
 
 
 class ZeroCopyTensorConverter:

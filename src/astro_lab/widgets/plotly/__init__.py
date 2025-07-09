@@ -10,6 +10,18 @@ from .bridge import (
     create_plotly_visualization,
     create_survey_comparison_plot,
 )
+
+
+def create_3d_scatter_plot(data, **kwargs):
+    """Create 3D scatter plot using Plotly."""
+    return create_plotly_visualization(data, plot_type="scatter_3d", **kwargs)
+
+
+def create_3d_analysis_plot(data, **kwargs):
+    """Create 3D analysis plot using Plotly."""
+    return create_plotly_visualization(data, plot_type="analysis_3d", **kwargs)
+
+
 from .cosmic_web_plots import (
     plot_cosmic_web_3d,
     plot_density_heatmap,
@@ -26,6 +38,8 @@ __all__ = [
     "AstronomicalPlotlyBridge",
     "create_plotly_visualization",
     "create_survey_comparison_plot",
+    "create_3d_scatter_plot",
+    "create_3d_analysis_plot",
     # Stellar plots
     "plot_stellar_evolution",
     "plot_galaxy_cluster",

@@ -192,6 +192,21 @@ def create_stellar_neighborhood(spatial_tensor: Any, **kwargs):
     return plotter
 
 
+def create_cosmic_web_visualization(data: Any, **kwargs):
+    """
+    Create cosmic web visualization.
+
+    Args:
+        data: Input data with cosmic web structure
+        **kwargs: Visualization parameters
+
+    Returns:
+        PyVista plotter with cosmic web visualization
+    """
+    # Create cosmic web visualization using the existing create_visualization function
+    return create_visualization(data, plot_type="cosmic_web", **kwargs)
+
+
 # Cross-backend functionality
 def export_to_open3d(pyvista_data: Any, **kwargs):
     """

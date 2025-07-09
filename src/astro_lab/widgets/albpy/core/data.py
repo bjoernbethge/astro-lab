@@ -5,7 +5,7 @@ Core Data API for AlbPy
 Centralized data access and conversion for astronomical surveys using the AstroLab DataModule API and tensor bridges.
 """
 
-from astro_lab.data.dataset.astrolab import create_dataset
+from astro_lab.data.dataset import AstroLabInMemoryDataset
 from astro_lab.widgets.enhanced import ZeroCopyTensorConverter
 
 converter = ZeroCopyTensorConverter()
@@ -24,7 +24,7 @@ def load_survey_data(survey: str, max_samples: int = 10000):
     Only already processed data is loaded for visualization (no processing or downloading).
     Returns a batch or dataset object.
     """
-    dataset = create_dataset(survey_name=survey)
+    dataset = AstroLabInMemoryDataset(survey_name=survey)
     # Optionally, you can use dataset.get_loader() for batching
     loader = dataset.get_loader(batch_size=max_samples, shuffle=False)
     batch = next(iter(loader))

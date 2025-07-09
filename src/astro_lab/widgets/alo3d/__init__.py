@@ -1,6 +1,8 @@
 """Open3D Widgets for AstroLab - Point Cloud and Real-time 3D Visualization.
 
 High-performance point cloud visualization and real-time 3D interaction.
+
+Note: This module uses the Enhanced-API for all 3D visualization (see astro_lab.widgets.enhanced).
 """
 # pyright: reportAttributeAccessIssue=false
 # pyright: reportGeneralTypeIssues=false
@@ -10,6 +12,8 @@ from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import open3d as o3d
+
+from astro_lab.widgets.enhanced import to_open3d
 
 # Core components - These modules don't exist yet, so we'll define the functions here
 # from .astronomical_visualizer import (
@@ -52,19 +56,16 @@ class AstronomicalOpen3DZeroCopyBridge:
     """Placeholder for zero-copy bridge."""
 
     def spatial_to_open3d(self, *args, **kwargs):
-        return o3d.geometry.PointCloud()
+        return to_open3d(args[0], plot_type="points", **kwargs)
 
     def photometric_to_open3d(self, *args, **kwargs):
-        return o3d.geometry.PointCloud()
+        return to_open3d(args[0], plot_type="points", **kwargs)
 
     def analysis_to_open3d(self, *args, **kwargs):
-        return o3d.geometry.PointCloud()
+        return to_open3d(args[0], plot_type="points", **kwargs)
 
     def coordinates_to_open3d(self, coords, **kwargs):
-        pcd = o3d.geometry.PointCloud()
-        if hasattr(coords, "cpu"):
-            coords = coords.cpu().numpy()
-        pcd.points = o3d.utility.Vector3dVector(coords)
+        pcd = to_open3d(coords, plot_type="points", **kwargs)
         return pcd
 
 
@@ -94,7 +95,7 @@ def create_gradient_colors(labels, colormap="tab10"):
 def estimate_normals(pcd, **kwargs):
     """Estimate normals for point cloud."""
     pcd.estimate_normals(
-        search_param=o3d.geometry.KDTreeSearchParamHybrid(
+        search_param=to_open3d.geometry.KDTreeSearchParamHybrid(
             radius=kwargs.get("radius", 0.1), max_nn=kwargs.get("max_nn", 30)
         )
     )
@@ -107,21 +108,14 @@ logger = logging.getLogger(__name__)
 def create_visualization(
     data: Any, plot_type: str = "scatter", **kwargs
 ) -> Union[o3d.geometry.PointCloud, o3d.geometry.TriangleMesh, List[Any]]:
-    """Create Open3D visualization with specified plot type.
-
-    Args:
-        data: Input data (TensorDict, numpy array, etc.)
-        plot_type: Type of plot ('scatter', 'stellar', 'cosmic_web', 'mesh', 'octree')
-        **kwargs: Additional Open3D parameters
-
-    Returns:
-        Open3D geometry object or list of geometries
-    """
+    """Create Open3D visualization with specified plot type using Enhanced-API."""
     # Handle different data types
     if hasattr(data, "coordinates"):
         points = data.coordinates.cpu().numpy()
     elif hasattr(data, "pos"):
         points = data.pos.cpu().numpy()
+    elif isinstance(data, dict) and "coordinates" in data:
+        points = data["coordinates"]
     elif isinstance(data, np.ndarray):
         points = data
     else:
@@ -174,61 +168,6 @@ def create_visualization(
             geometries.append(bbox)
 
         return geometries
-
-    elif plot_type == "mesh":
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
-
-        # Estimate normals for mesh reconstruction
-        pcd.estimate_normals()
-
-        # Create mesh using Poisson reconstruction
-        mesh, _ = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(
-            pcd, depth=kwargs.get("poisson_depth", 9)
-        )
-
-        # Apply color
-        mesh.paint_uniform_color(kwargs.get("color", [0.7, 0.7, 1.0]))
-
-        return mesh
-
-    elif plot_type == "octree":
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
-
-        # Create octree
-        octree = o3d.geometry.Octree(max_depth=kwargs.get("max_depth", 5))
-        octree.convert_from_point_cloud(pcd)
-
-        return octree
-
-    elif plot_type == "galaxy":
-        # Specialized galaxy visualization
-        pcd = o3d.geometry.PointCloud()
-        pcd.points = o3d.utility.Vector3dVector(points)
-
-        # Color by density or custom scalars
-        if "scalars" in kwargs:
-            colors = apply_colormap(
-                kwargs["scalars"], colormap=kwargs.get("colormap", "plasma")
-            )
-        else:
-            # Compute local density
-            pcd_tree = o3d.geometry.KDTreeFlann(pcd)
-            densities = []
-            k = 20
-            for i in range(len(points)):
-                _, idx, _ = pcd_tree.search_knn_vector_3d(pcd.points[i], k)
-                if len(idx) > 1:
-                    distances = [np.linalg.norm(points[i] - points[j]) for j in idx[1:]]
-                    density = 1.0 / (np.mean(distances) + 1e-8)
-                else:
-                    density = 0.0
-                densities.append(density)
-            colors = apply_colormap(np.array(densities), colormap="plasma")
-
-        pcd.colors = o3d.utility.Vector3dVector(colors)
-        return pcd
 
     else:
         # Default to point cloud

@@ -3,6 +3,8 @@ PyVista Tensor Bridge for AstroLab - Astronomical Data Visualization
 ===================================================================
 
 Bridge between AstroLab tensors and PyVista for 3D astronomical visualization.
+
+Note: This module uses the Enhanced-API for all 3D visualization (see astro_lab.widgets.enhanced).
 """
 
 import logging
@@ -11,11 +13,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import numpy as np
-import pyvista as pv
 import torch
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.visualization import quantity_support
+
+from astro_lab.widgets.enhanced import AstronomicalTensorBridge, to_pyvista
 
 # Enable quantity support
 quantity_support()
@@ -331,54 +334,22 @@ class AstronomicalPyVistaZeroCopyBridge:
         **kwargs,
     ):
         """
-        Convert astronomical tensor to PyVista with proper units.
-
-        Args:
-            tensor: Astronomical coordinate tensor
-            scalars: Scalar values (e.g., magnitudes, distances)
-            unit: Astronomical unit for coordinates
-            **kwargs: Additional PyVista parameters
-
-        Returns:
-            PyVista PolyData object
+        Convert astronomical tensor to PyVista with proper units using Enhanced-API.
         """
         with astronomical_pyvista_zero_copy_context("PyVista astronomical conversion"):
             # Optimize tensor
             optimized_tensor = optimize_astronomical_tensor_layout(tensor)
-
             # Validate coordinates
             coords = self.validate_astronomical_coordinates(optimized_tensor)
-
-            # Convert to numpy
             coords_np = coords.cpu().numpy()
-
-            # Handle different coordinate dimensions
-            if coords_np.shape[1] == 2:
-                # 2D coordinates (RA, Dec) - create 3D by adding z=0
-                x, y = coords_np[:, 0], coords_np[:, 1]
-                z = np.zeros_like(x)
-                points = np.column_stack([x, y, z])
-            elif coords_np.shape[1] == 3:
-                # 3D coordinates (X, Y, Z)
-                points = coords_np
-            else:
-                raise ValueError(
-                    f"Unsupported coordinate dimensions: {coords_np.shape[1]}"
-                )
-
-            # Create PyVista mesh
-            mesh = pv.PolyData(points)
-
-            # Add scalar data if provided
+            # Prepare data dict for Enhanced-API
+            data = {"coordinates": coords_np}
             if scalars is not None:
-                scalars_np = scalars.cpu().numpy()
-                mesh.point_data["astronomical_scalars"] = scalars_np
-
-            # Register for cleanup
+                data["scalars"] = scalars.cpu().numpy()
+            mesh = to_pyvista(data, target_unit=unit)
             _astronomical_pyvista_mesh_manager.register_mesh(mesh, unit)
-
             logger.info(
-                f"Created astronomical PyVista mesh with {len(points)} points, unit: {unit}"
+                f"Created astronomical PyVista mesh with {len(coords_np)} points, unit: {unit}"
             )
             return mesh
 
@@ -405,17 +376,7 @@ class AstronomicalPyVistaZeroCopyBridge:
         **kwargs,
     ):
         """
-        Convert cosmic web data to PyVista with astronomical context.
-
-        Args:
-            spatial_tensor: Spatial coordinates tensor
-            cluster_labels: Cluster assignments
-            density_field: Density field tensor
-            unit: Astronomical unit
-            **kwargs: Additional parameters
-
-        Returns:
-            PyVista PolyData object
+        Convert cosmic web data to PyVista with astronomical context using Enhanced-API.
         """
         with astronomical_pyvista_zero_copy_context("Cosmic web PyVista conversion"):
             # Extract coordinates
@@ -428,26 +389,16 @@ class AstronomicalPyVistaZeroCopyBridge:
                 coords = spatial_tensor.data
             else:
                 coords = spatial_tensor
-
-            # Validate and optimize
             coords = self.validate_astronomical_coordinates(coords)
             coords_np = coords.cpu().numpy()
-
-            # Create PyVista mesh
-            mesh = pv.PolyData(coords_np)
-
-            # Add cluster labels if available
+            # Prepare data dict for Enhanced-API
+            data = {"coordinates": coords_np}
             if cluster_labels is not None:
-                mesh.point_data["cosmic_structures"] = cluster_labels
-
-            # Add density field if available
+                data["cluster_labels"] = cluster_labels
             if density_field is not None:
-                density_np = density_field.cpu().numpy()
-                mesh.point_data["density"] = density_np
-
-            # Register for cleanup
+                data["density"] = density_field.cpu().numpy()
+            mesh = to_pyvista(data, target_unit=unit)
             _astronomical_pyvista_mesh_manager.register_mesh(mesh, unit)
-
             logger.info(
                 f"Created cosmic web PyVista mesh with {len(coords_np)} points, unit: {unit}"
             )

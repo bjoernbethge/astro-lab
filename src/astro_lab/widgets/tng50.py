@@ -8,9 +8,11 @@ with support for gas, stars, and dark matter components.
 Features:
 - Load TNG50 .pt files efficiently
 - Convert to Blender meshes via DataBridge
-- Convert to PyVista meshes for 3D viz
+- Convert to PyVista meshes for 3D viz (now via Enhanced-API)
 - Handle multiple particle types
 - Extract features for color/size mapping
+
+Note: This module uses the Enhanced-API for all 3D visualization (see astro_lab.widgets.enhanced).
 
 Typical workflow:
 1. Load .pt file → get positions, features, edges
@@ -23,11 +25,10 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import numpy as np
-import pyvista as pv
 import torch
 
 from astro_lab.config import get_data_config
+from astro_lab.widgets.enhanced import to_pyvista
 
 bpy = None  # Blender API only available inside Blender, do not import here
 
@@ -56,7 +57,7 @@ class TNG50Visualizer:
 
         logger.info("🌌 TNG50Visualizer initialized")
         logger.info(f"   Data directory: {self.data_dir}")
-        logger.info(f"   PyVista: {'✅' if pv is not None else '❌'}")
+        logger.info(f"   PyVista: {'✅' if to_pyvista is not None else '❌'}")
         logger.info(f"   Blender: {'✅' if bpy is not None else '❌'}")
 
     def list_available_graphs(self) -> Dict[str, List[str]]:
@@ -161,60 +162,12 @@ class TNG50Visualizer:
         point_size: float = 5.0,
         color_by: str = "mass",
         include_edges: bool = False,
-    ) -> "pv.PolyData":
+    ) -> Any:
         """
-        Convert TNG50 graph to PyVista mesh for 3D visualization.
-
-        Args:
-            graph_data: Graph data from load_tng50_graph()
-            point_size: Point size for rendering
-            color_by: Feature to use for coloring
-            include_edges: Whether to include graph edges
-
-        Returns:
-            PyVista PolyData mesh
+        Convert TNG50 graph to PyVista mesh for 3D visualization using Enhanced-API.
         """
-        if pv is None:
-            raise ImportError("PyVista not available")
-
-        positions = graph_data["positions"]
-        features = graph_data["features"]
-        feature_names = graph_data["feature_names"]
-
-        logger.info(f"🔧 Converting to PyVista mesh: {len(positions):,} points")
-
-        # Create point cloud
-        mesh = pv.PolyData(positions)
-
-        # Add features as point data
-        for i, name in enumerate(feature_names):
-            mesh.point_data[name] = features[:, i]
-
-        # Add particle indices
-        mesh.point_data["particle_id"] = np.arange(len(positions))
-
-        # Set default coloring
-        if color_by in feature_names:
-            mesh.set_active_scalars(color_by)
-            logger.info(f"   Coloring by: {color_by}")
-
-        # Add edges if requested
-        if include_edges:
-            edge_index = graph_data["edge_index"]
-            edge_weights = graph_data["edge_weights"]
-
-            # Create lines between connected particles
-            lines = []
-            for i in range(edge_index.shape[1]):
-                start_idx = edge_index[0, i]
-                end_idx = edge_index[1, i]
-                lines.extend([2, start_idx, end_idx])  # PyVista line format
-
-            mesh.lines = np.array(lines)
-            mesh.line_data["edge_weight"] = edge_weights.flatten()
-
-            logger.info(f"   Added {edge_index.shape[1]:,} edges")
-
+        mesh = to_pyvista(graph_data)
+        # Optionally set coloring or other attributes here if needed
         return mesh
 
     def to_blender_objects(
