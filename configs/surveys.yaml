@@ -2,35 +2,75 @@ gaia:
   name: "Gaia DR3"
   coord_cols: ["ra", "dec"]
   mag_cols: ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
-  extra_cols: ["parallax", "pmra", "pmdec"]
+  extra_cols: ["parallax", "pmra", "pmdec", "parallax_error", "pmra_error", "pmdec_error"]
   color_pairs:
     - ["phot_g_mean_mag", "phot_bp_mean_mag"]
     - ["phot_bp_mean_mag", "phot_rp_mean_mag"]
   coordinate_system: "icrs"
   data_release: "DR3"
   filter_system: "Vega"
+  # Model recommendations
+  recommended_model:
+    conv_type: "gat"
+    heads: 8
+    num_layers: 4
+    hidden_dim: 256
+    pooling: "mean"
+    dropout: 0.1
+  # Data loading
   batch_size: 128
   k_neighbors: 10
   precision: "16-mixed"
   gradient_clip_val: 1.0
   experiment_name: "gaia_experiments"
+
 sdss:
   name: "SDSS DR17"
   coord_cols: ["ra", "dec"]
   mag_cols:
     ["modelMag_u", "modelMag_g", "modelMag_r", "modelMag_i", "modelMag_z"]
-  extra_cols: ["z", "petroRad_r"]
+  extra_cols: ["z", "petroRad_r", "z_err"]
   color_pairs:
     - ["modelMag_g", "modelMag_r"]
     - ["modelMag_r", "modelMag_i"]
   coordinate_system: "icrs"
   data_release: "DR17"
   filter_system: "AB"
+  # Model recommendations
+  recommended_model:
+    conv_type: "sage"
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "max"
+    dropout: 0.2
   batch_size: 64
   k_neighbors: 15
   precision: "16-mixed"
   gradient_clip_val: 1.0
   experiment_name: "sdss_experiments"
+
+nsa:
+  name: "NASA-Sloan Atlas"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["elpetro_absmag_g", "elpetro_absmag_r", "elpetro_absmag_i"]
+  extra_cols: ["z", "elpetro_mass", "elpetro_ba"]
+  color_pairs:
+    - ["elpetro_absmag_g", "elpetro_absmag_r"]
+    - ["elpetro_absmag_r", "elpetro_absmag_i"]
+  coordinate_system: "icrs"
+  # Model recommendations  
+  recommended_model:
+    conv_type: "gin"
+    num_layers: 5
+    hidden_dim: 256
+    pooling: "sum"
+    dropout: 0.3
+  batch_size: 32
+  k_neighbors: 20
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "nsa_experiments"
+
 des:
   name: "Dark Energy Survey"
   coord_cols: ["ra", "dec"]
@@ -43,9 +83,188 @@ des:
   coordinate_system: "icrs"
   data_release: "Y6"
   filter_system: "AB"
+  # Model recommendations
+  recommended_model:
+    conv_type: "gcn"
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
   batch_size: 32
   k_neighbors: 20
   precision: "32-true"
   gradient_clip_val: 1.0
   experiment_name: "des_experiments"
-# ... (weitere Surveys nach gleichem Muster eintragen)
+
+exoplanet:
+  name: "NASA Exoplanet Archive"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["sy_vmag", "sy_jmag", "sy_hmag", "sy_kmag"]
+  extra_cols: ["pl_orbper", "pl_rade", "st_teff", "st_mass", "st_rad"]
+  coordinate_system: "icrs"
+  # Model recommendations
+  recommended_model:
+    conv_type: "transformer"
+    heads: 4
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
+  batch_size: 32
+  k_neighbors: 10
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "exoplanet_experiments"
+
+tng50:
+  name: "TNG50 Simulation"
+  coord_cols: ["x", "y", "z"]
+  mag_cols: []
+  extra_cols: ["mass", "velocity", "sfr", "metallicity"]
+  coordinate_system: "simulation"
+  # Model recommendations
+  recommended_model:
+    conv_type: "gin"
+    num_layers: 5
+    hidden_dim: 512
+    pooling: "sum"
+    dropout: 0.2
+  batch_size: 16
+  k_neighbors: 30
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "tng50_experiments"
+
+linear:
+  name: "LINEAR Asteroid Survey"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["mag"]
+  extra_cols: ["mjd", "mag_err"]
+  coordinate_system: "icrs"
+  # Model recommendations
+  recommended_model:
+    conv_type: "temporal"
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
+  batch_size: 64
+  k_neighbors: 5
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "linear_experiments"
+
+rrlyrae:
+  name: "RR Lyrae Variable Stars"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["g", "r", "i"]
+  extra_cols: ["period", "amplitude", "metallicity"]
+  coordinate_system: "icrs"
+  # Model recommendations
+  recommended_model:
+    conv_type: "temporal"
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
+  batch_size: 32
+  k_neighbors: 8
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "rrlyrae_experiments"
+
+twomass:
+  name: "2MASS"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["j_m", "h_m", "k_m"]
+  extra_cols: ["j_msigcom", "h_msigcom", "k_msigcom"]
+  color_pairs:
+    - ["j_m", "h_m"]
+    - ["h_m", "k_m"]
+  coordinate_system: "icrs"
+  filter_system: "Vega"
+  # Model recommendations
+  recommended_model:
+    conv_type: "sage"
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
+  batch_size: 64
+  k_neighbors: 12
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "twomass_experiments"
+
+wise:
+  name: "WISE"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["w1mpro", "w2mpro", "w3mpro", "w4mpro"]
+  extra_cols: ["w1sigmpro", "w2sigmpro", "w3sigmpro", "w4sigmpro"]
+  color_pairs:
+    - ["w1mpro", "w2mpro"]
+    - ["w2mpro", "w3mpro"]
+  coordinate_system: "icrs"
+  filter_system: "Vega"
+  # Model recommendations
+  recommended_model:
+    conv_type: "gat"
+    heads: 4
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
+  batch_size: 64
+  k_neighbors: 15
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "wise_experiments"
+
+panstarrs:
+  name: "Pan-STARRS"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["g", "r", "i", "z", "y"]
+  extra_cols: ["g_err", "r_err", "i_err", "z_err", "y_err"]
+  color_pairs:
+    - ["g", "r"]
+    - ["r", "i"]
+    - ["i", "z"]
+  coordinate_system: "icrs"
+  filter_system: "AB"
+  # Model recommendations
+  recommended_model:
+    conv_type: "gcn"
+    num_layers: 3
+    hidden_dim: 128
+    pooling: "mean"
+    dropout: 0.1
+  batch_size: 64
+  k_neighbors: 20
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "panstarrs_experiments"
+
+euclid:
+  name: "Euclid"
+  coord_cols: ["ra", "dec"]
+  mag_cols: ["vis", "y", "j", "h"]
+  extra_cols: ["vis_err", "y_err", "j_err", "h_err", "z_phot"]
+  color_pairs:
+    - ["vis", "y"]
+    - ["y", "j"]
+    - ["j", "h"]
+  coordinate_system: "icrs"
+  filter_system: "AB"
+  # Model recommendations
+  recommended_model:
+    conv_type: "gat"
+    heads: 8
+    num_layers: 4
+    hidden_dim: 256
+    pooling: "cat"
+    dropout: 0.2
+  batch_size: 32
+  k_neighbors: 25
+  precision: "16-mixed"
+  gradient_clip_val: 1.0
+  experiment_name: "euclid_experiments"

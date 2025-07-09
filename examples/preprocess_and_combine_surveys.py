@@ -16,7 +16,9 @@ import torch
 from torch_geometric.data import Data
 
 from astro_lab.data.cross_match import SurveyCrossMatcher
-from astro_lab.data.preprocessors import get_preprocessor
+from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
+from astro_lab.data.preprocessors.sdss import SDSSPreprocessor
+from astro_lab.data.preprocessors.twomass import TwoMASSPreprocessor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -33,21 +35,21 @@ def main():
 
     # Process Gaia (astrometry + optical)
     logger.info("\nProcessing Gaia DR3...")
-    gaia_proc = get_preprocessor("gaia")
+    gaia_proc = GaiaPreprocessor()
     gaia_df, gaia_graph = gaia_proc.preprocess(max_samples=100000)
     surveys["gaia"] = gaia_df
     graphs["gaia"] = gaia_graph
 
     # Process SDSS (deep optical photometry)
     logger.info("\nProcessing SDSS...")
-    sdss_proc = get_preprocessor("sdss")
+    sdss_proc = SDSSPreprocessor()
     sdss_df, sdss_graph = sdss_proc.preprocess(max_samples=50000)
     surveys["sdss"] = sdss_df
     graphs["sdss"] = sdss_graph
 
     # Process 2MASS (near-infrared)
     logger.info("\nProcessing 2MASS...")
-    twomass_proc = get_preprocessor("twomass")
+    twomass_proc = TwoMASSPreprocessor()
     twomass_df, twomass_graph = twomass_proc.preprocess(max_samples=50000)
     surveys["twomass"] = twomass_df
     graphs["twomass"] = twomass_graph

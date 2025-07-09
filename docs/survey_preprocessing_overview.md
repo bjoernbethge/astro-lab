@@ -110,10 +110,10 @@ tensor_dict = SurveyTensorDict(
 **Einheitliche API für alle Surveys:**
 
 ```python
-from astro_lab.config import get_preprocessor
+from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
 
 # Preprocessor erstellen
-preprocessor = get_preprocessor("gaia")
+preprocessor = GaiaPreprocessor()
 
 # Daten laden und verarbeiten
 df = preprocessor.load_data(max_samples=1000)

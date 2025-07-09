@@ -12,7 +12,7 @@ AstroLab provides comprehensive explainability and interpretability features for
 **Use Case**: Understanding which nodes/edges are most important in GAT/Transformer models
 
 ```python
-from astro_lab.models.components.mixins import ExplainabilityMixin
+from astro_lab.models.mixins import ExplainabilityMixin
 
 class MyAstronomicalModel(ExplainabilityMixin, ...):
     pass
@@ -109,7 +109,7 @@ astronomical_importance = explanation["astronomical_importance"]
 AstroLab provides several pre-configured mixin combinations:
 
 ```python
-from astro_lab.models.components.mixins import (
+from astro_lab.models.mixins import (
     ExplainabilityMixin,
     ExplainableModelMixin,
     ResearchModelMixin,
@@ -227,7 +227,7 @@ visualizer.visualize_with_importance(
 
 ```python
 import torch
-from astro_lab.models.components.mixins import ExplainableModelMixin
+from astro_lab.models.mixins import ExplainableModelMixin
 from astro_lab.data import create_sample_batch
 
 class MyAstronomicalGNN(ExplainableModelMixin, torch.nn.Module):
