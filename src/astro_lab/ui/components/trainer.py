@@ -1,16 +1,18 @@
 """
-Trainer Components
-================
+Training Component
+=================
 
-Simple training UI components.
+Training interface for AstroLab models.
 """
 
 from pathlib import Path
 
 import marimo as mo
+import polars as pl
 
 from astro_lab.config import get_data_paths
-from astro_lab.models import AstroModel, create_stellar_model
+from astro_lab.data.dataset import AstroLabInMemoryDataset
+from astro_lab.models import AstroModel
 from astro_lab.training import AstroTrainer
 from astro_lab.ui.components import state
 
@@ -106,7 +108,7 @@ def _create_model_from_config(config, datamodule):
     model_type = config.get("model_type", "stellar")
 
     if model_type == "stellar":
-        model = create_stellar_model(**model_kwargs)
+        model = AstroModel(**model_kwargs)
     elif model_type == "cosmic_web":
         from astro_lab.models import create_cosmic_web_model
 

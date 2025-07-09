@@ -5,20 +5,10 @@ UI Pages
 Page components for the AstroLab dashboard.
 """
 
-from . import (
-    data,
-    training,
-    analysis,
-    visualization,
-    config,
-    cosmic_web,
-)
+from . import cosmic_web_page, data_page, training_page
 
 __all__ = [
-    "data",
-    "training",
-    "analysis",
-    "visualization",
-    "config",
-    "cosmic_web",
+    "data_page",
+    "cosmic_web_page",
+    "training_page",
 ]

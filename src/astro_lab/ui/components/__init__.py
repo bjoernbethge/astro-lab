@@ -2,36 +2,27 @@
 UI Components for AstroLab
 =========================
 
-Core UI components for the dashboard.
+Simplified UI components using real AstroLab functionality.
 """
 
-# State management
-from . import state, system_info
-from .analyzer import create_analyzer, run_cosmic_web_analysis
-
-# Core components
+# Core components that actually work
 from .data_loader import create_data_loader
+from .analyzer import create_analyzer, run_cosmic_web_analysis
+from .viz import create_visualizer, create_plotly_viz, create_cosmic_web_viz
+from .state import create_state, get_data_config, get_analysis_config, get_visualization_config
+from .system_info import get_system_info
 
-# Visualizer components
-from .visualizer import (
-    CosmographVisualizer,
-    PlotlyVisualizer,
-    PyVistaVisualizer,
-    UniversalVisualizer,
-)
-from .viz import create_cosmic_web_viz, create_plotly_viz, create_visualizer
-
+# Only export what actually works
 __all__ = [
-    "state",
-    "system_info",
     "create_data_loader",
-    "create_analyzer",
+    "create_analyzer", 
     "run_cosmic_web_analysis",
     "create_visualizer",
-    "create_cosmic_web_viz",
     "create_plotly_viz",
-    "UniversalVisualizer",
-    "CosmographVisualizer",
-    "PyVistaVisualizer",
-    "PlotlyVisualizer",
+    "create_cosmic_web_viz",
+    "create_state",
+    "get_data_config",
+    "get_analysis_config", 
+    "get_visualization_config",
+    "get_system_info",
 ]

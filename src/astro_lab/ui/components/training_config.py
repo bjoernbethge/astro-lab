@@ -5,23 +5,28 @@ Training Configuration
 Configuration for all available training options, optimizers, and schedulers.
 """
 
-
 import marimo as mo
 
-from astro_lab.config import get_training_config
-from astro_lab.config.model import TASK_TO_MODEL, get_available_presets
+from astro_lab.config import get_config, get_task_config, get_training_config
 
 
 def create_training_config():
     """Create training configuration UI."""
-    presets = get_available_presets()
-    tasks = list(TASK_TO_MODEL.keys())
+    # Build tasks from config
+    config = get_config()
+    tasks_dict = config.get("tasks", {})
+    tasks = list(tasks_dict.keys())
+    # Presets: use model config keys or hardcode a default
+    model_config = config.get("model", {})
+    presets = (
+        list(model_config.keys()) if isinstance(model_config, dict) else ["default"]
+    )
 
     return mo.ui.dictionary(
         {
             "preset": mo.ui.dropdown(
                 options=presets,
-                value=presets[0] if presets else "node_classifier_medium",
+                value=presets[0] if presets else "default",
                 label="Model Preset",
             ),
             "task": mo.ui.dropdown(

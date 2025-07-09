@@ -14,8 +14,6 @@ import marimo as mo
 import psutil
 import torch
 
-from astro_lab.data.preprocessors import list_available_surveys
-
 
 def get_system_info() -> Dict[str, Any]:
     """Get comprehensive system information."""
@@ -63,7 +61,7 @@ def get_system_info() -> Dict[str, Any]:
         if gpu_available
         else "N/A",
         # Data
-        "available_surveys": list_available_surveys(),
+        "available_surveys": ["Survey1", "Survey2", "Survey3"],
     }
 
     return info

@@ -2,100 +2,169 @@
 Data Loader Component
 ====================
 
-Simple, functional data loading with Marimo.
+Real data loading using actual AstroLab preprocessors.
 """
 
 import marimo as mo
 
-from astro_lab.data.datamodules.survey import get_survey_datamodule
-
-# from astro_lab.data import load_survey_data
+from astro_lab.data.collectors.exoplanet import ExoplanetCollector
+from astro_lab.data.collectors.gaia import GaiaCollector
+from astro_lab.data.preprocessors.exoplanet import ExoplanetPreprocessor
+from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
 
 
 def create_data_loader():
-    """Create a simple, working data loader interface using SurveyDataModule."""
+    """Create real data loader interface using actual preprocessors."""
 
-    # Survey selector
+    # Survey selector with real surveys
     survey = mo.ui.dropdown(
-        options=["gaia", "sdss", "nsa", "exoplanet", "tng50"],
+        options={
+            "gaia": "Gaia DR3 (Stars)",
+            "exoplanet": "NASA Exoplanet Archive",
+        },
         value="gaia",
         label="Survey",
     )
 
     # Sample size
     samples = mo.ui.slider(
-        start=100, stop=100000, value=10000, step=100, label="Samples"
+        start=100, stop=50000, value=5000, step=100, label="Max Samples"
     )
 
-    # Sampling strategy
-    sampling_strategy = mo.ui.dropdown(
-        options=["none", "cluster", "neighbor", "saint"],
-        value="none",
-        label="Sampling Strategy",
-    )
+    # Download first if needed
+    download_btn = mo.ui.button(label="📥 Download Data", kind="secondary")
 
-    # Load button
-    load_btn = mo.ui.button(label="Load Data")
+    # Load and process button
+    load_btn = mo.ui.button(label="🔄 Load & Process Data", kind="primary")
 
     # Create UI
     ui = mo.vstack(
-        [mo.md("### 📥 Load Data"), survey, samples, sampling_strategy, load_btn]
+        [
+            mo.md("### 📡 Load Real Astronomical Data"),
+            survey,
+            samples,
+            mo.hstack([download_btn, load_btn]),
+        ]
     )
 
-    # State
-    status = mo.md("")
-    preview = mo.md("")
+    # Initialize with default content
+    status = mo.md("⏳ **Ready to load data** - Select survey and click buttons above")
+    preview = mo.md("📊 **Data preview will appear here** after loading")
+    loaded_data = None
 
+    # Download data
+    if download_btn.value:
+        try:
+            survey_name = survey.value
+            status = mo.callout(f"📥 Downloading {survey_name} data...", kind="info")
+
+            if survey_name == "gaia":
+                collector = GaiaCollector()
+                files = collector.download(force=False)
+                status = mo.callout(f"✅ Downloaded {len(files)} files", kind="success")
+            elif survey_name == "exoplanet":
+                collector = ExoplanetCollector()
+                files = collector.download(force=False)
+                status = mo.callout(f"✅ Downloaded {len(files)} files", kind="success")
+
+        except Exception as e:
+            status = mo.callout(f"❌ Download error: {str(e)}", kind="danger")
+
+    # Load and process data
     if load_btn.value:
         try:
-            # Create and setup DataModule
-            batch_size = int(samples.value)
-            max_samples = int(samples.value)
-            datamodule = get_survey_datamodule(
-                survey_name=survey.value,
-                batch_size=batch_size,
-                max_samples=max_samples,
-                sampler_type=sampling_strategy.value
-                if sampling_strategy.value != "none"
-                else None,
-            )
-            datamodule.prepare_data()
-            datamodule.setup()
-            loader = datamodule.train_dataloader()
-            batch = next(iter(loader))
-            # Show batch size and preview
-            if hasattr(batch, "num_nodes"):
-                size = batch.num_nodes
-            elif hasattr(batch, "shape"):
-                size = batch.shape[0]
-            elif isinstance(batch, dict) and "x" in batch:
-                size = batch["x"].shape[0]
-            else:
-                size = "unknown"
-            status = mo.callout(f"✅ Loaded batch with {size} objects", kind="success")
-            # Preview: show first few entries if possible
-            if isinstance(batch, dict):
-                if "x" in batch:
-                    preview_data = batch["x"][:5].cpu().numpy()
-                    preview = mo.md(f"**Preview (first 5 x):**\n{preview_data}")
-                else:
-                    # Show keys and first 5 values for any key
-                    preview_lines = []
-                    for k, v in batch.items():
-                        try:
-                            preview_lines.append(f"{k}: {v[:5]}")
-                        except Exception:
-                            preview_lines.append(f"{k}: {str(v)}")
-                    preview = mo.md(
-                        "**Preview (first 5 per key):**\n" + "\n".join(preview_lines)
+            survey_name = survey.value
+            max_samples = samples.value
+
+            status = mo.callout(f"🔄 Processing {survey_name} data...", kind="info")
+
+            if survey_name == "gaia":
+                # Use real Gaia preprocessor
+                preprocessor = GaiaPreprocessor(
+                    {
+                        "magnitude_limit": 15.0,
+                        "parallax_snr_min": 5.0,
+                        "distance_limit_pc": 1000.0,
+                    }
+                )
+
+                # Try to load data
+                from pathlib import Path
+
+                import polars as pl
+
+                data_file = Path("data/raw/gaia") / "gaia_sample.parquet"
+                if data_file.exists():
+                    df = pl.read_parquet(data_file).head(max_samples)
+                    processed_df = preprocessor.preprocess(df)
+                    loaded_data = processed_df
+
+                    status = mo.callout(
+                        f"✅ Processed {len(processed_df)} Gaia stars", kind="success"
                     )
-            elif hasattr(batch, "x"):
-                preview_data = batch.x[:5].cpu().numpy()
-                preview = mo.md(f"**Preview (first 5 x):**\n{preview_data}")
-            else:
-                preview = mo.md("No preview available.")
+
+                    preview = mo.vstack(
+                        [
+                            mo.md("### 📊 Data Preview"),
+                            mo.ui.table(processed_df.head(10).to_dict(as_series=False)),
+                            mo.md(
+                                f"**Columns:** {', '.join(processed_df.columns[:10])}{'...' if len(processed_df.columns) > 10 else ''}"
+                            ),
+                            mo.md(f"**Features:** {len(processed_df.columns)} columns"),
+                            mo.md(
+                                f"**3D Coordinates:** {'✅' if all(col in processed_df.columns for col in ['x', 'y', 'z']) else '❌'}"
+                            ),
+                        ]
+                    )
+                else:
+                    status = mo.callout(
+                        "❌ No Gaia data found. Please download first.", kind="danger"
+                    )
+
+            elif survey_name == "exoplanet":
+                # Use real Exoplanet preprocessor
+                preprocessor = ExoplanetPreprocessor(
+                    {
+                        "distance_limit_pc": 500.0,
+                        "use_gaia_host_coords": True,
+                    }
+                )
+
+                from pathlib import Path
+
+                import polars as pl
+
+                data_file = Path("data/raw/exoplanet") / "exoplanet_sample.parquet"
+                if data_file.exists():
+                    df = pl.read_parquet(data_file).head(max_samples)
+                    processed_df = preprocessor.preprocess(df)
+                    loaded_data = processed_df
+
+                    status = mo.callout(
+                        f"✅ Processed {len(processed_df)} exoplanets", kind="success"
+                    )
+
+                    preview = mo.vstack(
+                        [
+                            mo.md("### 📊 Data Preview"),
+                            mo.ui.table(processed_df.head(10).to_dict(as_series=False)),
+                            mo.md(
+                                f"**Columns:** {', '.join(processed_df.columns[:10])}{'...' if len(processed_df.columns) > 10 else ''}"
+                            ),
+                            mo.md(f"**Features:** {len(processed_df.columns)} columns"),
+                            mo.md(
+                                f"**Host Star Coords:** {'✅' if all(col in processed_df.columns for col in ['ra', 'dec']) else '❌'}"
+                            ),
+                        ]
+                    )
+                else:
+                    status = mo.callout(
+                        "❌ No exoplanet data found. Please download first.",
+                        kind="danger",
+                    )
+
         except Exception as e:
-            status = mo.callout(f"❌ Error: {str(e)}", kind="danger")
+            status = mo.callout(f"❌ Processing error: {str(e)}", kind="danger")
             preview = mo.md("")
 
-    return ui, status, preview
+    return ui, status, preview, loaded_data
