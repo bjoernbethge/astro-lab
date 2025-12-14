@@ -234,17 +234,9 @@ def _calculate_clustering_coefficient(
     adj[edge_index[0], edge_index[1]] = True
 
     # Calculate clustering coefficient for each node (vectorized)
-    # Use matrix multiplication to count triangles more efficiently
-    # adj^2[i,j] counts 2-step paths from i to j
-    # adj^3 diagonal gives number of triangles × 2 for each node
+    # Count triangles using adjacency subgraphs for efficiency
     
     clustering_coeffs = torch.zeros(num_nodes, dtype=torch.float32)
-    
-    # Convert to float for matrix multiplication
-    adj_float = adj.float()
-    
-    # Compute A^2 and A^3 for triangle counting
-    adj_squared = torch.mm(adj_float, adj_float)
     
     # For each node, count triangles
     for i in range(num_nodes):
