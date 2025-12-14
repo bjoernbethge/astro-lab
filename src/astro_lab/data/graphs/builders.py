@@ -325,7 +325,8 @@ class AstronomicalGraphBuilder(BaseGraphBuilder):
         
         # Find distance to 10th nearest neighbor as density proxy
         k_density = min(10, n_nodes - 1)
-        k_min, k_max = self._get_k_min_max()
+        k_min = self.config.k_min
+        k_max = self.config.k_max
         
         # For large datasets, compute in chunks to save memory
         chunk_size = min(1000, n_nodes)
@@ -561,7 +562,8 @@ class AdaptiveGraphBuilder(BaseGraphBuilder):
         
         # Adaptive k based on density
         k_base = self.config.k_neighbors
-        k_min, k_max = self._get_k_min_max()
+        k_min = self.config.k_min
+        k_max = self.config.k_max
         adaptive_k = (k_base * (0.5 + density_scores)).long()
         adaptive_k = torch.clamp(adaptive_k, k_min, k_max)
         

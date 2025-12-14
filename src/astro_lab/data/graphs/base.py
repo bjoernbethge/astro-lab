@@ -137,23 +137,6 @@ class BaseGraphBuilder(ABC):
         
         return transforms
 
-    def _get_k_min_max(self) -> Tuple[int, int]:
-        """
-        Safely get k_min and k_max values from config.
-        
-        Returns:
-            Tuple of (k_min, k_max) with sensible defaults based on k_neighbors
-        """
-        k_base = self.config.k_neighbors
-        k_min = getattr(self.config, 'k_min', max(2, k_base // 4))
-        k_max = getattr(self.config, 'k_max', k_base * 2)
-        
-        # Ensure k_min < k_max
-        if k_min >= k_max:
-            k_min = max(2, k_max // 2)
-        
-        return k_min, k_max
-
     @abstractmethod
     def build(self, survey_tensor: SurveyTensorDict) -> Union[Data, HeteroData]:
         """Build graph from SurveyTensorDict."""

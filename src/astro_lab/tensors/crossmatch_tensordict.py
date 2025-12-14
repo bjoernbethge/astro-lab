@@ -149,7 +149,7 @@ class CrossMatchTensorDict(AstroTensorDict):
         return self
 
     def _all_pairs_match(self) -> CrossMatchTensorDict:
-        """Alle-Paare-Matching (alle Matches innerhalb des Radius) - vectorized."""
+        """All-pairs matching (all matches within radius) - vectorized."""
         cat1 = self["catalog1"]
         cat2 = self["catalog2"]
         match_radius = self["meta", "match_radius"]
