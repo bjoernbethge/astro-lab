@@ -177,7 +177,7 @@ class CrossMatchTensorDict(AstroTensorDict):
         
         # Compute all pairwise angular separations at once
         # Result shape: [N1, N2]
-        separations = self._angular_separation_vectorized(
+        separations = self._angular_separation(
             ra1_exp, dec1_exp, ra2_exp, dec2_exp
         )
         
@@ -242,20 +242,7 @@ class CrossMatchTensorDict(AstroTensorDict):
 
         return torch.acos(cos_sep) * 180 / math.pi
     
-    def _angular_separation_vectorized(
-        self,
-        ra1: torch.Tensor,
-        dec1: torch.Tensor,
-        ra2: torch.Tensor,
-        dec2: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Alias for _angular_separation for backward compatibility.
-        
-        The main _angular_separation method now supports both scalar
-        and vectorized operations via broadcasting.
-        """
-        return self._angular_separation(ra1, dec1, ra2, dec2)
+
 
     def _compute_match_statistics(self):
         """Berechnet Match-Statistiken."""

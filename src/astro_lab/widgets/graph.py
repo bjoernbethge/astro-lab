@@ -251,7 +251,8 @@ def _calculate_clustering_coefficient(
         # Count triangles using adjacency matrix: 
         # neighbor_adj[i,j] = 1 if neighbors[i] and neighbors[j] are connected
         neighbor_adj = adj[neighbors][:, neighbors]  # Subgraph of neighbors
-        # Each edge is counted twice in the sum, so divide by 2
+        # For undirected graphs, each edge appears twice (i,j) and (j,i)
+        # So we divide by 2 to get the actual number of edges
         triangles = neighbor_adj.sum().item() / 2
         
         # Clustering coefficient
