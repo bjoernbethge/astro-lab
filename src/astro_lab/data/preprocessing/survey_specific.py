@@ -153,11 +153,12 @@ class GaiaPreprocessor(SurveyPreprocessor):
         features = []
         feature_names = []
         
-        # Photometry
-        for col in ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]:
-            if col in df.columns:
-                features.append(df[col].to_numpy())
-                feature_names.append(col)
+        # Photometry - vectorized column selection
+        phot_cols = ["phot_g_mean_mag", "phot_bp_mean_mag", "phot_rp_mean_mag"]
+        available_phot = [col for col in phot_cols if col in df.columns]
+        if available_phot:
+            features.extend([df[col].to_numpy() for col in available_phot])
+            feature_names.extend(available_phot)
         
         # Colors
         if "bp_rp" in df.columns:
@@ -168,17 +169,19 @@ class GaiaPreprocessor(SurveyPreprocessor):
             features.append(bp_rp)
             feature_names.append("bp_rp_computed")
         
-        # Proper motions
-        for col in ["pmra", "pmdec"]:
-            if col in df.columns:
-                features.append(df[col].to_numpy())
-                feature_names.append(col)
+        # Proper motions - vectorized column selection
+        pm_cols = ["pmra", "pmdec"]
+        available_pm = [col for col in pm_cols if col in df.columns]
+        if available_pm:
+            features.extend([df[col].to_numpy() for col in available_pm])
+            feature_names.extend(available_pm)
         
-        # Astrophysical parameters
-        for col in ["teff_gspphot", "logg_gspphot", "mh_gspphot"]:
-            if col in df.columns:
-                features.append(df[col].to_numpy())
-                feature_names.append(col)
+        # Astrophysical parameters - vectorized column selection
+        astro_cols = ["teff_gspphot", "logg_gspphot", "mh_gspphot"]
+        available_astro = [col for col in astro_cols if col in df.columns]
+        if available_astro:
+            features.extend([df[col].to_numpy() for col in available_astro])
+            feature_names.extend(available_astro)
         
         if not features:
             logger.warning("No features found in Gaia data")
@@ -309,35 +312,33 @@ class SDSSPreprocessor(SurveyPreprocessor):
         features = []
         feature_names = []
         
-        # Magnitudes (ugriz)
+        # Magnitudes (ugriz) - vectorized column selection
         mag_bands = ["u", "g", "r", "i", "z"]
-        for band in mag_bands:
-            col = f"modelMag_{band}"
-            if col in df.columns:
-                features.append(df[col].to_numpy())
-                feature_names.append(col)
+        mag_cols = [f"modelMag_{band}" for band in mag_bands]
+        available_mags = [col for col in mag_cols if col in df.columns]
+        if available_mags:
+            features.extend([df[col].to_numpy() for col in available_mags])
+            feature_names.extend(available_mags)
         
         # Colors
-        if len(features) >= 2:
-            # g-r color
-            if "modelMag_g" in df.columns and "modelMag_r" in df.columns:
-                g_r = df["modelMag_g"].to_numpy() - df["modelMag_r"].to_numpy()
-                features.append(g_r)
-                feature_names.append("g_r_color")
+        if "modelMag_g" in df.columns and "modelMag_r" in df.columns:
+            g_r = df["modelMag_g"].to_numpy() - df["modelMag_r"].to_numpy()
+            features.append(g_r)
+            feature_names.append("g_r_color")
         
-        # Morphological parameters
+        # Morphological parameters - vectorized column selection
         morph_params = ["fracDeV_r", "petroR50_r", "petroR90_r"]
-        for param in morph_params:
-            if param in df.columns:
-                features.append(df[param].to_numpy())
-                feature_names.append(param)
+        available_morph = [param for param in morph_params if param in df.columns]
+        if available_morph:
+            features.extend([df[param].to_numpy() for param in available_morph])
+            feature_names.extend(available_morph)
         
-        # Spectroscopic parameters if available
+        # Spectroscopic parameters if available - vectorized column selection
         spec_params = ["z", "zErr", "velDisp"]
-        for param in spec_params:
-            if param in df.columns:
-                features.append(df[param].to_numpy())
-                feature_names.append(param)
+        available_spec = [param for param in spec_params if param in df.columns]
+        if available_spec:
+            features.extend([df[param].to_numpy() for param in available_spec])
+            feature_names.extend(available_spec)
         
         if not features:
             logger.warning("No features found in SDSS data")

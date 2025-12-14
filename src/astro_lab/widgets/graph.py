@@ -233,33 +233,43 @@ def _calculate_clustering_coefficient(
     adj = torch.zeros((num_nodes, num_nodes), dtype=torch.bool)
     adj[edge_index[0], edge_index[1]] = True
 
-    # Calculate clustering coefficient for each node
-    clustering_coeffs = []
-
+    # Calculate clustering coefficient for each node (vectorized)
+    # Use matrix multiplication to count triangles more efficiently
+    # adj^2[i,j] counts 2-step paths from i to j
+    # adj^3 diagonal gives number of triangles × 2 for each node
+    
+    clustering_coeffs = torch.zeros(num_nodes, dtype=torch.float32)
+    
+    # Convert to float for matrix multiplication
+    adj_float = adj.float()
+    
+    # Compute A^2 and A^3 for triangle counting
+    adj_squared = torch.mm(adj_float, adj_float)
+    
+    # For each node, count triangles
     for i in range(num_nodes):
         # Get neighbors of node i
         neighbors = torch.where(adj[i])[0]
         k = len(neighbors)
-
+        
         if k < 2:
-            clustering_coeffs.append(0.0)
+            clustering_coeffs[i] = 0.0
             continue
-
-        # Count triangles
-        triangles = 0
-        for j in range(len(neighbors)):
-            for l in range(j + 1, len(neighbors)):
-                if adj[neighbors[j], neighbors[l]]:
-                    triangles += 1
-
-        # Clustering coefficient = 2 * triangles / (k * (k-1))
+        
+        # Count triangles using adjacency matrix: 
+        # Number of triangles = (neighbors[i] & neighbors[j]) for all j in neighbors
+        # This is equivalent to counting common neighbors
+        neighbor_adj = adj[neighbors][:, neighbors]  # Subgraph of neighbors
+        triangles = neighbor_adj.sum().item() / 2  # Divide by 2 as edges are counted twice
+        
+        # Clustering coefficient
         max_triangles = k * (k - 1) / 2
         if max_triangles > 0:
-            clustering_coeffs.append(triangles / max_triangles)
+            clustering_coeffs[i] = triangles / max_triangles
         else:
-            clustering_coeffs.append(0.0)
-
-    return sum(clustering_coeffs) / len(clustering_coeffs)
+            clustering_coeffs[i] = 0.0
+    
+    return clustering_coeffs.mean().item()
 
 
 def spatial_distance_matrix(
