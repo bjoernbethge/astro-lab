@@ -294,14 +294,17 @@ class AstroTemporalGNN(AstroLightningMixin, LightningModule):
             # Temporal data - apply temporal processing
             logger.info(f"[AstroTemporalGNN] Processing temporal data: {x.shape}")
             
-            # Feature encoding per time step if needed
+            # Feature encoding per time step if needed (vectorized)
             if hasattr(self, 'feature_encoder') and not isinstance(self.feature_encoder, nn.Identity):
-                seq_len = x.size(1)
-                x_encoded = []
-                for t in range(seq_len):
-                    x_t = self.feature_encoder(x[:, t, :])
-                    x_encoded.append(x_t)
-                x = torch.stack(x_encoded, dim=1)
+                # Reshape to [batch * seq_len, features] for efficient batch processing
+                batch_size, seq_len, n_features = x.size()
+                x_flat = x.reshape(batch_size * seq_len, n_features)
+                
+                # Apply encoder once to all timesteps
+                x_encoded_flat = self.feature_encoder(x_flat)
+                
+                # Reshape back to [batch, seq_len, encoded_features]
+                x = x_encoded_flat.reshape(batch_size, seq_len, -1)
                 logger.info(f"[AstroTemporalGNN] After feature encoding: {x.shape}")
             
             # Temporal encoding
@@ -434,14 +437,17 @@ class AstroTemporalGNN(AstroLightningMixin, LightningModule):
         
         # Apply temporal encoding if 3D
         if x.dim() == 3:
-            # Feature encoding
+            # Feature encoding (vectorized)
             if hasattr(self, 'feature_encoder') and not isinstance(self.feature_encoder, nn.Identity):
-                seq_len = x.size(1)
-                x_encoded = []
-                for t in range(seq_len):
-                    x_t = self.feature_encoder(x[:, t, :])
-                    x_encoded.append(x_t)
-                x = torch.stack(x_encoded, dim=1)
+                # Reshape to [batch * seq_len, features] for efficient batch processing
+                batch_size, seq_len, n_features = x.size()
+                x_flat = x.reshape(batch_size * seq_len, n_features)
+                
+                # Apply encoder once to all timesteps
+                x_encoded_flat = self.feature_encoder(x_flat)
+                
+                # Reshape back to [batch, seq_len, encoded_features]
+                x = x_encoded_flat.reshape(batch_size, seq_len, -1)
             
             # Temporal encoding
             if self.temporal_model in ["lstm", "gru"]:
