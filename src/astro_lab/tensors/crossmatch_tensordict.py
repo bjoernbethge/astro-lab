@@ -241,8 +241,6 @@ class CrossMatchTensorDict(AstroTensorDict):
         cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
 
         return torch.acos(cos_sep) * 180 / math.pi
-    
-
 
     def _compute_match_statistics(self):
         """Berechnet Match-Statistiken."""
