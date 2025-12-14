@@ -249,11 +249,10 @@ def _calculate_clustering_coefficient(
             continue
         
         # Count triangles using adjacency matrix: 
-        # Number of triangles = edges between neighbors (excluding self-loops)
         # neighbor_adj[i,j] = 1 if neighbors[i] and neighbors[j] are connected
         neighbor_adj = adj[neighbors][:, neighbors]  # Subgraph of neighbors
-        # Subtract diagonal (self-loops) before counting
-        triangles = (neighbor_adj.sum().item() - k) / 2  # Divide by 2 as edges are counted twice
+        # Each edge is counted twice in the sum, so divide by 2
+        triangles = neighbor_adj.sum().item() / 2
         
         # Clustering coefficient
         max_triangles = k * (k - 1) / 2

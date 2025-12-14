@@ -375,7 +375,7 @@ class AstronomicalGraphBuilder(BaseGraphBuilder):
                 if not self.config.self_loops:
                     neighbors = neighbors[1:]  # Skip self
                 
-                sources = torch.full((len(neighbors),), node_idx, device=coords.device)
+                sources = torch.full((len(neighbors),), node_idx, dtype=neighbors.dtype, device=neighbors.device)
                 edge_list.append(torch.stack([sources, neighbors]))
         
         edge_index = torch.cat(edge_list, dim=1)
@@ -595,7 +595,7 @@ class AdaptiveGraphBuilder(BaseGraphBuilder):
                 if not self.config.self_loops:
                     neighbors = neighbors[1:]
                 
-                sources = torch.full((len(neighbors),), node_idx, device=coords.device)
+                sources = torch.full((len(neighbors),), node_idx, dtype=neighbors.dtype, device=neighbors.device)
                 edge_list.append(torch.stack([sources, neighbors]))
         
         edge_index = torch.cat(edge_list, dim=1)

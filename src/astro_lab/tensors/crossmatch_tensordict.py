@@ -215,50 +215,16 @@ class CrossMatchTensorDict(AstroTensorDict):
         dec2: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Berechnet Winkeldistanz zwischen Himmelskoordinaten.
-
-        Args:
-            ra1, dec1: Erste Koordinaten in Grad
-            ra2, dec2: Zweite Koordinaten in Grad
-
-        Returns:
-            Winkeldistanz in Grad
-        """
-        # Konvertiere zu Radians
-        ra1_rad = ra1 * math.pi / 180
-        dec1_rad = dec1 * math.pi / 180
-        ra2_rad = ra2 * math.pi / 180
-        dec2_rad = dec2 * math.pi / 180
-
-        # Sphärische Trigonometrie
-        cos_sep = torch.sin(dec1_rad) * torch.sin(dec2_rad) + torch.cos(
-            dec1_rad
-        ) * torch.cos(dec2_rad) * torch.cos(ra1_rad - ra2_rad)
-
-        # Numerische Stabilität
-        cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
-
-        return torch.acos(cos_sep) * 180 / math.pi
-
-    def _angular_separation_vectorized(
-        self,
-        ra1: torch.Tensor,
-        dec1: torch.Tensor,
-        ra2: torch.Tensor,
-        dec2: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Vectorized angular separation computation for efficient batch processing.
+        Compute angular separation between celestial coordinates.
         
-        This method supports broadcasting for computing pairwise separations between
-        two sets of coordinates efficiently.
+        Supports both scalar and vectorized operations via broadcasting.
 
         Args:
             ra1, dec1: First coordinates in degrees (can be broadcasted)
             ra2, dec2: Second coordinates in degrees (can be broadcasted)
 
         Returns:
-            Angular separation in degrees (broadcasted shape)
+            Angular separation in degrees (supports broadcasting)
         """
         # Convert to radians
         ra1_rad = ra1 * math.pi / 180
@@ -275,6 +241,21 @@ class CrossMatchTensorDict(AstroTensorDict):
         cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
 
         return torch.acos(cos_sep) * 180 / math.pi
+    
+    def _angular_separation_vectorized(
+        self,
+        ra1: torch.Tensor,
+        dec1: torch.Tensor,
+        ra2: torch.Tensor,
+        dec2: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Alias for _angular_separation for backward compatibility.
+        
+        The main _angular_separation method now supports both scalar
+        and vectorized operations via broadcasting.
+        """
+        return self._angular_separation(ra1, dec1, ra2, dec2)
 
     def _compute_match_statistics(self):
         """Berechnet Match-Statistiken."""
