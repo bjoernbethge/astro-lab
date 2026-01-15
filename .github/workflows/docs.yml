@@ -23,22 +23,22 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v6
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       with:
         fetch-depth: 0  # Full history for git operations
 
     - name: Set up Python
-      uses: actions/setup-python@v6
+      uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5.3.0
       with:
         python-version: '3.11'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v7
+      uses: astral-sh/setup-uv@7360c3e1e2f4e0e964d61e5b7f693c8e0e5e6300  # v7.0.0
       with:
         version: "latest"
 
     - name: Cache uv dependencies
-      uses: actions/cache@v5
+      uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57  # v4.2.0
       with:
         path: |
           .venv
