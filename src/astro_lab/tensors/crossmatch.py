@@ -221,7 +221,7 @@ class CrossMatchTensorDict(AstroTensorDict, ValidationMixin):
         return self
 
     def _all_pairs_match(self) -> CrossMatchTensorDict:
-        """Alle-Paare-Matching (alle Matches innerhalb des Radius)."""
+        """All-pairs matching (all matches within radius) - vectorized."""
         cat1 = self["catalog1"]
         cat2 = self["catalog2"]
         match_radius = self["meta", "match_radius"]
@@ -240,30 +240,41 @@ class CrossMatchTensorDict(AstroTensorDict, ValidationMixin):
         ra1, dec1 = pos1
         ra2, dec2 = pos2
 
-        matches = []
-        distances = []
-        qualities = []
-
-        # Alle Paare prüfen
-        for i in range(len(ra1)):
-            for j in range(len(ra2)):
-                sep = self._angular_separation(ra1[i], dec1[i], ra2[j], dec2[j])
-
-                if sep <= match_radius / 3600:  # Convert arcsec to degrees
-                    matches.append([i, j])
-                    distances.append(sep.item() * 3600)
-                    qualities.append(1.0 / (1.0 + sep.item()))
-
-        if matches:
-            self["matches"] = torch.tensor(matches, dtype=torch.long)
-            self["distances"] = torch.tensor(distances)
-            self["match_quality"] = torch.tensor(qualities)
+        # Vectorized angular separation computation
+        # Expand dimensions for broadcasting: [N1, 1] and [1, N2]
+        ra1_exp = ra1.unsqueeze(1)  # [N1, 1]
+        dec1_exp = dec1.unsqueeze(1)  # [N1, 1]
+        ra2_exp = ra2.unsqueeze(0)  # [1, N2]
+        dec2_exp = dec2.unsqueeze(0)  # [1, N2]
+        
+        # Compute all pairwise angular separations at once
+        # Result shape: [N1, N2]
+        separations = self._angular_separation(
+            ra1_exp, dec1_exp, ra2_exp, dec2_exp
+        )
+        
+        # Find all matches within radius
+        match_radius_deg = match_radius / 3600  # Convert arcsec to degrees
+        mask = separations <= match_radius_deg
+        
+        # Get indices of matches
+        indices = torch.nonzero(mask, as_tuple=False)  # [M, 2] where M is number of matches
+        
+        if indices.numel() > 0:
+            # Extract matched pairs and their properties
+            matches = indices  # Already in [i, j] format
+            distances = separations[mask] * 3600  # Convert back to arcsec
+            qualities = 1.0 / (1.0 + separations[mask])
+            
+            self["matches"] = matches
+            self["distances"] = distances
+            self["match_quality"] = qualities
         else:
             self["matches"] = torch.empty((0, 2), dtype=torch.long)
             self["distances"] = torch.empty(0)
             self["match_quality"] = torch.empty(0)
 
-        self["meta", "n_matches"] = len(matches)
+        self["meta", "n_matches"] = indices.shape[0] if indices.numel() > 0 else 0
         self._compute_match_statistics()
 
         return self
@@ -276,27 +287,29 @@ class CrossMatchTensorDict(AstroTensorDict, ValidationMixin):
         dec2: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Berechnet Winkeldistanz zwischen Himmelskoordinaten.
+        Compute angular separation between celestial coordinates.
+        
+        Supports both scalar and vectorized operations via broadcasting.
 
         Args:
-            ra1, dec1: Erste Koordinaten in Grad
-            ra2, dec2: Zweite Koordinaten in Grad
+            ra1, dec1: First coordinates in degrees (can be broadcasted)
+            ra2, dec2: Second coordinates in degrees (can be broadcasted)
 
         Returns:
-            Winkeldistanz in Grad
+            Angular separation in degrees (supports broadcasting)
         """
-        # Konvertiere zu Radians
+        # Convert to radians
         ra1_rad = ra1 * math.pi / 180
         dec1_rad = dec1 * math.pi / 180
         ra2_rad = ra2 * math.pi / 180
         dec2_rad = dec2 * math.pi / 180
 
-        # Sphärische Trigonometrie
+        # Spherical trigonometry with broadcasting support
         cos_sep = torch.sin(dec1_rad) * torch.sin(dec2_rad) + torch.cos(
             dec1_rad
         ) * torch.cos(dec2_rad) * torch.cos(ra1_rad - ra2_rad)
 
-        # Numerische Stabilität
+        # Numerical stability
         cos_sep = torch.clamp(cos_sep, -1.0, 1.0)
 
         return torch.acos(cos_sep) * 180 / math.pi

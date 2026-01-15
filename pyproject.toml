@@ -23,15 +23,15 @@ dependencies = [
     "poliastro>=0.7.0",
     "sdss-access>=3.0.8",
     "sgp4>=2.24",
-    "numpy>=1.24,<2.0",
+    "numpy>=1.24,<3.0",
     # ml
     "torch>=2.7.1",
     "torch-geometric>=2.6.1",
     "torchinfo>=1.8.0",
-    "torchmetrics==1.6.3",
+    "torchmetrics==1.8.2",
     "marimo-flow>=0.1.1",
-    "lightning==2.5.1.post0",
-    "lightning-utilities==0.14.3",
+    "lightning==2.6.0",
+    "lightning-utilities==0.15.2",
     "optuna-integration[pytorch-lightning]>=4.4.0",
     "optuna>=4.4.0",
     # viz
@@ -99,3 +99,8 @@ torchvision = [{ index = "pytorch-cuda" }]
 [project.scripts]
 astro-lab = "astro_lab.cli:main"
 astro-test = "scripts.run_tests:main"
+
+# Bandit security linter configuration
+[tool.bandit]
+exclude_dirs = ["test", "tests", ".venv"]
+skips = ["B101"]  # Skip assert warnings (used in tests)
