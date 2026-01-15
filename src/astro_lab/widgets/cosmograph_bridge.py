@@ -233,15 +233,18 @@ class CosmographBridge:
             # Move back to CPU and convert to numpy
             edge_index = edge_index.cpu().numpy()
 
-            # Calculate distances and filter by radius
-            edge_list = []
-            for i in range(edge_index.shape[1]):
-                src, tgt = edge_index[:, i]
-                dist = np.linalg.norm(coords[src] - coords[tgt])
-                if dist <= radius:
-                    edge_list.append([src, tgt])
-
-            edges = np.array(edge_list, dtype=int)
+            # Calculate distances and filter by radius (vectorized)
+            # Extract source and target indices
+            src_indices = edge_index[0, :]  # [E]
+            tgt_indices = edge_index[1, :]  # [E]
+            
+            # Compute edge vectors and distances vectorially
+            edge_vectors = coords[tgt_indices] - coords[src_indices]  # [E, 3]
+            distances = np.linalg.norm(edge_vectors, axis=1)  # [E]
+            
+            # Filter edges by radius
+            mask = distances <= radius
+            edges = edge_index[:, mask].T  # Transpose to [M, 2] format
 
         # Extract coordinates explicitly
         x_coords = coords[:, 0].tolist()
@@ -348,15 +351,18 @@ class CosmographBridge:
         # Move back to CPU and convert to numpy
         edge_index = edge_index.cpu().numpy()
 
-        # Calculate distances and filter by radius
-        edge_list = []
-        for i in range(edge_index.shape[1]):
-            src, tgt = edge_index[:, i]
-            dist = np.linalg.norm(coords[src] - coords[tgt])
-            if dist <= radius:
-                edge_list.append([src, tgt])
-
-        edges = np.array(edge_list, dtype=int)
+        # Calculate distances and filter by radius (vectorized)
+        # Extract source and target indices
+        src_indices = edge_index[0, :]  # [E]
+        tgt_indices = edge_index[1, :]  # [E]
+        
+        # Compute edge vectors and distances vectorially
+        edge_vectors = coords[tgt_indices] - coords[src_indices]  # [E, 3]
+        distances = np.linalg.norm(edge_vectors, axis=1)  # [E]
+        
+        # Filter edges by radius
+        mask = distances <= radius
+        edges = edge_index[:, mask].T  # Transpose to [M, 2] format
 
         # Extract coordinates explicitly
         x_coords = coords[:, 0].tolist()

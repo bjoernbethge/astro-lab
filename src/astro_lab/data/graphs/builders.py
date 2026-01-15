@@ -140,13 +140,31 @@ class RadiusGraphBuilder(BaseGraphBuilder):
         return data
 
     def _compute_adaptive_radius(self, coords: torch.Tensor) -> torch.Tensor:
-        """Compute adaptive radius based on local density."""
+        """Compute adaptive radius based on local density (memory efficient)."""
         # Find k-th nearest neighbor distance for each point
         k = min(10, coords.shape[0] - 1)
         
-        # Compute pairwise distances to k nearest neighbors
-        dists = torch.cdist(coords, coords)
-        kth_dists, _ = torch.kthvalue(dists, k + 1, dim=1)  # +1 to skip self
+        # For large datasets, use chunked computation to avoid memory issues
+        n_points = coords.shape[0]
+        chunk_size = min(1000, n_points)  # Process 1000 points at a time
+        
+        if n_points > 10000:
+            # Chunked computation for large datasets
+            kth_dists_list = []
+            for i in range(0, n_points, chunk_size):
+                end_i = min(i + chunk_size, n_points)
+                chunk_coords = coords[i:end_i]
+                
+                # Compute distances only for this chunk
+                chunk_dists = torch.cdist(chunk_coords, coords)
+                chunk_kth_dists, _ = torch.kthvalue(chunk_dists, k + 1, dim=1)
+                kth_dists_list.append(chunk_kth_dists)
+                
+            kth_dists = torch.cat(kth_dists_list)
+        else:
+            # For small datasets, compute directly
+            dists = torch.cdist(coords, coords)
+            kth_dists, _ = torch.kthvalue(dists, k + 1, dim=1)  # +1 to skip self
         
         # Use median of k-th distances as base radius
         median_dist = kth_dists.median()
@@ -302,15 +320,31 @@ class AstronomicalGraphBuilder(BaseGraphBuilder):
         )
 
     def _build_adaptive_knn(self, coords: torch.Tensor) -> torch.Tensor:
-        """Build KNN with adaptive k based on local density."""
+        """Build KNN with adaptive k based on local density (memory efficient)."""
         n_nodes = coords.shape[0]
-        
-        # Compute local density
-        dists = torch.cdist(coords, coords)
         
         # Find distance to 10th nearest neighbor as density proxy
         k_density = min(10, n_nodes - 1)
-        density_dists, _ = torch.kthvalue(dists, k_density + 1, dim=1)
+        k_min = self.config.k_min
+        k_max = self.config.k_max
+        
+        # For large datasets, compute in chunks to save memory
+        chunk_size = min(1000, n_nodes)
+        
+        if n_nodes > 10000:
+            # Chunked computation
+            density_dists_list = []
+            for i in range(0, n_nodes, chunk_size):
+                end_i = min(i + chunk_size, n_nodes)
+                chunk_coords = coords[i:end_i]
+                chunk_dists = torch.cdist(chunk_coords, coords)
+                chunk_density_dists, _ = torch.kthvalue(chunk_dists, k_density + 1, dim=1)
+                density_dists_list.append(chunk_density_dists)
+            density_dists = torch.cat(density_dists_list)
+        else:
+            # Compute full distance matrix for small datasets
+            dists = torch.cdist(coords, coords)
+            density_dists, _ = torch.kthvalue(dists, k_density + 1, dim=1)
         
         # Normalize densities
         density_scores = 1.0 / (density_dists + 1e-8)
@@ -318,21 +352,31 @@ class AstronomicalGraphBuilder(BaseGraphBuilder):
         
         # Adaptive k: more neighbors in dense regions
         adaptive_k = (
-            self.config.k_min + 
-            (self.config.k_max - self.config.k_min) * density_scores
+            k_min + 
+            (k_max - k_min) * density_scores
         ).long()
         
-        # Build graph with varying k
+        # Build graph with varying k - vectorized approach
+        # Use maximum k for all nodes, then filter
+        max_k_actual = adaptive_k.max().item()
+        
+        # Compute distances for all nodes in chunks
         edge_list = []
-        for i in range(n_nodes):
-            k_i = adaptive_k[i].item()
-            _, neighbors = torch.topk(dists[i], k_i + 1, largest=False)
+        for i in range(0, n_nodes, chunk_size):
+            end_i = min(i + chunk_size, n_nodes)
+            chunk_coords = coords[i:end_i]
+            chunk_dists = torch.cdist(chunk_coords, coords)
             
-            if not self.config.self_loops:
-                neighbors = neighbors[1:]  # Skip self
-            
-            sources = torch.full((len(neighbors),), i)
-            edge_list.append(torch.stack([sources, neighbors]))
+            for j, (dist_row, k_i) in enumerate(zip(chunk_dists, adaptive_k[i:end_i])):
+                node_idx = i + j
+                k_i_val = k_i.item()
+                _, neighbors = torch.topk(dist_row, k_i_val + 1, largest=False)
+                
+                if not self.config.self_loops:
+                    neighbors = neighbors[1:]  # Skip self
+                
+                sources = torch.full((len(neighbors),), node_idx, dtype=neighbors.dtype, device=neighbors.device)
+                edge_list.append(torch.stack([sources, neighbors]))
         
         edge_index = torch.cat(edge_list, dim=1)
         
@@ -468,10 +512,24 @@ class AdaptiveGraphBuilder(BaseGraphBuilder):
         return data
 
     def _compute_local_density(self, coords: torch.Tensor) -> torch.Tensor:
-        """Compute local density for each point."""
+        """Compute local density for each point (memory efficient)."""
         k = min(20, coords.shape[0] - 1)
-        dists = torch.cdist(coords, coords)
-        kth_dists, _ = torch.kthvalue(dists, k + 1, dim=1)
+        n_nodes = coords.shape[0]
+        chunk_size = min(1000, n_nodes)
+        
+        if n_nodes > 10000:
+            # Chunked computation for large datasets
+            kth_dists_list = []
+            for i in range(0, n_nodes, chunk_size):
+                end_i = min(i + chunk_size, n_nodes)
+                chunk_coords = coords[i:end_i]
+                chunk_dists = torch.cdist(chunk_coords, coords)
+                chunk_kth_dists, _ = torch.kthvalue(chunk_dists, k + 1, dim=1)
+                kth_dists_list.append(chunk_kth_dists)
+            kth_dists = torch.cat(kth_dists_list)
+        else:
+            dists = torch.cdist(coords, coords)
+            kth_dists, _ = torch.kthvalue(dists, k + 1, dim=1)
         
         # Density is inverse of average distance to k neighbors
         density = 1.0 / (kth_dists + 1e-8)
@@ -498,34 +556,47 @@ class AdaptiveGraphBuilder(BaseGraphBuilder):
         density_scores: torch.Tensor,
         feature_similarity: torch.Tensor,
     ) -> torch.Tensor:
-        """Build edges adaptively based on multiple criteria."""
+        """Build edges adaptively based on multiple criteria (memory efficient)."""
         n_nodes = coords.shape[0]
-        
-        # Spatial distances
-        spatial_dists = torch.cdist(coords, coords)
-        
-        # Combined distance metric
-        alpha = 0.7  # Weight for spatial distance
-        beta = 0.3   # Weight for feature similarity
-        
-        combined_dists = alpha * spatial_dists - beta * feature_similarity
+        chunk_size = min(1000, n_nodes)
         
         # Adaptive k based on density
         k_base = self.config.k_neighbors
+        k_min = self.config.k_min
+        k_max = self.config.k_max
         adaptive_k = (k_base * (0.5 + density_scores)).long()
-        adaptive_k = torch.clamp(adaptive_k, self.config.k_min, self.config.k_max)
+        adaptive_k = torch.clamp(adaptive_k, k_min, k_max)
         
-        # Build edges
+        # Combined distance metric weights
+        alpha = 0.7  # Weight for spatial distance
+        beta = 0.3   # Weight for feature similarity
+        
+        # Build edges in chunks to avoid full distance matrix
         edge_list = []
-        for i in range(n_nodes):
-            k_i = adaptive_k[i].item()
-            _, neighbors = torch.topk(combined_dists[i], k_i + 1, largest=False)
+        for i in range(0, n_nodes, chunk_size):
+            end_i = min(i + chunk_size, n_nodes)
+            chunk_coords = coords[i:end_i]
             
-            if not self.config.self_loops:
-                neighbors = neighbors[1:]
+            # Compute spatial distances for chunk
+            spatial_dists = torch.cdist(chunk_coords, coords)
             
-            sources = torch.full((len(neighbors),), i)
-            edge_list.append(torch.stack([sources, neighbors]))
+            # Get feature similarity for chunk
+            chunk_similarity = feature_similarity[i:end_i, :]
+            
+            # Combined distance metric
+            combined_dists = alpha * spatial_dists - beta * chunk_similarity
+            
+            # Build edges for each node in chunk
+            for j, (dist_row, k_i) in enumerate(zip(combined_dists, adaptive_k[i:end_i])):
+                node_idx = i + j
+                k_i_val = k_i.item()
+                _, neighbors = torch.topk(dist_row, k_i_val + 1, largest=False)
+                
+                if not self.config.self_loops:
+                    neighbors = neighbors[1:]
+                
+                sources = torch.full((len(neighbors),), node_idx, dtype=neighbors.dtype, device=neighbors.device)
+                edge_list.append(torch.stack([sources, neighbors]))
         
         edge_index = torch.cat(edge_list, dim=1)
         

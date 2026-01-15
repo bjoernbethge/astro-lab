@@ -233,33 +233,36 @@ def _calculate_clustering_coefficient(
     adj = torch.zeros((num_nodes, num_nodes), dtype=torch.bool)
     adj[edge_index[0], edge_index[1]] = True
 
-    # Calculate clustering coefficient for each node
-    clustering_coeffs = []
-
+    # Calculate clustering coefficient for each node (vectorized)
+    # Count triangles using adjacency subgraphs for efficiency
+    
+    clustering_coeffs = torch.zeros(num_nodes, dtype=torch.float32)
+    
+    # For each node, count triangles
     for i in range(num_nodes):
         # Get neighbors of node i
         neighbors = torch.where(adj[i])[0]
         k = len(neighbors)
-
+        
         if k < 2:
-            clustering_coeffs.append(0.0)
+            clustering_coeffs[i] = 0.0
             continue
-
-        # Count triangles
-        triangles = 0
-        for j in range(len(neighbors)):
-            for l in range(j + 1, len(neighbors)):
-                if adj[neighbors[j], neighbors[l]]:
-                    triangles += 1
-
-        # Clustering coefficient = 2 * triangles / (k * (k-1))
+        
+        # Count triangles using adjacency matrix: 
+        # neighbor_adj[i,j] = 1 if neighbors[i] and neighbors[j] are connected
+        neighbor_adj = adj[neighbors][:, neighbors]  # Subgraph of neighbors
+        # For undirected graphs, each edge appears twice (i,j) and (j,i)
+        # So we divide by 2 to get the actual number of edges
+        triangles = neighbor_adj.sum().item() / 2
+        
+        # Clustering coefficient
         max_triangles = k * (k - 1) / 2
         if max_triangles > 0:
-            clustering_coeffs.append(triangles / max_triangles)
+            clustering_coeffs[i] = triangles / max_triangles
         else:
-            clustering_coeffs.append(0.0)
-
-    return sum(clustering_coeffs) / len(clustering_coeffs)
+            clustering_coeffs[i] = 0.0
+    
+    return clustering_coeffs.mean().item()
 
 
 def spatial_distance_matrix(
