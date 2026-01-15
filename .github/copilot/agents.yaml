@@ -1,0 +1,110 @@
+agents:
+  - name: data-scientist
+    description: Machine learning pipelines, astronomical data processing, and survey-specific analysis
+    context:
+      - PyTorch Lightning LightningModule patterns
+      - PyTorch Geometric for graph neural networks
+      - DuckDB spatial queries and astronomical data
+      - Survey-specific preprocessing (Gaia, SDSS, NASA archives)
+      - Feature engineering for astronomical objects
+      - MLflow experiment tracking and model registry
+      - Hyperparameter optimization with Optuna
+      - Data loaders and batching strategies
+
+  - name: visualization-expert
+    description: 3D visualization, interactive graphics, and astronomical data rendering
+    context:
+      - Cosmograph bridge implementation for web visualization
+      - Three.js patterns for 3D rendering
+      - WebGL optimization techniques
+      - PyVista for 3D mesh visualization
+      - Plotly for interactive charts
+      - Open3D for point cloud processing
+      - Survey-specific color schemes (Gold for Gaia, Blue for SDSS)
+      - Lazy loading for large astronomical datasets
+      - Real-time rendering and performance optimization
+
+  - name: tensor-operations
+    description: Astronomical tensor operations, coordinate transformations, and spatial indexing
+    context:
+      - Spatial3DTensor implementation and operations
+      - TensorDict for efficient tensor management
+      - Coordinate systems (ICRS, Galactic, Ecliptic)
+      - AstroPy SkyCoord for astronomical coordinates
+      - Unit conversions (parsecs, megaparsecs, arcseconds)
+      - KD-tree and spatial indexing algorithms
+      - Distance calculations and nearest neighbor search
+      - Redshift and velocity computations
+      - Proper motion and parallax transformations
+
+  - name: cosmic-web-analyst
+    description: Cosmic web analysis, graph construction, and large-scale structure algorithms
+    context:
+      - Cosmic web detection algorithms
+      - Graph neural network architectures for cosmic structures
+      - Filament, void, and cluster identification
+      - Density field estimation and smoothing
+      - Topological analysis of cosmic structures
+      - Halo finding and merger tree construction
+      - Large-scale structure statistics
+      - N-body simulation post-processing
+
+  - name: survey-integration-specialist
+    description: Multi-survey data integration, catalog crossmatching, and archive queries
+    context:
+      - Gaia DR3 data structure and queries
+      - SDSS spectroscopic and photometric catalogs
+      - NASA archive APIs (MAST, IRSA)
+      - Catalog crossmatching algorithms
+      - Astrometric solutions and error propagation
+      - Photometric system conversions
+      - Selection function and completeness modeling
+      - Data quality flags and filtering
+
+  - name: gnn-architect
+    description: Graph Neural Network architecture design for astronomical applications
+    context:
+      - PyTorch Geometric MessagePassing implementations
+      - Graph construction from point clouds
+      - Edge features and attention mechanisms
+      - Graph pooling and hierarchical structures
+      - Positional encodings for spatial data
+      - Graph-level and node-level predictions
+      - Training strategies for astronomical graphs
+      - Batch processing for large graphs
+
+  - name: performance-optimizer
+    description: Performance optimization, GPU acceleration, and large-scale data processing
+    context:
+      - CUDA optimization for PyTorch operations
+      - Memory-efficient data loading pipelines
+      - Lazy evaluation and on-demand computation
+      - Parallel processing with Polars and DuckDB
+      - Batch size optimization for GPU memory
+      - Profiling with PyTorch profiler
+      - Mixed precision training (FP16/BF16)
+      - Distributed training strategies
+
+  - name: cli-developer
+    description: Command-line interface development and configuration management
+    context:
+      - astro-lab CLI command structure
+      - Click or Typer for CLI frameworks
+      - Configuration file parsing (YAML, TOML)
+      - Progress bars and status reporting
+      - Logging configuration and output formatting
+      - Error handling and user feedback
+      - Subcommand organization (process, train, cosmic-web, optimize)
+      - Environment variable integration
+
+  - name: astrophysics-expert
+    description: Astrophysics domain knowledge and scientific validation
+    context:
+      - Cosmological distance measures
+      - Galaxy morphology and classification
+      - Stellar populations and evolution
+      - Dark matter halo models
+      - Cosmic web formation and evolution
+      - Observational biases and systematics
+      - Statistical methods in astronomy
+      - Scientific paper workflows and reproducibility
