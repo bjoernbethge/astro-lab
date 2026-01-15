@@ -27,6 +27,44 @@ astro-lab cosmic-web gaia --max-samples 10000 --clustering-scales 5 10 25 --visu
 marimo run src/astro_lab/ui/app.py
 ```
 
+## 🎨 Visual Examples
+
+AstroLab provides powerful interactive 3D visualizations of cosmic web structures across multiple astronomical scales.
+
+### Coming Soon: Interactive Demos
+
+We're currently preparing stunning visual demonstrations of AstroLab's capabilities, including:
+
+- **Interactive 3D Cosmic Web Visualization**: Real-time exploration of stellar neighborhoods and galaxy clusters using Cosmograph with physics-based simulation
+- **Multi-Scale Structure Analysis**: Visual comparison of clustering at different scales (stellar, galactic, cosmic)
+- **Filament Detection Examples**: 3D visualization of cosmic web filaments using MST, Morse theory, and Hessian analysis
+- **Graph Neural Network Architecture**: Interactive diagrams showing model architectures and data flow
+- **Live Marimo Dashboard**: Screenshots of the reactive notebook interface for cosmic web analysis
+
+### Preview Available Features
+
+While screenshots are being prepared, you can explore these features yourself:
+
+```python
+from astro_lab.widgets.cosmograph_bridge import CosmographBridge
+from astro_lab.data.cosmic_web import analyze_gaia_cosmic_web
+
+# Analyze and visualize Gaia stellar data
+results = analyze_gaia_cosmic_web(max_samples=10000, clustering_scales=[5, 10, 25])
+bridge = CosmographBridge()
+widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
+widget.show()  # Interactive 3D visualization with gold points
+```
+
+Or start the interactive UI:
+```bash
+marimo run src/astro_lab/ui/app.py
+```
+
+**Live Demo**: Visit our [GitHub Pages documentation](https://bjoernbethge.github.io/astro-lab/) for API documentation and guides (Documentation auto-deployed on every commit to main).
+
+> **Note**: Screenshots and GIFs will be added soon. Track progress in [#TBD](https://github.com/bjoernbethge/astro-lab/issues).
+
 ## 🧠 Astro GNN Models & Tasks
 
 ### **Core GNN Models**
