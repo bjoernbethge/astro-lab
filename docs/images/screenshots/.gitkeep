@@ -1,0 +1,22 @@
+# Screenshots Directory
+
+This directory contains visual examples and screenshots of AstroLab in action.
+
+## Planned Screenshots
+
+- [ ] Interactive 3D cosmic web visualization (Cosmograph)
+- [ ] Gaia stellar neighborhoods with clustering
+- [ ] NSA galaxy superclusters visualization
+- [ ] Filament detection examples
+- [ ] PyVista 3D rendering examples
+- [ ] Marimo interactive UI dashboard
+- [ ] Multi-scale clustering results
+- [ ] Graph neural network architecture diagrams
+
+## Contributing Screenshots
+
+To add screenshots:
+1. Use a descriptive filename (e.g., `gaia-cosmic-web-3d.png`)
+2. Keep file sizes reasonable (< 2MB, use compression if needed)
+3. Add captions in the main README.md
+4. Update this checklist when adding new screenshots
