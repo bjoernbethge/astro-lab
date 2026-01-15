@@ -29,20 +29,21 @@ marimo run src/astro_lab/ui/app.py
 
 ## 🎨 Visual Examples
 
-### Interactive 3D Cosmic Web Visualization
-The astro-lab framework provides real-time 3D visualization of cosmic structures using Cosmograph:
+AstroLab provides powerful interactive 3D visualizations of cosmic web structures across multiple astronomical scales.
 
-- **Real-time rendering** of millions of galaxies and cosmic filaments
-- **Interactive exploration** with WebGL-powered viewport
-- **Multi-survey integration** (Gaia DR3, SDSS, NASA archives)
-- **Physics-based simulation** for dynamic structure detection
+### Coming Soon: Interactive Demos
 
-> 📸 **Screenshots coming soon** - Interactive demo at [GitHub Pages](https://bjoernbethge.github.io/astro-lab/)
+We're currently preparing stunning visual demonstrations of AstroLab's capabilities, including:
 
-### Key Visualizations
+- **Interactive 3D Cosmic Web Visualization**: Real-time exploration of stellar neighborhoods and galaxy clusters using Cosmograph with physics-based simulation
+- **Multi-Scale Structure Analysis**: Visual comparison of clustering at different scales (stellar, galactic, cosmic)
+- **Filament Detection Examples**: 3D visualization of cosmic web filaments using MST, Morse theory, and Hessian analysis
+- **Graph Neural Network Architecture**: Interactive diagrams showing model architectures and data flow
+- **Live Marimo Dashboard**: Screenshots of the reactive notebook interface for cosmic web analysis
 
-#### Cosmic Web Structure Detection
-Real-time exploration of stellar neighborhoods and galaxy clusters using Cosmograph with physics-based simulation:
+### Preview Available Features
+
+While screenshots are being prepared, you can explore these features yourself:
 
 ```python
 from astro_lab.widgets.cosmograph_bridge import CosmographBridge
@@ -55,33 +56,14 @@ widget = bridge.from_cosmic_web_results(results, survey_name="gaia")
 widget.show()  # Interactive 3D visualization with gold points
 ```
 
-#### Galaxy Cluster Analysis
-Large-scale structure visualization with multi-scale clustering:
-- Visual comparison of clustering at different scales (stellar, galactic, cosmic)
-- Color-coded clusters based on density and structure
-- Interactive filtering by redshift and magnitude
-
-#### 3D Tensor Operations in Astronomical Space
-- Filament detection using MST, Morse theory, and Hessian analysis
-- Grid-based structure analysis with customizable resolution
-- Local density computation with adaptive radius
-
-#### Live Interactive Dashboard
-Start the Marimo reactive notebook interface for cosmic web analysis:
+Or start the interactive UI:
 ```bash
 marimo run src/astro_lab/ui/app.py
-# Dashboard available at http://localhost:2718
 ```
-
-**Features:**
-- Real-time parameter adjustment
-- Multiple visualization backends (Cosmograph, PyVista, Plotly)
-- Survey-specific color schemes (Gold for stars, Blue for galaxies)
-- Export capabilities for publication-ready figures
 
 **Live Demo**: Visit our [GitHub Pages documentation](https://bjoernbethge.github.io/astro-lab/) for API documentation and guides (Documentation auto-deployed on every commit to main).
 
-> **Note**: High-quality screenshots and GIFs will be added soon. Track progress in [GitHub Issues](https://github.com/bjoernbethge/astro-lab/issues).
+> **Note**: Screenshots and GIFs will be added soon. Track progress in [docs/images/screenshots/.gitkeep](docs/images/screenshots/.gitkeep).
 
 ## 🧠 Astro GNN Models & Tasks
 
