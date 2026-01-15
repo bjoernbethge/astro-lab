@@ -1,411 +1,358 @@
 """
-Plotly Bridge for AstroLab visualization.
-Provides web-based 3D visualization of astronomical data.
+Plotly Bridge - Enhanced API für UI Integration
 """
-
-import logging
-from typing import Any, Dict, Optional, List, Tuple
 
 import numpy as np
 import plotly.graph_objects as go
-import torch
-from plotly.subplots import make_subplots
+from typing import Optional, Dict, Any
 
-logger = logging.getLogger(__name__)
-
-
-def create_plotly_visualization(survey_tensor: Any, **config) -> Any:
-    """
-    Create Plotly visualization for SurveyTensorDict.
-
-    Args:
-        survey_tensor: SurveyTensorDict object
-        **config: Configuration options
-
-    Returns:
-        Plotly figure object
-    """
-    # Extract spatial coordinates from SurveyTensorDict
-    if hasattr(survey_tensor, "spatial") and "coordinates" in survey_tensor["spatial"]:
-        coords = survey_tensor["spatial"]["coordinates"]
-        logger.info(f"✅ Extracted 3D coordinates for Plotly: {coords.shape}")
-    elif hasattr(survey_tensor, "get_spatial_tensor"):
-        # Fallback for old API
-        spatial_tensor = survey_tensor.get_spatial_tensor()
-        if hasattr(spatial_tensor, "cartesian"):
-            coords = spatial_tensor.cartesian
-            logger.info(
-                f"✅ Extracted 3D coordinates for Plotly (legacy): {coords.shape}"
-            )
-        else:
-            raise ValueError("SurveyTensorDict has no cartesian coordinates")
-    else:
-        raise ValueError("SurveyTensorDict has no spatial data")
-
-    # Limit points for web visualization
-    max_points = config.get("max_points", 10000)
-    if coords.shape[0] > max_points:
-        logger.info(f"Sampling {max_points} points for Plotly visualization")
-        indices = torch.randperm(coords.shape[0])[:max_points]
-        coords = coords[indices]
-
-    # Convert to numpy
-    coords_np = coords.cpu().numpy()
-
-    # Create 3D scatter plot
-    fig = go.Figure(
-        data=[
-            go.Scatter3d(
-                x=coords_np[:, 0],
-                y=coords_np[:, 1],
-                z=coords_np[:, 2],
-                mode="markers",
-                marker=dict(
-                    size=config.get("point_size", 2),
-                    opacity=config.get("opacity", 0.8),
-                    color=coords_np[:, 2],  # Color by z-value
-                    colorscale="Viridis",
-                    showscale=True,
-                ),
-                name=config.get("name", "AstroLab Data"),
-            )
-        ]
-    )
-
-    # Update layout
-    fig.update_layout(
-        title=config.get("title", "AstroLab 3D Visualization"),
-        scene=dict(
-            xaxis_title="X", yaxis_title="Y", zaxis_title="Z", aspectmode="data"
-        ),
-        width=config.get("width", 800),
-        height=config.get("height", 600),
-    )
-
-    # Show if requested
-    if config.get("show", True):
-        fig.show()
-
-    return fig
+# Import echte Plotly Implementation + Enhanced Module
+from .plotly.bridge import AstronomicalPlotlyBridge
+from .enhanced import (
+    AstronomicalTensorBridge,
+    to_plotly,
+    ImageProcessor
+)
 
 
-def plot_cosmic_web_3d(
-    spatial_tensor: Any,
+class EnhancedPlotlyBridge:
+    """Enhanced Plotly Bridge mit verbesserter Performance und Features"""
+    
+    def __init__(self):
+        self.bridge = AstronomicalPlotlyBridge()
+        self.tensor_bridge = AstronomicalTensorBridge()
+        self.image_processor = ImageProcessor()
+
+
+def create_3d_scatter_plot(
+    coordinates: np.ndarray,
     cluster_labels: Optional[np.ndarray] = None,
-    title: str = "Cosmic Web Structure",
+    title: str = "3D Scatter Plot",
     point_size: int = 3,
-    show_clusters: bool = True,
-    opacity: float = 0.8,
-    width: int = 900,
-    height: int = 700,
-    **kwargs,
+    **kwargs
 ) -> go.Figure:
     """
-    Create 3D visualization of cosmic web structure.
+    Enhanced 3D Scatter Plot - UI-freundliche API mit Enhanced Features
     
     Args:
-        spatial_tensor: SpatialTensorDict with coordinates
-        cluster_labels: Cluster assignments (-1 for noise)
-        title: Plot title
-        point_size: Point size
-        show_clusters: Color by clusters
-        opacity: Point opacity
-        width: Figure width
-        height: Figure height
+        coordinates: 3D Koordinaten Array (N, 3)
+        cluster_labels: Optional cluster labels für Enhanced Farbkodierung
+        title: Plot Titel
+        point_size: Punkt Größe
+        **kwargs: Zusätzliche Enhanced Parameter
         
     Returns:
-        Plotly figure
+        Enhanced Plotly Figure
     """
-    # Extract coordinates
-    if hasattr(spatial_tensor, "__getitem__") and "coordinates" in spatial_tensor:
-        coords = spatial_tensor["coordinates"].cpu().numpy()
-    elif hasattr(spatial_tensor, "data"):
-        coords = spatial_tensor.data.cpu().numpy()
+    
+    # Enhanced Tensor Conversion
+    enhanced_bridge = EnhancedPlotlyBridge()
+    plotly_data = to_plotly(coordinates, cluster_labels=cluster_labels, **kwargs)
+    
+    # Enhanced Color Scheme
+    if cluster_labels is not None:
+        colors = cluster_labels
+        colorscale = kwargs.get("colorscale", "Viridis")
+        
+        # Enhanced: Custom colorscale für Cluster
+        if kwargs.get("enhanced_colors", True):
+            colorscale = [
+                [0.0, "#404040"],   # Noise (grau)
+                [0.2, "#FFD700"],   # Cluster 0 (gold)
+                [0.4, "#FF6B6B"],   # Cluster 1 (rot)
+                [0.6, "#4ECDC4"],   # Cluster 2 (türkis)
+                [0.8, "#45B7D1"],   # Cluster 3 (blau)
+                [1.0, "#96CEB4"]    # Cluster 4 (grün)
+            ]
     else:
-        coords = spatial_tensor.cpu().numpy()
+        # Enhanced: Distance-based coloring
+        distances = np.linalg.norm(coordinates, axis=1)
+        colors = distances
+        colorscale = "Viridis"
     
-    # Prepare data for plotting
-    if cluster_labels is not None and show_clusters:
-        # Color by cluster
-        unique_labels = np.unique(cluster_labels)
-        n_clusters = len(unique_labels[unique_labels >= 0])
-        
-        traces = []
-        
-        # Create colormap
-        import matplotlib.cm as cm
-        colormap = cm.get_cmap('tab20')
-        
-        # Plot each cluster
-        for i, label in enumerate(unique_labels):
-            mask = cluster_labels == label
-            cluster_coords = coords[mask]
-            
-            if label == -1:
-                # Noise points
-                color = 'lightgray'
-                name = 'Isolated'
-                opacity_cluster = opacity * 0.3
-                size = point_size * 0.7
-            else:
-                # Cluster points
-                color_rgb = colormap(i / max(n_clusters, 1))[:3]
-                color = f'rgb({int(color_rgb[0]*255)},{int(color_rgb[1]*255)},{int(color_rgb[2]*255)})'
-                name = f'Cluster {label}'
-                opacity_cluster = opacity
-                size = point_size
-                
-            trace = go.Scatter3d(
-                x=cluster_coords[:, 0],
-                y=cluster_coords[:, 1],
-                z=cluster_coords[:, 2],
-                mode='markers',
-                marker=dict(
-                    size=size,
-                    color=color,
-                    opacity=opacity_cluster,
-                    line=dict(width=0),
-                ),
-                name=name,
-                text=[f'{name} Point {i}' for i in range(len(cluster_coords))],
-                hovertemplate='%{text}<br>X: %{x:.2f}<br>Y: %{y:.2f}<br>Z: %{z:.2f}',
-            )
-            traces.append(trace)
-            
-    else:
-        # Single trace without clustering
-        trace = go.Scatter3d(
-            x=coords[:, 0],
-            y=coords[:, 1],
-            z=coords[:, 2],
-            mode='markers',
-            marker=dict(
-                size=point_size,
-                color=coords[:, 2],  # Color by z-coordinate
-                colorscale='Viridis',
-                opacity=opacity,
-                colorbar=dict(title='Z Coordinate'),
-            ),
-            text=[f'Point {i}' for i in range(len(coords))],
-            hovertemplate='Point %{text}<br>X: %{x:.2f}<br>Y: %{y:.2f}<br>Z: %{z:.2f}',
-        )
-        traces = [trace]
-        
-    # Create figure
-    fig = go.Figure(data=traces)
-    
-    # Update layout
-    unit = kwargs.get('unit', 'pc')
-    fig.update_layout(
-        title=dict(text=title, x=0.5, xanchor='center'),
-        scene=dict(
-            xaxis_title=f'X ({unit})',
-            yaxis_title=f'Y ({unit})',
-            zaxis_title=f'Z ({unit})',
-            aspectmode='data',
-            camera=dict(
-                eye=dict(x=1.5, y=1.5, z=1.5)
-            ),
-        ),
-        width=width,
-        height=height,
-        showlegend=show_clusters,
-        legend=dict(
-            yanchor="top",
-            y=0.99,
-            xanchor="left",
-            x=0.01
-        ),
-        template="plotly_dark" if kwargs.get('dark_mode', True) else "plotly_white",
-    )
-    
-    return fig
-
-
-def plot_density_heatmap(
-    spatial_tensor: Any,
-    density_counts: torch.Tensor,
-    radius: float = 50.0,
-    title: str = "Local Density Map",
-    **kwargs,
-) -> go.Figure:
-    """
-    Create density heatmap visualization.
-    
-    Args:
-        spatial_tensor: Spatial coordinates
-        density_counts: Number of neighbors for each point
-        radius: Radius used for density calculation
-        title: Plot title
-        
-    Returns:
-        Plotly figure
-    """
-    # Extract coordinates
-    if hasattr(spatial_tensor, "__getitem__") and "coordinates" in spatial_tensor:
-        coords = spatial_tensor["coordinates"].cpu().numpy()
-    else:
-        coords = spatial_tensor.cpu().numpy()
-    
-    density = density_counts.cpu().numpy()
-    
-    # Create figure
+    # Enhanced Figure Creation
     fig = go.Figure()
     
-    # 3D scatter with density coloring
-    fig.add_trace(go.Scatter3d(
-        x=coords[:, 0],
-        y=coords[:, 1],
-        z=coords[:, 2],
-        mode='markers',
-        marker=dict(
-            size=4,
-            color=density,
-            colorscale='Hot',
-            opacity=0.8,
-            colorbar=dict(
-                title=f'Neighbors<br>within {radius} pc',
-                titleside='right',
+    # Enhanced Scatter mit optimierter Performance
+    fig.add_trace(
+        go.Scatter3d(
+            x=coordinates[:, 0],
+            y=coordinates[:, 1],
+            z=coordinates[:, 2],
+            mode="markers",
+            marker=dict(
+                size=point_size,
+                color=colors,
+                colorscale=colorscale,
+                opacity=kwargs.get("opacity", 0.8),
+                line=dict(width=0.5, color="DarkSlateGrey") if kwargs.get("enhanced_borders", False) else None,
+                colorbar=dict(title="Cluster" if cluster_labels is not None else "Distance"),
+                sizemode='diameter'
             ),
-        ),
-        text=[f'Density: {d}' for d in density],
-        hovertemplate='%{text}<br>X: %{x:.2f}<br>Y: %{y:.2f}<br>Z: %{z:.2f}',
-        name='Local Density',
-    ))
+            name=kwargs.get("name", "Objects"),
+            hovertemplate="<b>%{text}</b><br>" +
+                         "X: %{x:.2f}<br>" +
+                         "Y: %{y:.2f}<br>" +
+                         "Z: %{z:.2f}<br>" +
+                         "<extra></extra>",
+            text=[f"Object {i}" for i in range(len(coordinates))]
+        )
+    )
     
-    # Update layout
+    # Enhanced Layout
     fig.update_layout(
-        title=dict(text=title, x=0.5, xanchor='center'),
+        title={
+            'text': title,
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 16}
+        },
         scene=dict(
-            xaxis_title='X (pc)',
-            yaxis_title='Y (pc)',
-            zaxis_title='Z (pc)',
-            aspectmode='data',
+            xaxis_title="X",
+            yaxis_title="Y",
+            zaxis_title="Z",
+            camera=dict(
+                eye=dict(x=1.2, y=1.2, z=0.6),
+                projection=dict(type="perspective")
+            ),
+            bgcolor="rgba(0,0,0,0.1)" if kwargs.get("enhanced_background", True) else "white"
         ),
-        width=kwargs.get('width', 800),
-        height=kwargs.get('height', 700),
-        template="plotly_dark" if kwargs.get('dark_mode', True) else "plotly_white",
+        template="plotly_dark" if kwargs.get("dark_theme", True) else "plotly_white",
+        width=kwargs.get("width", 800),
+        height=kwargs.get("height", 600)
     )
     
     return fig
 
 
-def plot_multi_scale_clustering(
-    spatial_tensor: Any,
-    clustering_results: Dict[str, Dict[str, Any]],
-    title: str = "Multi-Scale Clustering Analysis",
-    **kwargs,
+def create_cosmic_web_plot(
+    coordinates: np.ndarray,
+    cluster_labels: Optional[np.ndarray] = None,
+    edges: Optional[np.ndarray] = None,
+    title: str = "Cosmic Web Structure",
+    **kwargs
 ) -> go.Figure:
     """
-    Create subplot visualization comparing clustering at different scales.
+    Enhanced Cosmic Web Plot mit Clustern und Filaments
     
     Args:
-        spatial_tensor: Spatial coordinates
-        clustering_results: Results from multi-scale clustering
-        title: Main title
+        coordinates: 3D Koordinaten Array (N, 3)
+        cluster_labels: Cluster Labels für Enhanced Farbkodierung
+        edges: Edge connections für Enhanced Filaments
+        title: Plot Titel
+        **kwargs: Enhanced Parameter
         
     Returns:
-        Plotly figure with subplots
+        Enhanced Plotly Figure
     """
-    # Extract coordinates
-    if hasattr(spatial_tensor, "__getitem__") and "coordinates" in spatial_tensor:
-        coords = spatial_tensor["coordinates"].cpu().numpy()
-    else:
-        coords = spatial_tensor.cpu().numpy()
     
-    # Get scales
-    scales = sorted(clustering_results.keys())
-    n_scales = len(scales)
-    
-    # Determine subplot layout
-    n_cols = min(n_scales, 3)
-    n_rows = (n_scales + n_cols - 1) // n_cols
-    
-    # Create subplot titles
-    subplot_titles = []
-    for scale in scales:
-        stats = clustering_results[scale]
-        n_clusters = stats.get('n_clusters', 0)
-        grouped_frac = stats.get('grouped_fraction', 0)
-        subplot_titles.append(f"{scale}<br>{n_clusters} clusters ({grouped_frac:.0%} grouped)")
-    
-    # Create subplots
-    fig = make_subplots(
-        rows=n_rows, 
-        cols=n_cols,
-        subplot_titles=subplot_titles,
-        specs=[[{'type': 'scatter3d'} for _ in range(n_cols)] for _ in range(n_rows)],
-        vertical_spacing=0.1,
-        horizontal_spacing=0.05,
+    # Basis 3D Scatter
+    fig = create_3d_scatter_plot(
+        coordinates=coordinates,
+        cluster_labels=cluster_labels,
+        title=title,
+        point_size=kwargs.get("point_size", 2),
+        enhanced_colors=True,
+        **kwargs
     )
     
-    # Plot each scale
-    for idx, scale in enumerate(scales):
-        row = idx // n_cols + 1
-        col = idx % n_cols + 1
+    # Enhanced Filament Visualization
+    if edges is not None:
+        max_edges = kwargs.get("max_edges", 1000)  # Performance limit
+        edge_opacity = kwargs.get("edge_opacity", 0.3)
         
-        results = clustering_results[scale]
-        
-        if 'labels' in results:
-            labels = results['labels']
-            if hasattr(labels, 'cpu'):
-                labels = labels.cpu().numpy()
-        else:
-            continue
-            
-        # Color by cluster
-        unique_labels = np.unique(labels)
-        n_clusters = len(unique_labels[unique_labels >= 0])
-        
-        for label in unique_labels:
-            mask = labels == label
-            cluster_coords = coords[mask]
-            
-            if label == -1:
-                color = 'lightgray'
-                name = 'Isolated'
-                size = 2
-            else:
-                # Use color from colorscale
-                color_idx = label % 10  # Cycle through 10 colors
-                color = f'hsl({color_idx * 36}, 70%, 50%)'
-                name = f'C{label}'
-                size = 3
+        for i, edge in enumerate(edges[:max_edges]):
+            if len(edge) >= 2:
+                idx1, idx2 = edge[0], edge[1]
                 
-            fig.add_trace(
-                go.Scatter3d(
-                    x=cluster_coords[:, 0],
-                    y=cluster_coords[:, 1],
-                    z=cluster_coords[:, 2],
-                    mode='markers',
-                    marker=dict(size=size, color=color),
-                    name=name,
-                    showlegend=False,
-                ),
-                row=row, col=col
-            )
+                # Enhanced: Color edges by cluster similarity
+                edge_color = "rgba(100,100,100,0.3)"
+                if cluster_labels is not None:
+                    if cluster_labels[idx1] == cluster_labels[idx2] and cluster_labels[idx1] != -1:
+                        edge_color = f"rgba(255,215,0,{edge_opacity})"  # Same cluster: gold
+                    else:
+                        edge_color = f"rgba(128,128,128,{edge_opacity*0.5})"  # Different clusters: dim
+                
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[coordinates[idx1, 0], coordinates[idx2, 0], None],
+                        y=[coordinates[idx1, 1], coordinates[idx2, 1], None],
+                        z=[coordinates[idx1, 2], coordinates[idx2, 2], None],
+                        mode="lines",
+                        line=dict(color=edge_color, width=1),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    )
+                )
     
-    # Update layout
-    fig.update_layout(
-        title=dict(text=title, x=0.5, xanchor='center'),
-        height=400 * n_rows,
-        width=400 * n_cols,
-        showlegend=False,
-        template="plotly_dark" if kwargs.get('dark_mode', True) else "plotly_white",
-    )
-    
-    # Update all 3D axes
-    for i in range(n_scales):
-        row = i // n_cols + 1
-        col = i % n_cols + 1
-        fig.update_scenes(
-            dict(
-                xaxis_title='X',
-                yaxis_title='Y', 
-                zaxis_title='Z',
-                aspectmode='data',
-            ),
-            row=row, col=col
-        )
+    # Enhanced: Auto-generate k-NN edges if none provided
+    elif kwargs.get("auto_edges", False):
+        from sklearn.neighbors import NearestNeighbors
+        
+        k = kwargs.get("k_neighbors", 5)
+        nbrs = NearestNeighbors(n_neighbors=k+1, algorithm='kd_tree').fit(coordinates)
+        distances, indices = nbrs.kneighbors(coordinates)
+        
+        for i, neighbors in enumerate(indices):
+            for j in neighbors[1:k+1]:  # Enhanced: limit edges per node
+                edge_color = f"rgba(100,100,100,{kwargs.get('auto_edge_opacity', 0.2)})"
+                
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[coordinates[i, 0], coordinates[j, 0], None],
+                        y=[coordinates[i, 1], coordinates[j, 1], None],
+                        z=[coordinates[i, 2], coordinates[j, 2], None],
+                        mode="lines",
+                        line=dict(color=edge_color, width=0.5),
+                        showlegend=False,
+                        hoverinfo='skip'
+                    )
+                )
     
     return fig
+
+
+def create_survey_comparison(
+    survey_data: Dict[str, np.ndarray],
+    title: str = "Enhanced Survey Comparison",
+    **kwargs
+) -> go.Figure:
+    """
+    Enhanced Survey Comparison mit verbesserter Visualisierung
+    
+    Args:
+        survey_data: Dict mit survey_name -> coordinates
+        title: Plot Titel
+        **kwargs: Enhanced Parameter
+        
+    Returns:
+        Enhanced Plotly Figure
+    """
+    
+    fig = go.Figure()
+    
+    # Enhanced Color Palette für Survey Comparison
+    enhanced_colors = [
+        "#FFD700",  # Gaia - Gold
+        "#4169E1",  # SDSS - Royal Blue  
+        "#FF6347",  # NSA - Tomato
+        "#32CD32",  # TNG50 - Lime Green
+        "#FF69B4",  # Exoplanet - Hot Pink
+        "#20B2AA",  # WISE - Light Sea Green
+        "#DDA0DD",  # LINEAR - Plum
+        "#F0E68C"   # RR Lyrae - Khaki
+    ]
+    
+    for i, (survey_name, coordinates) in enumerate(survey_data.items()):
+        color = enhanced_colors[i % len(enhanced_colors)]
+        
+        # Enhanced: Survey-specific point sizes
+        point_size = kwargs.get("point_size", 3)
+        if "gaia" in survey_name.lower():
+            point_size *= 0.8  # Smaller for star data
+        elif "galaxy" in survey_name.lower() or "nsa" in survey_name.lower():
+            point_size *= 1.5  # Larger for galaxy data
+        
+        fig.add_trace(
+            go.Scatter3d(
+                x=coordinates[:, 0],
+                y=coordinates[:, 1],
+                z=coordinates[:, 2],
+                mode="markers",
+                marker=dict(
+                    size=point_size,
+                    color=color,
+                    opacity=kwargs.get("opacity", 0.7),
+                    line=dict(width=0.5, color="white") if kwargs.get("enhanced_borders", True) else None
+                ),
+                name=f"{survey_name.upper()} ({len(coordinates):,} objects)",
+                hovertemplate=f"<b>{survey_name.upper()}</b><br>" +
+                             "X: %{x:.2f}<br>" +
+                             "Y: %{y:.2f}<br>" +
+                             "Z: %{z:.2f}<br>" +
+                             "<extra></extra>"
+            )
+        )
+    
+    # Enhanced Layout
+    fig.update_layout(
+        title={
+            'text': title,
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 18}
+        },
+        scene=dict(
+            xaxis_title="X (spatial unit)",
+            yaxis_title="Y (spatial unit)",
+            zaxis_title="Z (spatial unit)",
+            camera=dict(eye=dict(x=1.5, y=1.5, z=1.0)),
+            bgcolor="rgba(0,0,0,0.05)"
+        ),
+        template="plotly_dark" if kwargs.get("dark_theme", True) else "plotly_white",
+        legend=dict(
+            x=0.02,
+            y=0.98,
+            bgcolor="rgba(255,255,255,0.8)",
+            bordercolor="rgba(0,0,0,0.2)",
+            borderwidth=1
+        ),
+        width=kwargs.get("width", 900),
+        height=kwargs.get("height", 700)
+    )
+    
+    return fig
+
+
+def create_hr_diagram(
+    magnitudes: np.ndarray,
+    bands: list,
+    title: str = "Enhanced HR Diagram",
+    **kwargs
+) -> go.Figure:
+    """
+    Enhanced Hertzsprung-Russell Diagram
+    
+    Args:
+        magnitudes: Magnitude Array (N, n_bands)
+        bands: Band Namen
+        title: Plot Titel
+        **kwargs: Enhanced Parameter
+        
+    Returns:
+        Enhanced Plotly Figure
+    """
+    
+    enhanced_bridge = EnhancedPlotlyBridge()
+    
+    # Enhanced HR Diagram Creation
+    fig = enhanced_bridge.bridge._create_hr_diagram(magnitudes, bands, **kwargs)
+    
+    # Enhanced Styling
+    fig.update_layout(
+        title={
+            'text': title,
+            'x': 0.5,
+            'xanchor': 'center',
+            'font': {'size': 16}
+        },
+        template="plotly_dark" if kwargs.get("dark_theme", True) else "plotly_white",
+        width=kwargs.get("width", 800),
+        height=kwargs.get("height", 600)
+    )
+    
+    # Enhanced: Add stellar evolution tracks if requested
+    if kwargs.get("show_evolution_tracks", False):
+        # Placeholder für enhanced stellar evolution tracks
+        pass
+    
+    return fig
+
+
+# Export für UI
+__all__ = [
+    "create_3d_scatter_plot",
+    "create_cosmic_web_plot", 
+    "create_survey_comparison",
+    "create_hr_diagram"
+]

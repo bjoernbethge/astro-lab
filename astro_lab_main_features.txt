@@ -1,0 +1,16 @@
+Hauptfeatures von AstroLab
+
+Konfiguration: YAML-basierte Konfigurationsdateien, flexible Pipeline-Einstellungen
+CLI & API: Kommandozeilen-Interface (astro-lab cli), Python API, Automatisierung
+Dokumentation: API-Referenz
+Multi-Survey Integration: Verschiedene Surveys (Gaia, SDSS, NSA, Euclid), einheitliche Datenverarbeitung
+Tensor-Operationen: SpatialTensorDict, Cosmic Web Analyse, Filament-Detektion
+GNN-Architekturen: AstroGraphGNN, AstroTemporalGNN, GCN, GAT, GraphSAGE
+Domain Adaptation: MMDAdapter, Transferlernen
+Hierarchische Graph-Konstruktion: Multi-Scale Graph Builder
+Visualisierung: Cosmograph-Integration, Interaktive Analyse
+Training & Management: PyTorch Lightning, MLflow, CUDA-Optimierung
+Tests & Qualität: Umfangreiche Test-Suite, Linter (ruff), Continuous Integration
+
+Kurz gesagt:
+AstroLab = End-to-End GNN-Plattform für astronomische Big Data. 

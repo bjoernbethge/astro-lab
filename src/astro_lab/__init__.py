@@ -1,12 +1,40 @@
 """
-Comprehensive Astronomical Data Analysis Framework
+AstroLab - Astronomical Machine Learning Framework
+=================================================
 
-A modern Python framework for astronomical data analysis, machine learning, and visualization that combines specialized astronomy libraries with cutting-edge ML tools.
+A comprehensive framework for astronomical data processing, machine learning,
+and visualization with support for multiple surveys and data formats.
 """
 
+# Set tensordict behavior globally for the entire package
+# We want lists to be stacked as tensors since we work with PyG Data objects
 import os
+
+os.environ["LIST_TO_STACK"] = "1"
+
+import tensordict
+
+tensordict.set_list_to_stack(True)
 import warnings
 from pathlib import Path
+
+# Import data module with relative import
+# Core imports
+from . import cli, config, data, models, tensors, training, ui, widgets
+
+# Import config module with relative import
+from .config import (
+    SURVEY_CONFIGS,
+    get_survey_config,
+)
+
+# Import specific tensor classes with relative imports
+from .tensors import (
+    AstroTensorDict,
+    LightcurveTensorDict,
+    PhotometricTensorDict,
+    SpatialTensorDict,
+)
 
 # Suppress NumPy 2.x compatibility warnings while keeping NumPy 2.x
 with warnings.catch_warnings():
@@ -21,26 +49,13 @@ _data_dir.mkdir(exist_ok=True)
 # Set environment variable for astroML
 os.environ["ASTROML_DATA"] = str(_data_dir)
 
-# Import main modules - moved to top to fix E402
-from astro_lab import data
-
-# Import specific tensor classes instead of star imports
-from astro_lab.tensors import (
-    AstroTensorDict,
-    LightcurveTensorDict,
-    PhotometricTensorDict,
-    SpatialTensorDict,
-    SpectralTensorDict,
-    SurveyTensorDict,
-)
-
 __version__ = "0.1.0"
 __all__ = [
     "data",
     "AstroTensorDict",
     "SpatialTensorDict",
     "PhotometricTensorDict",
-    "SpectralTensorDict",
     "LightcurveTensorDict",
-    "SurveyTensorDict",
+    "get_survey_config",
+    "SURVEY_CONFIGS",
 ]

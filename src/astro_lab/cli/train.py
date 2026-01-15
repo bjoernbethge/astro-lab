@@ -1,29 +1,18 @@
 #!/usr/bin/env python3
-"""
-AstroLab Training CLI (Lightning Edition) - Simplified 2025
-=========================================================
-
-CLI for training astronomical ML models using Lightning.
-Jetzt minimal, robust und benutzerfreundlich!
-"""
+"""AstroLab Training CLI - Train astronomical GNN models."""
 
 import argparse
 import logging
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
 
-import torch
+import yaml
 
-try:
-    torch.set_float32_matmul_precision("high")
-except Exception:
-    pass
-
-from astro_lab.models.core import list_presets
-from astro_lab.training import train_model
-
-from .config import load_and_prepare_training_config
+from ..config import (
+    get_combined_config,
+    get_survey_config,
+)
+from ..training import train_model
 
 
 def setup_logging(verbose: bool = False) -> logging.Logger:
@@ -37,138 +26,216 @@ def setup_logging(verbose: bool = False) -> logging.Logger:
 
 
 def create_parser() -> argparse.ArgumentParser:
-    """Create the argument parser for training CLI (minimal version)."""
+    """Create argument parser for training CLI."""
     parser = argparse.ArgumentParser(
-        description="Train astronomical ML models with AstroLab (2025 minimal edition)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Train a GNN model on astronomical survey data.\n\nMost configuration (model, data, training, callbacks, logging, etc.) is controlled via YAML config files. Only a few essential overrides are available as CLI arguments.",
         epilog="""
-Beispiele:
-  python -m src.astro_lab.cli.train --preset graph_classifier_small --dataset gaia
-  python -m src.astro_lab.cli.train --preset node_classifier_medium --dataset sdss --epochs 10
-  python -m src.astro_lab.cli.train --list-presets
+YAML-centric workflow example:
+  astro-lab train gaia
+  astro-lab train gaia --task node_classification
+  astro-lab train gaia -c configs/training.yaml
+  astro-lab train gaia --checkpoint last.ckpt
+
+Arguments:
+  survey                Survey to train on (e.g. gaia, sdss, nsa, ...)
+  --task                Task type (overrides config, e.g. node_classification)
+  -c, --config          Path to YAML configuration file
+  --checkpoint          Checkpoint to resume from
+  -v, --verbose         Enable verbose logging
+
+All other settings (model architecture, hyperparameters, callbacks, logging, etc.) must be set in the YAML config files.
 """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "survey",
+        choices=[
+            "gaia",
+            "sdss",
+            "nsa",
+            "tng50",
+            "exoplanet",
+            "twomass",
+            "wise",
+            "panstarrs",
+            "des",
+            "euclid",
+            "linear",
+            "rrlyrae",
+        ],
+        help="Survey to train on",
     )
     parser.add_argument(
-        "--preset",
+        "--task",
         type=str,
-        help="Name des Model-Presets (z.B. graph_classifier_small, node_classifier_medium)",
+        default="node_classification",  # Default task
+        help="Task type (default: node_classification)",
     )
     parser.add_argument(
-        "--dataset",
+        "--model",
         type=str,
-        default="gaia",
-        choices=["gaia", "sdss", "nsa", "tng50", "exoplanet", "rrlyrae", "linear"],
-        help="Datensatz (default: gaia)",
-    )
-    parser.add_argument(
-        "--epochs",
-        type=int,
         default=None,
-        help="Anzahl Trainings-Epochen (optional, überschreibt Preset)",
+        help="Model type (e.g., gcn, gat, sage, gin, transformer, pointnet, temporal, auto)",
     )
     parser.add_argument(
-        "--list-presets",
-        action="store_true",
-        help="Zeigt alle verfügbaren Presets mit Beschreibung",
+        "--max-epochs", type=int, default=None, help="Maximum training epochs"
     )
     parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Verbose output",
+        "--batch-size", type=int, default=None, help="Batch size for training"
     )
+    parser.add_argument(
+        "--learning-rate", type=float, default=None, help="Learning rate"
+    )
+    parser.add_argument(
+        "--hidden-dim", type=int, default=None, help="Hidden dimension size"
+    )
+    parser.add_argument(
+        "--num-layers", type=int, default=None, help="Number of GNN layers"
+    )
+    parser.add_argument(
+        "-c", "--config", type=str, help="Path to YAML configuration file"
+    )
+    parser.add_argument("--checkpoint", type=str, help="Checkpoint to resume from")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Enable verbose logging"
+    )
+
     return parser
 
 
-def print_presets():
-    presets = list_presets()
-    print("\nVerfügbare Presets:")
-    for name, desc in presets.items():
-        print(f"  {name:28} {desc}")
-    print(
-        "\nBeispiel: python -m src.astro_lab.cli.train --preset graph_classifier_small --dataset gaia\n"
+def main(args=None) -> int:
+    """Main training function."""
+    parser = create_parser()
+    if isinstance(args, argparse.Namespace):
+        parsed_args = args
+    else:
+        parsed_args = parser.parse_args(args)
+    logger = setup_logging(parsed_args.verbose)
+
+    # Ensure task has a default
+    task = parsed_args.task or "node_classification"
+
+    # Get combined config (survey + task)
+    config = get_combined_config(
+        parsed_args.survey,
+        task,
     )
 
+    # Ensure survey and task are set in config
+    config["survey"] = parsed_args.survey
+    config["task"] = task
 
-def main(args=None) -> int:
-    """Main CLI function - minimal, robust, preset-basiert."""
-    if args is None:
-        parser = create_parser()
-        args = parser.parse_args()
+    # Load custom config file if provided
+    if parsed_args.config:
+        try:
+            with open(parsed_args.config, "r") as f:
+                custom_config = yaml.safe_load(f)
+                if custom_config:
+                    config.update(custom_config)
+                    logger.info(f"Loaded custom config from {parsed_args.config}")
+        except Exception as e:
+            logger.error(f"Failed to load config file {parsed_args.config}: {e}")
+            return 1
 
-    logger = setup_logging(args.verbose)
+    # Override config with CLI arguments (CLI has highest priority)
+    if parsed_args.model:
+        config["conv_type"] = parsed_args.model
+    if parsed_args.max_epochs is not None:
+        config["max_epochs"] = parsed_args.max_epochs
+    if parsed_args.batch_size is not None:
+        config["batch_size"] = parsed_args.batch_size
+    if parsed_args.learning_rate is not None:
+        config["learning_rate"] = parsed_args.learning_rate
+    if parsed_args.hidden_dim is not None:
+        config["hidden_dim"] = parsed_args.hidden_dim
+    if parsed_args.num_layers is not None:
+        config["num_layers"] = parsed_args.num_layers
 
-    if hasattr(args, "list_presets") and args.list_presets:
-        print_presets()
-        return 0
-
-    # Unterstützung für beide CLI-Varianten
-    preset = getattr(args, "preset", None)
-    model = getattr(args, "model", None)
-
-    # Wenn --model verwendet wurde, verwende es als Preset
-    if model and not preset:
-        preset = model
-
-    if not preset:
+    # Ensure required parameters
+    if not config.get("survey"):
         logger.error(
-            "❌ Du musst ein Preset/Model mit --preset oder --model angeben! Beispiel: --preset graph_classifier_small"
+            "No dataset/survey specified. Use --survey or provide in config file."
         )
-        print_presets()
         return 1
 
-    # Hardware defaults
-    if torch.cuda.is_available():
-        accelerator = "gpu"
-        precision = "16-mixed"
-        num_workers = getattr(args, "num_workers", 4)
-    else:
-        accelerator = "cpu"
-        precision = "32-true"
-        num_workers = 0
+    # Log configuration summary
+    logger.info("\n" + "=" * 60)
+    logger.info("Training Configuration Summary")
+    logger.info("=" * 60)
+    logger.info(f"Survey: {config['survey']}")
+    logger.info(f"Task: {config['task']}")
 
-    # Preset-Config laden und überschreiben
-    cli_overrides = {
-        "dataset": getattr(args, "dataset", "gaia"),
-        "accelerator": accelerator,
-        "precision": precision,
-        "num_workers": num_workers,
-    }
+    # Get survey-specific information
+    try:
+        survey_config = get_survey_config(config["survey"])
+        logger.info(f"Survey Name: {survey_config.get('name', 'N/A')}")
+        if "recommended_model" in survey_config:
+            rec_model = survey_config["recommended_model"]
+            logger.info(f"Recommended Model: {rec_model.get('conv_type', 'N/A')}")
+    except Exception:
+        pass
 
-    # Zusätzliche CLI-Argumente verarbeiten
-    if hasattr(args, "epochs") and args.epochs:
-        cli_overrides["epochs"] = args.epochs
-    if hasattr(args, "batch_size") and args.batch_size:
-        cli_overrides["batch_size"] = args.batch_size
-    if hasattr(args, "learning_rate") and args.learning_rate:
-        cli_overrides["learning_rate"] = args.learning_rate
-    if hasattr(args, "max_samples") and args.max_samples:
-        cli_overrides["max_samples"] = args.max_samples
-    if hasattr(args, "devices") and args.devices:
-        cli_overrides["devices"] = args.devices
-    if hasattr(args, "precision") and args.precision:
-        cli_overrides["precision"] = args.precision
-    if hasattr(args, "num_features") and args.num_features:
-        cli_overrides["num_features"] = args.num_features
+    logger.info(f"Model Type: {config.get('conv_type', 'auto')}")
+    logger.info(f"Batch Size: {config.get('batch_size', 'default')}")
+    logger.info(f"Learning Rate: {config.get('learning_rate', 'default')}")
+    logger.info(f"Max Epochs: {config.get('max_epochs', 'default')}")
+    logger.info("=" * 60 + "\n")
 
-    config = load_and_prepare_training_config(
-        preset=preset, cli_overrides=cli_overrides
-    )
-
-    logger.info(
-        f"Training mit Preset '{preset}' auf Datensatz '{cli_overrides['dataset']}' für {config.get('epochs', 10)} Epochen"
-    )
-    logger.info(
-        f"Hardware: {accelerator}, Precision: {precision}, num_workers: {num_workers}"
-    )
-    logger.info(f"Alle Parameter: {config}")
+    # Create output directory
+    output_dir = Path("results")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        success = train_model(config)
-        return 0 if success else 1
+        logger.info("Starting training...")
+
+        # Pass model_type from config if not explicitly set
+        model_type = config.get("conv_type") or config.get("model_type")
+
+        results = train_model(
+            survey=config["survey"],
+            task=config["task"],
+            model_type=model_type,
+            config=config,
+        )
+
+        # Save results
+        results_file = output_dir / f"{config['survey']}_{config['task']}_results.yaml"
+
+        # Prepare results for YAML serialization
+        save_results = {
+            "survey": config["survey"],
+            "task": config["task"],
+            "model_type": model_type,
+            "config": config,
+        }
+
+        if results.get("test_results"):
+            test_results = results["test_results"]
+            # Extract metrics safely
+            save_results["test_results"] = {
+                "test_loss": float(test_results.get("test_loss", 0.0)),
+                "test_acc": float(test_results.get("test_acc", 0.0)),
+                "test_f1": float(test_results.get("test_f1", 0.0)),
+            }
+
+        with open(results_file, "w") as f:
+            yaml.dump(save_results, f, default_flow_style=False)
+
+        logger.info(f"Training completed! Results saved to {results_file}")
+
+        if results.get("test_results"):
+            test_acc = results["test_results"].get("test_acc", 0.0)
+            logger.info(f"Test accuracy: {test_acc:.4f}")
+
+        return 0
+
+    except KeyboardInterrupt:
+        logger.info("Training interrupted by user")
+        return 1
     except Exception as e:
-        logger.error(f"Training fehlgeschlagen: {e}")
-        if getattr(args, "verbose", False):
+        logger.error(f"Training failed: {e}")
+        if parsed_args.verbose:
             import traceback
 
             traceback.print_exc()

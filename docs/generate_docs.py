@@ -79,7 +79,6 @@ def create_api_doc_content(module_name: str) -> str:
       show_inheritance_diagram: true
       modernize_annotations: true
       group_by_category: true
-      show_docstring_examples: true
       show_docstring_attributes: true
       show_docstring_parameters: true
       show_docstring_returns: true

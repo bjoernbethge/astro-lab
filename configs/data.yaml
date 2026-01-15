@@ -1,0 +1,25 @@
+data:
+  base_dir: data
+  processed_dir: data/processed
+  raw_dir: data/raw
+  cache_dir: data/cache
+  batch_size: 32
+  num_workers: 4
+  pin_memory: true
+  persistent_workers: true
+  k_neighbors: 20
+  max_samples: null
+  train_ratio: 0.8
+  val_ratio: 0.1
+  sampling_strategy: none
+  neighbor_sizes: [25, 10]
+  num_clusters: 1500
+  saint_sample_coverage: 50
+  saint_walk_length: 2
+  enable_dynamic_batching: false
+  min_batch_size: 1
+  max_batch_size: 512
+  partition_method: null
+  num_partitions: 4
+  handle_imbalance: true
+  balanced_sampling: false

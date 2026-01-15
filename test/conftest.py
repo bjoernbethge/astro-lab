@@ -4,34 +4,48 @@ Test configuration and fixtures for AstroLab.
 Uses real data from the data module for comprehensive testing.
 """
 
+"""
+Test configuration and fixtures for AstroLab.
+
+Uses real data from the data module for comprehensive testing.
+"""
+
 from pathlib import Path
 
+import polars as pl
 import pytest
 import torch
+from torch_geometric.data import Data
 
-from astro_lab.data import AstroDataModule
-from astro_lab.data.datasets import SurveyGraphDataset
-from astro_lab.data.graphs import create_knn_graph
-from astro_lab.models.core import list_lightning_models
-from astro_lab.tensors import PhotometricTensorDict, SpatialTensorDict, SurveyTensorDict
+from astro_lab.config import get_data_config
+from astro_lab.data.collectors.gaia import GaiaCollector
+from astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
+from astro_lab.data.dataset.lightning import AstroLabDataModule
+from astro_lab.data.info import SurveyInfo
+from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
+from astro_lab.data.samplers.neighbor import KNNSampler
+from astro_lab.models import AstroModel
+
+# Get central data configuration
+data_config = get_data_config()
 
 
 @pytest.fixture(scope="session")
 def data_dir():
     """Test data directory."""
-    return Path("data")
+    return Path(data_config["base_dir"])
 
 
 @pytest.fixture(scope="session")
 def processed_dir():
     """Processed data directory."""
-    return Path("data/processed")
+    return Path(data_config["processed_dir"])
 
 
 @pytest.fixture(scope="session")
 def survey_configs():
     """Available survey configurations."""
-    return ["gaia", "nsa", "exoplanet"]
+    return SurveyInfo().list_available_surveys()
 
 
 @pytest.fixture(scope="session")
@@ -42,89 +56,72 @@ def small_survey():
 
 @pytest.fixture
 def astro_datamodule(small_survey):
-    """Create AstroDataModule with small dataset."""
-    return AstroDataModule(
-        survey=small_survey,
-        max_samples=100,
+    """Create AstroLabDataModule with small dataset."""
+    # Create dataset
+    dataset = AstroLabInMemoryDataset(
+        survey_name=small_survey,
+    )
+
+    # Create datamodule
+    return AstroLabDataModule(
+        dataset=dataset,
         batch_size=1,
         num_workers=0,
-        use_subgraph_sampling=True,
-        max_nodes_per_graph=500,
     )
 
 
 @pytest.fixture
 def survey_graph_dataset(small_survey, processed_dir):
-    """Create SurveyGraphDataset with real data."""
-    return SurveyGraphDataset(
-        root=str(processed_dir),
-        survey=small_survey,
-        graph_method="knn",
-        k_neighbors=8,
-        max_samples=100,
+    """Create AstroLabInMemoryDataset with real data."""
+    return AstroLabInMemoryDataset(
+        survey_name=small_survey,
     )
 
 
 @pytest.fixture
-def sample_survey_tensor():
-    """Create a sample SurveyTensorDict for testing."""
-    # Real spatial data - create coordinates tensor properly
-    n_objects = 50
+def real_survey_data(small_survey, processed_dir):
+    """Load real survey data as Polars DataFrame from harmonized parquet file."""
+    import os
 
-    # Create spatial tensor with proper 3D coordinates [N, 3]
-    coordinates = torch.randn(n_objects, 3, dtype=torch.float32)
-    spatial_tensor = SpatialTensorDict(
-        coordinates=coordinates, coordinate_system="icrs", unit="parsec", epoch=2000.0
-    )
+    parquet_path = os.path.join(processed_dir, small_survey, f"{small_survey}.parquet")
+    if not os.path.exists(parquet_path):
+        pytest.skip(f"No harmonized parquet file found for survey: {small_survey}")
+    return pl.read_parquet(parquet_path)
 
-    # Real photometric data - create magnitudes tensor [N, B]
-    magnitudes = torch.randn(n_objects, 3, dtype=torch.float32)  # 3 bands
-    errors = torch.randn(n_objects, 3, dtype=torch.float32)
-    bands = ["g", "r", "i"]
 
-    photometric_tensor = PhotometricTensorDict(
-        magnitudes=magnitudes,
-        bands=bands,
-        errors=errors,
-        filter_system="AB",
-        is_magnitude=True,
-    )
-
-    # Create survey tensor with proper parameters
-    return SurveyTensorDict(
-        spatial=spatial_tensor,
-        photometric=photometric_tensor,
-        survey_name="test_survey",
-        data_release="test",
-    )
+@pytest.fixture
+def preprocessor(small_survey):
+    """Get preprocessor for the default survey."""
+    if small_survey == "gaia":
+        return GaiaPreprocessor()
+    else:
+        # For other surveys, use Gaia as default for now
+        return GaiaPreprocessor()
 
 
 @pytest.fixture
 def lightning_model():
     """Create a simple Lightning model for testing."""
-    models = list_lightning_models()
-    if "astro_node_gnn" in models:
-        # Skip for now since we don't have the create function
-        pytest.skip("Lightning model creation not implemented yet")
-    else:
-        pytest.skip("No astro_node_gnn model available")
-
-
-@pytest.fixture
-def graph_builders():
-    """Available graph builders."""
-    return {
-        "knn": create_knn_graph,
-    }
+    # Create a simple AstroModel for testing
+    model = AstroModel(
+        num_features=10,
+        num_classes=3,
+        hidden_dim=32,
+        num_layers=2,
+        task="node_classification",
+    )
+    return model
 
 
 @pytest.fixture(scope="session")
 def available_surveys():
     """Check which surveys have data available."""
     surveys = []
-    for survey in ["gaia", "nsa", "exoplanet"]:
-        # Check if processed data exists
-        processed_path = Path(f"data/processed/{survey}")
+    for survey in SurveyInfo().list_available_surveys():
+        # Check if processed data exists using central config
+        processed_path = (
+            Path(data_config["processed_dir"]) / survey / f"{survey}.parquet"
+        )
         if processed_path.exists():
             surveys.append(survey)
     return surveys
@@ -137,12 +134,3 @@ def real_graph_data(survey_graph_dataset):
         return survey_graph_dataset[0]
     else:
         pytest.skip("No real graph data available")
-
-
-@pytest.fixture
-def real_survey_tensor(survey_graph_dataset):
-    """Get real SurveyTensorDict from dataset."""
-    try:
-        return survey_graph_dataset.get_survey_tensor()
-    except FileNotFoundError:
-        pytest.skip("No real SurveyTensorDict available")

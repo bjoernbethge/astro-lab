@@ -1,30 +1,13 @@
-"""
-AstroLab Training Module (Lightning Edition)
-==========================================
+"""AstroLab Training Module - PyTorch Lightning based training utilities."""
 
-Simplified training utilities for Lightning-based astronomical ML.
-The main training functionality is now handled by Lightning wrappers
-in astro_lab.models.lightning.
-"""
-
-from .astro_trainer import AstroTrainer, train_model
-from .callbacks import SafeModelCheckpoint
-from .config import TrainingConfig
-from .mlflow_logger import LightningMLflowLogger, MLflowModelCheckpoint
-from .utils import set_random_seed, setup_logging
+from .batch_processing_mixin import BatchProcessingMixin
+from .memory_efficient_mixin import MemoryEfficientMixin
+from .train import train_model
+from .trainer import AstroTrainer
 
 __all__ = [
-    # Main trainer
     "AstroTrainer",
     "train_model",
-    # Callbacks
-    "SafeModelCheckpoint",
-    # MLflow integration for Lightning
-    "LightningMLflowLogger",
-    "MLflowModelCheckpoint",
-    # Basic configuration
-    "TrainingConfig",
-    # Utilities
-    "set_random_seed",
-    "setup_logging",
+    "BatchProcessingMixin",
+    "MemoryEfficientMixin",
 ]

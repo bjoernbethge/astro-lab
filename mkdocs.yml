@@ -5,143 +5,143 @@ site_url: https://bjoernbethge.github.io/astro-lab/
 repo_url: https://github.com/bjoernbethge/astro-lab
 repo_name: astro-lab
 nav:
-- Home: index.md
-- API Reference:
-  - Übersicht: api.md
-  - astro_lab: api/astro_lab.md
-  - astro_lab.cli: api/astro_lab.cli.md
-  - astro_lab.config: api/astro_lab.config.md
-  - astro_lab.data: api/astro_lab.data.md
-  - astro_lab.data.datasets: api/astro_lab.data.datasets.md
-  - astro_lab.data.graphs: api/astro_lab.data.graphs.md
-  - astro_lab.models: api/astro_lab.models.md
-  - astro_lab.models.components: api/astro_lab.models.components.md
-  - astro_lab.models.core: api/astro_lab.models.core.md
-  - astro_lab.tensors: api/astro_lab.tensors.md
-  - astro_lab.training: api/astro_lab.training.md
-  - astro_lab.ui: api/astro_lab.ui.md
-  - astro_lab.ui.modules: api/astro_lab.ui.modules.md
-  - astro_lab.widgets: api/astro_lab.widgets.md
-  - astro_lab.widgets.albpy: api/astro_lab.widgets.albpy.md
-  - astro_lab.widgets.albpy.advanced: api/astro_lab.widgets.albpy.advanced.md
+  - Home: index.md
+  - API Reference:
+      - Übersicht: api.md
+      - astro_lab: api/astro_lab.md
+      - astro_lab.cli: api/astro_lab.cli.md
+      - astro_lab.config: api/astro_lab.config.md
+      - astro_lab.data: api/astro_lab.data.md
+      - astro_lab.data.datasets: api/astro_lab.data.datasets.md
+      - astro_lab.data.graphs: api/astro_lab.data.graphs.md
+      - astro_lab.models: api/astro_lab.models.md
+      - astro_lab.models.components: api/astro_lab.models.components.md
+      - astro_lab.models.core: api/astro_lab.models.core.md
+      - astro_lab.tensors: api/astro_lab.tensors.md
+      - astro_lab.training: api/astro_lab.training.md
+      - astro_lab.ui: api/astro_lab.ui.md
+      - astro_lab.ui.modules: api/astro_lab.ui.modules.md
+      - astro_lab.widgets: api/astro_lab.widgets.md
+      - astro_lab.widgets.albpy: api/astro_lab.widgets.albpy.md
+      - astro_lab.widgets.albpy.utilities: api/astro_lab.widgets.albpy.utilities.md
 theme:
   name: material
   language: en
   logo: assets/logo.svg
   favicon: assets/favicon.ico
   palette:
-  - media: '(prefers-color-scheme: light)'
-    scheme: default
-    primary: indigo
-    accent: cyan
-    toggle:
-      icon: material/brightness-7
-      name: Switch to dark mode
-  - media: '(prefers-color-scheme: dark)'
-    scheme: slate
-    primary: indigo
-    accent: cyan
-    toggle:
-      icon: material/brightness-4
-      name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
   features:
-  - navigation.tabs
-  - navigation.top
-  - navigation.instant
-  - navigation.sections
-  - navigation.expand
-  - navigation.footer
-  - toc.integrate
-  - search.suggest
-  - search.highlight
-  - content.code.annotate
-  - content.code.copy
-  - content.code.select
-  - content.action.edit
-  - content.action.view
-  - content.tabs.link
+    - navigation.tabs
+    - navigation.top
+    - navigation.instant
+    - navigation.sections
+    - navigation.expand
+    - navigation.footer
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.code.annotate
+    - content.code.copy
+    - content.code.select
+    - content.action.edit
+    - content.action.view
+    - content.tabs.link
 markdown_extensions:
-- admonition
-- codehilite
-- toc:
-    permalink: true
-- pymdownx.superfences
-- pymdownx.tabbed
-- pymdownx.details
-- pymdownx.inlinehilite
-- pymdownx.snippets
-- pymdownx.emoji
-- pymdownx.highlight
-- pymdownx.keys
-- pymdownx.tasklist
-- pymdownx.magiclink
-- pymdownx.betterem
-- pymdownx.caret
-- pymdownx.mark
-- pymdownx.tilde
-- pymdownx.smartsymbols
-- pymdownx.progressbar
-- pymdownx.arithmatex
-- pymdownx.saneheaders
-- pymdownx.striphtml
-- pymdownx.escapeall
-- pymdownx.extra
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.tabbed
+  - pymdownx.details
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.emoji
+  - pymdownx.highlight
+  - pymdownx.keys
+  - pymdownx.tasklist
+  - pymdownx.magiclink
+  - pymdownx.betterem
+  - pymdownx.caret
+  - pymdownx.mark
+  - pymdownx.tilde
+  - pymdownx.smartsymbols
+  - pymdownx.progressbar
+  - pymdownx.arithmatex
+  - pymdownx.saneheaders
+  - pymdownx.striphtml
+  - pymdownx.escapeall
+  - pymdownx.extra
 plugins:
-- search
-- mkdocstrings:
-    default_handler: python
-    handlers:
-      python:
-        paths:
-        - src
-        options:
-          show_source: true
-          show_signature: true
-          show_signature_annotations: true
-          separate_signature: true
-          show_inheritance_diagram: true
-          modernize_annotations: true
-          group_by_category: true
-          show_docstring_examples: true
-          show_docstring_attributes: true
-          show_docstring_parameters: true
-          show_docstring_returns: true
-          show_docstring_raises: true
-          show_docstring_warns: true
-          show_docstring_yields: true
-          show_docstring_classes: true
-          show_docstring_functions: true
-          show_docstring_modules: true
-          show_docstring_other_parameters: true
-          show_if_no_docstring: false
-          show_labels: true
-          show_object_full_path: false
-          show_root_full_path: false
-          show_root_heading: true
-          show_root_members_full_path: false
-          show_root_toc_entry: true
-          members_order: alphabetical
-          summary:
-            attributes: true
-            classes: true
-            functions: true
-            modules: true
-          docstring_style: google
-          docstring_section_style: table
-          line_length: 88
-          unwrap_annotated: true
-          signature_crossrefs: true
-          show_overloads: true
-          show_bases: true
-          backlinks: tree
-- mermaid2
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            show_source: true
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            show_inheritance_diagram: true
+            modernize_annotations: true
+            group_by_category: true
+            show_docstring_examples: true
+            show_docstring_attributes: true
+            show_docstring_parameters: true
+            show_docstring_returns: true
+            show_docstring_raises: true
+            show_docstring_warns: true
+            show_docstring_yields: true
+            show_docstring_classes: true
+            show_docstring_functions: true
+            show_docstring_modules: true
+            show_docstring_other_parameters: true
+            show_if_no_docstring: false
+            show_labels: true
+            show_object_full_path: false
+            show_root_full_path: false
+            show_root_heading: true
+            show_root_members_full_path: false
+            show_root_toc_entry: true
+            members_order: alphabetical
+            summary:
+              attributes: true
+              classes: true
+              functions: true
+              modules: true
+            docstring_style: google
+            docstring_section_style: table
+            line_length: 88
+            unwrap_annotated: true
+            signature_crossrefs: true
+            show_overloads: true
+            show_bases: true
+            backlinks: tree
+  - mermaid2
 extra_css:
-- assets/custom.css
+  - assets/custom.css
 watch:
-- src/astro_lab
+  - src/astro_lab
 extra:
   social:
-  - icon: fontawesome/brands/github
-    link: https://github.com/bjoernbethge/astro-lab
-  - icon: fontawesome/brands/python
-    link: https://pypi.org/project/astro-lab/
+    - icon: fontawesome/brands/github
+      link: https://github.com/bjoernbethge/astro-lab
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/astro-lab/

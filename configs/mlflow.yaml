@@ -1,0 +1,4 @@
+mlflow:
+  tracking_uri: data/mlruns
+  experiment_name: astrolab_experiments
+  log_model: true

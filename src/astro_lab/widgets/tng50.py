@@ -8,9 +8,11 @@ with support for gas, stars, and dark matter components.
 Features:
 - Load TNG50 .pt files efficiently
 - Convert to Blender meshes via DataBridge
-- Convert to PyVista meshes for 3D viz
+- Convert to PyVista meshes for 3D viz (now via Enhanced-API)
 - Handle multiple particle types
 - Extract features for color/size mapping
+
+Note: This module uses the Enhanced-API for all 3D visualization (see astro_lab.widgets.enhanced).
 
 Typical workflow:
 1. Load .pt file → get positions, features, edges
@@ -21,18 +23,14 @@ Typical workflow:
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import h5py
-import numpy as np
-import pyvista as pv
 import torch
 
-try:
-    from .bpy import bpy, mathutils
-except ImportError:
-    bpy = None
-    mathutils = None
+from astro_lab.config import get_data_config
+from astro_lab.widgets.enhanced import to_pyvista
+
+bpy = None  # Blender API only available inside Blender, do not import here
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +49,15 @@ class TNG50Visualizer:
         Args:
             data_dir: Directory containing processed TNG50 graphs
         """
-        self.data_dir = data_dir or Path("data/processed/tng50_graphs")
+        if data_dir is None:
+            data_config = get_data_config()
+            self.data_dir = Path(data_config["processed_dir"]) / "tng50" / "graphs"
+        else:
+            self.data_dir = data_dir
 
         logger.info("🌌 TNG50Visualizer initialized")
         logger.info(f"   Data directory: {self.data_dir}")
-        logger.info(f"   PyVista: {'✅' if pv is not None else '❌'}")
+        logger.info(f"   PyVista: {'✅' if to_pyvista is not None else '❌'}")
         logger.info(f"   Blender: {'✅' if bpy is not None else '❌'}")
 
     def list_available_graphs(self) -> Dict[str, List[str]]:
@@ -160,60 +162,12 @@ class TNG50Visualizer:
         point_size: float = 5.0,
         color_by: str = "mass",
         include_edges: bool = False,
-    ) -> "pv.PolyData":
+    ) -> Any:
         """
-        Convert TNG50 graph to PyVista mesh for 3D visualization.
-
-        Args:
-            graph_data: Graph data from load_tng50_graph()
-            point_size: Point size for rendering
-            color_by: Feature to use for coloring
-            include_edges: Whether to include graph edges
-
-        Returns:
-            PyVista PolyData mesh
+        Convert TNG50 graph to PyVista mesh for 3D visualization using Enhanced-API.
         """
-        if pv is None:
-            raise ImportError("PyVista not available")
-
-        positions = graph_data["positions"]
-        features = graph_data["features"]
-        feature_names = graph_data["feature_names"]
-
-        logger.info(f"🔧 Converting to PyVista mesh: {len(positions):,} points")
-
-        # Create point cloud
-        mesh = pv.PolyData(positions)
-
-        # Add features as point data
-        for i, name in enumerate(feature_names):
-            mesh.point_data[name] = features[:, i]
-
-        # Add particle indices
-        mesh.point_data["particle_id"] = np.arange(len(positions))
-
-        # Set default coloring
-        if color_by in feature_names:
-            mesh.set_active_scalars(color_by)
-            logger.info(f"   Coloring by: {color_by}")
-
-        # Add edges if requested
-        if include_edges:
-            edge_index = graph_data["edge_index"]
-            edge_weights = graph_data["edge_weights"]
-
-            # Create lines between connected particles
-            lines = []
-            for i in range(edge_index.shape[1]):
-                start_idx = edge_index[0, i]
-                end_idx = edge_index[1, i]
-                lines.extend([2, start_idx, end_idx])  # PyVista line format
-
-            mesh.lines = np.array(lines)
-            mesh.line_data["edge_weight"] = edge_weights.flatten()
-
-            logger.info(f"   Added {edge_index.shape[1]:,} edges")
-
+        mesh = to_pyvista(graph_data)
+        # Optionally set coloring or other attributes here if needed
         return mesh
 
     def to_blender_objects(
@@ -222,83 +176,32 @@ class TNG50Visualizer:
         object_name: str = "TNG50_particles",
         use_instancing: bool = True,
     ) -> List[Any]:
-        """
-        Convert TNG50 graph to Blender objects.
-
-        Args:
-            graph_data: Graph data from load_tng50_graph()
-            object_name: Base name for Blender objects
-            use_instancing: Use instancing for better performance
-
-        Returns:
-            List of created Blender objects
-        """
         if bpy is None:
-            raise ImportError("Blender not available")
-
+            raise ImportError("Blender's bpy module is not available outside Blender.")
         positions = graph_data["positions"]
-        features = graph_data["features"]
+        graph_data["features"]
 
         logger.info(f"🎨 Converting to Blender: {len(positions):,} particles")
 
-        # Create or get base mesh (sphere for particles)
-        if use_instancing:
-            # Create base sphere
-            import bpy  # Import locally after availability check
+        # Create single mesh with all particles using pure bpy API
+        # Create mesh data
+        mesh_data = bpy.data.meshes.new(object_name)
+        mesh_obj = bpy.data.objects.new(object_name, mesh_data)
 
-            bpy.ops.mesh.primitive_uv_sphere_add(radius=1.0, location=(0, 0, 0))
-            base_sphere = bpy.context.active_object
-            base_sphere.name = f"{object_name}_base"
+        # Create vertices from positions
+        vertices = []
+        for pos in positions:
+            vertices.append(pos)
 
-            # Create collection for instances
-            collection_name = f"{object_name}_collection"
-            collection = bpy.data.collections.new(collection_name)
-            bpy.context.scene.collection.children.link(collection)
+        # Create mesh from vertices
+        mesh_data.from_pydata(vertices, [], [])
+        mesh_data.update()
 
-            objects = [base_sphere]
+        # Link to scene
+        bpy.context.scene.collection.objects.link(mesh_obj)
 
-            # Use geometry nodes for instancing (more efficient)
-            # For now, create simple instances
-            for i, pos in enumerate(positions[:100]):  # Limit for performance
-                bpy.ops.object.duplicate()
-                instance = bpy.context.active_object
-                instance.location = pos
-                instance.name = f"{object_name}_particle_{i}"
-
-                # Scale by mass if available
-                if len(features) > 0:
-                    mass = features[i, 0]  # Assume first feature is mass
-                    scale = np.log10(mass * 1000) if mass > 0 else 1.0
-                    instance.scale = (scale, scale, scale)
-
-                collection.objects.link(instance)
-                objects.append(instance)
-
-            logger.info(f"   Created {len(objects) - 1} particle instances")
-
-        else:
-            # Create single mesh with all particles
-            import bmesh
-
-            bm = bmesh.new()
-
-            for i, pos in enumerate(positions):
-                # Add vertex at particle position
-                vert = bm.verts.new(pos)
-
-                # Could add more sophisticated geometry here
-
-            # Create mesh
-            mesh = bpy.data.meshes.new(object_name)
-            bm.to_mesh(mesh)
-            bm.free()
-
-            # Create object
-            obj = bpy.data.objects.new(object_name, mesh)
-            bpy.context.scene.collection.objects.link(obj)
-
-            objects = [obj]
-            logger.info("   Created single mesh object")
+        objects = [mesh_obj]
+        logger.info("   Created single mesh object")
 
         return objects
 
@@ -343,6 +246,46 @@ class TNG50Visualizer:
         else:
             raise ValueError(f"Unknown method: {method}")
 
+    def render(
+        self,
+        output_path: str = "results/tng50_render.png",
+        engine: str = "CYCLES",
+        resolution: Tuple[int, int] = (1920, 1080),
+        samples: int = 128,
+        animation: bool = False,
+        **kwargs,
+    ) -> bool:
+        if bpy is None:
+            raise ImportError("Blender's bpy module is not available outside Blender.")
+        try:
+            bpy.context.scene.render.engine = engine
+            bpy.context.scene.render.filepath = output_path
+            bpy.context.scene.render.resolution_x = resolution[0]
+            bpy.context.scene.render.resolution_y = resolution[1]
+            bpy.context.scene.render.samples = samples
+
+            # Add camera if not present
+            if not any(obj.type == "CAMERA" for obj in bpy.context.scene.objects):
+                bpy.ops.object.camera_add(location=[10, -10, 5])
+                camera = bpy.context.active_object
+                camera.rotation_euler = [1.1, 0, 0.8]
+                bpy.context.scene.camera = camera
+
+            # Add light if not present
+            if not any(obj.type == "LIGHT" for obj in bpy.context.scene.objects):
+                bpy.ops.object.light_add(type="SUN", location=[5, 5, 10])
+                light = bpy.context.active_object
+                light.data.energy = 5.0
+
+            if animation:
+                bpy.ops.render.render(animation=True)
+            else:
+                bpy.ops.render.render(write_still=True)
+            return True
+        except Exception as e:
+            print(f"Failed to render TNG50 scene: {e}")
+            return False
+
 
 # Convenience functions
 def load_tng50_gas(max_particles: int = 1000) -> Dict[str, Any]:
@@ -364,7 +307,8 @@ def quick_pyvista_plot(particle_type: str = "gas", **kwargs):
 
 
 def quick_blender_import(particle_type: str = "gas", **kwargs):
-    """Quick Blender import of TNG50 data."""
+    if bpy is None:
+        raise ImportError("Blender's bpy module is not available outside Blender.")
     viz = TNG50Visualizer()
     return viz.quick_visualization(particle_type, "blender", **kwargs)
 

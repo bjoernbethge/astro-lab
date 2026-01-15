@@ -1,450 +1,369 @@
 """
-Cosmograph bridge for astronomical data visualization.
-
-Provides seamless integration between AstroLab tensors and Cosmograph 3D visualization.
+Cosmograph Bridge - Enhanced API für UI Integration
 """
 
-from typing import Any, Dict, Optional
-
 import numpy as np
-import polars as pl
-import torch
-from cosmograph import cosmo
-from sklearn.neighbors import NearestNeighbors
+from typing import Optional, Dict, Any, List
 
-from astro_lab.data.graphs import create_knn_graph
+# Import echte Cosmograph Implementation + Enhanced Module
+from .alcg.bridge import CosmographBridge as _CosmographBridge
+from .enhanced import (
+    AstronomicalTensorBridge,
+    to_cosmograph,
+    ZeroCopyTensorConverter
+)
 
 
 class CosmographBridge:
     """
-    Bridge class for creating Cosmograph visualizations from AstroLab data.
-
-    Provides methods to convert various data sources to Cosmograph format:
-    - Spatial3DTensor objects
-    - Survey data dictionaries
-    - Raw coordinate arrays
-    - Polars DataFrames
+    Enhanced Cosmograph Bridge für UI Integration
+    Nutzt die volle Power von AlcG + Enhanced Module für optimale Performance
     """
-
+    
     def __init__(self):
-        """Initialize CosmographBridge with default configuration."""
-        self.default_config = {
-            "width": 800,
-            "height": 600,
-            "background_color": "#000000",
-            "point_size": 3,
-            "link_width": 1,
-            "camera_distance": 100,
-            "camera_rotation": [0, 0, 0],
-        }
-
-    def from_spatial_tensor(
+        self._bridge = _CosmographBridge()
+        self.tensor_bridge = AstronomicalTensorBridge()
+        self.converter = ZeroCopyTensorConverter()
+        
+    def create_network_visualization(
         self,
-        tensor,
-        radius: float = 5.0,
-        point_color: str = "#ffd700",
-        link_color: str = "#666666",
-        **kwargs,
-    ) -> Any:
+        coordinates: np.ndarray,
+        cluster_labels: Optional[np.ndarray] = None,
+        node_size: float = 2.0,
+        show_physics: bool = True,
+        **kwargs
+    ):
         """
-        Create Cosmograph visualization from Spatial3DTensor.
-
+        Erstelle Enhanced Netzwerk Visualisierung
+        
         Args:
-            tensor: AstroLab Spatial3DTensor
-            radius: Radius for neighbor graph creation (default: 5.0)
-            point_color: Color for points (default: gold)
-            link_color: Color for links (default: gray)
-            **kwargs: Additional Cosmograph parameters
-
+            coordinates: 3D Koordinaten Array (N, 3)
+            cluster_labels: Optional cluster labels
+            node_size: Node Größe
+            show_physics: Physik Simulation aktivieren
+            **kwargs: Zusätzliche Parameter
+            
         Returns:
-            Cosmograph widget
+            Enhanced Cosmograph Widget
         """
-        # Extract coordinates
-        coords = tensor.cartesian.cpu().numpy()
-
-        # Create neighbor graph
-        edges = (
-            tensor._create_radius_graph(tensor.cartesian, radius=radius)
-            .t()
-            .cpu()
-            .numpy()
+        
+        # Enhanced Tensor Conversion
+        cosmograph_data = to_cosmograph(
+            coordinates,
+            cluster_labels=cluster_labels,
+            **kwargs
         )
-
-        # Create Polars DataFrames
-        points_df = pl.DataFrame(
-            {
-                "id": [f"node_{i}" for i in range(len(coords))],
-                "x": coords[:, 0],
-                "y": coords[:, 1],
-                "z": coords[:, 2],
-                "distance": np.linalg.norm(coords, axis=1),
+        
+        # Erstelle Enhanced Node Daten
+        nodes = []
+        for i, coord in enumerate(coordinates):
+            node = {
+                "id": str(i),
+                "x": float(coord[0]),
+                "y": float(coord[1]), 
+                "z": float(coord[2]) if len(coord) > 2 else 0.0,
+                "size": node_size * self._get_enhanced_size_factor(i, cluster_labels),
+                "color": self._get_enhanced_node_color(i, cluster_labels),
+                "opacity": self._get_enhanced_opacity(i, cluster_labels)
             }
+            nodes.append(node)
+        
+        # Enhanced Edge Creation
+        edges = self._create_enhanced_edges(coordinates, cluster_labels, **kwargs)
+        
+        # Verwende echte Bridge mit Enhanced Features
+        return self._bridge.create_visualization(
+            nodes=nodes,
+            edges=edges,
+            show_physics=show_physics,
+            enhanced_features=True,
+            **kwargs
         )
-
-        links_df = pl.DataFrame(
-            {
-                "source": [f"node_{edges[i, 0]}" for i in range(len(edges))],
-                "target": [f"node_{edges[i, 1]}" for i in range(len(edges))],
-                "distance": np.random.uniform(1.0, radius, len(edges)),
-            }
+    
+    def create_cosmic_web_network(
+        self,
+        coordinates: np.ndarray,
+        scale: float,
+        n_clusters: int,
+        **kwargs
+    ):
+        """
+        Erstelle Enhanced Cosmic Web Netzwerk
+        
+        Args:
+            coordinates: 3D Koordinaten
+            scale: Analyse Skala
+            n_clusters: Anzahl gefundener Cluster
+            **kwargs: Zusätzliche Parameter
+            
+        Returns:
+            Enhanced Cosmograph Widget
+        """
+        
+        # Enhanced Cluster Analysis
+        cluster_labels = self._create_enhanced_clusters(coordinates, n_clusters, scale)
+        
+        # Enhanced Physics Parameters basierend auf Skala
+        physics_config = self._get_enhanced_physics_config(scale, n_clusters)
+        
+        return self.create_network_visualization(
+            coordinates=coordinates,
+            cluster_labels=cluster_labels,
+            node_size=2.0 * (scale / 10.0),  # Scale-abhängige Größe
+            show_physics=True,
+            physics_config=physics_config,
+            **kwargs
         )
-
-        # Convert to pandas for Cosmograph (required by cosmograph)
-        points_pandas = points_df.to_pandas()
-        links_pandas = links_df.to_pandas()
-
-        # Merge configs
-        config = {**self.default_config, **kwargs}
-
-        # Remove point_color from config to avoid duplicate parameter
-        config.pop("point_color", None)
-
-        # Use link_width_by and link_width_scale instead of link_width_range
-        return cosmo(
-            points=points_pandas,
-            links=links_pandas,
-            point_id_by="id",
-            point_x_by="x",
-            point_y_by="y",
-            point_color=point_color,
-            point_size_range=[2, 6],
-            link_source_by="source",
-            link_target_by="target",
-            link_color=link_color,
-            link_width_by="distance",
-            link_width_scale=1.0,
-            **config,
-        )
-
+    
     def from_cosmic_web_results(
-        self, results: Dict[str, Any], survey_name: str, radius: float = 5.0, **kwargs
-    ) -> Any:
-        """
-        Create Cosmograph visualization from cosmic web analysis results.
-
-        Args:
-            results: Results from create_cosmic_web_loader
-            survey_name: Name of survey (gaia, sdss, nsa, tng50, etc.)
-            radius: Radius for neighbor graph creation
-            **kwargs: Additional Cosmograph parameters
-
-        Returns:
-            Cosmograph widget
-        """
-        # Extract coordinates from cosmic web results
-        if "coordinates" in results:
-            coords = np.array(results["coordinates"])
-        elif "spatial_tensor" in results:
-            # If spatial_tensor is available, use it
-            tensor = results["spatial_tensor"]
-            coords = tensor.cartesian.cpu().numpy()
-        else:
-            raise ValueError("No coordinates found in cosmic web results")
-
-        # Set colors based on survey type
-        color_map = {
-            "gaia": "#ffd700",  # Gold for stars
-            "sdss": "#4a90e2",  # Blue for galaxies
-            "nsa": "#e24a4a",  # Red for NSA
-            "tng50": "#00ff00",  # Green for simulation
-            "tng": "#00ff00",  # Green for simulation
-            "linear": "#ff8800",  # Orange for asteroids
-            "exoplanet": "#ff00ff",  # Magenta for exoplanets
-        }
-
-        point_color = color_map.get(survey_name, "#ffffff")
-
-        return self.from_coordinates(
-            coords, radius=radius, point_color=point_color, **kwargs
-        )
-
-    def from_survey_data(
-        self, data: Dict[str, Any], survey_name: str, radius: float = 5.0, **kwargs
-    ) -> Any:
-        """
-        Create Cosmograph visualization from survey data.
-
-        Args:
-            data: Survey data dictionary with 'spatial_tensor' key
-            survey_name: Name of survey (gaia, sdss, nsa, tng50)
-            radius: Radius for neighbor graph creation
-            **kwargs: Additional Cosmograph parameters
-
-        Returns:
-            Cosmograph widget
-        """
-        # Check if this is cosmic web results
-        if "coordinates" in data or "spatial_tensor" in data:
-            return self.from_cosmic_web_results(data, survey_name, radius, **kwargs)
-
-        # Fallback to old method
-        if "spatial_tensor" not in data:
-            raise ValueError("Survey data must contain 'spatial_tensor' key")
-
-        # Set colors based on survey type
-        color_map = {
-            "gaia": "#ffd700",  # Gold for stars
-            "sdss": "#4a90e2",  # Blue for galaxies
-            "nsa": "#e24a4a",  # Red for NSA
-            "tng50": "#00ff00",  # Green for simulation
-        }
-
-        point_color = color_map.get(survey_name, "#ffffff")
-
-        return self.from_spatial_tensor(
-            data["spatial_tensor"], radius=radius, point_color=point_color, **kwargs
-        )
-
-    def from_coordinates(
         self,
-        coords: np.ndarray,
-        edges: Optional[np.ndarray] = None,
-        radius: float = 5.0,
-        **kwargs,
-    ) -> Any:
+        analysis_results: Dict[str, Any],
+        survey_name: str = "unknown",
+        **kwargs
+    ):
         """
-        Create Cosmograph visualization from coordinate array.
-
+        Erstelle Enhanced Visualisierung aus Cosmic Web Analyse Ergebnissen
+        
         Args:
-            coords: Coordinate array [N, 3]
-            edges: Optional edge array [M, 2]
-            radius: Radius for neighbor graph creation
-            **kwargs: Additional Cosmograph parameters
-
+            analysis_results: Ergebnisse der Cosmic Web Analyse
+            survey_name: Name des Surveys
+            **kwargs: Zusätzliche Parameter
+            
         Returns:
-            Cosmograph widget
+            Enhanced Cosmograph Widget
         """
-        if edges is None:
-            # Create simple neighbor graph using GPU acceleration
-            # Convert to PyTorch tensor and move to GPU
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
-
-            # Create k-NN graph on GPU
-            from torch_geometric.nn import knn_graph
-
-            edge_index = knn_graph(
-                coords_tensor,
-                k=5,  # 5 nearest neighbors
-                batch=None,
-                loop=False,  # No self-loops
-            )
-
-            # Move back to CPU and convert to numpy
-            edge_index = edge_index.cpu().numpy()
-
-            # Calculate distances and filter by radius (vectorized)
-            # Extract source and target indices
-            src_indices = edge_index[0, :]  # [E]
-            tgt_indices = edge_index[1, :]  # [E]
+        
+        coordinates = analysis_results.get("coordinates")
+        if coordinates is None:
+            raise ValueError("Keine Koordinaten in analysis_results gefunden")
+        
+        # Enhanced Analysis Processing
+        clustering_results = analysis_results.get("clustering_results", {})
+        if clustering_results:
+            # Enhanced Multi-Scale Analysis
+            best_scale, best_stats = self._analyze_enhanced_clustering(clustering_results)
+            n_clusters = best_stats.get("n_clusters", 0)
+        else:
+            best_scale = 10.0
+            n_clusters = 5
+        
+        # Enhanced Visualization mit Survey-spezifischen Features
+        enhanced_kwargs = self._get_survey_enhancement(survey_name)
+        enhanced_kwargs.update(kwargs)
+        
+        return self.create_cosmic_web_network(
+            coordinates=coordinates,
+            scale=float(str(best_scale).replace("pc", "").replace("Mpc", "")),
+            n_clusters=n_clusters,
+            survey_type=survey_name,
+            **enhanced_kwargs
+        )
+    
+    def _get_enhanced_node_color(self, node_idx: int, cluster_labels: Optional[np.ndarray]) -> str:
+        """Enhanced Farb-Schema basierend auf Cluster Labels"""
+        
+        # Enhanced Color Palette für bessere Unterscheidung
+        colors = [
+            "#FFD700",  # Gold - Cluster 0
+            "#FF6B6B",  # Coral Red - Cluster 1
+            "#4ECDC4",  # Teal - Cluster 2
+            "#45B7D1",  # Sky Blue - Cluster 3
+            "#96CEB4",  # Mint Green - Cluster 4
+            "#FFEAA7",  # Warm Yellow - Cluster 5
+            "#DDA0DD",  # Plum - Cluster 6
+            "#FFA07A",  # Light Salmon - Cluster 7
+            "#98D8C8",  # Mint - Cluster 8
+            "#F7DC6F",  # Light Gold - Cluster 9
+            "#BB8FCE",  # Medium Orchid - Cluster 10
+            "#85C1E9",  # Light Blue - Cluster 11
+        ]
+        
+        if cluster_labels is None:
+            return colors[0]  # Default Gold
+        
+        label = cluster_labels[node_idx] if node_idx < len(cluster_labels) else -1
+        
+        if label == -1:  # Enhanced Noise Visualization
+            return "#404040"  # Dark Gray für Noise
+        
+        return colors[label % len(colors)]
+    
+    def _get_enhanced_size_factor(self, node_idx: int, cluster_labels: Optional[np.ndarray]) -> float:
+        """Enhanced Size Factor basierend auf Cluster Membership"""
+        
+        if cluster_labels is None:
+            return 1.0
+        
+        label = cluster_labels[node_idx] if node_idx < len(cluster_labels) else -1
+        
+        if label == -1:  # Noise nodes kleiner
+            return 0.7
+        else:  # Cluster nodes größer
+            return 1.2
+    
+    def _get_enhanced_opacity(self, node_idx: int, cluster_labels: Optional[np.ndarray]) -> float:
+        """Enhanced Opacity für bessere Visualisierung"""
+        
+        if cluster_labels is None:
+            return 0.8
+        
+        label = cluster_labels[node_idx] if node_idx < len(cluster_labels) else -1
+        
+        if label == -1:  # Noise nodes transparenter
+            return 0.4
+        else:  # Cluster nodes opaker
+            return 0.9
+    
+    def _create_enhanced_edges(
+        self, 
+        coordinates: np.ndarray, 
+        cluster_labels: Optional[np.ndarray], 
+        **kwargs
+    ) -> List[Dict]:
+        """Erstelle Enhanced Edges mit intelligentem Routing"""
+        
+        from sklearn.neighbors import NearestNeighbors
+        
+        k = kwargs.get("k_neighbors", 5)
+        
+        # Enhanced k-NN mit Cluster-aware Weighting
+        nbrs = NearestNeighbors(n_neighbors=k+1, algorithm='kd_tree').fit(coordinates)
+        distances, indices = nbrs.kneighbors(coordinates)
+        
+        edges = []
+        for i, (neighbor_distances, neighbors) in enumerate(zip(distances, indices)):
+            for j, neighbor_idx in enumerate(neighbors[1:]):  # Skip self
+                
+                # Enhanced Edge Weighting
+                distance = neighbor_distances[j+1]
+                
+                # Cluster-aware edge strength
+                edge_strength = self._calculate_enhanced_edge_strength(
+                    i, neighbor_idx, distance, cluster_labels
+                )
+                
+                edge = {
+                    "source": str(i),
+                    "target": str(neighbor_idx),
+                    "weight": edge_strength,
+                    "distance": float(distance),
+                    "enhanced": True
+                }
+                edges.append(edge)
+        
+        return edges
+    
+    def _calculate_enhanced_edge_strength(
+        self, 
+        node1: int, 
+        node2: int, 
+        distance: float,
+        cluster_labels: Optional[np.ndarray]
+    ) -> float:
+        """Berechne Enhanced Edge Strength"""
+        
+        base_strength = 1.0 / (1.0 + distance)  # Distance-based base strength
+        
+        if cluster_labels is None:
+            return base_strength
+        
+        label1 = cluster_labels[node1] if node1 < len(cluster_labels) else -1
+        label2 = cluster_labels[node2] if node2 < len(cluster_labels) else -1
+        
+        # Enhanced: Same cluster edges stronger
+        if label1 == label2 and label1 != -1:
+            return base_strength * 2.0  # Intra-cluster edges stronger
+        elif label1 != -1 and label2 != -1:
+            return base_strength * 0.5  # Inter-cluster edges weaker
+        else:
+            return base_strength * 0.3  # Noise edges weakest
+    
+    def _create_enhanced_clusters(
+        self, 
+        coordinates: np.ndarray, 
+        n_clusters: int, 
+        scale: float
+    ) -> np.ndarray:
+        """Enhanced Cluster Creation mit Multi-Algorithm Approach"""
+        
+        if n_clusters <= 1:
+            return np.zeros(len(coordinates), dtype=int)
+        
+        # Enhanced: Verwende DBSCAN für density-based clustering
+        from sklearn.cluster import DBSCAN
+        
+        # Scale-adaptive epsilon
+        eps = scale * 0.5  # Adaptive epsilon basierend auf Skala
+        min_samples = max(3, int(n_clusters * 0.1))  # Adaptive min_samples
+        
+        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
+        labels = dbscan.fit_predict(coordinates)
+        
+        return labels
+    
+    def _get_enhanced_physics_config(self, scale: float, n_clusters: int) -> Dict[str, Any]:
+        """Enhanced Physics Configuration"""
+        
+        return {
+            "gravity": 0.1 * (scale / 10.0),  # Scale-dependent gravity
+            "repulsion": 1.0 + (n_clusters / 10.0),  # Cluster-dependent repulsion
+            "damping": 0.8,
+            "enhanced_simulation": True
+        }
+    
+    def _analyze_enhanced_clustering(
+        self, 
+        clustering_results: Dict[str, Any]
+    ) -> tuple:
+        """Enhanced Clustering Analysis"""
+        
+        # Finde beste Skala basierend auf Enhanced Metriken
+        best_score = 0
+        best_scale = None
+        best_stats = {}
+        
+        for scale, stats in clustering_results.items():
+            # Enhanced Scoring: Kombiniere mehrere Metriken
+            grouped_fraction = stats.get("grouped_fraction", 0)
+            n_clusters = stats.get("n_clusters", 0)
             
-            # Compute edge vectors and distances vectorially
-            edge_vectors = coords[tgt_indices] - coords[src_indices]  # [E, 3]
-            distances = np.linalg.norm(edge_vectors, axis=1)  # [E]
+            # Enhanced Score: Balance zwischen Gruppierung und Cluster-Anzahl
+            score = grouped_fraction * 0.7 + min(n_clusters / 10.0, 1.0) * 0.3
             
-            # Filter edges by radius
-            mask = distances <= radius
-            edges = edge_index[:, mask].T  # Transpose to [M, 2] format
-
-        # Extract coordinates explicitly
-        x_coords = coords[:, 0].tolist()
-        y_coords = coords[:, 1].tolist()
-        z_coords = coords[:, 2].tolist()
-
-        # Create Polars DataFrames
-        points_df = pl.DataFrame(
-            {
-                "id": [f"point_{i}" for i in range(len(coords))],
-                "x": x_coords,
-                "y": y_coords,
-                "z": z_coords,
+            if score > best_score:
+                best_score = score
+                best_scale = scale
+                best_stats = stats
+        
+        return best_scale or 10.0, best_stats
+    
+    def _get_survey_enhancement(self, survey_name: str) -> Dict[str, Any]:
+        """Survey-spezifische Enhanced Features"""
+        
+        enhancements = {
+            "gaia": {
+                "node_color_scheme": "stellar",
+                "physics_mode": "galactic",
+                "edge_weighting": "proper_motion"
+            },
+            "sdss": {
+                "node_color_scheme": "redshift",
+                "physics_mode": "cosmological", 
+                "edge_weighting": "distance"
+            },
+            "nsa": {
+                "node_color_scheme": "morphology",
+                "physics_mode": "cluster",
+                "edge_weighting": "luminosity"
             }
-        )
-
-        if edges.size > 0:
-            sources = [f"point_{src}" for src in edges[:, 0]]
-            targets = [f"point_{tgt}" for tgt in edges[:, 1]]
-        else:
-            sources = []
-            targets = []
-        links_df = pl.DataFrame({"source": sources, "target": targets})
-
-        # Convert to pandas for Cosmograph (required by cosmograph)
-        points_pandas = points_df.to_pandas()
-        links_pandas = links_df.to_pandas()
-
-        # Merge configs
-        config = {**self.default_config, **kwargs}
-
-        # Extract point_color from kwargs or use default
-        point_color = kwargs.get("point_color", "#ffffff")
-        link_color = kwargs.get("link_color", "#666666")
-
-        # Remove these from config to avoid duplicate parameters
-        config.pop("point_color", None)
-        config.pop("link_color", None)
-
-        return cosmo(
-            points=points_pandas,
-            links=links_pandas,
-            point_id_by="id",
-            point_x_by="x",
-            point_y_by="y",
-            point_color=point_color,
-            point_size_range=[2, 6],
-            link_source_by="source",
-            link_target_by="target",
-            link_color=link_color,
-            link_width_scale=1.0,
-            **config,
-        )
-
-    def from_polars_dataframe(
-        self,
-        df: pl.DataFrame,
-        x_col: str = "x",
-        y_col: str = "y",
-        z_col: str = "z",
-        id_col: Optional[str] = None,
-        radius: float = 5.0,
-        **kwargs,
-    ) -> Any:
-        """
-        Create Cosmograph visualization directly from Polars DataFrame.
-
-        Args:
-            df: Polars DataFrame with coordinate columns
-            x_col: Column name for x coordinates
-            y_col: Column name for y coordinates
-            z_col: Column name for z coordinates
-            id_col: Column name for point IDs (optional)
-            radius: Radius for neighbor graph creation
-            **kwargs: Additional Cosmograph parameters
-
-        Returns:
-            Cosmograph widget
-        """
-        # Extract coordinates
-        coords = df.select([x_col, y_col, z_col]).to_numpy()
-
-        # Create IDs if not provided
-        if id_col is None or id_col not in df.columns:
-            ids = [f"point_{i}" for i in range(len(df))]
-        else:
-            ids = df[id_col].to_list()
-
-        # Create neighbor graph using GPU acceleration
-        # Convert to PyTorch tensor and move to GPU
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        coords_tensor = torch.tensor(coords, dtype=torch.float32, device=device)
-
-        # Create k-NN graph on GPU
-        from torch_geometric.nn import knn_graph
-
-        edge_index = knn_graph(
-            coords_tensor,
-            k=5,  # 5 nearest neighbors
-            batch=None,
-            loop=False,  # No self-loops
-        )
-
-        # Move back to CPU and convert to numpy
-        edge_index = edge_index.cpu().numpy()
-
-        # Calculate distances and filter by radius (vectorized)
-        # Extract source and target indices
-        src_indices = edge_index[0, :]  # [E]
-        tgt_indices = edge_index[1, :]  # [E]
+        }
         
-        # Compute edge vectors and distances vectorially
-        edge_vectors = coords[tgt_indices] - coords[src_indices]  # [E, 3]
-        distances = np.linalg.norm(edge_vectors, axis=1)  # [E]
-        
-        # Filter edges by radius
-        mask = distances <= radius
-        edges = edge_index[:, mask].T  # Transpose to [M, 2] format
-
-        # Extract coordinates explicitly
-        x_coords = coords[:, 0].tolist()
-        y_coords = coords[:, 1].tolist()
-        z_coords = coords[:, 2].tolist()
-
-        # Create Polars DataFrames
-        points_df = pl.DataFrame(
-            {"id": ids, "x": x_coords, "y": y_coords, "z": z_coords}
-        )
-
-        if edges.size > 0:
-            sources = [ids[src] for src in edges[:, 0]]
-            targets = [ids[tgt] for tgt in edges[:, 1]]
-        else:
-            sources = []
-            targets = []
-        links_df = pl.DataFrame({"source": sources, "target": targets})
-
-        # Convert to pandas for Cosmograph
-        points_pandas = points_df.to_pandas()
-        links_pandas = links_df.to_pandas()
-
-        # Merge configs
-        config = {**self.default_config, **kwargs}
-
-        # Extract colors from kwargs or use defaults
-        point_color = kwargs.get("point_color", "#ffffff")
-        link_color = kwargs.get("link_color", "#666666")
-
-        # Remove these from config to avoid duplicate parameters
-        config.pop("point_color", None)
-        config.pop("link_color", None)
-
-        return cosmo(
-            points=points_pandas,
-            links=links_pandas,
-            point_id_by="id",
-            point_x_by="x",
-            point_y_by="y",
-            point_color=point_color,
-            point_size_range=[2, 6],
-            link_source_by="source",
-            link_target_by="target",
-            link_color=link_color,
-            link_width_scale=1.0,
-            **config,
-        )
+        return enhancements.get(survey_name, {
+            "node_color_scheme": "default",
+            "physics_mode": "standard",
+            "edge_weighting": "distance"
+        })
 
 
-# Convenience function
-def create_cosmograph_visualization(data_source, **kwargs):
-    """
-    Convenience function to create Cosmograph visualization.
-
-    Args:
-        data_source: Spatial3DTensor, survey data dict, cosmic web results, coordinates array, or Polars DataFrame
-        **kwargs: Additional parameters for CosmographBridge
-
-    Returns:
-        Cosmograph widget
-    """
-
-    bridge = CosmographBridge()
-
-    if hasattr(data_source, "cartesian"):
-        # Spatial3DTensor
-        return bridge.from_spatial_tensor(data_source, **kwargs)
-    elif isinstance(data_source, dict):
-        # Check if it's cosmic web results
-        if "coordinates" in data_source or "spatial_tensor" in data_source:
-            survey_name = kwargs.pop("survey_name", "unknown")
-            return bridge.from_cosmic_web_results(data_source, survey_name, **kwargs)
-        else:
-            raise ValueError(
-                "Dictionary must contain 'coordinates' or 'spatial_tensor' key"
-            )
-    elif isinstance(data_source, np.ndarray):
-        # Raw coordinates
-        return bridge.from_coordinates(data_source, **kwargs)
-    elif isinstance(data_source, pl.DataFrame):
-        # Polars DataFrame
-        return bridge.from_polars_dataframe(data_source, **kwargs)
-    else:
-        raise ValueError("Unsupported data source type")
+# Export für UI
+__all__ = ["CosmographBridge"]
