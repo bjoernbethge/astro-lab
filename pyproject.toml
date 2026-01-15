@@ -93,3 +93,8 @@ torch = [{ index = "pytorch-cuda" }]
 [project.scripts]
 astro-lab = "astro_lab.cli:main"
 astro-test = "scripts.run_tests:main"
+
+# Bandit security linter configuration
+[tool.bandit]
+exclude_dirs = ["test", "tests", ".venv"]
+skips = ["B101"]  # Skip assert warnings (used in tests)
