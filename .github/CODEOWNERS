@@ -1,0 +1,23 @@
+# Code Owners for AstroLab
+# These owners will be requested for review when someone opens a pull request.
+
+# Default owners for everything in the repo
+* @bjoernbethge
+
+# Core source code
+/src/ @bjoernbethge
+
+# Tests
+/test/ @bjoernbethge
+
+# Documentation
+/docs/ @bjoernbethge
+/mkdocs.yml @bjoernbethge
+
+# Configuration files
+/pyproject.toml @bjoernbethge
+/ruff.toml @bjoernbethge
+/mypy.ini @bjoernbethge
+
+# GitHub configuration
+/.github/ @bjoernbethge
