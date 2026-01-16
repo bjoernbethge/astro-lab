@@ -34,7 +34,7 @@ def transform_to_galactic(ra: np.ndarray, dec: np.ndarray) -> tuple:
         dec=dec * u.degree,
         frame='icrs'
     )
-    galactic = icrs.galactocentric
+    galactic = icrs.galactic
     
     return galactic.l.degree, galactic.b.degree
 

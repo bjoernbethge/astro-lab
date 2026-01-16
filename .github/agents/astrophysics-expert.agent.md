@@ -252,16 +252,22 @@ def apply_galactic_extinction(ra, dec, wavelength, mag):
 def apply_redshift_space_distortion(pos_real, vel, H0=67.4):
     """Convert real-space to redshift-space positions.
     
+    Args:
+        pos_real: Real-space positions (Mpc)
+        vel: Peculiar velocities (km/s)
+        H0: Hubble constant (km/s/Mpc)
+    
     Accounts for peculiar velocities along line of sight.
     """
     # Line of sight direction (z-axis)
     los_direction = pos_real / np.linalg.norm(pos_real, axis=1, keepdims=True)
     
-    # Peculiar velocity component along LOS
+    # Peculiar velocity component along LOS (km/s)
     vel_los = np.sum(vel * los_direction, axis=1)
     
-    # Redshift-space distortion (in Mpc/h)
-    s = pos_real + vel_los[:, None] * los_direction / H0
+    # Convert velocity to distance offset: v/H0 gives displacement in Mpc
+    # Redshift-space position = real position + velocity offset
+    s = pos_real + (vel_los[:, None] / H0) * los_direction
     
     return s
 ```

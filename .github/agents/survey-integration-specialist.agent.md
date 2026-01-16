@@ -142,6 +142,15 @@ def correct_for_proper_motion(
 
 ### Advanced Crossmatching with Uncertainties
 ```python
+def spherical_to_cartesian(ra, dec):
+    """Convert spherical to Cartesian coordinates."""
+    ra_rad = np.deg2rad(ra)
+    dec_rad = np.deg2rad(dec)
+    x = np.cos(dec_rad) * np.cos(ra_rad)
+    y = np.cos(dec_rad) * np.sin(ra_rad)
+    z = np.sin(dec_rad)
+    return x, y, z
+
 def crossmatch_with_errors(
     ra1, dec1, ra_err1, dec_err1,
     ra2, dec2, ra_err2, dec_err2,

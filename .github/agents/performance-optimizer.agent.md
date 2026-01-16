@@ -61,6 +61,9 @@ class OptimizedModel(LightningModule):
     
     def training_step(self, batch, batch_idx):
         # Lightning handles AMP automatically with trainer precision="16-mixed"
+        output = self(batch.x)
+        loss = torch.nn.functional.cross_entropy(output, batch.y)
+        self.log('train_loss', loss)
         return loss
 ```
 
