@@ -1,0 +1,202 @@
+name: Auto-Fix Security Issues
+
+on:
+  workflow_dispatch:  # Manual trigger
+  workflow_call:      # Called by security.yml after scans complete
+    inputs:
+      alert_count:
+        description: 'Number of security alerts found'
+        required: false
+        type: number
+        default: 0
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+  security-events: read
+
+jobs:
+  analyze-and-fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event.inputs.alert_count > 0 || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Cache uv dependencies
+      uses: actions/cache@v5
+      with:
+        path: |
+          .venv
+          ~/.cache/uv
+        key: ${{ runner.os }}-uv-autofix-${{ hashFiles('**/uv.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-uv-autofix-
+
+    - name: Install dependencies and dev tools
+      run: |
+        uv sync --frozen
+        uv pip install autoflake isort
+
+    - name: Fetch CodeQL alerts
+      id: fetch-alerts
+      run: |
+        echo "Fetching CodeQL security alerts..."
+        gh api repos/${{ github.repository }}/code-scanning/alerts \
+          --jq '[.[] | select(.state == "open")] | length' > alert_count.txt
+
+        ALERT_COUNT=$(cat alert_count.txt)
+        echo "alert_count=$ALERT_COUNT" >> $GITHUB_OUTPUT
+        echo "Found $ALERT_COUNT open alerts"
+
+        # Get alert details
+        gh api repos/${{ github.repository }}/code-scanning/alerts \
+          --jq '.[] | select(.state == "open") | {severity: .rule.severity, rule: .rule.description}' \
+          > alerts.json || echo "[]" > alerts.json
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Apply automatic fixes
+      id: apply-fixes
+      run: |
+        echo "Applying automatic security and code quality fixes..."
+
+        # Track if any changes were made
+        CHANGES_MADE=false
+
+        # 1. Remove unused imports with autoflake
+        echo "→ Removing unused imports..."
+        if uv run autoflake --remove-all-unused-imports --in-place --recursive src/ test/ scripts/; then
+          if ! git diff --quiet; then
+            CHANGES_MADE=true
+            echo "  ✓ Removed unused imports"
+          fi
+        fi
+
+        # 2. Sort imports with isort
+        echo "→ Sorting imports..."
+        if uv run isort src/ test/ scripts/ --profile black; then
+          if ! git diff --quiet; then
+            CHANGES_MADE=true
+            echo "  ✓ Sorted imports"
+          fi
+        fi
+
+        # 3. Apply ruff fixes (safe auto-fixes only)
+        echo "→ Applying ruff auto-fixes..."
+        if uv run ruff check src/ test/ scripts/ --fix --unsafe-fixes=false; then
+          if ! git diff --quiet; then
+            CHANGES_MADE=true
+            echo "  ✓ Applied ruff fixes"
+          fi
+        fi
+
+        # 4. Format with ruff
+        echo "→ Formatting code..."
+        if uv run ruff format src/ test/ scripts/; then
+          if ! git diff --quiet; then
+            CHANGES_MADE=true
+            echo "  ✓ Formatted code"
+          fi
+        fi
+
+        echo "changes_made=$CHANGES_MADE" >> $GITHUB_OUTPUT
+
+    - name: Create summary
+      if: always()
+      run: |
+        ALERT_COUNT=${{ steps.fetch-alerts.outputs.alert_count }}
+        CHANGES_MADE=${{ steps.apply-fixes.outputs.changes_made }}
+
+        echo "## 🔒 Security Auto-Fix Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Alerts Found:** $ALERT_COUNT open issues" >> $GITHUB_STEP_SUMMARY
+        echo "**Changes Applied:** $CHANGES_MADE" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [ "$CHANGES_MADE" = "true" ]; then
+          echo "### ✅ Automatic Fixes Applied" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The following automated fixes were applied:" >> $GITHUB_STEP_SUMMARY
+          echo "- Removed unused imports (autoflake)" >> $GITHUB_STEP_SUMMARY
+          echo "- Sorted imports (isort)" >> $GITHUB_STEP_SUMMARY
+          echo "- Applied safe code fixes (ruff)" >> $GITHUB_STEP_SUMMARY
+          echo "- Formatted code (ruff format)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A pull request will be created with these changes." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ℹ️ No Automatic Fixes Available" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The security alerts require manual review and fixes." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Create Pull Request
+      if: steps.apply-fixes.outputs.changes_made == 'true'
+      uses: peter-evans/create-pull-request@v6
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        commit-message: |
+          fix(security): automatic code quality improvements
+
+          Applied automated fixes for CodeQL security alerts:
+          - Removed unused imports
+          - Sorted imports
+          - Applied safe ruff fixes
+          - Formatted code with ruff
+
+          Co-Authored-By: GitHub Actions <actions@github.com>
+        branch: security/auto-fix-${{ github.run_number }}
+        delete-branch: true
+        title: "fix(security): automatic code quality improvements"
+        body: |
+          ## 🤖 Automated Security Fixes
+
+          This PR contains automatic fixes for CodeQL security alerts.
+
+          ### Changes Applied
+          - ✅ Removed unused imports (autoflake)
+          - ✅ Sorted imports (isort)
+          - ✅ Applied safe code fixes (ruff --fix)
+          - ✅ Formatted code (ruff format)
+
+          ### CodeQL Alerts
+          Found **${{ steps.fetch-alerts.outputs.alert_count }}** open alerts that triggered this auto-fix workflow.
+
+          ### Review Checklist
+          - [ ] All CI checks pass
+          - [ ] Changes don't break functionality
+          - [ ] Security alerts are reduced after merge
+
+          ---
+          🤖 Generated automatically by [Auto-Fix Security workflow](https://github.com/${{ github.repository }}/actions/workflows/auto-fix-security.yml)
+        labels: |
+          security
+          automated
+          code-quality
+        assignees: ${{ github.repository_owner }}
+
+    - name: Comment on workflow failure
+      if: failure()
+      run: |
+        echo "⚠️ Auto-fix workflow failed. Manual intervention required." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Please review the security alerts manually:" >> $GITHUB_STEP_SUMMARY
+        echo "https://github.com/${{ github.repository }}/security/code-scanning" >> $GITHUB_STEP_SUMMARY
