@@ -53,8 +53,12 @@ jobs:
 
     - name: Install dependencies and dev tools
       run: |
-        uv sync --frozen
-        uv pip install autoflake isort
+        # Create virtual environment
+        uv venv
+
+        # Install only the linting/formatting tools needed for auto-fixing
+        # We don't sync the full project to avoid platform-specific deps like triton-windows (Windows-only)
+        uv pip install autoflake isort ruff
 
     - name: Fetch CodeQL alerts
       id: fetch-alerts
