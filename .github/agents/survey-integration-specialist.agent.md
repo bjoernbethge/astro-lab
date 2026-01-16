@@ -142,15 +142,8 @@ def correct_for_proper_motion(
 
 ### Advanced Crossmatching with Uncertainties
 ```python
-def spherical_to_cartesian(ra, dec):
-    """Convert spherical to Cartesian coordinates."""
-    ra_rad = np.deg2rad(ra)
-    dec_rad = np.deg2rad(dec)
-    x = np.cos(dec_rad) * np.cos(ra_rad)
-    y = np.cos(dec_rad) * np.sin(ra_rad)
-    z = np.sin(dec_rad)
-    return x, y, z
-
+### Advanced Crossmatching with Uncertainties
+```python
 def crossmatch_with_errors(
     ra1, dec1, ra_err1, dec_err1,
     ra2, dec2, ra_err2, dec_err2,
@@ -159,12 +152,23 @@ def crossmatch_with_errors(
     """Crossmatch considering position uncertainties.
     
     Match if separation < n_sigma * combined_error
+    
+    Note: For coordinate transformations, see the tensor-operations agent.
     """
     from scipy.spatial import cKDTree
     
-    # Convert to Cartesian
-    x1, y1, z1 = spherical_to_cartesian(ra1, dec1)
-    x2, y2, z2 = spherical_to_cartesian(ra2, dec2)
+    # Convert to Cartesian (simplified for small angles)
+    # For accurate transforms over large areas, use astropy SkyCoord
+    ra1_rad, dec1_rad = np.deg2rad(ra1), np.deg2rad(dec1)
+    ra2_rad, dec2_rad = np.deg2rad(ra2), np.deg2rad(dec2)
+    
+    x1 = np.cos(dec1_rad) * np.cos(ra1_rad)
+    y1 = np.cos(dec1_rad) * np.sin(ra1_rad)
+    z1 = np.sin(dec1_rad)
+    
+    x2 = np.cos(dec2_rad) * np.cos(ra2_rad)
+    y2 = np.cos(dec2_rad) * np.sin(ra2_rad)
+    z2 = np.sin(dec2_rad)
     
     # Build KD-tree for catalog 2
     tree = cKDTree(np.column_stack([x2, y2, z2]))

@@ -127,17 +127,7 @@ def nfw_mass(r, M_vir, c):
 ## Selection Effects
 
 ### Malmquist Bias
-```python
-def malmquist_bias_correction(apparent_mag_limit, abs_mag_dist):
-    """Correct for Malmquist bias in magnitude-limited surveys.
-    
-    Objects near survey limit are preferentially brighter
-    than average for their distance.
-    """
-    # This is a simplified correction
-    # Real implementation depends on luminosity function
-    pass  # TODO: Implement based on survey specifics
-```
+Malmquist bias occurs in magnitude-limited surveys where objects near the survey limit are preferentially brighter than average for their distance. Correcting for this requires knowledge of the intrinsic luminosity function and is survey-specific. Consult the survey documentation for appropriate corrections.
 
 ### Completeness Function
 ```python

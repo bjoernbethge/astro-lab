@@ -69,16 +69,36 @@ class OptimizedModel(LightningModule):
 
 ### Memory-Efficient Data Loading
 ```python
-from torch.utils.data import DataLoader
+from torch.utils.data import Dataset
+from pathlib import Path
 
 # Bad: Loads all data at once
 dataset = [load_galaxy(i) for i in range(1000000)]
 
 # Good: Lazy loading with caching
 class LazyGalaxyDataset(Dataset):
+    def __init__(self, data_dir, max_cache_size=1000):
+        self.data_dir = Path(data_dir)
+        self.file_list = list(self.data_dir.glob('*.npy'))
+        self.cache = {}
+        self.max_cache_size = max_cache_size
+    
+    def __len__(self):
+        return len(self.file_list)
+    
     def __getitem__(self, idx):
         # Load on-demand, cache if memory allows
-        return self._load_and_cache(idx)
+        if idx in self.cache:
+            return self.cache[idx]
+        
+        # Load from disk
+        data = np.load(self.file_list[idx])
+        
+        # Cache if space available
+        if len(self.cache) < self.max_cache_size:
+            self.cache[idx] = data
+            
+        return torch.from_numpy(data)
 ```
 
 ### Batch Size Optimization
