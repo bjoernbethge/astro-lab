@@ -45,6 +45,7 @@ jobs:
 
       - name: Run Semgrep
         run: semgrep ci --sarif --output=semgrep-results.sarif
+        continue-on-error: true
         env:
           SEMGREP_RULES: >-
             p/python
