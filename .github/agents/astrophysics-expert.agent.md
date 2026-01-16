@@ -222,10 +222,15 @@ def two_point_correlation(positions, bins, random_positions=None):
 ```python
 from dustmaps.sfd import SFDQuery
 
-def apply_galactic_extinction(ra, dec, wavelength, mag):
+def apply_galactic_extinction(ra, dec, mag, filter_name='r'):
     """Correct magnitudes for Galactic extinction.
     
     Uses Schlegel, Finkbeiner & Davis (1998) dust maps.
+    
+    Args:
+        ra, dec: Coordinates (degrees)
+        mag: Apparent magnitude
+        filter_name: Filter name ('g', 'r', 'i', etc.)
     """
     from astropy.coordinates import SkyCoord
     import astropy.units as u
@@ -236,12 +241,20 @@ def apply_galactic_extinction(ra, dec, wavelength, mag):
     sfd = SFDQuery()
     ebv = sfd(coords)
     
-    # Extinction coefficient (Cardelli et al. 1989)
-    # For r-band: A_r / E(B-V) ≈ 2.75
-    extinction_coeff = 2.75  # Adjust per filter
-    A_lambda = extinction_coeff * ebv
+    # Extinction coefficients for common filters (Schlafly & Finkbeiner 2011)
+    extinction_coeffs = {
+        'u': 4.239,
+        'g': 3.303,
+        'r': 2.285,
+        'i': 1.698,
+        'z': 1.263
+    }
     
-    # Correct magnitude
+    # Get extinction coefficient for filter
+    A_over_EBV = extinction_coeffs.get(filter_name, 2.285)  # Default to r-band
+    A_lambda = A_over_EBV * ebv
+    
+    # Correct magnitude (remove extinction)
     mag_corrected = mag - A_lambda
     
     return mag_corrected
@@ -253,20 +266,28 @@ def apply_redshift_space_distortion(pos_real, vel, H0=67.4):
     """Convert real-space to redshift-space positions.
     
     Args:
-        pos_real: Real-space positions (Mpc)
-        vel: Peculiar velocities (km/s)
+        pos_real: Real-space positions (Mpc), shape (N, 3)
+        vel: Peculiar velocities (km/s), shape (N, 3)
         H0: Hubble constant (km/s/Mpc)
     
-    Accounts for peculiar velocities along line of sight.
+    Returns:
+        Redshift-space positions (Mpc)
+    
+    Note:
+        This implementation assumes the z-axis as the line-of-sight direction.
+        For observers at different positions, rotate coordinates so that the
+        line-of-sight to each galaxy aligns with the z-axis, or use the full
+        line-of-sight vector for each galaxy.
     """
-    # Line of sight direction (z-axis)
+    # Line of sight direction (z-axis by convention in simulations)
+    # For real observations, this would be the direction from observer to galaxy
     los_direction = pos_real / np.linalg.norm(pos_real, axis=1, keepdims=True)
     
     # Peculiar velocity component along LOS (km/s)
     vel_los = np.sum(vel * los_direction, axis=1)
     
     # Convert velocity to distance offset: v/H0 gives displacement in Mpc
-    # Redshift-space position = real position + velocity offset
+    # Redshift-space position = real position + velocity offset along LOS
     s = pos_real + (vel_los[:, None] / H0) * los_direction
     
     return s
