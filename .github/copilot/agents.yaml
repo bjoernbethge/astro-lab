@@ -108,3 +108,27 @@ agents:
       - Observational biases and systematics
       - Statistical methods in astronomy
       - Scientific paper workflows and reproducibility
+
+  - name: test-engineer
+    description: Testing strategies, pytest patterns, and quality assurance for astronomical ML
+    context:
+      - pytest fixtures and parametrization patterns
+      - Test data generation for astronomical catalogs
+      - Mocking strategies for survey APIs (Gaia, SDSS)
+      - Coverage reporting with pytest-cov
+      - Integration tests for multi-survey pipelines
+      - Performance benchmarking with pytest-benchmark
+      - Testing GPU code with mock CUDA devices
+      - Reproducibility in astronomical ML testing
+
+  - name: devops-specialist
+    description: CI/CD workflows, documentation automation, and infrastructure management
+    context:
+      - GitHub Actions workflow configuration and best practices
+      - mkdocs and mkdocstrings for API documentation
+      - Documentation generation pipeline with generate_docs.py
+      - UV package manager workflows (uv sync, uv lock)
+      - Dependency management and version pinning strategies
+      - PyPI publishing with trusted publishing (OIDC)
+      - GitHub Pages deployment automation
+      - Security scanning integration (CodeQL, Semgrep)
