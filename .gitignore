@@ -24,6 +24,8 @@ data/
 project_documentation/
 results/
 *.log
+gaia_partitions.txt
+*_partitions.txt
 
 # Lightning logs (use MLflow instead)
 lightning_logs/
