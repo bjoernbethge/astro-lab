@@ -33,7 +33,8 @@ def get_memory_usage() -> Dict[str, float]:
             gpu_used = gpu_memory[1] - gpu_memory[0]
             gpu_used_gb = gpu_used / (1024**3)
             gpu_percent = (gpu_used / gpu_memory[1]) * 100
-        except Exception:
+        except (RuntimeError, AttributeError):
+            # GPU memory query not supported
             pass
 
     return {

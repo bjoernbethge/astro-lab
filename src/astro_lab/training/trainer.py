@@ -70,7 +70,7 @@ class AstroTrainer(L.Trainer, BatchProcessingMixin, MemoryEfficientMixin):
             experiment_name = experiment_name or config.get(
                 "experiment_name", "astro_gnn"
             )
-            run_name = run_name
+            run_name = run_name or config.get("run_name")
             max_epochs = max_epochs or config.get("max_epochs", 100)
             tracking_uri = tracking_uri or get_data_paths()["mlruns_dir"]
             checkpoint_dir = checkpoint_dir or get_data_paths()["checkpoint_dir"]

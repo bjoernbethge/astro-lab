@@ -15,8 +15,6 @@ Das Ergebnisbild wird als test_render_output.png gespeichert.
 
 import math
 import os
-import random
-import sys
 
 import bpy
 

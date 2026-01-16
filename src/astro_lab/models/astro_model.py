@@ -165,9 +165,7 @@ class AstroModel(AstroBaseModel):
                     concat=True if i < self.num_layers - 1 else False,
                     edge_dim=self.edge_dim,
                 )
-                if i < self.num_layers - 1:
-                    out_channels = out_channels
-                else:
+                if i == self.num_layers - 1:
                     out_channels = (out_channels // self.heads) * self.heads
 
             elif self.conv_type == "GCN":
@@ -195,9 +193,7 @@ class AstroModel(AstroBaseModel):
                     concat=True if i < self.num_layers - 1 else False,
                     edge_dim=self.edge_dim,
                 )
-                if i < self.num_layers - 1:
-                    out_channels = out_channels
-                else:
+                if i == self.num_layers - 1:
                     out_channels = (out_channels // self.heads) * self.heads
             else:
                 raise ValueError(f"Unknown conv_type: {self.conv_type}")

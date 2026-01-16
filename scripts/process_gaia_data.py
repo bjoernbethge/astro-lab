@@ -1,6 +1,5 @@
 """Manual script to process Gaia data with the fixed dataset."""
 
-import os
 import shutil
 from pathlib import Path
 

@@ -69,7 +69,6 @@ def main(args: argparse.Namespace) -> int:
             "Direct call to analyze_cosmic_web requires loading survey data and coordinates. "
             "Implement data loading here."
         )
-        return 1
 
     except Exception as e:
         logger.error(f"❌ Analysis failed: {e}")

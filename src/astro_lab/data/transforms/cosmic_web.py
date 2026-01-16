@@ -119,13 +119,6 @@ class FilamentDetection(BaseTransform):
         if not hasattr(data, "pos") or data.pos is None:
             return data
 
-        try:
-            # Use imported functions
-            pass
-        except ImportError:
-            logger.warning("scipy required for filament detection")
-            return data
-
         pos = data.pos.cpu().numpy()
         n_points = pos.shape[0]
 
@@ -240,13 +233,6 @@ class DensityFieldEstimation(BaseTransform):
 
     def _kde_density(self, pos: np.ndarray) -> np.ndarray:
         """Kernel density estimation."""
-        try:
-            # Use imported KernelDensity
-            pass
-        except ImportError:
-            logger.warning("sklearn required for KDE, falling back to grid")
-            return self._grid_density(pos)
-
         # Estimate bandwidth if not provided
         if self.bandwidth is None:
             # Scott's rule

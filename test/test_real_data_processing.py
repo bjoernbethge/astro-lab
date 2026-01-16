@@ -20,7 +20,6 @@ import time
 from pathlib import Path
 
 import polars as pl
-import torch
 
 from astro_lab.data.preprocessors.gaia import GaiaPreprocessor
 
@@ -122,7 +121,7 @@ def load_survey_data(
                         # Try to convert to float, fallback to string
                         try:
                             data_dict[col_name] = col_data.data.astype(float)
-                        except:
+                        except (ValueError, TypeError):
                             data_dict[col_name] = col_data.data.astype(str)
 
                 # Create polars dataframe directly

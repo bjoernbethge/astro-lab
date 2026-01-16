@@ -157,19 +157,19 @@ def create_cosmic_web_viz(data, analysis_results=None):
 
 
 def create_blender_cosmic_web_scene(
-    survey_name: str, max_samples: int = 10000, render: bool = True
+    coordinates: "np.ndarray", output_path: str = "cosmic_web.png", render: bool = True
 ):
     """Create Blender scene using AlbPy (simplified interface)."""
     try:
         from astro_lab.widgets.albpy import generate_cosmic_web_scene
 
-        # Generate scene
-        scene_result = generate_cosmic_web_scene(
-            survey_name=survey_name, max_samples=max_samples, render=render
+        # Generate scene and use the result
+        result = generate_cosmic_web_scene(
+            coordinates=coordinates, output_path=output_path, render=render
         )
 
         return mo.callout(
-            f"✅ Blender scene generated for {survey_name} survey with {max_samples} samples",
+            f"✅ Blender scene generated with {len(coordinates)} points. Status: {result.get('status', 'unknown')}",
             kind="success",
         )
 

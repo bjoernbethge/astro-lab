@@ -2,7 +2,6 @@
 """Test script to verify training works with the fixed dataset."""
 
 import torch
-from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 
 from astro_lab.data.dataset.astrolab import create_dataset
