@@ -54,8 +54,18 @@ from astro_lab.config import TrainConfig
 @click.option('--verbose', '-v', count=True, help='Increase verbosity')
 def train(config: str, verbose: int) -> None:
     """Train a model using the specified configuration."""
+    # Validate and sanitize file path to prevent path traversal
+    config_path = Path(config).resolve()
+    
+    # Ensure path is within allowed directories
+    allowed_dirs = [Path.cwd(), Path.cwd() / 'configs']
+    if not any(config_path.is_relative_to(d) for d in allowed_dirs):
+        raise click.ClickException(
+            f"Config file must be in current directory or configs/: {config_path}"
+        )
+    
     # Load and validate config
-    cfg = TrainConfig.from_yaml(Path(config))
+    cfg = TrainConfig.from_yaml(config_path)
     
     # Configure logging based on verbosity
     level = ['ERROR', 'WARNING', 'INFO', 'DEBUG'][min(verbose, 3)]
@@ -96,6 +106,17 @@ if not config_path.exists():
 - Never hard-code file paths (use Path and click.Path)
 - Never commit without testing the CLI commands
 - Never modify core library code from CLI module
+- Never trust user input without validation (always sanitize paths)
+- Never execute shell commands with user input (command injection risk)
+- Never allow path traversal attacks (validate file paths)
+
+## Security Best Practices
+- Always validate and sanitize user inputs
+- Use `Path.resolve()` and check paths are within allowed directories
+- Never use `shell=True` with subprocess if handling user input
+- Validate file extensions and reject unexpected types
+- Set appropriate file permissions when creating files
+- Use type hints and validation (Pydantic) for all inputs
 
 ## User Experience Requirements
 - Show progress bars for operations > 5 seconds

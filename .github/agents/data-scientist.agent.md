@@ -76,6 +76,17 @@ class CosmicWebGNN(LightningModule):
 - Never hard-code file paths or credentials
 - Never use Pandas (use Polars instead)
 - Never modify `uv.lock` directly (use `uv add` or `uv remove`)
+- Never trust user input without validation
+- Never load untrusted pickle files (use safe formats like parquet)
+- Never execute arbitrary code from config files
+
+## Security Best Practices
+- Always validate file paths before loading data
+- Use `Path.resolve()` to prevent path traversal attacks
+- Validate tensor shapes and ranges before training
+- Never load pickle files from untrusted sources (use parquet/JSON)
+- Sanitize all inputs from external astronomical archives
+- Use Pydantic for configuration validation
 
 ## Data Quality Standards
 - Always validate astronomical units (use astropy.units)

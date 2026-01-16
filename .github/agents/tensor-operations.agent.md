@@ -208,6 +208,17 @@ uv run pytest test/ -k coordinate -v
 - Never ignore coordinate wrapping (RA wraps at 360°)
 - Never compute distances without considering coordinate system
 - Never use float64 if float32 is sufficient (memory waste)
+- Never trust user input coordinates without validation
+- Never perform operations on arrays without bounds checking
+- Never ignore NaN/Inf propagation in calculations
+
+## Security Best Practices
+- Validate array shapes before operations (prevent buffer overflows)
+- Check coordinate ranges (RA: 0-360°, Dec: -90-90°)
+- Validate units before conversions
+- Limit array sizes to prevent memory exhaustion attacks
+- Use safe indexing (check bounds before array access)
+- Sanitize inputs from external catalogs
 
 ## Validation Checklist
 - [ ] Specify and validate coordinate frame (ICRS, Galactic, etc.)

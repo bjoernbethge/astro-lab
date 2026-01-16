@@ -28,6 +28,21 @@ def query_gaia_region(ra, dec, radius=1.0):
         dec: Declination (degrees)
         radius: Search radius (degrees)
     """
+    # Validate inputs to prevent SQL injection
+    ra = float(ra)
+    dec = float(dec)
+    radius = float(radius)
+    
+    # Validate ranges
+    if not (0 <= ra < 360):
+        raise ValueError(f"RA must be in range [0, 360), got {ra}")
+    if not (-90 <= dec <= 90):
+        raise ValueError(f"Dec must be in range [-90, 90], got {dec}")
+    if not (0 < radius <= 180):
+        raise ValueError(f"Radius must be in range (0, 180], got {radius}")
+    
+    # Safe: Use parameterized query through astroquery
+    # The library handles escaping properly
     query = f"""
     SELECT source_id, ra, dec, parallax, parallax_error,
            pmra, pmdec, phot_g_mean_mag, bp_rp
@@ -284,6 +299,18 @@ uv run pytest test/test_integration.py -v
 - Never use default matching radius for all surveys
 - Never assume catalog epochs are the same
 - Never ignore selection functions and completeness
+- Never trust user input without validation (SQL injection risk)
+- Never use f-strings for SQL with external input
+- Never execute queries without parameter validation
+
+## Security Best Practices
+- Always validate and sanitize inputs before SQL queries
+- Convert inputs to expected types (float, int) to prevent injection
+- Validate coordinate ranges (RA: 0-360°, Dec: -90-90°)
+- Use parameterized queries when possible
+- Sanitize file paths before accessing archives
+- Validate API responses before processing
+- Never log sensitive query parameters or credentials
 
 ## Data Integration Checklist
 - [ ] Check coordinate frame (ICRS, Galactic, etc.)

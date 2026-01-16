@@ -297,6 +297,17 @@ uv run pytest test/test_training.py -v
 - Never use too large batch sizes (causes memory issues)
 - Never forget to normalize features
 - Never ignore over-smoothing in deep GNNs
+- Never load untrusted graph data without validation
+- Never allocate unbounded memory for graphs
+- Never trust graph sizes from external sources
+
+## Security Best Practices
+- Validate graph structure (check for malformed edge indices)
+- Limit maximum number of nodes/edges to prevent memory exhaustion
+- Validate node feature dimensions match model expectations
+- Check for NaN/Inf in node features and edge attributes
+- Sanitize graph data from external sources
+- Validate batch sizes to prevent OOM attacks
 
 ## Architecture Design Checklist
 - [ ] Use appropriate aggregation (add, mean, max)

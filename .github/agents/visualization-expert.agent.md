@@ -194,6 +194,17 @@ uv run python examples/create_sample_plots.py
 - Never render without proper coordinate transformations
 - Never save visualizations to repo (use `/tmp` or `.gitignore`)
 - Never modify core data structures for visualization needs
+- Never execute user-provided JavaScript in web visualizations
+- Never render untrusted HTML content (XSS risk)
+- Never load data from untrusted URLs without validation
+
+## Security Best Practices
+- Sanitize all user inputs for labels and titles
+- Validate data ranges before rendering (prevent DoS via large arrays)
+- Escape HTML/JavaScript in interactive visualizations
+- Validate file paths before saving plots
+- Use safe file extensions (.png, .jpg, .html) and validate them
+- Never execute arbitrary code from visualization configs
 
 ## Visualization Checklist
 - [ ] Use appropriate coordinate system (ICRS, Galactic, etc.)

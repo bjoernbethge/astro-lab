@@ -78,7 +78,14 @@ dataset = [load_galaxy(i) for i in range(1000000)]
 # Good: Lazy loading with caching
 class LazyGalaxyDataset(Dataset):
     def __init__(self, data_dir, max_cache_size=1000):
-        self.data_dir = Path(data_dir)
+        # Validate and sanitize data directory path
+        self.data_dir = Path(data_dir).resolve()
+        
+        # Security: Ensure path is within expected directory
+        if not self.data_dir.is_relative_to(Path.cwd()):
+            raise ValueError(f"Data directory must be within project: {self.data_dir}")
+        
+        # Only load safe file formats (avoid pickle)
         self.file_list = list(self.data_dir.glob('*.npy'))
         self.cache = {}
         self.max_cache_size = max_cache_size
@@ -91,7 +98,11 @@ class LazyGalaxyDataset(Dataset):
         if idx in self.cache:
             return self.cache[idx]
         
-        # Load from disk
+        # Validate index
+        if not (0 <= idx < len(self.file_list)):
+            raise IndexError(f"Index {idx} out of range")
+        
+        # Load from disk (numpy is safer than pickle)
         data = np.load(self.file_list[idx])
         
         # Cache if space available
@@ -198,6 +209,16 @@ python -m pstats profile.stats
 - Never hard-code batch sizes (make configurable)
 - Never ignore memory leaks (use `torch.cuda.empty_cache()`)
 - Never modify algorithm logic without consulting domain experts
+- Never load pickle files from untrusted sources (security risk)
+- Never use unsafe file operations without path validation
+- Never ignore tensor bounds (validate shapes and ranges)
+
+## Security Considerations
+- Always validate file paths before loading data
+- Use safe formats (parquet, npy) instead of pickle
+- Validate tensor shapes to prevent memory exhaustion attacks
+- Check array bounds to prevent buffer overflows
+- Sanitize file paths to prevent path traversal
 
 ## Performance Targets
 - GPU utilization: > 80% during training

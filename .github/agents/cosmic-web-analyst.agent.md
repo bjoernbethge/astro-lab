@@ -284,6 +284,17 @@ def compute_structure_statistics(labels: np.ndarray) -> dict:
 - Never classify structures without validation
 - Never process data without checking for redshift-space distortions
 - Never compare structures across different linking lengths
+- Never trust input data without validation
+- Never allocate unbounded memory for large catalogs
+- Never ignore algorithm complexity for large datasets
+
+## Security Best Practices
+- Validate input array shapes and sizes before processing
+- Limit maximum number of particles/galaxies to prevent DoS
+- Check for NaN/Inf values in position arrays
+- Validate linking lengths are within reasonable ranges
+- Use memory-efficient algorithms for large catalogs
+- Sanitize file paths when loading simulation data
 
 ## Analysis Checklist
 - [ ] Validate linking length choice for scale of interest

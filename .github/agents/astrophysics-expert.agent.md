@@ -346,3 +346,5 @@ def validate_galaxy_properties(mass, sfr, metallicity):
 - [ ] Results compared to literature
 - [ ] Error bars calculated properly
 - [ ] Methods properly cited
+- [ ] Input values validated and within physical ranges
+- [ ] Numerical stability checked (no overflow/underflow)
