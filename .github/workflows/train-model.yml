@@ -1,0 +1,198 @@
+name: AstroLab Model Training
+
+on:
+  workflow_dispatch:
+    inputs:
+      survey:
+        description: Survey to train on
+        required: true
+        type: choice
+        options:
+          - gaia
+          - sdss
+          - nsa
+          - tng50
+          - exoplanet
+          - twomass
+          - wise
+          - panstarrs
+          - des
+          - euclid
+          - linear
+          - rrlyrae
+        default: gaia
+      task:
+        description: Training task
+        type: choice
+        options:
+          - node_classification
+          - graph_classification
+          - node_regression
+          - graph_regression
+        default: node_classification
+      model:
+        description: Model architecture
+        type: choice
+        options:
+          - auto
+          - gcn
+          - gat
+          - sage
+          - gin
+          - transformer
+          - pointnet
+          - temporal
+        default: auto
+      epochs:
+        description: Training epochs
+        required: false
+        default: "10"
+      batch_size:
+        description: Training batch size
+        required: false
+        default: "32"
+      learning_rate:
+        description: Learning rate
+        required: false
+        default: "0.001"
+      hidden_dim:
+        description: Hidden dimension
+        required: false
+        default: "128"
+      num_layers:
+        description: Number of layers
+        required: false
+        default: "3"
+      max_samples:
+        description: Max samples for debugging (optional)
+        required: false
+        default: ""
+      checkpoint:
+        description: Checkpoint to resume from (optional)
+        required: false
+        default: ""
+      prepare_data:
+        description: Download and preprocess data before training
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  train-model:
+    name: Train Model
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-train-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-train-
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Prepare data (optional)
+        if: inputs.prepare_data == 'true'
+        env:
+          SURVEY: ${{ inputs.survey }}
+        run: |
+          set -euo pipefail
+          uv run astro-lab download "$SURVEY"
+          uv run astro-lab preprocess "$SURVEY" --device cpu --sampling-strategy knn --type spatial
+
+      - name: Verify processed data
+        if: inputs.prepare_data != 'true'
+        env:
+          SURVEY: ${{ inputs.survey }}
+        run: |
+          set -euo pipefail
+          parquet_path="data/processed/${SURVEY}/${SURVEY}.parquet"
+          if [[ ! -f "$parquet_path" ]]; then
+            echo "::error::Missing processed data at $parquet_path."
+            echo "::error::Run the data pipeline workflow or enable prepare_data."
+            exit 1
+          fi
+
+      - name: Train model
+        env:
+          SURVEY: ${{ inputs.survey }}
+        run: |
+          set -euo pipefail
+          max_samples_arg=""
+          if [[ -n "${{ inputs.max_samples }}" ]]; then
+            max_samples_arg="--max-samples ${{ inputs.max_samples }}"
+          fi
+          checkpoint_arg=""
+          if [[ -n "${{ inputs.checkpoint }}" ]]; then
+            checkpoint_arg="--checkpoint ${{ inputs.checkpoint }}"
+          fi
+          uv run astro-lab train "$SURVEY" \
+            --task "${{ inputs.task }}" \
+            --model "${{ inputs.model }}" \
+            --epochs "${{ inputs.epochs }}" \
+            --batch-size "${{ inputs.batch_size }}" \
+            --learning-rate "${{ inputs.learning_rate }}" \
+            --hidden-dim "${{ inputs.hidden_dim }}" \
+            --num-layers "${{ inputs.num_layers }}" \
+            $max_samples_arg \
+            $checkpoint_arg
+
+      - name: Validate training results
+        env:
+          SURVEY: ${{ inputs.survey }}
+          TASK: ${{ inputs.task }}
+        run: |
+          set -euo pipefail
+          results_dir="results"
+          results_file="${results_dir}/${SURVEY}_${TASK}_results.yaml"
+          if [[ ! -f "$results_file" ]]; then
+            echo "::error::Missing training results at $results_file"
+            exit 1
+          fi
+
+      - name: Upload training artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: astrolab-training-${{ inputs.survey }}-${{ inputs.task }}
+          path: |
+            results/
+            data/processed/${{ inputs.survey }}
+          if-no-files-found: error
+
+      - name: Summarize run
+        if: always()
+        run: |
+          echo "## AstroLab Training Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Survey: ${{ inputs.survey }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Task: ${{ inputs.task }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Model: ${{ inputs.model }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Epochs: ${{ inputs.epochs }}" >> $GITHUB_STEP_SUMMARY
+          if [[ -f "results/${{ inputs.survey }}_${{ inputs.task }}_results.yaml" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Training results saved to results/${{ inputs.survey }}_${{ inputs.task }}_results.yaml" >> $GITHUB_STEP_SUMMARY
+          fi
