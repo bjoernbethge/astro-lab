@@ -23,6 +23,7 @@ from torch_geometric.utils import (
 )
 
 from astro_lab.tensors import SpatialTensorDict
+from astro_lab.utils.device import get_default_device
 
 logger = logging.getLogger(__name__)
 
@@ -41,16 +42,18 @@ class ScalableCosmicWebAnalyzer:
 
     def __init__(
         self,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
         max_points_per_batch: int = 100000,
     ):
         """
         Initialize cosmic web analyzer.
 
         Args:
-            device: Computation device
+            device: Computation device (default: auto-detect)
             max_points_per_batch: Maximum points to process at once
         """
+        if device is None:
+            device = get_default_device()
         self.device = torch.device(device)
         self.max_points_per_batch = max_points_per_batch
 

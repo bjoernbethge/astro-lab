@@ -12,6 +12,8 @@ from typing import Any, Dict
 
 import torch
 
+from astro_lab.utils.device import is_cuda_available
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,14 +26,14 @@ def clear_cuda_cache():
 def memory_management():
     """Context manager for memory-efficient operations."""
     # Pre-cleanup
-    if torch.cuda.is_available():
+    if is_cuda_available():
         torch.cuda.empty_cache()
 
     try:
         yield
     finally:
         # Post-cleanup
-        if torch.cuda.is_available():
+        if is_cuda_available():
             torch.cuda.empty_cache()
 
 

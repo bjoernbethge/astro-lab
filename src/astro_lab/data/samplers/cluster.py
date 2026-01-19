@@ -194,10 +194,29 @@ class DBSCANClusterSampler(AstroLabSampler, ClusterSamplerMixin, SpatialSamplerM
 
             # Create fully connected subgraph for small clusters
             if len(cluster_nodes) <= 20:
-                for i in range(len(cluster_nodes)):
-                    for j in range(i + 1, len(cluster_nodes)):
-                        edge_list.append([cluster_nodes[i], cluster_nodes[j]])
-                        edge_list.append([cluster_nodes[j], cluster_nodes[i]])
+                # Vectorized creation of fully connected graph
+                n_cluster = len(cluster_nodes)
+                # Create all pairs using meshgrid
+                src_idx = torch.arange(n_cluster, device=cluster_nodes.device)
+                src_idx = src_idx.unsqueeze(1).expand(n_cluster, n_cluster)
+                dst_idx = torch.arange(n_cluster, device=cluster_nodes.device)
+                dst_idx = dst_idx.unsqueeze(0).expand(n_cluster, n_cluster)
+                
+                # Remove self-loops and get upper triangle indices
+                mask = src_idx < dst_idx
+                src_local = src_idx[mask]
+                dst_local = dst_idx[mask]
+                
+                # Map to global node indices
+                src_global = cluster_nodes[src_local]
+                dst_global = cluster_nodes[dst_local]
+                
+                # Add bidirectional edges
+                edges = torch.stack([
+                    torch.cat([src_global, dst_global]),
+                    torch.cat([dst_global, src_global])
+                ], dim=0)
+                edge_list.append(edges)
             else:
                 # For larger clusters, use k-NN within cluster
                 cluster_coords = coordinates[cluster_nodes]
@@ -205,10 +224,10 @@ class DBSCANClusterSampler(AstroLabSampler, ClusterSamplerMixin, SpatialSamplerM
 
                 # Map back to global indices
                 global_edges = cluster_nodes[local_edges]
-                edge_list.extend(global_edges.T.tolist())
+                edge_list.append(global_edges)
 
         if edge_list:
-            edge_index = torch.tensor(edge_list, dtype=torch.long).T
+            edge_index = torch.cat(edge_list, dim=1)
         else:
             # Fallback to k-NN if no clusters found
             edge_index = knn_graph(coordinates, k=10)
