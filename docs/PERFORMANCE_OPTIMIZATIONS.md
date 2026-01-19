@@ -14,7 +14,7 @@ This document describes the performance optimizations implemented to improve cod
 - `get_device()`: Smart device getter with fallback to auto-detection
 
 **Impact**: 
-- Eliminates repeated CUDA checks across modules
+- Eliminates 20+ repeated CUDA checks across modules
 - Provides consistent device detection API
 - Reduces initialization overhead
 
@@ -23,6 +23,7 @@ This document describes the performance optimizations implemented to improve cod
 - `src/astro_lab/memory.py`
 - `src/astro_lab/data/analysis/cosmic_web.py`
 - `src/astro_lab/data/analysis/structures.py`
+- `src/astro_lab/data/analysis/clustering.py`
 
 ### 2. Vectorized Structure Analysis (`src/astro_lab/data/analysis/structures.py`)
 
@@ -124,6 +125,45 @@ max_epochs = int(config.get("max_epochs", config_defaults["max_epochs"]))
 - More consistent behavior
 - Better readability
 
+### 5. Coordinate Extraction Utility (`src/astro_lab/utils/tensor.py`)
+
+**Problem**: Duplicate code for extracting coordinates from TensorDict appeared in 5+ locations:
+```python
+# Repeated pattern throughout codebase
+if isinstance(coordinates, SpatialTensorDict):
+    coords = coordinates.coordinates
+else:
+    coords = coordinates
+```
+
+**Solution**: Created reusable `extract_coordinates()` utility:
+```python
+def extract_coordinates(coordinates):
+    """Extract coordinate tensor from various input types."""
+    if hasattr(coordinates, "coordinates"):
+        return coordinates.coordinates
+    if hasattr(coordinates, "__getitem__"):
+        try:
+            return coordinates["coordinates"]
+        except (KeyError, TypeError):
+            pass
+    return coordinates
+
+# Usage
+coords = extract_coordinates(coordinates)
+```
+
+**Impact**:
+- Eliminates 5+ instances of duplicate code
+- Single, tested implementation
+- Handles multiple input formats
+- Easier to extend for new types
+
+**Files Updated**:
+- `src/astro_lab/data/analysis/cosmic_web.py`
+- `src/astro_lab/data/analysis/structures.py`
+- `src/astro_lab/data/analysis/clustering.py`
+
 ## Performance Benchmarks
 
 ### Expected Performance Improvements
@@ -205,22 +245,20 @@ from astro_lab.utils.device import get_default_device
 device = get_default_device()
 ```
 
-### Updating Class Initializers
+### Using Coordinate Extraction Utility
 
 Before:
 ```python
-def __init__(self, device: str = "cuda" if torch.cuda.is_available() else "cpu"):
-    self.device = device
+if isinstance(coordinates, SpatialTensorDict):
+    coords = coordinates.coordinates
+else:
+    coords = coordinates
 ```
 
 After:
 ```python
-from astro_lab.utils.device import get_default_device
-
-def __init__(self, device: str = None):
-    if device is None:
-        device = get_default_device()
-    self.device = device
+from astro_lab.utils.tensor import extract_coordinates
+coords = extract_coordinates(coordinates)
 ```
 
 ## References

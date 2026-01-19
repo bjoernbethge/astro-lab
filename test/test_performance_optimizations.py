@@ -18,6 +18,7 @@ from astro_lab.utils.device import (
     is_cuda_available,
     reset_device_cache,
 )
+from astro_lab.utils.tensor import extract_coordinates
 
 
 class TestDeviceUtility:
@@ -64,6 +65,35 @@ class TestDeviceUtility:
         # Should work after reset
         result = is_cuda_available()
         assert isinstance(result, bool)
+
+
+class TestTensorUtility:
+    """Test the tensor utility module."""
+
+    def test_extract_coordinates_from_tensor(self):
+        """Test extracting coordinates from raw tensor."""
+        coords = torch.randn(100, 3)
+        result = extract_coordinates(coords)
+        assert torch.equal(result, coords)
+
+    def test_extract_coordinates_with_attribute(self):
+        """Test extracting coordinates from object with .coordinates attribute."""
+        # Create mock object with coordinates attribute
+        class MockSpatialTensorDict:
+            def __init__(self, coords):
+                self.coordinates = coords
+        
+        coords = torch.randn(50, 3)
+        spatial = MockSpatialTensorDict(coords)
+        result = extract_coordinates(spatial)
+        assert torch.equal(result, coords)
+
+    def test_extract_coordinates_from_dict(self):
+        """Test extracting coordinates from dict-like object."""
+        coords = torch.randn(75, 3)
+        coord_dict = {"coordinates": coords}
+        result = extract_coordinates(coord_dict)
+        assert torch.equal(result, coords)
 
 
 class TestVectorizedCalculations:
@@ -212,6 +242,7 @@ def test_imports():
         get_device,
         is_cuda_available,
     )
+    from astro_lab.utils.tensor import extract_coordinates
     
     # All imports should succeed
     assert True
