@@ -1,0 +1,180 @@
+name: AstroLab Data Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      survey:
+        description: Survey to download and preprocess
+        required: true
+        type: choice
+        options:
+          - gaia
+          - sdss
+          - nsa
+          - tng50
+          - exoplanet
+          - twomass
+          - wise
+          - panstarrs
+          - des
+          - euclid
+          - linear
+          - rrlyrae
+        default: gaia
+      force:
+        description: Force re-download and reprocessing
+        type: boolean
+        default: false
+      sampling_strategy:
+        description: Sampling strategy for ML dataset
+        type: choice
+        options:
+          - knn
+          - radius
+          - fps
+          - cluster
+          - graphsaint
+        default: knn
+      dataset_type:
+        description: Dataset type to build
+        type: choice
+        options:
+          - spatial
+          - pointcloud
+          - graph
+        default: spatial
+      batch_size:
+        description: Batch size for preprocessing
+        required: false
+        default: "10000"
+      device:
+        description: Device for preprocessing
+        type: choice
+        options:
+          - cpu
+          - cuda
+        default: cpu
+      max_samples:
+        description: Max samples to preprocess (optional)
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  collect-and-process:
+    name: Collect and Process Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-data-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-data-
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Download survey data
+        env:
+          SURVEY: ${{ inputs.survey }}
+        run: |
+          set -euo pipefail
+          force_arg=""
+          if [[ "${{ inputs.force }}" == "true" ]]; then
+            force_arg="--force"
+          fi
+          uv run astro-lab download "$SURVEY" $force_arg
+
+      - name: Preprocess survey data
+        env:
+          SURVEY: ${{ inputs.survey }}
+        run: |
+          set -euo pipefail
+          force_arg=""
+          if [[ "${{ inputs.force }}" == "true" ]]; then
+            force_arg="--force"
+          fi
+          max_samples_arg=""
+          if [[ -n "${{ inputs.max_samples }}" ]]; then
+            max_samples_arg="--max-samples ${{ inputs.max_samples }}"
+          fi
+          batch_size_arg=""
+          if [[ -n "${{ inputs.batch_size }}" ]]; then
+            batch_size_arg="--batch-size ${{ inputs.batch_size }}"
+          fi
+          uv run astro-lab preprocess "$SURVEY" \
+            $force_arg \
+            $max_samples_arg \
+            $batch_size_arg \
+            --sampling-strategy "${{ inputs.sampling_strategy }}" \
+            --type "${{ inputs.dataset_type }}" \
+            --device "${{ inputs.device }}"
+
+      - name: Validate outputs
+        env:
+          SURVEY: ${{ inputs.survey }}
+        run: |
+          set -euo pipefail
+          raw_dir="data/raw/${SURVEY}"
+          processed_dir="data/processed/${SURVEY}"
+          parquet_path="${processed_dir}/${SURVEY}.parquet"
+          if [[ ! -d "$raw_dir" ]] || [[ -z "$(ls -A "$raw_dir" 2>/dev/null)" ]]; then
+            echo "::error::No raw data found in $raw_dir"
+            exit 1
+          fi
+          if [[ ! -f "$parquet_path" ]]; then
+            echo "::error::Missing processed parquet: $parquet_path"
+            exit 1
+          fi
+          if ! ls "${processed_dir}/${SURVEY}_node_classification"*.pt >/dev/null 2>&1; then
+            echo "::error::Missing ML dataset .pt file in $processed_dir"
+            exit 1
+          fi
+
+      - name: Upload data artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: astrolab-data-${{ inputs.survey }}
+          path: |
+            data/raw/${{ inputs.survey }}
+            data/processed/${{ inputs.survey }}
+          if-no-files-found: error
+
+      - name: Summarize run
+        if: always()
+        run: |
+          echo "## AstroLab Data Pipeline" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Survey: ${{ inputs.survey }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Sampling strategy: ${{ inputs.sampling_strategy }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Dataset type: ${{ inputs.dataset_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Device: ${{ inputs.device }}" >> $GITHUB_STEP_SUMMARY
+          if [[ -d "data/processed/${{ inputs.survey }}" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Processed outputs:" >> $GITHUB_STEP_SUMMARY
+            ls -lh "data/processed/${{ inputs.survey }}" >> $GITHUB_STEP_SUMMARY
+          fi
