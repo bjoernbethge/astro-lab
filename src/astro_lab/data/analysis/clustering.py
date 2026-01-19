@@ -13,6 +13,8 @@ from torch_geometric.nn import radius_graph
 from torch_geometric.utils import to_undirected
 
 from astro_lab.tensors import SpatialTensorDict
+from astro_lab.utils.device import get_default_device
+from astro_lab.utils.tensor import extract_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +33,12 @@ class SpatialClustering:
 
     def __init__(
         self,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
         random_state: int = 42,
     ):
         """Initialize spatial clustering."""
+        if device is None:
+            device = get_default_device()
         self.device = device
         self.random_state = random_state
 
@@ -60,12 +64,8 @@ class SpatialClustering:
         Returns:
             Dictionary with clustering results per scale
         """
-        # Handle TensorDict input
-        if isinstance(coordinates, SpatialTensorDict):
-            coords = coordinates.coordinates
-        else:
-            coords = coordinates
-
+        # Handle TensorDict input using utility function
+        coords = extract_coordinates(coordinates)
         coords = coords.to(self.device)
 
         results = {}

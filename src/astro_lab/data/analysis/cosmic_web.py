@@ -24,6 +24,7 @@ from torch_geometric.utils import (
 
 from astro_lab.tensors import SpatialTensorDict
 from astro_lab.utils.device import get_default_device
+from astro_lab.utils.tensor import extract_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -80,12 +81,8 @@ class ScalableCosmicWebAnalyzer:
         Returns:
             Comprehensive cosmic web analysis results
         """
-        # Handle different input types
-        if isinstance(coordinates, SpatialTensorDict):
-            coords = coordinates["coordinates"]
-        else:
-            coords = coordinates
-
+        # Handle different input types using utility function
+        coords = extract_coordinates(coordinates)
         coords = coords.to(self.device)
         n_points = coords.shape[0]
 

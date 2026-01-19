@@ -15,6 +15,7 @@ from torch_geometric.utils import to_undirected
 
 from astro_lab.tensors import SpatialTensorDict
 from astro_lab.utils.device import get_default_device
+from astro_lab.utils.tensor import extract_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,8 @@ class FilamentDetector:
         Returns:
             Filament detection results
         """
-        # Handle TensorDict input
-        if isinstance(coordinates, SpatialTensorDict):
-            coords = coordinates.coordinates
-        else:
-            coords = coordinates
-
+        # Handle TensorDict input using utility function
+        coords = extract_coordinates(coordinates)
         coords = coords.to(self.device)
 
         if density_field is not None:
@@ -457,12 +454,8 @@ class StructureAnalyzer:
         Returns:
             Structure analysis results
         """
-        # Handle TensorDict input
-        if isinstance(coordinates, SpatialTensorDict):
-            coords = coordinates.coordinates
-        else:
-            coords = coordinates
-
+        # Handle TensorDict input using utility function
+        coords = extract_coordinates(coordinates)
         coords = coords.to(self.device)
 
         if density_field is not None:
