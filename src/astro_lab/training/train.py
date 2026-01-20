@@ -19,6 +19,7 @@ from astro_lab.data.dataset.lightning import AstroLabDataModule
 from astro_lab.data.samplers.neighbor import KNNSampler
 from astro_lab.models import AstroModel
 from astro_lab.training.trainer import AstroTrainer
+from astro_lab.utils.device import is_cuda_available
 
 logger = logging.getLogger(__name__)
 
@@ -274,30 +275,50 @@ def train_model(
         if len(issues) > 5:
             logger.warning(f"  ... and {len(issues) - 5} more issues")
 
+    # Cache CUDA availability check
+    cuda_available = is_cuda_available()
+
+    # Extract all config parameters with defaults in one place
+    config_defaults = {
+        "batch_size": 32,
+        "max_epochs": 100,
+        "gradient_clip_val": 1.0,
+        "accumulate_grad_batches": 1,
+        "early_stopping": True,
+        "early_stopping_patience": 10,
+        "checkpoint_monitor": "val_loss",
+        "checkpoint_save_top_k": 3,
+        "val_check_interval": 1.0,
+        "limit_train_batches": 1.0,
+        "enable_model_summary": True,
+        "scheduler": "cosine",
+        "warmup_epochs": 5,
+        "experiment_name": "astro_gnn",
+        "devices": 1 if cuda_available else "cpu",
+        "accelerator": "gpu" if cuda_available else "cpu",
+        "precision": "32-true",
+    }
+    
     # Get config values with defaults
     model_type = model_type or config.get("conv_type") or config.get("model_type")
-    experiment_name = str(config.get("experiment_name", "astro_gnn"))
-    devices = config.get("devices", 1 if torch.cuda.is_available() else "cpu")
-    accelerator = str(
-        config.get("accelerator", "gpu" if torch.cuda.is_available() else "cpu")
-    )
-    gradient_clip_val = float(config.get("gradient_clip_val", 1.0))
-    max_epochs = int(config.get("max_epochs", 100))
-
-    # Extract all training parameters for trainer
-    accumulate_grad_batches = int(config.get("accumulate_grad_batches", 1))
-    early_stopping = config.get("early_stopping", True)
-    early_stopping_patience = int(config.get("early_stopping_patience", 10))
-    checkpoint_monitor = config.get("checkpoint_monitor", "val_loss")
-    checkpoint_save_top_k = int(config.get("checkpoint_save_top_k", 3))
-    val_check_interval = float(config.get("val_check_interval", 1.0))
-    limit_train_batches = float(config.get("limit_train_batches", 1.0))
-    enable_model_summary = config.get("enable_model_summary", True)
-    scheduler = config.get("scheduler", "cosine")
-    warmup_epochs = int(config.get("warmup_epochs", 5))
+    experiment_name = str(config.get("experiment_name", config_defaults["experiment_name"]))
+    devices = config.get("devices", config_defaults["devices"])
+    accelerator = str(config.get("accelerator", config_defaults["accelerator"]))
+    gradient_clip_val = float(config.get("gradient_clip_val", config_defaults["gradient_clip_val"]))
+    max_epochs = int(config.get("max_epochs", config_defaults["max_epochs"]))
+    accumulate_grad_batches = int(config.get("accumulate_grad_batches", config_defaults["accumulate_grad_batches"]))
+    early_stopping = config.get("early_stopping", config_defaults["early_stopping"])
+    early_stopping_patience = int(config.get("early_stopping_patience", config_defaults["early_stopping_patience"]))
+    checkpoint_monitor = config.get("checkpoint_monitor", config_defaults["checkpoint_monitor"])
+    checkpoint_save_top_k = int(config.get("checkpoint_save_top_k", config_defaults["checkpoint_save_top_k"]))
+    val_check_interval = float(config.get("val_check_interval", config_defaults["val_check_interval"]))
+    limit_train_batches = float(config.get("limit_train_batches", config_defaults["limit_train_batches"]))
+    enable_model_summary = config.get("enable_model_summary", config_defaults["enable_model_summary"])
+    scheduler = config.get("scheduler", config_defaults["scheduler"])
+    warmup_epochs = int(config.get("warmup_epochs", config_defaults["warmup_epochs"]))
 
     # Set PyTorch optimizations
-    if torch.cuda.is_available():
+    if cuda_available:
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
         torch.set_float32_matmul_precision("medium")
@@ -342,7 +363,7 @@ def train_model(
         raise
 
     # Move model to GPU if available
-    if torch.cuda.is_available() and accelerator == "gpu":
+    if cuda_available and accelerator == "gpu":
         model = model.cuda()
         logger.info("Model moved to GPU")
 

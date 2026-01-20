@@ -14,6 +14,8 @@ from torch_geometric.nn import radius_graph
 from torch_geometric.utils import to_undirected
 
 from astro_lab.tensors import SpatialTensorDict
+from astro_lab.utils.device import get_default_device
+from astro_lab.utils.tensor import extract_coordinates
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +33,13 @@ class FilamentDetector:
 
     def __init__(
         self,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
         min_filament_length: float = 2.0,
         anisotropy_threshold: float = 0.7,
     ):
         """Initialize filament detector."""
+        if device is None:
+            device = get_default_device()
         self.device = device
         self.min_filament_length = min_filament_length
         self.anisotropy_threshold = anisotropy_threshold
@@ -59,12 +63,8 @@ class FilamentDetector:
         Returns:
             Filament detection results
         """
-        # Handle TensorDict input
-        if isinstance(coordinates, SpatialTensorDict):
-            coords = coordinates.coordinates
-        else:
-            coords = coordinates
-
+        # Handle TensorDict input using utility function
+        coords = extract_coordinates(coordinates)
         coords = coords.to(self.device)
 
         if density_field is not None:
@@ -165,57 +165,82 @@ class FilamentDetector:
     def _calculate_anisotropy(
         self, coordinates: torch.Tensor, edge_index: torch.Tensor
     ) -> torch.Tensor:
-        """Calculate local anisotropy using neighbor distribution."""
+        """Calculate local anisotropy using neighbor distribution (vectorized)."""
         n_points = coordinates.size(0)
         device = coordinates.device
 
         anisotropy = torch.zeros(n_points, device=device)
 
-        for i in range(n_points):
-            # Find neighbors
-            neighbor_mask = edge_index[0] == i
-            if neighbor_mask.sum() > 0:
-                neighbors = edge_index[1, neighbor_mask]
-
-                # Calculate direction vectors
-                directions = coordinates[neighbors] - coordinates[i]
-                directions = F.normalize(directions, dim=1)
-
-                # Calculate anisotropy as variance of directions
-                if len(directions) > 1:
-                    mean_direction = directions.mean(dim=0)
-                    variance = ((directions - mean_direction) ** 2).mean()
-                    anisotropy[i] = variance
-                else:
-                    anisotropy[i] = 0.0
+        # Vectorized approach: process all edges at once
+        src, dst = edge_index[0], edge_index[1]
+        
+        # Calculate direction vectors for all edges
+        directions = coordinates[dst] - coordinates[src]
+        directions = F.normalize(directions, dim=1, eps=1e-8)
+        
+        # Group by source node using scatter operations
+        # Count neighbors per node
+        neighbor_counts = torch.zeros(n_points, device=device, dtype=torch.long)
+        neighbor_counts.scatter_add_(0, src, torch.ones_like(src))
+        
+        # Calculate mean direction per node
+        mean_directions = torch.zeros(n_points, 3, device=device)
+        mean_directions.scatter_add_(0, src.unsqueeze(1).expand_as(directions), directions)
+        valid_mask = neighbor_counts > 0
+        mean_directions[valid_mask] /= neighbor_counts[valid_mask].unsqueeze(1).float()
+        
+        # Calculate variance for each edge
+        mean_expanded = mean_directions[src]
+        variances = ((directions - mean_expanded) ** 2).sum(dim=1)
+        
+        # Aggregate variance per node
+        variance_sum = torch.zeros(n_points, device=device)
+        variance_sum.scatter_add_(0, src, variances)
+        
+        # Average variance (anisotropy) for nodes with multiple neighbors
+        multi_neighbor_mask = neighbor_counts > 1
+        anisotropy[multi_neighbor_mask] = variance_sum[multi_neighbor_mask] / neighbor_counts[multi_neighbor_mask].float()
 
         return anisotropy
 
     def _calculate_curvature(
         self, coordinates: torch.Tensor, edge_index: torch.Tensor
     ) -> torch.Tensor:
-        """Calculate local curvature using neighbor positions."""
+        """Calculate local curvature using neighbor positions (vectorized)."""
         n_points = coordinates.size(0)
         device = coordinates.device
 
         curvature = torch.zeros(n_points, device=device)
 
-        for i in range(n_points):
-            # Find neighbors
-            neighbor_mask = edge_index[0] == i
-            if neighbor_mask.sum() > 1:
-                neighbors = edge_index[1, neighbor_mask]
-
-                # Calculate curvature as deviation from linear arrangement
-                neighbor_positions = coordinates[neighbors]
-                center = coordinates[i]
-
-                # Fit line through neighbors
-                if len(neighbor_positions) >= 2:
-                    # Simple curvature estimation
-                    distances = torch.norm(neighbor_positions - center, dim=1)
-                    mean_distance = distances.mean()
-                    curvature[i] = distances.std() / (mean_distance + 1e-8)
+        # Vectorized approach
+        src, dst = edge_index[0], edge_index[1]
+        
+        # Calculate distances for all edges
+        distances = torch.norm(coordinates[dst] - coordinates[src], dim=1)
+        
+        # Count neighbors per node
+        neighbor_counts = torch.zeros(n_points, device=device, dtype=torch.long)
+        neighbor_counts.scatter_add_(0, src, torch.ones_like(src))
+        
+        # Calculate mean distance per node
+        distance_sum = torch.zeros(n_points, device=device)
+        distance_sum.scatter_add_(0, src, distances)
+        mean_distance = torch.zeros(n_points, device=device)
+        valid_mask = neighbor_counts > 0
+        mean_distance[valid_mask] = distance_sum[valid_mask] / neighbor_counts[valid_mask].float()
+        
+        # Calculate squared deviations
+        mean_expanded = mean_distance[src]
+        sq_deviations = (distances - mean_expanded) ** 2
+        
+        # Sum squared deviations per node
+        sq_dev_sum = torch.zeros(n_points, device=device)
+        sq_dev_sum.scatter_add_(0, src, sq_deviations)
+        
+        # Calculate standard deviation and curvature for nodes with 2+ neighbors
+        multi_neighbor_mask = neighbor_counts >= 2
+        std_distance = torch.sqrt(sq_dev_sum[multi_neighbor_mask] / neighbor_counts[multi_neighbor_mask].float())
+        curvature[multi_neighbor_mask] = std_distance / (mean_distance[multi_neighbor_mask] + 1e-8)
 
         return curvature
 
@@ -401,10 +426,12 @@ class StructureAnalyzer:
 
     def __init__(
         self,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
         max_structures: int = 1000,
     ):
         """Initialize structure analyzer."""
+        if device is None:
+            device = get_default_device()
         self.device = device
         self.max_structures = max_structures
 
@@ -427,12 +454,8 @@ class StructureAnalyzer:
         Returns:
             Structure analysis results
         """
-        # Handle TensorDict input
-        if isinstance(coordinates, SpatialTensorDict):
-            coords = coordinates.coordinates
-        else:
-            coords = coordinates
-
+        # Handle TensorDict input using utility function
+        coords = extract_coordinates(coordinates)
         coords = coords.to(self.device)
 
         if density_field is not None:
@@ -672,35 +695,48 @@ class StructureAnalyzer:
     def _calculate_planarity(
         self, coordinates: torch.Tensor, edge_index: torch.Tensor
     ) -> torch.Tensor:
-        """Calculate local planarity using neighbor distribution."""
+        """Calculate local planarity using neighbor distribution (vectorized).
+        
+        Note: This function still uses a loop for eigenvalue calculations
+        but is optimized where possible. Full vectorization of eigenvalue
+        computation across all nodes would be complex and may not provide
+        significant speedup for typical graph sizes.
+        """
         n_points = coordinates.size(0)
         device = coordinates.device
 
         planarity = torch.zeros(n_points, device=device)
 
-        for i in range(n_points):
+        # Pre-compute neighbor counts to identify nodes with sufficient neighbors
+        src = edge_index[0]
+        neighbor_counts = torch.zeros(n_points, device=device, dtype=torch.long)
+        neighbor_counts.scatter_add_(0, src, torch.ones_like(src))
+        
+        # Only process nodes with 3+ neighbors
+        valid_nodes = torch.where(neighbor_counts > 2)[0]
+        
+        for i in valid_nodes:
             # Find neighbors
             neighbor_mask = edge_index[0] == i
-            if neighbor_mask.sum() > 2:
-                neighbors = edge_index[1, neighbor_mask]
+            neighbors = edge_index[1, neighbor_mask]
 
-                # Calculate local covariance matrix
-                neighbor_positions = coordinates[neighbors]
-                center = coordinates[i]
-                relative_positions = neighbor_positions - center
+            # Calculate local covariance matrix
+            neighbor_positions = coordinates[neighbors]
+            center = coordinates[i]
+            relative_positions = neighbor_positions - center
 
-                # Compute covariance matrix
-                cov_matrix = torch.matmul(
-                    relative_positions.T, relative_positions
-                ) / len(relative_positions)
+            # Compute covariance matrix
+            cov_matrix = torch.matmul(
+                relative_positions.T, relative_positions
+            ) / len(relative_positions)
 
-                # Calculate eigenvalues
-                eigenvals = torch.linalg.eigvals(cov_matrix).real
-                eigenvals = torch.sort(eigenvals, descending=True)[0]
+            # Calculate eigenvalues
+            eigenvals = torch.linalg.eigvals(cov_matrix).real
+            eigenvals = torch.sort(eigenvals, descending=True)[0]
 
-                # Planarity = (λ1 - λ2) / (λ1 + λ2 + λ3)
-                if eigenvals.sum() > 0:
-                    planarity[i] = (eigenvals[0] - eigenvals[1]) / eigenvals.sum()
+            # Planarity = (λ1 - λ2) / (λ1 + λ2 + λ3)
+            if eigenvals.sum() > 0:
+                planarity[i] = (eigenvals[0] - eigenvals[1]) / eigenvals.sum()
 
         return planarity
 
@@ -832,9 +868,11 @@ class CosmicWebAnalyzer:
 
     def __init__(
         self,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
     ):
         """Initialize cosmic web analyzer."""
+        if device is None:
+            device = get_default_device()
         self.device = device
         self.filament_detector = FilamentDetector(device=device)
         self.structure_analyzer = StructureAnalyzer(device=device)
