@@ -1,0 +1,78 @@
+name: Validate Workflows
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    name: Lint GitHub Actions Workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download actionlint
+        id: get_actionlint
+        run: |
+          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) latest /usr/local/bin
+          echo "actionlint installed successfully"
+          actionlint --version
+
+      - name: Validate workflow files
+        run: |
+          echo "## Workflow Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Run actionlint on all workflows
+          if actionlint -verbose .github/workflows/*.yml 2>&1 | tee /tmp/actionlint.log; then
+            echo "✅ All workflows are valid!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "All GitHub Actions workflow files passed validation." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Some workflows have issues:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/actionlint.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Check workflow syntax with yamllint
+        run: |
+          pip install yamllint
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### YAML Syntax Check" >> $GITHUB_STEP_SUMMARY
+          
+          if yamllint -d relaxed .github/workflows/ 2>&1 | tee /tmp/yamllint.log; then
+            echo "✅ YAML syntax is valid" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ YAML syntax issues found:" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            cat /tmp/yamllint.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: List all workflows
+        if: always()
+        run: |
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Workflows Validated" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          for workflow in .github/workflows/*.yml; do
+            workflow_name=$(basename "$workflow")
+            echo "- \`$workflow_name\`" >> $GITHUB_STEP_SUMMARY
+          done
