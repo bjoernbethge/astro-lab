@@ -46,7 +46,7 @@ dependencies = [
     "requests>=2.32.4",
     "mathutils>=3.3.0",
     "photutils>=2.2.0",
-    "triton-windows<3.4; sys_platform == 'win32'",
+    "triton-windows<3.6; sys_platform == 'win32'",
     "torchvision>=0.22.1",
 ]
 
