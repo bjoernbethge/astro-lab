@@ -1,0 +1,406 @@
+name: AI Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: 'AI Agent to use'
+        required: true
+        type: choice
+        options:
+          - claude
+          - copilot
+          - opencode
+        default: claude
+      prompt:
+        description: 'Task prompt for the AI agent'
+        required: true
+        type: string
+      context:
+        description: 'Additional context (optional)'
+        required: false
+        type: string
+        default: ''
+      agent_profile:
+        description: 'Agent profile/persona to use'
+        required: false
+        type: choice
+        options:
+          - default
+          - devops-specialist
+          - test-engineer
+          - data-scientist
+          - gnn-architect
+          - astrophysics-expert
+          - cli-developer
+          - performance-optimizer
+          - visualization-expert
+        default: default
+      create_pr:
+        description: 'Create PR with changes'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.actor }}
+  cancel-in-progress: false
+
+# Minimal permissions - each job requests only what it needs
+permissions:
+  contents: read
+
+jobs:
+  # Security check: Verify the actor has write access
+  authorize:
+    name: Authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      authorized: ${{ steps.check.outputs.authorized }}
+    steps:
+      - name: Check actor permissions
+        id: check
+        run: |
+          # Get actor's permission level
+          PERMISSION=$(gh api "repos/${{ github.repository }}/collaborators/${{ github.actor }}/permission" \
+            --jq '.permission' 2>/dev/null || echo "none")
+
+          echo "Actor: ${{ github.actor }}"
+          echo "Permission level: $PERMISSION"
+
+          # Only allow write, maintain, or admin
+          if [[ "$PERMISSION" == "admin" || "$PERMISSION" == "maintain" || "$PERMISSION" == "write" ]]; then
+            echo "authorized=true" >> $GITHUB_OUTPUT
+            echo "User is authorized to trigger AI agents"
+          else
+            echo "authorized=false" >> $GITHUB_OUTPUT
+            echo "::error::User ${{ github.actor }} is not authorized to trigger AI agents (permission: $PERMISSION)"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Run Claude Code
+  claude:
+    name: Claude Code
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true' && inputs.agent == 'claude'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-ai-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-ai-
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Load agent profile
+        id: profile
+        run: |
+          PROFILE="${{ inputs.agent_profile }}"
+          if [[ "$PROFILE" != "default" && -f ".github/agents/${PROFILE}.agent.md" ]]; then
+            echo "Using agent profile: $PROFILE"
+            echo "profile_content<<EOF" >> $GITHUB_OUTPUT
+            cat ".github/agents/${PROFILE}.agent.md" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "Using default profile"
+            echo "profile_content=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run Claude Code
+        id: claude
+        run: |
+          echo "## Claude Code Task" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Agent Profile:** ${{ inputs.agent_profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Prompt:** ${{ inputs.prompt }}" >> $GITHUB_STEP_SUMMARY
+          if [[ -n "${{ inputs.context }}" ]]; then
+            echo "**Context:** ${{ inputs.context }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Claude Code would be invoked here via the Anthropic API
+          # This is a placeholder for the actual integration
+          echo "Claude Code integration placeholder"
+          echo "Task: ${{ inputs.prompt }}"
+
+          # Check if there are any changes
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+      - name: Create Pull Request
+        if: inputs.create_pr && steps.claude.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            feat: AI-assisted changes via Claude Code
+
+            Task: ${{ inputs.prompt }}
+            Agent: ${{ inputs.agent_profile }}
+            Triggered by: ${{ github.actor }}
+          branch: ai/claude-${{ github.run_number }}
+          delete-branch: true
+          title: "feat: AI-assisted changes via Claude Code"
+          body: |
+            ## AI Agent Task
+
+            **Agent:** Claude Code
+            **Profile:** ${{ inputs.agent_profile }}
+            **Triggered by:** @${{ github.actor }}
+
+            ### Task
+            ${{ inputs.prompt }}
+
+            ${{ inputs.context && format('### Context\n{0}', inputs.context) || '' }}
+
+            ---
+            Generated by [AI Agent workflow](https://github.com/${{ github.repository }}/actions/workflows/ai-agent.yml)
+          labels: |
+            ai-assisted
+            claude
+          assignees: ${{ github.actor }}
+
+  # Run GitHub Copilot
+  copilot:
+    name: GitHub Copilot
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true' && inputs.agent == 'copilot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-ai-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-ai-
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run Copilot Task
+        id: copilot
+        run: |
+          echo "## GitHub Copilot Task" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Agent Profile:** ${{ inputs.agent_profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Prompt:** ${{ inputs.prompt }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # GitHub Copilot Workspace integration would go here
+          # This requires Copilot Workspace API access
+          echo "GitHub Copilot integration placeholder"
+          echo "Task: ${{ inputs.prompt }}"
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: inputs.create_pr && steps.copilot.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            feat: AI-assisted changes via GitHub Copilot
+
+            Task: ${{ inputs.prompt }}
+            Agent: ${{ inputs.agent_profile }}
+            Triggered by: ${{ github.actor }}
+          branch: ai/copilot-${{ github.run_number }}
+          delete-branch: true
+          title: "feat: AI-assisted changes via GitHub Copilot"
+          body: |
+            ## AI Agent Task
+
+            **Agent:** GitHub Copilot
+            **Profile:** ${{ inputs.agent_profile }}
+            **Triggered by:** @${{ github.actor }}
+
+            ### Task
+            ${{ inputs.prompt }}
+
+            ${{ inputs.context && format('### Context\n{0}', inputs.context) || '' }}
+
+            ---
+            Generated by [AI Agent workflow](https://github.com/${{ github.repository }}/actions/workflows/ai-agent.yml)
+          labels: |
+            ai-assisted
+            copilot
+          assignees: ${{ github.actor }}
+
+  # Run OpenCode AI
+  opencode:
+    name: OpenCode AI
+    needs: authorize
+    if: needs.authorize.outputs.authorized == 'true' && inputs.agent == 'opencode'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .venv
+            ~/.cache/uv
+          key: ${{ runner.os }}-uv-ai-${{ hashFiles('**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-ai-
+
+      - name: Install dependencies
+        run: uv sync --frozen --group dev
+
+      - name: Run OpenCode Task
+        id: opencode
+        run: |
+          echo "## OpenCode AI Task" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Agent Profile:** ${{ inputs.agent_profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Prompt:** ${{ inputs.prompt }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # OpenCode AI integration would go here
+          echo "OpenCode AI integration placeholder"
+          echo "Task: ${{ inputs.prompt }}"
+
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Create Pull Request
+        if: inputs.create_pr && steps.opencode.outputs.has_changes == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: |
+            feat: AI-assisted changes via OpenCode AI
+
+            Task: ${{ inputs.prompt }}
+            Agent: ${{ inputs.agent_profile }}
+            Triggered by: ${{ github.actor }}
+          branch: ai/opencode-${{ github.run_number }}
+          delete-branch: true
+          title: "feat: AI-assisted changes via OpenCode AI"
+          body: |
+            ## AI Agent Task
+
+            **Agent:** OpenCode AI
+            **Profile:** ${{ inputs.agent_profile }}
+            **Triggered by:** @${{ github.actor }}
+
+            ### Task
+            ${{ inputs.prompt }}
+
+            ${{ inputs.context && format('### Context\n{0}', inputs.context) || '' }}
+
+            ---
+            Generated by [AI Agent workflow](https://github.com/${{ github.repository }}/actions/workflows/ai-agent.yml)
+          labels: |
+            ai-assisted
+            opencode
+          assignees: ${{ github.actor }}
+
+  # Summary job
+  summary:
+    name: Summary
+    needs: [authorize, claude, copilot, opencode]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## AI Agent Workflow Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Agent:** ${{ inputs.agent }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Profile:** ${{ inputs.agent_profile }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.authorize.outputs.authorized }}" != "true" ]]; then
+            echo "### Authorization Failed" >> $GITHUB_STEP_SUMMARY
+            echo "User ${{ github.actor }} is not authorized to trigger AI agents." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Task" >> $GITHUB_STEP_SUMMARY
+            echo "${{ inputs.prompt }}" >> $GITHUB_STEP_SUMMARY
+          fi

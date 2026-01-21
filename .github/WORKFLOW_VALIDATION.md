@@ -113,6 +113,54 @@ The validation workflow helps maintain:
 - ✅ Consistent coding style
 - ✅ Security best practices
 
+## AI Agent Workflow
+
+The `ai-agent.yml` workflow allows manual triggering of AI coding assistants.
+
+### Available Agents
+- **Claude Code** - Anthropic's Claude AI (requires `ANTHROPIC_API_KEY` secret)
+- **GitHub Copilot** - GitHub's Copilot Workspace
+- **OpenCode AI** - OpenAI-based coding assistant (requires `OPENAI_API_KEY` secret)
+
+### Agent Profiles
+The workflow supports loading specialized agent profiles from `.github/agents/`:
+- `devops-specialist` - CI/CD and infrastructure
+- `test-engineer` - Testing and quality assurance
+- `data-scientist` - Data analysis and ML
+- `gnn-architect` - Graph neural network design
+- `astrophysics-expert` - Domain expertise
+- And more...
+
+### Security
+
+#### Public Repository Protection
+This workflow is designed for public repositories with the following security measures:
+
+1. **Authorization Check**: Before any AI agent runs, the workflow verifies that the triggering user has `write`, `maintain`, or `admin` permission on the repository.
+
+2. **workflow_dispatch Only**: The workflow can only be triggered manually via `workflow_dispatch`, which inherently requires write access. Forks cannot trigger this workflow.
+
+3. **Minimal Permissions**: The workflow uses the principle of least privilege:
+   - Top-level permissions are `contents: read`
+   - Each job requests only the specific permissions it needs
+   - PR creation jobs request `contents: write` and `pull-requests: write`
+
+4. **Concurrency Control**: Prevents parallel runs by the same user to avoid conflicts.
+
+#### Required Secrets
+- `ANTHROPIC_API_KEY` - For Claude Code integration
+- `OPENAI_API_KEY` - For OpenCode AI integration
+
+### Usage
+```bash
+# Trigger via GitHub CLI
+gh workflow run ai-agent.yml \
+  -f agent=claude \
+  -f prompt="Fix the failing tests in test_models.py" \
+  -f agent_profile=test-engineer \
+  -f create_pr=true
+```
+
 ## Resources
 
 - [actionlint documentation](https://github.com/rhysd/actionlint)
