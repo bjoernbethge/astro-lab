@@ -428,6 +428,77 @@ Examples:
         help="Validate configuration files",
     )
 
+    # ==================== PROCESS (deprecated, forwards to preprocess) ====================
+    process_parser = subparsers.add_parser(
+        "process",
+        help="[DEPRECATED] Use 'preprocess' instead",
+        description="DEPRECATED: This command forwards to 'preprocess'. Please update your scripts.",
+    )
+    process_parser.add_argument(
+        "survey",
+        choices=AVAILABLE_SURVEYS,
+        help="Survey to preprocess",
+    )
+    process_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force reprocessing even if processed data exists",
+    )
+    process_parser.add_argument(
+        "--max-samples",
+        type=int,
+        help="Maximum samples to process (for testing)",
+    )
+    process_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help="Custom output directory",
+    )
+    process_parser.add_argument(
+        "--sampling-strategy",
+        type=str,
+        default="knn",
+        help="Sampling strategy for ML dataset (knn, radius, fps, cluster, graphsaint, etc.)",
+    )
+    process_parser.add_argument(
+        "--type",
+        type=str,
+        default="spatial",
+        help="Dataset type (spatial, pointcloud, graph, etc.)",
+    )
+    process_parser.add_argument(
+        "--k",
+        type=int,
+        help="Number of neighbors for KNN sampling",
+    )
+    process_parser.add_argument(
+        "--radius",
+        type=float,
+        help="Radius for radius-based sampling",
+    )
+    process_parser.add_argument(
+        "--num-subgraphs",
+        type=int,
+        help="Number of subgraphs for point cloud sampling",
+    )
+    process_parser.add_argument(
+        "--points-per-subgraph",
+        type=int,
+        help="Points per subgraph for point cloud sampling",
+    )
+    process_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=10000,
+        help="Batch size for dataset processing (default: 10000)",
+    )
+    process_parser.add_argument(
+        "--device",
+        type=str,
+        default="cuda",
+        help="Device for processing (cpu or cuda, default: cuda)",
+    )
+
     # ==================== DOWNLOAD ====================
     download_parser = subparsers.add_parser(
         "download",
@@ -544,6 +615,21 @@ def main() -> int:
 
         elif args.command == "download":
             from .download import main
+
+            result = main(args)
+            return result if result is not None else 1
+
+        elif args.command == "process":
+            # Deprecated command - forward to preprocess with warning
+            import sys
+
+            print(
+                "Note: 'astro-lab process' is deprecated. "
+                "Please use 'astro-lab preprocess' instead.",
+                file=sys.stderr,
+            )
+            print(file=sys.stderr)
+            from .preprocess import main
 
             result = main(args)
             return result if result is not None else 1
