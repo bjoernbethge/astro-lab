@@ -16,6 +16,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 jobs:
   generate-and-deploy:
     runs-on: ubuntu-latest
