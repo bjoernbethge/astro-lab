@@ -7,7 +7,9 @@ Spatial data handling leveraging native TensorDict features.
 
 from typing import Dict, List, Optional, Union
 
+import numpy as np
 import torch
+from astroML.correlation import two_point, two_point_angular
 from tensordict import TensorDict
 
 from ..base import AstroTensorDict
@@ -208,6 +210,57 @@ class SpatialTensorDict(AstroTensorDict):
         self["clustering_min_samples"] = min_samples
 
         return labels_tensor
+
+    def two_point_correlation(
+        self,
+        bins: np.ndarray,
+        method: str = "landy-szalay",
+        data_R: Optional[np.ndarray] = None,
+        random_state: Optional[int] = None,
+    ) -> np.ndarray:
+        """Compute 3D two-point correlation function.
+
+        Args:
+            bins: Bin edges for separation (shape Nbins+1)
+            method: 'standard' or 'landy-szalay'
+            data_R: Optional random comparison sample
+            random_state: Random seed for background generation
+
+        Returns:
+            Correlation estimates per bin [Nbins]
+        """
+        data = self.coordinates.cpu().numpy()
+        return two_point(data, bins, method=method, data_R=data_R, random_state=random_state)
+
+    def two_point_angular_correlation(
+        self,
+        bins: np.ndarray,
+        ra: Optional[Union[torch.Tensor, np.ndarray]] = None,
+        dec: Optional[Union[torch.Tensor, np.ndarray]] = None,
+        method: str = "landy-szalay",
+        random_state: Optional[int] = None,
+    ) -> np.ndarray:
+        """Compute angular two-point correlation (RA, dec).
+
+        Args:
+            bins: Bin edges for angular separation in degrees
+            ra: Right ascension (deg). If None, uses coordinates[:, 0]
+            dec: Declination (deg). If None, uses coordinates[:, 1]
+            method: 'standard' or 'landy-szalay'
+            random_state: Random seed for background
+
+        Returns:
+            Correlation estimates per bin [Nbins]
+        """
+        if ra is None:
+            ra = self.coordinates[:, 0].cpu().numpy()
+        elif isinstance(ra, torch.Tensor):
+            ra = ra.cpu().numpy()
+        if dec is None:
+            dec = self.coordinates[:, 1].cpu().numpy()
+        elif isinstance(dec, torch.Tensor):
+            dec = dec.cpu().numpy()
+        return two_point_angular(ra, dec, bins, method=method, random_state=random_state)
 
     def extract_features(
         self, feature_types: Optional[List[str]] = None, **kwargs

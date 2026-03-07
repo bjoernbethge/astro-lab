@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import astropy.units as u
 import numpy as np
 import torch
+from sklearn.mixture import GaussianMixture
 from astropy.coordinates import SkyCoord
 from astropy.stats import sigma_clipped_stats
 from astropy.units import Unit
@@ -475,6 +476,85 @@ class PhotometricTensorDict(
         )
 
         return absolute_mags
+
+    def fit_stellar_populations(
+        self,
+        n_components: int = 5,
+        color_bands: Optional[Tuple[str, str]] = None,
+        magnitude_band: Optional[str] = None,
+        covariance_type: str = "full",
+        random_state: Optional[int] = 42,
+    ) -> Dict[str, torch.Tensor]:
+        """Fit GMM to color-magnitude diagram for stellar population modeling.
+
+        Args:
+            n_components: Number of stellar populations
+            color_bands: (band1, band2) for color. Default: first two bands or (BP, RP) if Gaia
+            magnitude_band: Band for magnitude axis. Default: first band or G if Gaia
+            covariance_type: GMM covariance type
+            random_state: Random seed
+
+        Returns:
+            Dict with 'labels', 'means', 'weights', 'color', 'magnitude'
+        """
+        if not self.is_magnitude:
+            raise ValueError("Stellar populations require magnitude data")
+
+        mags = self["magnitudes"].cpu().numpy()
+
+        # Infer bands for CMD
+        if color_bands is None:
+            if "BP" in self.bands and "RP" in self.bands:
+                color_bands = ("BP", "RP")
+            elif len(self.bands) >= 2:
+                color_bands = (self.bands[0], self.bands[1])
+            else:
+                raise ValueError("Need at least 2 bands for color-magnitude")
+
+        if magnitude_band is None:
+            magnitude_band = "G" if "G" in self.bands else self.bands[0]
+
+        idx1 = self.bands.index(color_bands[0])
+        idx2 = self.bands.index(color_bands[1])
+        idx_mag = self.bands.index(magnitude_band)
+
+        color = mags[:, idx1] - mags[:, idx2]
+        magnitude = mags[:, idx_mag]
+
+        # Remove NaN/Inf
+        valid = np.isfinite(color) & np.isfinite(magnitude)
+        if not np.any(valid):
+            raise ValueError("No valid color-magnitude data")
+
+        X = np.column_stack([color[valid], magnitude[valid]])
+
+        gmm = GaussianMixture(
+            n_components=n_components,
+            covariance_type=covariance_type,
+            random_state=random_state,
+        )
+        gmm.fit(X)
+
+        labels_full = np.full(mags.shape[0], -1, dtype=np.int64)
+        labels_full[valid] = gmm.predict(X)
+
+        self["population_labels"] = torch.tensor(
+            labels_full, dtype=torch.long, device=self["magnitudes"].device
+        )
+        self["population_means"] = torch.tensor(
+            gmm.means_, dtype=self["magnitudes"].dtype, device=self["magnitudes"].device
+        )
+        self["population_weights"] = torch.tensor(
+            gmm.weights_, dtype=self["magnitudes"].dtype, device=self["magnitudes"].device
+        )
+
+        return {
+            "labels": self["population_labels"],
+            "means": self["population_means"],
+            "weights": self["population_weights"],
+            "color": torch.tensor(color, device=self["magnitudes"].device),
+            "magnitude": torch.tensor(magnitude, device=self["magnitudes"].device),
+        }
 
     def sigma_clip_outliers(
         self, sigma: float = 3.0, maxiters: int = 5, band_index: Optional[int] = None
