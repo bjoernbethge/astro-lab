@@ -12,6 +12,7 @@ import os
 from typing import Dict, List, Optional
 
 import torch
+from sklearn.mixture import GaussianMixture
 from tensordict import TensorDict
 
 # Set tensordict behavior globally for this module
@@ -327,6 +328,8 @@ class AnalysisTensorDict(
 
         if algorithm == "kmeans":
             self._fit_kmeans(max_iters, tolerance)
+        elif algorithm == "gmm":
+            self._fit_gmm(**kwargs)
         else:
             raise ValueError(f"Unknown clustering algorithm: {algorithm}")
 
@@ -373,6 +376,33 @@ class AnalysisTensorDict(
         self["labels"] = labels
         self["centroids"] = centroids
         self["meta"]["parameters"]["final_iteration"] = iteration
+
+    def _fit_gmm(
+        self,
+        covariance_type: str = "full",
+        random_state: Optional[int] = 42,
+        **kwargs,
+    ):
+        """Fit GMM clustering (stellar populations, HR diagram)."""
+        data = self["data"].cpu().numpy()
+        n_clusters = self["meta"]["n_clusters"]
+
+        gmm = GaussianMixture(
+            n_components=n_clusters,
+            covariance_type=covariance_type,
+            random_state=random_state,
+            **kwargs,
+        )
+        gmm.fit(data)
+
+        labels = torch.tensor(gmm.predict(data), dtype=torch.long, device=self["data"].device)
+        centroids = torch.tensor(gmm.means_, dtype=self["data"].dtype, device=self["data"].device)
+
+        self["labels"] = labels
+        self["centroids"] = centroids
+        self["meta"]["parameters"]["converged"] = gmm.converged_
+        if hasattr(gmm, "weights_"):
+            self["meta"]["parameters"]["weights"] = gmm.weights_.tolist()
 
     def predict_clusters(self, new_data: torch.Tensor) -> torch.Tensor:
         """

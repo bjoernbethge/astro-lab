@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 from sklearn.cluster import DBSCAN, KMeans
+from sklearn.mixture import GaussianMixture
 from torch_geometric.data import Data, HeteroData
 from torch_geometric.loader import DataLoader, NeighborLoader
 from torch_geometric.nn import knn_graph
@@ -191,6 +192,33 @@ class ClusterSamplerMixin:
         coords_np = coordinates.cpu().numpy()
         clustering = KMeans(n_clusters=n_clusters, random_state=42)
         labels = clustering.fit_predict(coords_np)
+        return torch.tensor(labels, dtype=torch.long, device=coordinates.device)
+
+    @staticmethod
+    def gmm_clusters(
+        coordinates: torch.Tensor,
+        n_clusters: int = 8,
+        covariance_type: str = "full",
+        random_state: Optional[int] = 42,
+    ) -> torch.Tensor:
+        """Perform GMM clustering (e.g. color-magnitude, stellar populations).
+
+        Args:
+            coordinates: Node coordinates [N, D] (e.g. color, magnitude)
+            n_clusters: Number of mixture components
+            covariance_type: GMM covariance type
+            random_state: Random seed
+
+        Returns:
+            Cluster labels tensor [N]
+        """
+        coords_np = coordinates.cpu().numpy()
+        gmm = GaussianMixture(
+            n_components=n_clusters,
+            covariance_type=covariance_type,
+            random_state=random_state,
+        )
+        labels = gmm.fit_predict(coords_np)
         return torch.tensor(labels, dtype=torch.long, device=coordinates.device)
 
 

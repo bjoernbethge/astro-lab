@@ -14,26 +14,23 @@ dependencies = [
     "h5py>=3.8.0", # check astropy.io API
     "pydantic>=2.11.6",
     "pyyaml>=6.0.2",
-    "markupsafe>=3.0.2",
     # astro
-    "astroml>=1.0.2.post1",
     "astrophot>=0.16.13",
-    "astropy>=7.1.0",
+    "astropy[recommended]>=7.1.0",
     "astroquery>=0.4.10",
     "poliastro>=0.7.0",
     "sdss-access>=3.0.8",
-    "sgp4>=2.24",
+    "astroml>=1.0.2.post1",
     "numpy>=1.24,<3.0",
     # ml
     "torch>=2.7.1",
     "torch-geometric>=2.6.1",
-    "torchinfo>=1.8.0",
     "torchmetrics==1.8.2",
-    "marimo>=0.10.18",
+    "marimo[recommended,mcp,lsp]>=0.10.18",
     "mlflow>=2.19.0",
     "lightning==2.6.1",
-    "lightning-utilities==0.15.2",
-    "optuna-integration[pytorch-lightning]>=4.4.0",
+    "lightning-utilities==0.15.3",
+    "optuna-integration[pytorch-lightning,mlflow]>=4.4.0",
     "optuna>=4.4.0",
     # viz
     "bpy>=4.4.0",
@@ -41,14 +38,15 @@ dependencies = [
     "pyvista>=0.45.2",
     "open3d>=0.19.0",
     "plotly>=6.1.2",
-    "anywidget>=0.9.18",
-    "traitlets>=5.14.3",
     "tensordict>=0.8.3",
     "requests>=2.32.4",
     "mathutils>=3.3.0",
     "photutils>=2.2.0",
     "triton-windows<3.7; sys_platform == 'win32'",
     "torchvision>=0.22.1",
+    "flask>=3.1.3",
+    "werkzeug>=3.0.6",
+    "sqlparse>=0.5.3",
 ]
 
 [build-system]
@@ -70,10 +68,7 @@ dev = [
     "pytest-xdist>=3.7.0",
     "pytest-timeout>=2.0.0", # Test timeouts
     "pytest-rerunfailures>=12.0", # Retry failed tests
-    "psutil>=6.1.0",
     "gputil>=1.4.0",
-    "ruff>=0.1.0",
-    "mypy>=1.0.0",
     "pre-commit>=3.0.0",
     "mkdocs>=1.5.0",
     "mkdocs-material>=9.0.0",
