@@ -175,7 +175,7 @@ jobs:
           fi
 
       - name: Upload training artifacts
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: astrolab-training-${{ inputs.survey }}-${{ inputs.task }}
           path: |
