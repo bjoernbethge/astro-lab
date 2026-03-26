@@ -2,7 +2,7 @@
 
 A comprehensive **Astro GNN laboratory** for exploring cosmic web structures through graph neural networks, astronomical data analysis, and interactive 3D visualization across multiple astronomical scales.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/synapticore-io/astro-lab)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/synapticore-io/astro-lab)[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N71WOHZ3)
 
 ## 🚀 Quick Start
 
