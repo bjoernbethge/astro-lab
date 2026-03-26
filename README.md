@@ -734,6 +734,6 @@ Special thanks to the **Astro Graph Agent Team** for their invaluable contributi
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N71WOHZ3)
 ---
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N71WOHZ3)
