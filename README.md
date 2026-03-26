@@ -2,7 +2,7 @@
 
 A comprehensive **Astro GNN laboratory** for exploring cosmic web structures through graph neural networks, astronomical data analysis, and interactive 3D visualization across multiple astronomical scales.
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/synapticore-io/astro-lab)[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N71WOHZ3)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/synapticore-io/astro-lab)
 
 ## 🚀 Quick Start
 
@@ -734,38 +734,6 @@ Special thanks to the **Astro Graph Agent Team** for their invaluable contributi
 ## 📄 License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/N4N71WOHZ3)
 ---
 
-**AstroLab** - An Astro GNN laboratory for exploring cosmic web structures across all scales of the universe. 🌌✨ 
-
-## 🛠️ CLI Command Overview
-
-| Command         | Beschreibung / Zweck                                 |
-|----------------|------------------------------------------------------|
-| download       | Lade Rohdaten eines Surveys herunter                 |
-| preprocess     | Verarbeite Rohdaten zu ML-tauglichen Formaten        |
-| train          | Trainiere ein Modell auf Survey-Daten                |
-| optimize       | Hyperparameter-Optimierung für ein Modell            |
-| info           | Zeige Metadaten, Spalten, Beispiele, Validierung     |
-| cosmic-web     | Analysiere kosmische Netzwerke/Strukturen            |
-| config         | Konfigurationsdateien anzeigen/erstellen/validieren  |
-| build-dataset  | Erzeuge ML-Ready Dataset aus harmonisierten Daten    |
-
-### Data Inspection & Info
-```bash
-# Zeige Übersicht aller verfügbaren Surveys
-astro-lab info
-
-# Zeige Metadaten für einen Survey
-astro-lab info gaia
-
-# Zeige Spalteninformationen
-astro-lab info gaia --columns
-
-# Zeige Beispielzeilen
-astro-lab info gaia --sample 5
-
-# Führe Datenvalidierung durch
-astro-lab info gaia --validate
-``` 
