@@ -8,7 +8,7 @@ A comprehensive **Astro GNN laboratory** for exploring cosmic web structures thr
 
 ### Installation
 ```bash
-git clone https://github.com/bjoernbethge/astro-lab.git
+git clone https://github.com/synapticore-io/astro-lab.git
 cd astro-lab
 uv sync
 uv pip install torch-scatter torch-sparse torch-cluster -f https://data.pyg.org/whl/torch-2.7.0+cu128.html
