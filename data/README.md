@@ -2,17 +2,51 @@
 
 This directory contains astronomical data, processed catalogs, and visualizations for the AstroLab project.
 
-## Directory Structure
+## 📁 Directory Structure
 
 ```
 data/
 ├── raw/              # Raw astronomical survey data (downloaded from archives)
-├── processed/        # Preprocessed and harmonized survey data
 ├── catalogs/         # Consolidated AstroLab catalogs ready for analysis
-└── visualizations/   # Generated visualizations and plots
+├── visualizations/   # Generated visualizations and plots
+└── DATA_PIPELINE_GUIDE.md  # Complete guide for data acquisition and processing
 ```
 
-## Directory Descriptions
+## 🚀 Quick Start
+
+Generate a complete AstroLab catalog with visualizations:
+
+```bash
+# Generate sample data (10,000 sources)
+python scripts/generate_sample_data.py
+
+# Run complete pipeline (download, process, visualize)
+PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 5000 --skip-download
+```
+
+Open `data/visualizations/cosmic_web_3d.html` in your browser to explore the 3D cosmic web!
+
+## 📊 Current Dataset
+
+As of the last run:
+- **Sources**: 5,000 astronomical objects
+- **Surveys**: Gaia DR3
+- **Features**: 27 columns including astrometry, photometry, kinematics
+- **Format**: Parquet (compressed, efficient)
+- **Size**: ~440 KB
+
+## 📖 Documentation
+
+For detailed information about:
+- Data acquisition and processing pipeline
+- Catalog schema and features
+- Visualization options
+- Extending the pipeline
+- Performance tips
+
+See **[DATA_PIPELINE_GUIDE.md](DATA_PIPELINE_GUIDE.md)** in this directory.
+
+## 📂 Directory Descriptions
 
 ### `raw/`
 Contains raw astronomical survey data downloaded from various archives:
@@ -23,72 +57,101 @@ Contains raw astronomical survey data downloaded from various archives:
 
 Files in this directory are typically in their original formats (FITS, CSV, Parquet).
 
-### `processed/`
-Contains preprocessed data after harmonization and cleaning:
-- Standardized column names (ra, dec, distance_pc, x, y, z)
-- Quality filtering applied
-- 3D coordinates computed
-- Missing values handled
-- Saved as Parquet files for efficient processing
-
 ### `catalogs/`
-Contains consolidated AstroLab catalogs combining multiple surveys with cosmic web features:
+Contains consolidated AstroLab catalogs combining multiple surveys:
 
 #### AstroLab Catalog v1.0
 **File**: `astrolab_catalog_v1.parquet`
 
-A comprehensive multi-survey catalog with cosmic web structure classifications.
-
-**Surveys included**:
-- Gaia DR3 (astrometry, optical photometry)
-- SDSS (deep optical photometry and spectroscopy)
-- 2MASS (near-infrared photometry)
-
-**Features**:
+A comprehensive catalog with:
 - **Astrometry**: Position (RA, Dec, distance), proper motion, parallax
 - **Photometry**: Multi-wavelength magnitudes (optical + infrared)
 - **3D Coordinates**: Cartesian coordinates (x, y, z) in parsecs
-- **Cosmic Web Classification**: Filament, void, node, field classifications at multiple scales
-- **Density Field**: Local density estimates
-- **Structure Properties**: Anisotropy, connectivity, topology metrics
+- **Derived Properties**: Colors, absolute magnitudes, velocities
+- **Metadata**: Version, processing date
 
-**Column Schema**: See `catalog_schema.md` for detailed column descriptions.
-
-**Usage**:
+**Quick Load**:
 ```python
 import polars as pl
 catalog = pl.read_parquet("data/catalogs/astrolab_catalog_v1.parquet")
 ```
 
 ### `visualizations/`
-Contains generated visualizations from cosmic web analysis:
+Contains generated visualizations from catalog analysis:
 - **3D Scatter Plots**: Interactive HTML plots (Plotly)
-- **Structure Maps**: PNG/PDF plots of cosmic web structures
-- **Multi-Scale Analysis**: Comparative visualizations at different scales
+- **Structure Maps**: Cosmic web structure visualizations
 - **Statistical Plots**: Distribution and correlation plots
 
-## Data Size and Git LFS
+All HTML visualizations can be opened directly in a web browser.
+
+## 🔬 Data Quality
+
+The catalog includes quality-filtered data with:
+- Valid parallax measurements
+- Clean astrometric solutions
+- Reliable photometry
+
+Filters applied (when available):
+- Parallax SNR > 5 (signal-to-noise ratio for distance measurement)
+- RUWE < 1.4 (Renormalized Unit Weight Error - measures astrometric solution quality)
+- Astrometric excess noise < 1.0 (indicates clean astrometric measurements)
+
+## 💾 Data Size and Git
 
 Large data files (> 100 MB) are excluded from git tracking via `.gitignore`.
 
-If you need to share large datasets:
-1. Use external storage (e.g., Zenodo, Figshare)
-2. Use Git LFS for datasets < 1 GB
-3. Document download instructions in this README
+Current file sizes:
+- Raw data: ~900 KB
+- Catalogs: ~440 KB
+- Visualizations: ~4.8 MB
 
-## Generating the AstroLab Catalog
+Total: ~6.2 MB (safe for git)
 
-To generate the consolidated AstroLab catalog:
+## 🌐 Generating the AstroLab Catalog
 
+Multiple ways to generate catalogs:
+
+### Option 1: Complete Pipeline (Recommended)
 ```bash
-# Generate catalog from cosmic web analysis
-python scripts/generate_astrolab_catalog.py
-
-# Or use the CLI
-astro-lab generate-catalog --surveys gaia sdss twomass --output data/catalogs/
+PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 10000
 ```
 
-## Citing the AstroLab Catalog
+### Option 2: Standalone Catalog Generation
+```bash
+PYTHONPATH=src python scripts/generate_astrolab_catalog.py --surveys gaia --max-samples 10000
+```
+
+### Option 3: Just Visualizations
+```bash
+python scripts/generate_visualizations.py --catalog data/catalogs/astrolab_catalog_v1.parquet
+```
+
+## 📈 Example Usage
+
+```python
+import polars as pl
+import plotly.express as px
+
+# Load catalog
+catalog = pl.read_parquet("data/catalogs/astrolab_catalog_v1.parquet")
+
+# Get bright, nearby stars
+bright_nearby = catalog.filter(
+    (pl.col("phot_g_mean_mag") < 10) & 
+    (pl.col("distance_pc") < 100)
+)
+
+# Plot color-magnitude diagram
+fig = px.scatter(
+    bright_nearby.to_pandas(),
+    x="bp_rp",
+    y="mg_abs",
+    title="Color-Magnitude Diagram"
+)
+fig.show()
+```
+
+## 🎯 Citing the AstroLab Catalog
 
 If you use the AstroLab catalog in your research, please cite:
 
@@ -102,10 +165,25 @@ If you use the AstroLab catalog in your research, please cite:
 }
 ```
 
-## Data Sources and Acknowledgments
+## 📚 Data Sources and Acknowledgments
 
 - **Gaia**: ESA Gaia mission (https://www.cosmos.esa.int/gaia)
 - **SDSS**: Sloan Digital Sky Survey (https://www.sdss.org/)
 - **2MASS**: Two Micron All Sky Survey (https://www.ipac.caltech.edu/2mass/)
 
 Please cite the original surveys when using their data.
+
+## 🐛 Known Issues
+
+- Cosmic web analysis may fail due to tensor indexing issues (catalog still generated)
+- Network access required for real data downloads
+- Large catalogs (>1M sources) require 16GB+ RAM
+
+See [DATA_PIPELINE_GUIDE.md](DATA_PIPELINE_GUIDE.md) for details and workarounds.
+
+## 🔧 Support
+
+For help:
+1. Read [DATA_PIPELINE_GUIDE.md](DATA_PIPELINE_GUIDE.md)
+2. Check the example scripts in `scripts/`
+3. Open an issue on GitHub
