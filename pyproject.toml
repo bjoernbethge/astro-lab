@@ -61,7 +61,7 @@ link-mode = "copy"
 # Core development tools
 dev = [
     "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
+    "pytest-cov>=7.1.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "psutil>=6.1.0",
