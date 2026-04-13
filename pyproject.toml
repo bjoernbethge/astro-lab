@@ -17,7 +17,7 @@ dependencies = [
     # astro
     "astrophot>=0.16.13",
     "astropy[recommended]>=7.1.0",
-    "astroquery>=0.4.10",
+    "astroquery>=0.4.11",
     "poliastro>=0.7.0",
     "sdss-access>=3.0.8",
     "astroml>=1.0.2.post1",
