@@ -16,7 +16,7 @@ dependencies = [
     "pyyaml>=6.0.2",
     # astro
     "astrophot>=0.16.13",
-    "astropy[recommended]>=7.1.0",
+    "astropy[recommended]>=7.2.0",
     "astroquery>=0.4.10",
     "poliastro>=0.7.0",
     "sdss-access>=3.0.8",
