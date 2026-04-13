@@ -41,7 +41,7 @@ dependencies = [
     "tensordict>=0.8.3",
     "requests>=2.32.4",
     "mathutils>=3.3.0",
-    "photutils>=2.2.0",
+    "photutils>=2.3.0",
     "triton-windows<3.7; sys_platform == 'win32'",
     "torchvision>=0.22.1",
     "flask>=3.1.3",
