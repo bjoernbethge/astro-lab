@@ -11,7 +11,7 @@ maintainers = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "h5py>=3.8.0", # check astropy.io API
+    "h5py>=3.16.0", # check astropy.io API
     "pydantic>=2.11.6",
     "pyyaml>=6.0.2",
     # astro
