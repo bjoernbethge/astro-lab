@@ -26,7 +26,7 @@ dependencies = [
     "torch>=2.7.1",
     "torch-geometric>=2.6.1",
     "torchmetrics==1.9.0",
-    "marimo[recommended,mcp,lsp]>=0.10.18",
+    "marimo[recommended,mcp,lsp]>=0.23.1",
     "mlflow>=2.19.0",
     "lightning==2.6.1",
     "lightning-utilities==0.15.3",
