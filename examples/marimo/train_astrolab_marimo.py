@@ -1,3 +1,5 @@
+"""Marimo notebook: Gaia real-data training using shared AstroLab Marimo UI widgets."""
+
 import marimo
 
 __generated_with = "0.14.0"
@@ -5,132 +7,209 @@ app = marimo.App()
 
 
 @app.cell
-def import_dependencies():
+def imports():
     import marimo as mo
 
+    import lightning.pytorch as pl
+    from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+    from lightning.pytorch.loggers import MLFlowLogger
+
     from astro_lab.config import get_data_paths
-    from astro_lab.data.dataset.lightning import AstroLabDataModule
-    from astro_lab.models import AstroModel
-    from astro_lab.training import AstroTrainer
-
-    return AstroLabDataModule, AstroModel, AstroTrainer, mo
-
-
-@app.cell
-def ui_training_config(mo):
-    # UI for training config
-    epochs = mo.ui.slider(5, 100, value=20, label="Max Epochs")
-    lr = mo.ui.number(value=1e-3, label="Learning Rate")
-    batch_size = mo.ui.slider(8, 256, value=32, label="Batch Size")
-    hidden_dim = mo.ui.slider(32, 512, value=128, label="Hidden Dim")
-    num_layers = mo.ui.slider(1, 8, value=3, label="Num Layers")
-    conv_type = mo.ui.dropdown(
-        ["gcn", "gat", "sage", "gin"], value="gcn", label="Conv Type"
+    from astro_lab.data import create_datamodule
+    from astro_lab.models import create_model
+    from astro_lab.ui.components.config import (
+        create_data_config,
+        gaia_real_data_config_dict,
     )
-    survey = mo.ui.dropdown(["gaia"], value="gaia", label="Survey")
-    return batch_size, conv_type, epochs, hidden_dim, lr, num_layers, survey
+    from astro_lab.ui.components.training_config import create_training_config
+
+    return (
+        MLFlowLogger,
+        ModelCheckpoint,
+        EarlyStopping,
+        create_data_config,
+        create_model,
+        create_training_config,
+        gaia_real_data_config_dict,
+        get_data_paths,
+        mo,
+        pl,
+    )
 
 
 @app.cell
-def show_config(
-    batch_size,
-    conv_type,
-    epochs,
-    hidden_dim,
-    lr,
-    mo,
-    num_layers,
-    survey,
-):
-    # Show config summary
-    mo.output.clear()
-    mo.output.append(
-        mo.md(
-            f"**Training Config:**\n- Epochs: {epochs.value}\n- LR: {lr.value}\n- Batch Size: {batch_size.value}\n- Hidden Dim: {hidden_dim.value}\n- Num Layers: {num_layers.value}\n- Conv: {conv_type.value}\n- Survey: {survey.value}"
+def intro(mo):
+    mo.md(
+        """
+# Train GNN on real Gaia (and other surveys) — real data pipeline
+
+Uses the **same Marimo UI building blocks** as the main AstroLab dashboard:
+`create_data_config()` and `create_training_config()` from `astro_lab.ui.components`.
+
+Pipeline matches `examples/train_gaia_real_data.py`: `create_datamodule` → prepare/setup →
+`create_model` → Lightning `Trainer` (checkpoints, early stopping, MLflow).
+
+Reactive cells re-run when widgets change (including training). Lower **Max samples** while iterating.
+"""
+    )
+    return
+
+
+@app.cell
+def data_config_ui(mo, create_data_config):
+    mo.md("### Data & graph")
+    ui = create_data_config()
+    ui
+    return (ui,)
+
+
+@app.cell
+def training_config_ui(mo, create_training_config):
+    mo.md("### Training")
+    ui = create_training_config()
+    ui
+    return (ui,)
+
+
+@app.cell
+def pipeline_config(data_config_ui, gaia_real_data_config_dict, training_config_ui):
+    return gaia_real_data_config_dict(
+        data_config_ui.value,
+        training_config_ui.value,
+    )
+
+
+@app.cell
+def prepare_data(create_datamodule, mo, pipeline_config):
+    mo.md("### Loading data")
+    dm = create_datamodule(
+        survey=pipeline_config["survey"],
+        task=pipeline_config["task"],
+        max_samples=pipeline_config["max_samples"],
+        num_workers=pipeline_config["num_workers"],
+        k_neighbors=pipeline_config["k_neighbors"],
+        graph_method="knn",
+        astronomical_features=pipeline_config["astronomical_features"],
+        cosmic_web_features=pipeline_config["cosmic_web_features"],
+        multi_scale=pipeline_config["multi_scale"],
+        batch_size=pipeline_config["batch_size"],
+    )
+    dm.prepare_data()
+    dm.setup()
+    info = dm.get_info()
+    stats_md = (
+        f"**Data ready** — nodes: {info['num_nodes']:,}, edges: {info['num_edges']:,}, "
+        f"features: {info['num_features']}, classes: {info['num_classes']}"
+    )
+    if "graph_stats" in info:
+        gs = info["graph_stats"]
+        stats_md += (
+            f"\n\nGraph stats: avg degree {gs['avg_degree']:.2f}, "
+            f"max degree {gs['max_degree']}"
         )
-    )
-    config = dict(
-        max_epochs=epochs.value,
-        learning_rate=lr.value,
-        batch_size=batch_size.value,
-        hidden_dim=hidden_dim.value,
-        num_layers=num_layers.value,
-        conv_type=conv_type.value,
-        survey=survey.value,
-    )
-    return (config,)
+    mo.md(stats_md)
+    return {"dm": dm, "info": info}
 
 
 @app.cell
-def load_data(Astr, AstroLabDataModule, config, mo):
-    # Only use real GaiaDataset, fail if not available
-    import importlib.util
-
-    gaia_mod = importlib.util.find_spec("astro_lab.data.collectors.gaia")
-    if gaia_mod is None:
-        raise ImportError(
-            "GaiaDataset is not available. Please ensure astro_lab.data.collectors.gaia is installed and accessible."
-        )
-    from astro_lab.data.collectors.gaia import GaiaDataset
-
-    dataset = Astr(max_samples=1000)
-    datamodule = AstroLabDataModule(dataset, batch_size=config["batch_size"])
-    datamodule.setup()
-    info = {"num_features": 8, "num_classes": 2}
-    if hasattr(datamodule, "get_info"):
-        try:
-            info = datamodule.get_info()
-        except Exception:
-            pass
-    mo.output.append(
-        mo.md(
-            f"**Data loaded:** Features: {info['num_features']}, Classes: {info['num_classes']}"
-        )
+def build_model(create_model, mo, pipeline_config, prepare_data):
+    info = prepare_data["info"]
+    mo.md(f"### Model ({pipeline_config['conv_type'].upper()})")
+    model = create_model(
+        model_type="astro_model",
+        in_channels=info["num_features"],
+        hidden_channels=pipeline_config["hidden_dim"],
+        out_channels=info["num_classes"],
+        num_layers=pipeline_config["num_layers"],
+        conv_type=pipeline_config["conv_type"],
+        dropout=pipeline_config["dropout"],
+        task=pipeline_config["task"],
+        learning_rate=pipeline_config["learning_rate"],
+        weight_decay=pipeline_config["weight_decay"],
+        optimizer=pipeline_config["optimizer"],
+        scheduler=pipeline_config["scheduler"],
     )
-    return datamodule, info
-
-
-@app.cell
-def create_model(AstroModel, config, info, mo):
-    # Model creation
-    model = AstroModel(
-        num_features=info["num_features"],
-        num_classes=info["num_classes"],
-        hidden_dim=config["hidden_dim"],
-        learning_rate=config["learning_rate"],
-        task="node_classification",
-    )
-    mo.output.append(mo.md("**Model Summary:**"))
-    mo.output.append(
-        mo.ui.text_area(value=model.get_model_summary(), label="Model Summary")
-    )
+    mo.ui.text_area(value=model.get_model_summary(), label="Model summary")
     return (model,)
 
 
 @app.cell
-def train_model(AstroTrainer, config, datamodule, mo, model, torch):
-    # Training
-    mo.output.append(mo.md("**Training...**"))
-    trainer = AstroTrainer(
-        max_epochs=config["max_epochs"],
-        devices=1,
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
-        enable_progress_bar=True,
-        enable_model_summary=True,
-        log_every_n_steps=5,
+def train_and_test(
+    EarlyStopping,
+    MLFlowLogger,
+    ModelCheckpoint,
+    get_data_paths,
+    mo,
+    model,
+    pipeline_config,
+    pl,
+    prepare_data,
+):
+    dm = prepare_data["dm"]
+    info = prepare_data["info"]
+    mo.md("### Training")
+    checkpoint_callback = ModelCheckpoint(
+        monitor="val_loss",
+        dirpath="./checkpoints/gaia",
+        filename="gaia-{epoch:02d}-{val_loss:.4f}",
+        save_top_k=1,
+        mode="min",
     )
-    trainer.fit(model, datamodule)
-    mo.output.append(mo.md("**Training complete!**"))
-    return (trainer,)
-
-
-@app.cell
-def test_model(datamodule, mo, model, trainer):
-    # Test
-    mo.output.append(mo.md("**Testing...**"))
-    results = trainer.test(model, datamodule)
-    mo.output.append(mo.md(f"**Test Results:** {results}"))
-    return
+    early_stopping = EarlyStopping(
+        monitor="val_loss",
+        patience=10,
+        mode="min",
+    )
+    data_paths = get_data_paths()
+    mlf_logger = MLFlowLogger(
+        experiment_name="gaia_real_data",
+        tracking_uri=f"file:///{data_paths['mlruns_dir']}",
+        tags={
+            "survey": pipeline_config["survey"],
+            "task": pipeline_config["task"],
+            "conv_type": pipeline_config["conv_type"],
+            "data_size": info["num_nodes"],
+            "model_preset": pipeline_config["model_preset"],
+        },
+    )
+    trainer = pl.Trainer(
+        max_epochs=pipeline_config["max_epochs"],
+        accelerator=pipeline_config["accelerator"],
+        devices=1,
+        callbacks=[checkpoint_callback, early_stopping],
+        logger=mlf_logger,
+        log_every_n_steps=10,
+        gradient_clip_val=pipeline_config["gradient_clip_val"],
+        precision=pipeline_config["precision"],
+        enable_progress_bar=True,
+    )
+    log_cfg = {
+        k: v
+        for k, v in pipeline_config.items()
+        if k
+        not in (
+            "astronomical_features",
+            "cosmic_web_features",
+            "multi_scale",
+        )
+    }
+    mlf_logger.log_hyperparams(log_cfg)
+    mo.md(
+        f"**Accelerator:** {pipeline_config['accelerator']} "
+        f"(precision {pipeline_config['precision']}) — demo labels where applicable."
+    )
+    trainer.fit(model, dm)
+    mo.md("### Test")
+    test_out = trainer.test(model, dm)
+    mo.md(
+        f"**Done.** Best checkpoint: `{checkpoint_callback.best_model_path}`\n\n"
+        f"**MLflow:** `mlflow ui --backend-store-uri {data_paths['mlruns_dir']}`\n\n"
+        "**Advanced**\n"
+        "- AstroLab catalog: `python scripts/generate_astrolab_catalog.py`\n"
+        "- Conv types: gcn, gat, sage, gin (training form)\n"
+        "- Raise **Max samples** when stable"
+    )
+    return trainer, test_out
 
 
 if __name__ == "__main__":

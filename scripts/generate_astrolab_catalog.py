@@ -14,7 +14,8 @@ Features:
 - Multi-scale structure analysis
 
 Usage:
-    python scripts/generate_astrolab_catalog.py [--max-samples N] [--output-dir DIR]
+    python scripts/generate_astrolab_catalog.py [--output-dir DIR]
+    python scripts/generate_astrolab_catalog.py --max-samples N   # optional cap for testing
 """
 
 import argparse
@@ -37,11 +38,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-PROCESSED_PATHS = {
-    "gaia": "gaia/gaia.parquet",
-    "sdss": "sdss/sdss.parquet",
-    "twomass": "twomass/twomass.parquet",
-}
+def discover_surveys(processed_dir: Path) -> dict[str, Path]:
+    """Auto-discover all surveys with a main parquet in data/processed/."""
+    surveys = {}
+    for survey_dir in sorted(processed_dir.iterdir()):
+        if not survey_dir.is_dir():
+            continue
+        main_pq = survey_dir / f"{survey_dir.name}.parquet"
+        if main_pq.exists():
+            surveys[survey_dir.name] = main_pq
+    return surveys
 
 
 def generate_catalog(
@@ -53,14 +59,19 @@ def generate_catalog(
     """
     Generate consolidated AstroLab catalog with cosmic web features.
     Uses DuckDB for loading and Polars for downstream processing.
+
+    When ``include_surveys`` is omitted, every survey with a main parquet under
+    ``data/processed/<name>/<name>.parquet`` is included (same as the CLI default).
+    ``max_samples`` limits rows per survey; omit it for the full processed tables.
     """
     if clustering_scales is None:
         clustering_scales = [5.0, 10.0, 25.0, 50.0]
-    if include_surveys is None:
-        include_surveys = ["gaia"]
 
     paths = get_data_paths()
     processed_dir = Path(paths["processed_dir"])
+    available = discover_surveys(processed_dir)
+    if include_surveys is None:
+        include_surveys = list(available.keys())
 
     logger.info("=" * 80)
     logger.info("🌌 AstroLab Catalog Generation (DuckDB)")
@@ -81,10 +92,9 @@ def generate_catalog(
 
     for survey in include_surveys:
         try:
-            rel_path = PROCESSED_PATHS.get(survey)
-            parquet_path = processed_dir / rel_path
-            if not parquet_path.exists():
-                logger.warning(f"   ⚠ {survey}: file not found {parquet_path}")
+            parquet_path = available.get(survey)
+            if not parquet_path or not parquet_path.exists():
+                logger.warning(f"   ⚠ {survey}: file not found in {processed_dir}")
                 continue
 
             limit_clause = f" LIMIT {max_samples}" if max_samples else ""
@@ -229,17 +239,21 @@ def main() -> int:
     parser.add_argument(
         "--surveys",
         nargs="+",
-        default=["gaia"],
-        help="Surveys to include",
+        default=None,
+        help="Surveys to include (default: all discovered)",
     )
     args = parser.parse_args()
 
     try:
+        paths = get_data_paths()
+        available = discover_surveys(Path(paths["processed_dir"]))
+        surveys = args.surveys if args.surveys else list(available.keys())
+
         catalog_path = generate_catalog(
             max_samples=args.max_samples,
             output_dir=args.output_dir,
             clustering_scales=args.clustering_scales,
-            include_surveys=args.surveys,
+            include_surveys=surveys,
         )
         print(f"\n✅ Success! Catalog saved to: {catalog_path}")
         print(f"    import polars as pl")

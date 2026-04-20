@@ -13,8 +13,9 @@ Features demonstrated:
 5. Extracting subsets for specific science cases
 
 Prerequisites:
-    Generate the catalog first:
-    $ python scripts/generate_astrolab_catalog.py --max-samples 10000
+    Generate the full catalog (all rows, all surveys found under data/processed/):
+    $ python scripts/generate_astrolab_catalog.py
+    Optional smoke test with a row cap per survey: --max-samples N
 """
 
 import logging
@@ -41,7 +42,8 @@ def load_catalog(catalog_path: Path = Path("data/catalogs/astrolab_catalog_v1.pa
     if not catalog_path.exists():
         print(f"❌ Catalog not found: {catalog_path}")
         print("\nGenerate it first with:")
-        print("  python scripts/generate_astrolab_catalog.py --max-samples 10000")
+        print("  python scripts/generate_astrolab_catalog.py")
+        print("  (add --max-samples N only for a quick test run)")
         return None
     
     logger.info(f"Loading catalog from {catalog_path}")
