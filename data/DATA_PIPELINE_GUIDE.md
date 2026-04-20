@@ -4,17 +4,17 @@ This guide explains how to use the AstroLab data acquisition and catalog generat
 
 ## Quick Start
 
-Generate sample data, create a consolidated catalog, and visualize it:
+Download real data, create a consolidated catalog, and visualize it:
 
 ```bash
-# Step 1: Generate sample astronomical data (if you don't have real data)
-python scripts/generate_sample_data.py
+# Step 1: Download raw survey data (requires network access)
+astro-lab download gaia
 
-# Step 2: Run the complete pipeline
-PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 5000 --skip-download
-
-# Or download real data and process it (requires network access)
+# Step 2: Run the complete pipeline (preprocess + catalog + visualize)
 PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 5000
+
+# Re-run using cached downloads only
+PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 5000 --skip-download
 ```
 
 ## Generated Files
@@ -97,12 +97,11 @@ Open `data/visualizations/cosmic_web_3d.html` in a web browser to explore the 3D
 
 ## Pipeline Components
 
-### 1. Sample Data Generation (`scripts/generate_sample_data.py`)
+### 1. Data Download (`astro-lab download <survey>`)
 
-Creates synthetic Gaia-like astronomical data for demonstration:
-- Generates realistic RA, Dec, parallax, proper motions
-- Converts to 3D Cartesian coordinates
-- Saves as Parquet for efficient processing
+Pulls raw survey data into `data/raw/<survey>/` from the official archives
+(Gaia, SDSS, NSA, 2MASS, WISE, Pan-STARRS, DES, Euclid, Linear, RR Lyrae,
+Exoplanet, TNG50). Use `--magnitude-limit` / `--region` where supported.
 
 ### 2. Complete Pipeline (`scripts/complete_data_pipeline.py`)
 
@@ -152,8 +151,6 @@ Downloading real data requires:
 - Network access to astronomical archives
 - Sufficient bandwidth for large catalogs
 - Proper firewall configuration
-
-If network access is unavailable, use the sample data generator instead.
 
 ## Extending the Pipeline
 

@@ -14,26 +14,20 @@ data/
 
 ## 🚀 Quick Start
 
-Generate a complete AstroLab catalog with visualizations:
+Download real survey data and build a consolidated catalog:
 
 ```bash
-# Generate sample data (10,000 sources)
-python scripts/generate_sample_data.py
+# Download raw data for a survey (requires network access)
+astro-lab download gaia
 
-# Run complete pipeline (download, process, visualize)
-PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 5000 --skip-download
+# Build consolidated AstroLab catalog from the raw data
+PYTHONPATH=src python scripts/generate_astrolab_catalog.py --surveys gaia --max-samples 10000
+
+# Run the full pipeline (download + preprocess + catalog + visualization)
+PYTHONPATH=src python scripts/complete_data_pipeline.py --max-samples 10000
 ```
 
-Open `data/visualizations/cosmic_web_3d.html` in your browser to explore the 3D cosmic web!
-
-## 📊 Current Dataset
-
-As of the last run:
-- **Sources**: 5,000 astronomical objects
-- **Surveys**: Gaia DR3
-- **Features**: 27 columns including astrometry, photometry, kinematics
-- **Format**: Parquet (compressed, efficient)
-- **Size**: ~440 KB
+Open the generated HTML in `data/visualizations/` in your browser to explore the 3D cosmic web.
 
 ## 📖 Documentation
 
