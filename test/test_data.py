@@ -2,11 +2,9 @@
 Test data module and datasets for AstroLab.
 """
 
-from astro_lab.data import (
-    AstroLabDataModule,
-    AstroLabInMemoryDataset,
-    KNNSampler,
-)
+from astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
+from astro_lab.data.dataset.lightning import AstroLabDataModule
+from astro_lab.data.samplers.neighbor import KNNSampler
 
 
 class TestDataModuleAPI:

@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
+from astro_lab.data.dataset.astrolab import AstroLabInMemoryDataset
 
 
 @pytest.fixture
@@ -294,32 +294,3 @@ class TestSamplers:
         for graph in graphs:
             assert graph.num_nodes > 0
             assert graph.edge_index.shape[1] > 0
-
-
-if __name__ == "__main__":
-    # Run tests manually
-    test_instance = TestSamplers()
-
-    print("Testing KNNSampler...")
-    dataset_knn = test_instance.dataset_knn()
-    test_instance.test_knn_sampler(dataset_knn)
-
-    print("\nTesting RadiusSampler...")
-    dataset_radius = test_instance.dataset_radius()
-    test_instance.test_radius_sampler(dataset_radius)
-
-    print("\nTesting AdaptiveRadiusSampler...")
-    dataset_adaptive = test_instance.dataset_adaptive()
-    test_instance.test_adaptive_radius_sampler(dataset_adaptive)
-
-    print("\nTesting NeighborSubgraphSampler...")
-    dataset_neighbor = test_instance.dataset_neighbor()
-    test_instance.test_neighbor_subgraph_sampler(dataset_neighbor)
-
-    print("\nTesting sampler comparison...")
-    test_instance.test_sampler_edge_density_comparison()
-
-    print("\nTesting memory usage...")
-    test_instance.test_sampler_memory_usage()
-
-    print("\nAll tests passed!")
