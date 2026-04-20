@@ -518,6 +518,17 @@ Examples:
     download_parser.add_argument(
         "--force", "-f", action="store_true", help="Force re-download"
     )
+    download_parser.add_argument(
+        "--magnitude-limit",
+        type=float,
+        default=None,
+        help="Magnitude limit for catalog queries (survey-specific default if not set)",
+    )
+    download_parser.add_argument(
+        "--region",
+        default="all_sky",
+        help="Region to download (all_sky, lmc, smc, etc.)",
+    )
 
     # ==================== BUILD-DATASET ====================
     build_dataset_parser = subparsers.add_parser(
@@ -540,6 +551,63 @@ Examples:
         "--force",
         action="store_true",
         help="Force reprocessing even if .pt exists",
+    )
+
+    # ==================== AGENT (Pydantic AI) ====================
+    agent_parser = subparsers.add_parser(
+        "agent",
+        help="Interactive mastermind agent (team orchestrator)",
+        description=(
+            "Run the AstroLab Pydantic AI mastermind team lead — an orchestrator that delegates to "
+            "focused specialists (survey, data, training, catalog analysis, DuckDB, viz interactive, "
+            "viz 3D pipeline, FITS imaging; consult_* tools). "
+            "Ollama by default (OLLAMA_BASE_URL, optional model from `ollama list` cloud entries); "
+            "--openai with OPENAI_API_KEY for OpenAI. "
+            "Optional MCP: configs/mcp.json, ASTROLAB_MCP_CONFIG, or --mcp-config (mcpServers JSON)."
+        ),
+    )
+    agent_parser.add_argument(
+        "message",
+        nargs="?",
+        default=None,
+        help="Single user message; if omitted, starts a simple REPL",
+    )
+    agent_parser.add_argument(
+        "--model",
+        default=None,
+        help=(
+            "Model name: Ollama default (last :cloud/-cloud from `ollama list`, "
+            "or ASTROLAB_AGENT_MODEL, or llama3.2); with --openai, OpenAI model name"
+        ),
+    )
+    agent_parser.add_argument(
+        "--openai",
+        action="store_true",
+        help="Use OpenAI instead of Ollama (requires OPENAI_API_KEY)",
+    )
+    agent_parser.add_argument(
+        "--mcp-config",
+        default=None,
+        metavar="PATH",
+        help=(
+            "JSON file with top-level mcpServers (Pydantic AI / Cursor style). "
+            "Overrides ASTROLAB_MCP_CONFIG and default configs/mcp.json search."
+        ),
+    )
+    agent_parser.add_argument(
+        "--no-mcp",
+        action="store_true",
+        help="Do not attach MCP servers from config even if a config file exists",
+    )
+    agent_parser.add_argument(
+        "--trace",
+        action="store_true",
+        help="Print tool calls and model steps to stderr (see also ASTROLAB_AGENT_TRACE)",
+    )
+    agent_parser.add_argument(
+        "--no-trace",
+        action="store_true",
+        help="Disable stderr trace (overrides default interactive tracing)",
     )
 
     # Global options
@@ -618,6 +686,11 @@ def main() -> int:
 
             result = main(args)
             return result if result is not None else 1
+
+        elif args.command == "agent":
+            from .agent import main as agent_main
+
+            return agent_main(args)
 
         elif args.command == "process":
             # Deprecated command - forward to preprocess with warning
