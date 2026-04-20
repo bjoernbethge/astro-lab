@@ -7,7 +7,7 @@ Collector for NASA Exoplanet Archive data using astroquery.nasa_exoplanet_archiv
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from .base import BaseSurveyCollector
 
@@ -19,8 +19,9 @@ class ExoplanetCollector(BaseSurveyCollector):
     Collector for NASA Exoplanet Archive data using astroquery.nasa_exoplanet_archive.
     """
 
-    def __init__(self, survey_name: str = "exoplanet", data_config=None):
-        super().__init__(survey_name, data_config)
+    def __init__(self, survey_name: str = "exoplanet", data_config=None,
+                 magnitude_limit: Optional[float] = None, region: Optional[str] = None):
+        super().__init__(survey_name, data_config, magnitude_limit=magnitude_limit, region=region)
 
     def get_download_urls(self) -> List[str]:
         # Not used, as astroquery handles download logic

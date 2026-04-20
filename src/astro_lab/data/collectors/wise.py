@@ -2,12 +2,14 @@
 WISE Survey Collector
 ====================
 
-Collector for WISE (Wide-field Infrared Survey Explorer) data using astroquery.irsa.
+Collector for WISE (Wide-field Infrared Survey Explorer) data via VizieR (AllWISE catalog II/328/allwise).
 """
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
+import polars as pl
 
 from .base import BaseSurveyCollector
 
@@ -15,54 +17,45 @@ logger = logging.getLogger(__name__)
 
 
 class WISECollector(BaseSurveyCollector):
-    """
-    Collector for WISE data using astroquery.irsa.
-    """
+    """Collector for AllWISE data via VizieR."""
 
-    def __init__(self, survey_name: str = "wise", data_config=None):
-        super().__init__(survey_name, data_config)
+    VIZIER_CATALOG = "II/328/allwise"
+
+    def __init__(self, survey_name: str = "wise", data_config=None,
+                 magnitude_limit: Optional[float] = None, region: Optional[str] = None):
+        super().__init__(survey_name, data_config, magnitude_limit=magnitude_limit, region=region)
+        if self.magnitude_limit is None:
+            self.magnitude_limit = 12.0
 
     def get_download_urls(self) -> List[str]:
-        # Not used, as astroquery handles download logic
         return []
 
     def get_target_files(self) -> List[str]:
-        return ["wise_sample.tbl"]
+        return [f"wise_allwise_mag{self.magnitude_limit}.parquet"]
 
     def download(self, force: bool = False) -> List[Path]:
-        """
-        Download WISE data using astroquery.irsa and save as Parquet.
-        """
-        logger.info("📥 Downloading WISE data using astroquery.irsa...")
-        target_tbl = self.raw_dir / "wise.tbl"
-        target_parquet = self.raw_dir / "wise.parquet"
+        target_parquet = self.raw_dir / f"wise_allwise_mag{self.magnitude_limit}.parquet"
         if target_parquet.exists() and not force:
-            logger.info(f"✓ WISE Parquet data already exists: {target_parquet}")
+            logger.info(f"WISE data already exists: {target_parquet}")
             return [target_parquet]
-        try:
-            import astropy.units as u
-            import polars as pl
-            from astropy.coordinates import SkyCoord
-            from astropy.table import Table
-            from astroquery.irsa import Irsa
 
-            # Example: small cone search
-            coord = SkyCoord(ra=56.75, dec=24.1167, unit=(u.deg, u.deg), frame="icrs")
-            table = Irsa.query_region(
-                coord, catalog="allwise_p3as_psd", spatial="Cone", radius=0.1 * u.deg
-            )
-            table.write(target_tbl, format="ascii.ipac", overwrite=True)
-            logger.info(f"✅ WISE data downloaded: {target_tbl}")
+        from astroquery.vizier import Vizier
 
-            # Convert to Parquet
-            tbl = Table.read(target_tbl, format="ascii.ipac")
-            df = pl.from_pandas(tbl.to_pandas())
-            df.write_parquet(target_parquet)
-            logger.info(f"✅ WISE data converted to Parquet: {target_parquet}")
+        logger.info(f"Downloading AllWISE data from VizieR (W1 < {self.magnitude_limit}) ...")
 
-            # Optionally remove the .tbl file
-            target_tbl.unlink(missing_ok=True)
-            return [target_parquet]
-        except Exception as e:
-            logger.error(f"❌ WISE download failed: {e}")
-            raise
+        viz = Vizier(
+            columns=["RAJ2000", "DEJ2000", "W1mag", "W2mag", "W3mag", "W4mag",
+                      "e_W1mag", "e_W2mag", "e_W3mag", "e_W4mag",
+                      "Jmag", "Hmag", "Kmag", "ccf", "ex", "var"],
+            column_filters={"W1mag": f"<{self.magnitude_limit}"},
+            row_limit=-1,
+            timeout=self.config["download_timeout"],
+        )
+        result = viz.get_catalogs(self.VIZIER_CATALOG)
+        if not result:
+            raise ValueError(f"No data returned from VizieR for {self.VIZIER_CATALOG}")
+
+        df = pl.from_pandas(result[0].to_pandas())
+        df.write_parquet(target_parquet)
+        logger.info(f"WISE: {len(df):,} sources saved to {target_parquet}")
+        return [target_parquet]

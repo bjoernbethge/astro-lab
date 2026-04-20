@@ -97,7 +97,9 @@ def main(args=None):
                 "wise": "astro_lab.data.collectors.wise.WISECollector",
                 "panstarrs": "astro_lab.data.collectors.panstarrs.PanSTARRSCollector",
                 "des": "astro_lab.data.collectors.des.DESCollector",
-                "euclid": "astro_lab.data.collectors.euclid.EUCLIDCollector",
+                "euclid": "astro_lab.data.collectors.euclid.EuclidCollector",
+                "linear": "astro_lab.data.collectors.linear.LinearCollector",
+                "rrlyrae": "astro_lab.data.collectors.rrlyrae.RRLyraeCollector",
             }
 
             if survey not in collector_map:
@@ -112,7 +114,13 @@ def main(args=None):
             collector_class = getattr(module, class_name)
 
             # Create collector and download
-            collector = collector_class(survey)
+            magnitude_limit = getattr(args, "magnitude_limit", None)
+            region = getattr(args, "region", "all_sky")
+            collector = collector_class(
+                survey,
+                magnitude_limit=magnitude_limit,
+                region=region,
+            )
             downloaded_files = collector.download(force=args.force)
 
             logger.info(f"✅ Downloaded {survey} data to:")

@@ -7,7 +7,7 @@ Collector for NASA-Sloan Atlas (NSA) data using astroquery.vizier.
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 from .base import BaseSurveyCollector
 
@@ -19,8 +19,9 @@ class NSACollector(BaseSurveyCollector):
     Collector for NASA-Sloan Atlas data using astroquery.vizier.
     """
 
-    def __init__(self, survey_name: str = "nsa", data_config=None):
-        super().__init__(survey_name, data_config)
+    def __init__(self, survey_name: str = "nsa", data_config=None,
+                 magnitude_limit: Optional[float] = None, region: Optional[str] = None):
+        super().__init__(survey_name, data_config, magnitude_limit=magnitude_limit, region=region)
 
     def get_download_urls(self) -> List[str]:
         # Not used, as astroquery handles download logic
@@ -43,7 +44,7 @@ class NSACollector(BaseSurveyCollector):
 
             # Query the NSA catalog
             Vizier.ROW_LIMIT = -1  # Get all rows
-            result = Vizier.query_catalog("J/ApJS/221/12/nsa")
+            result = Vizier.get_catalogs("J/ApJS/221/12/nsa")
             if result:
                 result[0].write(target_path, format="fits", overwrite=True)
                 logger.info(f"✅ NSA data downloaded: {target_path}")

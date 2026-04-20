@@ -3,16 +3,18 @@ Gaia Survey Collector
 ====================
 
 Collector for Gaia DR3 bright all-sky data using astroquery.
+
+``astroquery.gaia`` prints ESA archive notices on import; we import it only inside
+:meth:`GaiaCollector.download` so CLI tools (e.g. ``astro-lab agent``) do not spam stderr.
 """
 
 import json
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import polars as pl
-from astroquery.gaia import Gaia
 
 from .base import BaseSurveyCollector
 
@@ -30,10 +32,12 @@ class GaiaCollector(BaseSurveyCollector):
     - Efficient batch downloading
     """
 
-    def __init__(self, survey_name: str = "gaia", data_config=None):
-        super().__init__(survey_name, data_config)
-        self.magnitude_limit = 12.0  # Default for bright all-sky
-        self.batch_size = 500000  # Maximum sources per query
+    def __init__(self, survey_name: str = "gaia", data_config=None,
+                 magnitude_limit: Optional[float] = None, region: Optional[str] = None):
+        super().__init__(survey_name, data_config, magnitude_limit=magnitude_limit, region=region)
+        if self.magnitude_limit is None:
+            self.magnitude_limit = 12.0
+        self.batch_size = 500000
 
     def get_target_files(self) -> List[str]:
         """Get target file names based on magnitude limit."""
@@ -72,6 +76,8 @@ class GaiaCollector(BaseSurveyCollector):
             return [target_path]
 
         try:
+            from astroquery.gaia import Gaia
+
             # Configure Gaia for DR3
             Gaia.MAIN_GAIA_TABLE = "gaiadr3.gaia_source"  # type: ignore
             Gaia.ROW_LIMIT = -1  # type: ignore # No limit for async queries

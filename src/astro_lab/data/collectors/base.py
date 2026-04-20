@@ -32,16 +32,24 @@ class BaseSurveyCollector(ABC):
     - Checksum verification
     """
 
-    def __init__(self, survey_name: str, data_config: Optional[Dict] = None):
+    def __init__(
+        self,
+        survey_name: str,
+        data_config: Optional[Dict] = None,
+        magnitude_limit: Optional[float] = None,
+        region: Optional[str] = None,
+    ):
         self.survey_name = survey_name
         self.config = data_config or self._get_default_config()
+        self.magnitude_limit = magnitude_limit
+        self.region = region or "all_sky"
         self._setup_paths()
         self._cache = {}  # For caching download metadata
 
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration for the collector."""
         return {
-            "download_timeout": 300,  # 5 minutes
+            "download_timeout": 600,  # 10 minutes
             "chunk_size": 8192,  # 8KB chunks
             "verify_ssl": True,
             "retry_attempts": 3,

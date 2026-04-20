@@ -2,14 +2,14 @@
 RR Lyrae Survey Collector
 =========================
 
-Collector for RR Lyrae variable star survey data.
+Collector for RR Lyrae variable star catalog via VizieR (Gaia DR3 RR Lyrae).
 """
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from astro_lab.config import get_data_paths
+import polars as pl
 
 from .base import BaseSurveyCollector
 
@@ -17,63 +17,36 @@ logger = logging.getLogger(__name__)
 
 
 class RRLyraeCollector(BaseSurveyCollector):
-    """
-    Collector for RR Lyrae survey data.
+    """Collector for Gaia DR3 RR Lyrae catalog via VizieR."""
 
-    RR Lyrae stars are pulsating variable stars used as standard candles
-    for distance measurements in astronomy.
-    """
+    VIZIER_CATALOG = "I/358/vrrlyr"
 
-    def __init__(self, survey_name: str = "rrlyrae", data_config=None):
-        super().__init__(survey_name, data_config)
+    def __init__(self, survey_name: str = "rrlyrae", data_config=None,
+                 magnitude_limit: Optional[float] = None, region: Optional[str] = None):
+        super().__init__(survey_name, data_config, magnitude_limit=magnitude_limit, region=region)
 
     def get_download_urls(self) -> List[str]:
-        """Get URLs for RR Lyrae data download."""
-        # Example URLs - replace with actual RR Lyrae data sources
-        return [
-            "https://example.com/rrlyrae/rrlyrae_catalog.fits",  # Replace with real URL
-            # Add more URLs if needed
-        ]
+        return []
 
     def get_target_files(self) -> List[str]:
-        """Get target file names for downloaded data."""
-        return [
-            "rrlyrae_raw.parquet",  # Main catalog
-            # Add more target files if needed
-        ]
+        return ["rrlyrae_catalog.parquet"]
 
     def download(self, force: bool = False) -> List[Path]:
-        """
-        Download RR Lyrae survey data.
+        target_parquet = self.raw_dir / "rrlyrae_catalog.parquet"
+        if target_parquet.exists() and not force:
+            logger.info(f"RR Lyrae data already exists: {target_parquet}")
+            return [target_parquet]
 
-        For now, this copies existing data from the global raw directory
-        to the survey-specific directory, simulating a download.
-        """
-        logger.info(f"📥 Collecting RR Lyrae data for {self.survey_name}")
+        from astroquery.vizier import Vizier
 
-        # Check if we have existing data in the global raw directory
-        global_raw_path = (
-            Path(get_data_paths()["raw_dir"]) / "rrlyrae" / "rrlyrae_raw.parquet"
-        )
+        logger.info("Downloading Gaia DR3 RR Lyrae catalog from VizieR ...")
 
-        if global_raw_path.exists():
-            # Copy existing data to survey directory
-            target_path = self.raw_dir / "rrlyrae_raw.parquet"
+        viz = Vizier(row_limit=-1, timeout=self.config["download_timeout"])
+        result = viz.get_catalogs(self.VIZIER_CATALOG)
+        if not result:
+            raise ValueError(f"No data returned from VizieR for {self.VIZIER_CATALOG}")
 
-            if target_path.exists() and not force:
-                logger.info(f"✓ RR Lyrae data already exists: {target_path}")
-                return [target_path]
-
-            logger.info(
-                f"📋 Copying RR Lyrae data from {global_raw_path} to {target_path}"
-            )
-            import shutil
-
-            shutil.copy2(global_raw_path, target_path)
-
-            logger.info(f"✅ RR Lyrae data collected: {target_path}")
-            return [target_path]
-        else:
-            # If no existing data, try actual download
-            logger.warning("No existing RR Lyrae data found, attempting download...")
-            return super().download(force)
+        df = pl.from_pandas(result[0].to_pandas())
+        df.write_parquet(target_parquet)
+        logger.info(f"RR Lyrae: {len(df):,} sources saved to {target_parquet}")
+        return [target_parquet]

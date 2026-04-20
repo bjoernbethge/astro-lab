@@ -2,12 +2,14 @@
 TwoMASS Survey Collector
 =======================
 
-Collector for 2MASS (Two Micron All Sky Survey) data using astroquery.irsa.
+Collector for 2MASS (Two Micron All Sky Survey) data via VizieR (Point Source Catalog II/246/out).
 """
 
 import logging
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+
+import polars as pl
 
 from .base import BaseSurveyCollector
 
@@ -15,54 +17,44 @@ logger = logging.getLogger(__name__)
 
 
 class TwoMASSCollector(BaseSurveyCollector):
-    """
-    Collector for 2MASS data using astroquery.irsa.
-    """
+    """Collector for 2MASS PSC data via VizieR."""
 
-    def __init__(self, survey_name: str = "twomass", data_config=None):
-        super().__init__(survey_name, data_config)
+    VIZIER_CATALOG = "II/246/out"
+
+    def __init__(self, survey_name: str = "twomass", data_config=None,
+                 magnitude_limit: Optional[float] = None, region: Optional[str] = None):
+        super().__init__(survey_name, data_config, magnitude_limit=magnitude_limit, region=region)
+        if self.magnitude_limit is None:
+            self.magnitude_limit = 12.0
 
     def get_download_urls(self) -> List[str]:
-        # Not used, as astroquery handles download logic
         return []
 
     def get_target_files(self) -> List[str]:
-        return ["twomass_sample.tbl"]
+        return [f"twomass_psc_mag{self.magnitude_limit}.parquet"]
 
     def download(self, force: bool = False) -> List[Path]:
-        """
-        Download 2MASS data using astroquery.irsa and save as Parquet.
-        """
-        logger.info("📥 Downloading 2MASS data using astroquery.irsa...")
-        target_tbl = self.raw_dir / "twomass.tbl"
-        target_parquet = self.raw_dir / "twomass.parquet"
+        target_parquet = self.raw_dir / f"twomass_psc_mag{self.magnitude_limit}.parquet"
         if target_parquet.exists() and not force:
-            logger.info(f"✓ 2MASS Parquet data already exists: {target_parquet}")
+            logger.info(f"2MASS data already exists: {target_parquet}")
             return [target_parquet]
-        try:
-            import astropy.units as u
-            import polars as pl
-            from astropy.coordinates import SkyCoord
-            from astropy.table import Table
-            from astroquery.irsa import Irsa
 
-            # Example: small cone search
-            coord = SkyCoord(ra=56.75, dec=24.1167, unit=(u.deg, u.deg), frame="icrs")
-            table = Irsa.query_region(
-                coord, catalog="fp_psc", spatial="Cone", radius=0.1 * u.deg
-            )
-            table.write(target_tbl, format="ascii.ipac", overwrite=True)
-            logger.info(f"✅ 2MASS data downloaded: {target_tbl}")
+        from astroquery.vizier import Vizier
 
-            # Convert to Parquet
-            tbl = Table.read(target_tbl, format="ascii.ipac")
-            df = pl.from_pandas(tbl.to_pandas())
-            df.write_parquet(target_parquet)
-            logger.info(f"✅ 2MASS data converted to Parquet: {target_parquet}")
+        logger.info(f"Downloading 2MASS PSC from VizieR (J < {self.magnitude_limit}) ...")
 
-            # Optionally remove the .tbl file
-            target_tbl.unlink(missing_ok=True)
-            return [target_parquet]
-        except Exception as e:
-            logger.error(f"❌ 2MASS download failed: {e}")
-            raise
+        viz = Vizier(
+            columns=["RAJ2000", "DEJ2000", "Jmag", "Hmag", "Kmag",
+                      "e_Jmag", "e_Hmag", "e_Kmag", "Qflg", "Rflg", "Bflg", "Cflg"],
+            column_filters={"Jmag": f"<{self.magnitude_limit}"},
+            row_limit=-1,
+            timeout=self.config["download_timeout"],
+        )
+        result = viz.get_catalogs(self.VIZIER_CATALOG)
+        if not result:
+            raise ValueError(f"No data returned from VizieR for {self.VIZIER_CATALOG}")
+
+        df = pl.from_pandas(result[0].to_pandas())
+        df.write_parquet(target_parquet)
+        logger.info(f"2MASS: {len(df):,} sources saved to {target_parquet}")
+        return [target_parquet]
