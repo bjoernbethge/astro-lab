@@ -19,6 +19,9 @@ docs/auto/
 .vscode/
 .idea/
 
+# Agent-local state (background training job logs)
+.astro_lab/
+
 # Data and results
 data/*
 !data/README.md
