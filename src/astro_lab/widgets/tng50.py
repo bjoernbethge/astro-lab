@@ -2,24 +2,15 @@
 TNG50 Data Visualizer
 =====================
 
-Provides visualization tools for TNG50 cosmological simulation data
-with support for gas, stars, and dark matter components.
+Visualization helpers for TNG50 cosmological simulation data (gas, stars, dark matter).
 
-Features:
-- Load TNG50 .pt files efficiently
-- Convert to Blender meshes via DataBridge
-- Convert to PyVista meshes for 3D viz (now via Enhanced-API)
-- Handle multiple particle types
-- Extract features for color/size mapping
-
-Note: This module uses the Enhanced-API for all 3D visualization (see astro_lab.widgets.enhanced).
-
-Typical workflow:
-1. Load .pt file → get positions, features, edges
-2. Convert to visualization format (Blender/PyVista)
-3. Apply styling based on particle features
-4. Render or export
+- Load processed ``.pt`` graph files from the AstroLab data layout.
+- **PyVista:** via ``astro_lab.widgets.enhanced.to_pyvista``.
+- **Blender:** via the PyPI ``bpy`` module (same stack as AlbPy); requires a usable
+  ``bpy.context`` / scene where relevant (e.g. ``to_blender_objects``, ``render``).
 """
+
+from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -27,10 +18,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 
+import bpy as _bpy
+
+# Blender's ``bpy`` is a dynamic extension module; treat as ``Any`` for static analysis.
+bpy: Any = _bpy
+
 from astro_lab.config import get_data_config
 from astro_lab.widgets.enhanced import to_pyvista
-
-bpy = None  # Blender API only available inside Blender, do not import here
 
 logger = logging.getLogger(__name__)
 
@@ -57,8 +51,8 @@ class TNG50Visualizer:
 
         logger.info("🌌 TNG50Visualizer initialized")
         logger.info(f"   Data directory: {self.data_dir}")
-        logger.info(f"   PyVista: {'✅' if to_pyvista is not None else '❌'}")
-        logger.info(f"   Blender: {'✅' if bpy is not None else '❌'}")
+        logger.info("   PyVista: ✅ (widgets.enhanced.to_pyvista)")
+        logger.info("   Blender: ✅ (PyPI bpy)")
 
     def list_available_graphs(self) -> Dict[str, List[str]]:
         """
@@ -176,29 +170,25 @@ class TNG50Visualizer:
         object_name: str = "TNG50_particles",
         use_instancing: bool = True,
     ) -> List[Any]:
-        if bpy is None:
-            raise ImportError("Blender's bpy module is not available outside Blender.")
+        _ = use_instancing  # reserved for instancing / GN workflow
+        scene = getattr(bpy.context, "scene", None)
+        if scene is None:
+            raise RuntimeError("to_blender_objects: no bpy.context.scene")
+
         positions = graph_data["positions"]
-        graph_data["features"]
 
         logger.info(f"🎨 Converting to Blender: {len(positions):,} particles")
 
-        # Create single mesh with all particles using pure bpy API
-        # Create mesh data
         mesh_data = bpy.data.meshes.new(object_name)
         mesh_obj = bpy.data.objects.new(object_name, mesh_data)
 
-        # Create vertices from positions
-        vertices = []
-        for pos in positions:
-            vertices.append(pos)
+        vertices = [tuple(map(float, row)) for row in positions]
 
         # Create mesh from vertices
         mesh_data.from_pydata(vertices, [], [])
         mesh_data.update()
 
-        # Link to scene
-        bpy.context.scene.collection.objects.link(mesh_obj)
+        scene.collection.objects.link(mesh_obj)
 
         objects = [mesh_obj]
         logger.info("   Created single mesh object")
@@ -255,24 +245,30 @@ class TNG50Visualizer:
         animation: bool = False,
         **kwargs,
     ) -> bool:
-        if bpy is None:
-            raise ImportError("Blender's bpy module is not available outside Blender.")
+        scene = bpy.context.scene
+        if scene is None:
+            logger.error("render: no bpy.context.scene")
+            return False
         try:
-            bpy.context.scene.render.engine = engine
-            bpy.context.scene.render.filepath = output_path
-            bpy.context.scene.render.resolution_x = resolution[0]
-            bpy.context.scene.render.resolution_y = resolution[1]
-            bpy.context.scene.render.samples = samples
+            scene.render.engine = engine
+            scene.render.filepath = output_path
+            scene.render.resolution_x = resolution[0]
+            scene.render.resolution_y = resolution[1]
+            cycles = getattr(scene, "cycles", None)
+            if cycles is not None:
+                cycles.samples = samples
+            elif hasattr(scene.render, "samples"):
+                scene.render.samples = samples
 
             # Add camera if not present
-            if not any(obj.type == "CAMERA" for obj in bpy.context.scene.objects):
+            if not any(obj.type == "CAMERA" for obj in scene.objects):
                 bpy.ops.object.camera_add(location=[10, -10, 5])
                 camera = bpy.context.active_object
                 camera.rotation_euler = [1.1, 0, 0.8]
-                bpy.context.scene.camera = camera
+                scene.camera = camera
 
             # Add light if not present
-            if not any(obj.type == "LIGHT" for obj in bpy.context.scene.objects):
+            if not any(obj.type == "LIGHT" for obj in scene.objects):
                 bpy.ops.object.light_add(type="SUN", location=[5, 5, 10])
                 light = bpy.context.active_object
                 light.data.energy = 5.0
@@ -283,7 +279,7 @@ class TNG50Visualizer:
                 bpy.ops.render.render(write_still=True)
             return True
         except Exception as e:
-            print(f"Failed to render TNG50 scene: {e}")
+            logger.error("Failed to render TNG50 scene: %s", e)
             return False
 
 
@@ -307,8 +303,6 @@ def quick_pyvista_plot(particle_type: str = "gas", **kwargs):
 
 
 def quick_blender_import(particle_type: str = "gas", **kwargs):
-    if bpy is None:
-        raise ImportError("Blender's bpy module is not available outside Blender.")
     viz = TNG50Visualizer()
     return viz.quick_visualization(particle_type, "blender", **kwargs)
 

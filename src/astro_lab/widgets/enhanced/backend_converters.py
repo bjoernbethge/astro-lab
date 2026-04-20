@@ -8,7 +8,7 @@ from typing import Any, Dict, Union
 
 import numpy as np
 
-from ..enhanced.tensor_bridge import AstronomicalTensorBridge
+from .tensor_bridge import AstronomicalTensorBridge
 
 # Initialize bridge
 bridge = AstronomicalTensorBridge()
@@ -110,21 +110,6 @@ def to_cosmograph(
     )
 
 
-# Legacy compatibility functions
-def transfer_astronomical_tensor(
-    tensor: Any, backend: str = "pyvista", **kwargs
-) -> Any:
-    """Legacy tensor transfer function for backward compatibility."""
-    return bridge.to_visualization(tensor, backend=backend, **kwargs)
-
-
-def astronomical_tensor_zero_copy_context():
-    """Legacy context manager for backward compatibility."""
-    from .tensor_bridge import tensor_bridge_context
-
-    return tensor_bridge_context()
-
-
 __all__ = [
     # Backend converters
     "to_pyvista",
@@ -132,9 +117,5 @@ __all__ = [
     "to_blender",
     "to_plotly",
     "to_cosmograph",
-    # Legacy compatibility
-    "transfer_astronomical_tensor",
-    "astronomical_tensor_zero_copy_context",
-    # Global instances
     "bridge",
 ]

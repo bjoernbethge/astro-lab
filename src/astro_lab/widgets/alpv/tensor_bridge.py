@@ -18,6 +18,7 @@ from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.visualization import quantity_support
 
+from astro_lab.utils.tensor import numpy_to_float32_tensor
 from astro_lab.widgets.enhanced import to_pyvista
 
 # Enable quantity support
@@ -234,7 +235,7 @@ class AstronomicalPyVistaZeroCopyBridge:
         elif hasattr(tensor, "cpu"):
             coords = tensor.cpu()
         else:
-            coords = torch.tensor(tensor, dtype=torch.float32)
+            coords = numpy_to_float32_tensor(tensor)
 
         # Validate coordinate dimensions
         if coords.dim() != 2:

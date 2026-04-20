@@ -30,13 +30,37 @@ Enhanced Backend Übersicht:
 🔬 **PyVista (alpv)**: Enhanced scientific 3D analysis (optional)
 ☁️ **Open3D (alo3d)**: Enhanced real-time point clouds (optional)
 ⚡ **Enhanced Module**: Zero-copy tensors, advanced post-processing
+
+Paket-Lage (was liegt wo)
+-------------------------
+- **``enhanced/``** — zentrale Tensor-/Backend-Konverter (``to_plotly``, ``to_pyvista``, …)
+  und ``AstronomicalTensorBridge``; sinnvoller Einstieg für neue Backends.
+- **``plotly/bridge.py``** — Kern-``AstronomicalPlotlyBridge`` (Figuren aus TensorDicts).
+  **``plotly_bridge.py``** — dünne Facade + Convenience (``create_3d_scatter_plot``, …)
+  aufbauend auf ``enhanced`` + ``plotly/bridge``.
+- **``alcg/bridge.py``** — Cosmograph-Widget-Bridge. **``cosmograph_bridge.py``** —
+  UI-Facade mit gleichem Klassennamen, wrappt AlcG + ``enhanced`` (kein Duplikat der
+  Implementierung, aber zwei Einstiegsebenen).
+- **``albpy_bridge.py``** — Blender-Szenen-API (Cosmic Web, Stellar Field, …) neben
+  Paket **``albpy/``** (Node Groups, Operatoren, ``gpu_preferences``).
+- **``alpv/tensor_bridge.py``** — PyVista-spezifische Hilfen; nutzt ``enhanced.to_pyvista``,
+  nicht zu verwechseln mit ``enhanced/tensor_bridge.py``.
+- **``tng50.py``** — Spezial-Visualizer für vorverarbeitete TNG50-Graphen (.pt).
+
+Schwere Importe: dieses Paket startet AlbPy (inkl. GPU-Prefs) und baut u.a.
+``enhanced_engine`` beim Import — für CLI-Only-Pfade ggf. gezielt Submodule importieren.
 """
 
 import logging
 from typing import Any, Dict, Optional
 
-# Vollständige Backend-Module (für Experten)
-from . import albpy  # Das brillante Blender System - VOLL VERFÜGBAR!
+logger = logging.getLogger(__name__)
+
+# AlbPy applies GPU prefs inside its package init before node groups load.
+from . import albpy  # noqa: F401 — re-export; requires PyPI ``bpy`` matching Python version
+
+from .albpy.gpu_preferences import GpuBackendName, prefer_gpu_backend
+
 from . import alcg  # Enhanced Cosmograph System
 from . import plotly  # Komplette Enhanced Plotly Implementation
 from .albpy_bridge import (
@@ -50,7 +74,6 @@ from .cosmograph_bridge import CosmographBridge
 # Enhanced Module - Das Herzstück der Performance-Optimierung
 from .enhanced import (  # Tensor Bridge für optimierte Datenkonvertierung; Backend Converters für nahtlose Integration; Processing Engines; Zero-Copy Performance; Orchestration Pipelines
     AstronomicalTensorBridge,
-    AstronomicalTensorZeroCopyBridge,
     ImageProcessor,
     PostProcessor,
     TextureGenerator,
@@ -95,8 +118,6 @@ except ImportError:
 # Spezialisierte Enhanced Visualizer
 from .tng50 import TNG50Visualizer
 
-logger = logging.getLogger(__name__)
-
 
 class EnhancedVisualizationEngine:
     """
@@ -122,7 +143,7 @@ class EnhancedVisualizationEngine:
         # Backend Availability
         self.plotly_available = True
         self.cosmograph_available = True
-        self.blender_available = True  # Blender ist installiert!
+        self.blender_available = True
         self.pyvista_available = ALPV_AVAILABLE
         self.open3d_available = ALO3D_AVAILABLE
 
@@ -309,7 +330,7 @@ def plot_cosmic_web(
         if data_size > 10000:
             backend = "cosmograph"  # Large networks
         elif kwargs.get("publication", False):
-            backend = "blender"  # Publication quality
+            backend = "blender"
         else:
             backend = "plotly"  # Interactive analysis
 
@@ -368,7 +389,9 @@ __all__ = [
     "orchestrate_post_processing",
     "orchestrate_texture_pipeline",
     # Enhanced Backend Modules
-    "albpy",  # Brillant Enhanced Blender System
+    "albpy",
+    "GpuBackendName",
+    "prefer_gpu_backend",
     "plotly",  # Enhanced Plotly System
     "alcg",  # Enhanced Cosmograph System
     "alpv",  # Enhanced PyVista (optional)

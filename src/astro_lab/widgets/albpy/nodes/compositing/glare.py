@@ -5,6 +5,8 @@ Glare Compositing Node Groups
 Modern Blender 4.4 implementation for stellar glare and diffraction effects.
 """
 
+from __future__ import annotations
+
 from typing import Any, Dict
 
 import bpy

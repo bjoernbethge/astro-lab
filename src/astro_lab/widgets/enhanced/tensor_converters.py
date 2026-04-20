@@ -171,6 +171,64 @@ class ZeroCopyTensorConverter:
 
         return array
 
+    def convert_tensordict_units(
+        self,
+        data: Any,
+        target_unit: str,
+        *,
+        source_unit: str | None = None,
+    ) -> Any:
+        """Scale spatial coordinates from ``source_unit`` to ``target_unit`` when extractable.
+
+        Supports plain ``dict`` (``coordinates`` / ``pos`` / ``positions``) and ``TensorDict``
+        with a ``coordinates`` entry. Returns ``data`` unchanged if no coordinates are found.
+        """
+        from tensordict import TensorDict
+
+        coords = self.extract_coordinates(data)
+        if coords is None:
+            return data
+
+        from_u = source_unit
+        if from_u is None and isinstance(data, dict):
+            u = data.get("unit")
+            if isinstance(u, str):
+                from_u = u
+        if from_u is None:
+            from_u = "pc"
+
+        arr = np.array(coords, dtype=np.float64, copy=True)
+        self.convert_units(arr, from_u, target_unit)
+        new_vec = arr.astype(np.float32, copy=False)
+
+        if isinstance(data, TensorDict):
+            out = data.clone()
+            c0 = data.get("coordinates")
+            if isinstance(c0, torch.Tensor):
+                t_new = torch.as_tensor(new_vec, dtype=c0.dtype, device=c0.device)
+            else:
+                t_new = torch.as_tensor(new_vec)
+            out.set("coordinates", t_new)
+            if "unit" in data.keys():
+                try:
+                    out.set("unit", target_unit)
+                except (TypeError, ValueError, RuntimeError):
+                    pass
+            return out
+
+        if isinstance(data, dict):
+            out = dict(data)
+            for key in ("coordinates", "pos", "positions"):
+                if key in out:
+                    out[key] = torch.as_tensor(new_vec)
+                    break
+            else:
+                out["coordinates"] = torch.as_tensor(new_vec)
+            out["unit"] = target_unit
+            return out
+
+        return data
+
     def extract_features(self, data: Any) -> Dict[str, np.ndarray]:
         """Extract all visualization-relevant features using canonical TensorDict API if available.
 

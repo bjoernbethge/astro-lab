@@ -9,14 +9,12 @@ for astronomical data visualization and processing.
 # Image processing functionality
 # Backend-specific converters
 from .backend_converters import (
-    astronomical_tensor_zero_copy_context,
     bridge,
     to_blender,
     to_cosmograph,
     to_open3d,
     to_plotly,
     to_pyvista,
-    transfer_astronomical_tensor,
 )
 from .image_processing import (
     ImageProcessor,
@@ -42,7 +40,6 @@ from .post_processing import (
 # Tensor bridge functionality
 from .tensor_bridge import (
     AstronomicalTensorBridge,
-    AstronomicalTensorZeroCopyBridge,
     tensor_bridge_context,
 )
 
@@ -95,7 +92,6 @@ __all__ = [
     # Tensor bridge
     "AstronomicalTensorBridge",
     "tensor_bridge_context",
-    "AstronomicalTensorZeroCopyBridge",
     # Tensor converters
     "ZeroCopyTensorConverter",
     "converter",
@@ -106,6 +102,4 @@ __all__ = [
     "to_plotly",
     "to_cosmograph",
     "bridge",
-    "transfer_astronomical_tensor",
-    "astronomical_tensor_zero_copy_context",
 ]

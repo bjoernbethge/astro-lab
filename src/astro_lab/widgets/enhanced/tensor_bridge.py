@@ -1,128 +1,59 @@
-"""
-Enhanced Astronomical Tensor Bridge
-==================================
+"""TensorDict / dict routing to the widgets ``create_visualization`` entry point."""
 
-Advanced bridge between AstroLab TensorDicts and visualization backends.
-This module coordinates tensor conversion and visualization routing.
-"""
+from __future__ import annotations
 
-import logging
+from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
 
 from .tensor_converters import converter
 
-logger = logging.getLogger(__name__)
-
 
 class AstronomicalTensorBridge:
-    """
-    Enhanced bridge that routes to the main widgets API with advanced features.
+    """Optional unit conversion, backend autodetect, then ``create_visualization``."""
 
-    This bridge provides:
-    - Easy conversion between tensor formats and visualization backends
-    - Automatic unit conversion for astronomical data
-    - Memory-efficient data transfer
-    - Support for all TensorDict types
-    - Robust input validation and normalization
-
-    Examples:
-        >>> bridge = AstronomicalTensorBridge()
-        >>>
-        >>> # Convert SpatialTensorDict to visualization
-        >>> viz = bridge.to_visualization(spatial_tensor, backend="pyvista")
-        >>>
-        >>> # Convert with unit conversion
-        >>> viz = bridge.to_visualization(spatial_tensor, backend="cosmograph",
-        ...                              convert_units=True, target_unit="Mpc")
-    """
-
-    def __init__(self):
-        """Initialize the tensor bridge."""
-        self.supported_backends = [
-            "pyvista",
-            "open3d",
-            "blender",
-            "plotly",
-            "cosmograph",
-        ]
-        self._conversion_cache = {}
+    def __init__(self) -> None:
         self.converter = converter
 
-    def to_visualization(self, tensordict: Any, backend: str = "auto", **kwargs) -> Any:
-        """
-        Route to main visualization API with enhanced features.
-
-        Args:
-            tensordict: Any TensorDict or tensor data
-            backend: Target backend ("auto", "pyvista", "open3d", etc.)
-            **kwargs: Additional parameters including:
-                - convert_units: Whether to convert units (default: False)
-                - target_unit: Target unit for conversion (default: keep original)
-                - cache_result: Whether to cache conversion (default: False)
-
-        Returns:
-            Visualization object for the specified backend
-        """
+    def to_visualization(self, tensordict: Any, backend: str = "auto", **kwargs: Any) -> Any:
         from .. import create_visualization
 
-        # Handle unit conversion if requested
-        if kwargs.get("convert_units", False) and hasattr(tensordict, "coordinates"):
+        if kwargs.get("convert_units", False):
             target_unit = kwargs.pop("target_unit", "pc")
+            source_unit = kwargs.pop("source_unit", None)
             tensordict = self.converter.convert_tensordict_units(
-                tensordict, target_unit
+                tensordict, target_unit, source_unit=source_unit
             )
 
-        # Auto-select backend if needed
         if backend == "auto":
             backend = self._auto_select_backend(tensordict, **kwargs)
 
         return create_visualization(tensordict, backend=backend, **kwargs)
 
-    def _auto_select_backend(self, tensordict: Any, **kwargs) -> str:
-        """Automatically select best backend based on data type and requirements."""
-        # Check for specific requirements
-        if kwargs.get("photorealistic", False):
+    def _auto_select_backend(self, tensordict: Any, **kwargs: Any) -> str:
+        if kwargs.get("photorealistic"):
             return "blender"
-        elif kwargs.get("interactive", True):
-            # Check data size
+        if kwargs.get("web_export"):
+            return "plotly"
+        if kwargs.get("interactive", True):
             features = self.converter.extract_features(tensordict)
             coords = features.get("coordinates")
-            if coords is not None and len(coords) > 100000:
-                return "open3d"  # Better for large point clouds
-            else:
-                return "pyvista"  # Good general purpose
-        elif kwargs.get("web_export", False):
-            return "plotly"
-        else:
-            return "pyvista"  # Default
+            if coords is not None and len(coords) > 100_000:
+                return "open3d"
+            return "pyvista"
+        return "pyvista"
 
 
 @contextmanager
-def tensor_bridge_context():
-    """
-    Context manager for tensor bridge operations.
+def tensor_bridge_context(
+    bridge: AstronomicalTensorBridge | None = None,
+) -> Iterator[AstronomicalTensorBridge]:
+    """Yield a bridge; pass ``bridge`` to reuse an engine-owned instance."""
+    b = bridge or AstronomicalTensorBridge()
+    yield b
 
-    Examples:
-        >>> with tensor_bridge_context() as bridge:
-        ...     viz = bridge.to_visualization(spatial_tensor)
-    """
-    bridge = AstronomicalTensorBridge()
-    try:
-        yield bridge
-    finally:
-        # Clear any cached conversions
-        bridge._conversion_cache.clear()
-
-
-# Legacy compatibility
-AstronomicalTensorZeroCopyBridge = AstronomicalTensorBridge
 
 __all__ = [
-    # Main classes
     "AstronomicalTensorBridge",
-    # Context manager
     "tensor_bridge_context",
-    # Legacy compatibility
-    "AstronomicalTensorZeroCopyBridge",
 ]

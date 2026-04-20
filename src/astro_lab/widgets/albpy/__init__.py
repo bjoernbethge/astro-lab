@@ -11,10 +11,39 @@ Supported visualization types for create_astronomical_visualization:
 - 'stellar_field' (implemented)
 - 'galaxy_morphology' (not yet implemented)
 - 'cosmic_web' (use generate_cosmic_web_scene instead)
+
+Import order
+------------
+``prefer_gpu_backend()`` runs at the start of this package's import, **before** node
+groups and operators, so GPU preferences apply first.
+
+Then submodule imports proceed (each step may touch ``bpy`` in child packages):
+
+1. ``nodes.compositing`` → ``compositing/__init__.py`` → ``glare`` (and peers when wired).
+2. ``nodes.geometry`` → imports e.g. ``elliptical_galaxy``, ``spiral_galaxy``, …
+3. ``nodes.shader`` → ``star``, ``galaxy``, …
+4. ``operators`` → operator classes inheriting ``bpy.types.Operator``.
+
+``bpy.types`` names used in AlbPy match the official Blender Python API, e.g.
+``CompositorNodeTree``, ``CompositorNodeGroup``, ``GeometryNodeGroup``,
+``ShaderNodeGroup``, ``TextureNodeGroup``, ``Operator``. See:
+https://docs.blender.org/api/current/bpy.types.html
+
+**Class bases** such as ``class Foo(bpy.types.GeometryNodeGroup)`` are evaluated at
+import time. **Parameter annotations** should use ``from __future__ import annotations``
+in a module so ``bpy.types.*`` is not touched until annotations are resolved (e.g. by
+static tools), avoiding extra import-time access for pure functions.
+
+A working PyPI ``bpy`` wheel for your Python version must expose ``bpy.types``; otherwise
+any of the above imports can raise ``AttributeError``.
 """
 
 import logging
 from typing import Any, Dict, Optional
+
+from .gpu_preferences import GpuBackendName, prefer_gpu_backend
+
+prefer_gpu_backend()
 
 # Node group and utility exports (only implemented functions)
 from .nodes.compositing import register as register_compositing
@@ -164,6 +193,9 @@ def _create_cosmic_web_visualization(data_source: str, **kwargs) -> Dict[str, An
 
 
 __all__ = [
+    # Blender preferences (PyPI bpy)
+    "prefer_gpu_backend",
+    "GpuBackendName",
     # Registration functions
     "register",
     "unregister",

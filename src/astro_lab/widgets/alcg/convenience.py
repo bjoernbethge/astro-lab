@@ -348,9 +348,10 @@ def visualize(data: Any, survey: str = "unknown", **kwargs) -> Any:
         import torch
 
         from astro_lab.tensors import SpatialTensorDict
+        from astro_lab.utils.tensor import numpy_to_float32_tensor
 
         if not isinstance(data, torch.Tensor):
-            data = torch.tensor(data, dtype=torch.float32)
+            data = numpy_to_float32_tensor(data)
 
         spatial = SpatialTensorDict(
             coordinates=data, coordinate_system="unknown", unit="pc"

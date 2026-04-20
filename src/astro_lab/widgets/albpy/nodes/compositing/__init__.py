@@ -5,6 +5,8 @@ Compositing Node Groups for AlbPy
 Modern Blender 4.4 compositing node groups for astronomical post-processing.
 """
 
+from __future__ import annotations
+
 import logging
 from typing import Any, Dict
 
