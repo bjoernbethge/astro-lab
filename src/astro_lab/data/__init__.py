@@ -83,6 +83,8 @@ from .transforms import (
     VoidDetection,
 )
 
+from .factory import create_datamodule
+
 __all__ = [
     # Analysis
     "CosmicWebAnalyzer",
@@ -148,4 +150,6 @@ __all__ = [
     "MultiSurveyMerger",
     "ProperMotionCorrection",
     "VoidDetection",
+    # Factory
+    "create_datamodule",
 ]

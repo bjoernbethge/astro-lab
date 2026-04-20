@@ -7,6 +7,7 @@ Neural network models for astronomical data processing.
 
 # Core models
 from .astro_model import AstroModel
+from .factory import create_model
 
 # Autoencoders
 from .base_model import AstroBaseModel
@@ -51,6 +52,7 @@ from .mixins.explainability import ExplainabilityMixin
 
 __all__ = [
     "AstroModel",
+    "create_model",
     "AstroBaseModel",
     "ExplainabilityMixin",
     "ModelAnalysisMixin",

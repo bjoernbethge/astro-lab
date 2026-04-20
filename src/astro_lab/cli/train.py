@@ -111,7 +111,8 @@ def main(args=None) -> int:
         parsed_args = args
     else:
         parsed_args = parser.parse_args(args)
-    logger = setup_logging(parsed_args.verbose)
+    verbose = getattr(parsed_args, "verbose", False)
+    logger = setup_logging(verbose)
 
     # Ensure task has a default
     task = parsed_args.task or "node_classification"
@@ -141,16 +142,23 @@ def main(args=None) -> int:
     # Override config with CLI arguments (CLI has highest priority)
     if parsed_args.model:
         config["conv_type"] = parsed_args.model
-    if parsed_args.max_epochs is not None:
-        config["max_epochs"] = parsed_args.max_epochs
+    max_epochs_cli = getattr(parsed_args, "max_epochs", None)
+    if max_epochs_cli is None and getattr(parsed_args, "epochs", None) is not None:
+        max_epochs_cli = parsed_args.epochs
+    if max_epochs_cli is not None:
+        config["max_epochs"] = max_epochs_cli
     if parsed_args.batch_size is not None:
         config["batch_size"] = parsed_args.batch_size
-    if parsed_args.learning_rate is not None:
-        config["learning_rate"] = parsed_args.learning_rate
+    lr_cli = getattr(parsed_args, "learning_rate", None)
+    if lr_cli is not None:
+        config["learning_rate"] = lr_cli
     if parsed_args.hidden_dim is not None:
         config["hidden_dim"] = parsed_args.hidden_dim
     if parsed_args.num_layers is not None:
         config["num_layers"] = parsed_args.num_layers
+    ms_cli = getattr(parsed_args, "max_samples", None)
+    if ms_cli is not None:
+        config["max_samples"] = ms_cli
 
     # Ensure required parameters
     if not config.get("survey"):
@@ -235,7 +243,7 @@ def main(args=None) -> int:
         return 1
     except Exception as e:
         logger.error(f"Training failed: {e}")
-        if parsed_args.verbose:
+        if verbose:
             import traceback
 
             traceback.print_exc()
