@@ -34,6 +34,11 @@ def create_training_config():
                 value=tasks[0] if tasks else "node_classification",
                 label="Task",
             ),
+            "conv_type": mo.ui.dropdown(
+                options=["gcn", "gat", "sage", "gin"],
+                value="gcn",
+                label="GNN convolution",
+            ),
             "epochs": mo.ui.slider(
                 start=1,
                 stop=500,

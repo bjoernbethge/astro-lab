@@ -107,10 +107,9 @@ def run_cosmic_web_analysis(data, scales, min_samples=5, method="dbscan"):
             "scale_results": {},
         }
 
-        # Convert coordinates to torch tensor
-        import torch
+        from astro_lab.utils.tensor import numpy_to_float32_tensor
 
-        coordinates_tensor = torch.tensor(coordinates, dtype=torch.float32)
+        coordinates_tensor = numpy_to_float32_tensor(coordinates)
 
         # Run comprehensive cosmic web analysis
         analysis_result = analyzer.analyze_cosmic_web(

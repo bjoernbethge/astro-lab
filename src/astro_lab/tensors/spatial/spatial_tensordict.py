@@ -12,6 +12,8 @@ import torch
 from astroML.correlation import two_point, two_point_angular
 from tensordict import TensorDict
 
+from astro_lab.utils.tensor import numpy_to_float32_tensor
+
 from ..base import AstroTensorDict
 
 
@@ -43,9 +45,9 @@ class SpatialTensorDict(AstroTensorDict):
             survey_name: Name of astronomical survey
             **kwargs: Additional TensorDict arguments
         """
-        # Ensure coordinates are tensor
+        # Ensure coordinates are tensor (structured NumPy catalogs need numpy_to_float32_tensor)
         if not isinstance(coordinates, torch.Tensor):
-            coordinates = torch.tensor(coordinates, dtype=torch.float32)
+            coordinates = numpy_to_float32_tensor(coordinates)
 
         # Validate shape
         if coordinates.dim() != 2 or coordinates.size(1) != 3:
@@ -316,7 +318,7 @@ class SpatialTensorDict(AstroTensorDict):
         """
         # Extract coordinates
         coords_data = survey_df[coord_cols].to_numpy()
-        coords = torch.tensor(coords_data, dtype=torch.float32)
+        coords = numpy_to_float32_tensor(coords_data)
 
         # Create instance
         spatial_td = cls(coordinates=coords, survey_name=survey_name, **kwargs)
@@ -325,10 +327,10 @@ class SpatialTensorDict(AstroTensorDict):
         numeric_cols = [c for c in survey_df.columns if c not in coord_cols]
         for col in numeric_cols:
             try:
-                data = torch.tensor(survey_df[col].to_numpy(), dtype=torch.float32)
+                data = numpy_to_float32_tensor(survey_df[col].to_numpy())
                 if data.shape[0] == coords.shape[0]:
                     spatial_td[col] = data
-            except:
+            except (TypeError, ValueError):
                 continue
 
         return spatial_td
