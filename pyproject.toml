@@ -29,7 +29,7 @@ dependencies = [
     "torchmetrics==1.9.0",
     "marimo[lsp,mcp,recommended]>=0.21.0",
     "mlflow>=2.19.0",
-    "lightning==2.6.1",
+    "lightning==2.6.4",
     "lightning-utilities==0.15.3",
     "optuna-integration[pytorch-lightning,mlflow]>=4.4.0",
     "optuna>=4.4.0",
